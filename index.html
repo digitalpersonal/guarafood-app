@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GuaraFood - Your AI Powered Food Delivery</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.0",
+    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.80.0"
+  }
+}
+</script>
+<style>
+  @keyframes highlight-animation {
+    0% { background-color: rgba(254, 249, 195, 0.8); } /* bg-yellow-100 with opacity */
+    100% { background-color: transparent; }
+  }
+  .highlight-scroll {
+    animation: highlight-animation 1.5s ease-out;
+  }
+  
+  @keyframes toast-in {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+  
+  @keyframes toast-out {
+    from {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    to {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+  }
+  
+  .toast-in {
+    animation: toast-in 0.3s ease-out forwards;
+  }
+  
+  .toast-out {
+    animation: toast-out 0.3s ease-in forwards;
+  }
+  
+  /* New Order Pulse Animation */
+  @keyframes pulse-blue {
+    0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+  }
+  .new-order-pulse {
+    animation: pulse-blue 2s infinite;
+    border: 1px solid #3B82F6; /* blue-500 */
+  }
+
+  /* Print-specific styles */
+  @media print {
+    body * {
+      visibility: hidden;
+    }
+    #printable-order, #printable-order * {
+      visibility: visible;
+    }
+    #printable-order {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+    }
+  }
+</style>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-gray-50">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

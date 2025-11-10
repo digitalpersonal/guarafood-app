@@ -1,0 +1,627 @@
+
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from './types';
+import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant, generateImage } from './services/geminiService';
+import { AuthProvider, useAuth } from './services/authService';
+import { getInitializationError } from './services/api';
+
+import RestaurantCard from './components/RestaurantCard';
+import Spinner from './components/Spinner';
+import MenuItemCard from './components/MenuItemCard';
+import ComboCard from './components/ComboCard';
+import Cart from './components/Cart';
+import { Logo } from './components/Logo';
+import LoginScreen from './components/LoginScreen';
+import AdminDashboard from './components/AdminDashboard';
+import OrderManagement from './components/OrderManagement';
+import HomePromotionalBanner from './components/HomePromotionalBanner'; // Changed from PromotionalBanner
+import CouponDisplay from './components/CouponDisplay'; // NEW IMPORT
+import { CartProvider } from './hooks/useCart';
+import { AnimationProvider } from './hooks/useAnimation';
+import { NotificationProvider } from './hooks/useNotification';
+
+
+const SearchIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+  </svg>
+);
+
+const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+  </svg>
+);
+
+const SparklesIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.898 20.562L16.25 21.75l-.648-1.188a2.25 2.25 0 01-1.4-1.4l-1.188-.648 1.188-.648a2.25 2.25 0 011.4-1.4l.648-1.188.648 1.188a2.25 2.25 0 011.4 1.4l1.188.648-1.188.648a2.25 2.25 0 01-1.4 1.4z" />
+    </svg>
+);
+
+const ShoppingCartIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c.51 0 .962-.343 1.087-.835l1.838-5.514a1.875 1.875 0 00-1.096-2.296l-5.61-1.87A1.875 1.875 0 009.218 6H5.25a.75.75 0 00-.75.75v11.25a.75.75 0 00.75.75h1.5a.75.75 0 00.75-.75V14.25z" />
+    </svg>
+);
+
+const UserCircleIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M17.982 18.725A7.488 7.488 0 0012 15.75a7.488 7.488 0 00-5.982 2.975m11.963 0a9 9 0 10-11.963 0m11.963 0A8.966 8.966 0 0112 21a8.966 8.966 0 01-5.982-2.275M15 9.75a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+);
+
+
+// Helper to convert "HH:MM" string to minutes from midnight
+const timeToMinutes = (timeString: string): number => {
+    const [hours, minutes] = timeString.split(':').map(Number);
+    return hours * 60 + minutes;
+};
+
+// Helper to create valid HTML IDs from category names
+const slugify = (text: string) => `category-${text.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '')}`;
+
+const isRestaurantOpen = (restaurant: Restaurant): boolean => {
+    const { openingHours, closingHours } = restaurant;
+    if (!openingHours || !closingHours) {
+        return true; // Assume open if data is missing in demo
+    }
+
+    try {
+        const now = new Date();
+        const currentTimeInMinutes = now.getHours() * 60 + now.getMinutes();
+
+        const openTimeInMinutes = timeToMinutes(openingHours);
+        const closeTimeInMinutes = timeToMinutes(closingHours);
+
+        // Handle overnight case (e.g., opens 18:00, closes 02:00)
+        if (closeTimeInMinutes < openTimeInMinutes) {
+            return currentTimeInMinutes >= openTimeInMinutes || currentTimeInMinutes < closeTimeInMinutes;
+        }
+
+        return currentTimeInMinutes >= openTimeInMinutes && currentTimeInMinutes < closeTimeInMinutes;
+
+    } catch (e) {
+        console.error("Error parsing restaurant hours:", restaurant.name, e);
+        return true;
+    }
+};
+
+const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> = ({ restaurant, onBack }) => {
+    const [menu, setMenu] = useState<MenuCategory[]>([]);
+    const [dailyPromotions, setDailyPromotions] = useState<(MenuItem | Combo)[]>([]);
+    const [dailySpecials, setDailySpecials] = useState<MenuItem[]>([]);
+    // FIX: Declared 'weeklySpecials' as state.
+    const [weeklySpecials, setWeeklySpecials] = useState<MenuItem[]>([]);
+    const [addons, setAddons] = useState<Addon[]>([]);
+    const [allPizzas, setAllPizzas] = useState<MenuItem[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [activeCategory, setActiveCategory] = useState<string | null>(null);
+    const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+
+    useEffect(() => {
+        const loadMenu = async () => {
+            try {
+                setIsLoading(true);
+                const [menuData, addonsData] = await Promise.all([
+                    fetchMenuForRestaurant(restaurant),
+                    fetchAddonsForRestaurant(restaurant),
+                ]);
+
+                setAllPizzas(menuData.flatMap(c => c.items).filter(item => item.isPizza));
+                
+                const specials = menuData.flatMap(category => category.items).filter(item => item.isDailySpecial);
+                setDailySpecials(specials);
+                
+                // FIX: Used the correct state setter for weekly specials.
+                const weeklyPromos = menuData.flatMap(category => category.items).filter(item => item.isWeeklySpecial);
+                setWeeklySpecials(weeklyPromos);
+                
+                const menuWithoutSpecials = menuData
+                    .map(category => ({
+                        ...category,
+                        items: category.items.filter(item => !item.isDailySpecial && !item.isWeeklySpecial),
+                    }))
+                    .filter(category => category.items.length > 0 || (category.combos && category.combos.length > 0));
+
+                setMenu(menuWithoutSpecials);
+                setAddons(addonsData);
+
+                const promotedItems = menuData
+                    .flatMap(category => [...category.items, ...(category.combos || [])])
+                    .filter(item => !!item.activePromotion);
+                setDailyPromotions(promotedItems);
+
+                if (menuWithoutSpecials.length > 0) {
+                    setActiveCategory(slugify(menuWithoutSpecials[0].name));
+                }
+            } catch (err) {
+                setError('Falha ao carregar o cardápio. Por favor, tente recarregar a página.');
+                console.error(err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadMenu();
+    }, [restaurant]);
+
+    const featuredPromotion = useMemo(() => {
+        if (!dailyPromotions || dailyPromotions.length === 0) {
+            return null;
+        }
+
+        // Prioritize category-wide promotions
+        const categoryPromotionItem = dailyPromotions.find(item => item.activePromotion?.targetType === 'CATEGORY');
+        if (categoryPromotionItem) {
+            return categoryPromotionItem.activePromotion;
+        }
+
+        // Then combo promotions
+        const comboPromotionItem = dailyPromotions.find(item => 'menuItemIds' in item && item.activePromotion);
+        if (comboPromotionItem) {
+            return comboPromotionItem.activePromotion;
+        }
+
+        // Fallback to the first available promotion
+        return dailyPromotions[0].activePromotion || null;
+    }, [dailyPromotions]);
+
+    useEffect(() => {
+        if (isLoading || menu.length === 0) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting) {
+                        setActiveCategory(entry.target.id);
+                    }
+                });
+            },
+            {
+                rootMargin: "-80px 0px -40% 0px",
+                threshold: 0,
+            }
+        );
+
+        const refs = categoryRefs.current;
+        Object.values(refs).forEach((ref) => {
+            if (ref instanceof Element) {
+                observer.observe(ref);
+            }
+        });
+
+        return () => {
+            Object.values(refs).forEach((ref) => {
+                if (ref instanceof Element) {
+                    observer.unobserve(ref);
+                }
+            });
+        };
+    }, [isLoading, menu]);
+
+    const handleNavClick = (categoryName: string) => {
+        const id = slugify(categoryName);
+        const element = document.getElementById(id);
+        if (element) {
+            element.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start',
+            });
+            element.classList.add('highlight-scroll');
+            setTimeout(() => {
+                element.classList.remove('highlight-scroll');
+            }, 1500);
+        }
+    };
+
+    return (
+        <div className="w-full">
+            <div className="relative h-48 bg-gray-200">
+                <img src={restaurant.imageUrl} alt={restaurant.name} className="w-full h-full object-cover"/>
+                <div className="absolute inset-0 bg-black bg-opacity-30"></div>
+                 <button onClick={onBack} className="absolute top-4 left-4 bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition-colors">
+                    <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
+                </button>
+            </div>
+            <div className="p-4 bg-white rounded-t-2xl -mt-8 relative z-20">
+                <h1 className="text-3xl font-bold">{restaurant.name}</h1>
+                <p className="text-gray-600">{restaurant.category}</p>
+            </div>
+            
+            {!isLoading && featuredPromotion && (
+                <HomePromotionalBanner promotion={featuredPromotion} />
+            )}
+            
+            {!isLoading && restaurant.category === 'Supermercado' && weeklySpecials.length > 0 && (
+                <div className="p-4 bg-green-50 border-b-2 border-t-2 border-green-200">
+                    <h2 className="text-2xl font-bold mb-4 text-green-700 flex items-center gap-2">
+                        <ShoppingCartIcon className="w-6 h-6" />
+                        Promoções da Semana
+                    </h2>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {weeklySpecials.map(item =>
+                            <MenuItemCard key={`weekly-special-${item.id}`} item={item} allPizzas={allPizzas} allAddons={addons} />
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {!isLoading && dailySpecials.length > 0 && (
+                <div className="p-4 bg-blue-50 border-b-2 border-t-2 border-blue-200">
+                    <h2 className="text-2xl font-bold mb-4 text-blue-700 flex items-center gap-2">
+                        <SparklesIcon className="w-6 h-6" />
+                        Destaque do Dia
+                    </h2>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {dailySpecials.map(item =>
+                            <MenuItemCard key={`special-item-${item.id}`} item={item} allPizzas={allPizzas} allAddons={addons} />
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {!isLoading && dailyPromotions.length > 0 && (
+                <div className="p-4 bg-orange-50 border-b-2 border-t-2 border-orange-200">
+                    <h2 className="text-2xl font-bold mb-4 text-orange-700 flex items-center gap-2">
+                        <SparklesIcon className="w-6 h-6" />
+                        Promoções do Dia!
+                    </h2>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {dailyPromotions.map(item => 'menuItemIds' in item 
+                            ? <ComboCard key={`promo-combo-${item.id}`} combo={item} menuItems={menu.flatMap(c => c.items)} /> 
+                            : <MenuItemCard key={`promo-item-${item.id}`} item={item} allPizzas={allPizzas} allAddons={addons} />
+                        )}
+                    </div>
+                </div>
+            )}
+            
+            {/* NEW: CouponDisplay component */}
+            {!isLoading && restaurant.id && <CouponDisplay restaurantId={restaurant.id} />}
+
+            {!isLoading && !error && menu.length > 0 && (
+                <div className="sticky top-0 z-30 bg-white shadow-sm">
+                    <div className="flex space-x-3 overflow-x-auto p-3 border-b">
+                        {menu.map((category) => {
+                            const categoryId = slugify(category.name);
+                            return (
+                                <button
+                                    key={category.name}
+                                    onClick={() => handleNavClick(category.name)}
+                                    className={`px-4 py-2 rounded-full font-semibold text-sm whitespace-nowrap transition-colors duration-200 flex items-center gap-2 ${
+                                        activeCategory === categoryId
+                                            ? 'bg-orange-600 text-white'
+                                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                    }`}
+                                >
+                                    {category.iconUrl && <img src={category.iconUrl} alt={category.name} className="w-5 h-5 object-contain" />}
+                                    {category.name}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+            
+            <div className="p-4">
+                 {isLoading ? <Spinner message="Carregando cardápio..." /> : error ? <p className="text-red-500 text-center p-8 bg-red-50 rounded-lg">{error}</p> : (
+                    <div className="space-y-8">
+                        {menu.map((category) => {
+                            const categoryId = slugify(category.name);
+                            return (
+                                <div
+                                    key={category.name}
+                                    id={categoryId}
+                                    ref={(el) => (categoryRefs.current[categoryId] = el)}
+                                    className="scroll-mt-20 rounded-lg"
+                                >
+                                    <h2 className="text-2xl font-bold mb-4 px-2 pt-2 flex items-center gap-3">
+                                        {category.iconUrl && <img src={category.iconUrl} alt={category.name} className="w-8 h-8 object-contain" />}
+                                        {category.name}
+                                    </h2>
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                        {category.combos?.map(combo => <ComboCard key={`combo-${combo.id}`} combo={combo} menuItems={menu.flatMap(c => c.items)} />)}
+                                        {category.items.map(item => <MenuItemCard key={item.id} item={item} allPizzas={allPizzas} allAddons={addons} />)}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const HEADER_IMAGE_CACHE_KEY = 'guara-food-header-image';
+
+const CustomerView: React.FC<{
+    onGoToLogin: () => void;
+}> = ({ onGoToLogin }) => {
+    const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+    const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+    const [showOpenOnly, setShowOpenOnly] = useState(false);
+
+    const [headerImage, setHeaderImage] = useState<string | null>(null);
+    const [isHeaderImageLoading, setIsHeaderImageLoading] = useState(false);
+    const [headerImageError, setHeaderImageError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const loadInitialData = async () => {
+            setIsLoading(true);
+            try {
+                // Fetch restaurants
+                const restaurantsData = await fetchRestaurants();
+                setRestaurants(restaurantsData);
+
+            } catch (err: any) {
+                // This catch block now primarily handles restaurant fetching errors
+                setError('Falha ao buscar restaurantes. O servidor pode estar ocupado, tente recarregar a página.');
+                console.error(err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        // Function to load header image from cache or generate it
+        const loadAndCacheHeaderImage = async () => {
+            setHeaderImageError(null);
+
+            const cachedImage = localStorage.getItem(HEADER_IMAGE_CACHE_KEY);
+            let initialImageSetFromCache = false;
+
+            if (cachedImage) {
+                setHeaderImage(cachedImage);
+                initialImageSetFromCache = true;
+                console.log("Loaded header image from cache.");
+            } else {
+                // Only show spinner if no cached image to display immediately
+                setIsHeaderImageLoading(true); 
+                console.log("No cached header image found, generating a new one.");
+            }
+
+            try {
+                const prompt = "A wide, vibrant, and appetizing food photography image for a food delivery app, showing a variety of delicious dishes like pizza, sushi, burgers, and pasta. High resolution, professional studio lighting, shallow depth of field, warm inviting colors.";
+                const imageUrl = await generateImage(prompt);
+                
+                if (imageUrl !== cachedImage) {
+                    setHeaderImage(imageUrl);
+                    localStorage.setItem(HEADER_IMAGE_CACHE_KEY, imageUrl);
+                    console.log("Generated and cached new header image.");
+                } else {
+                    console.log("Generated header image is same as cached, no update needed.");
+                }
+            } catch (err: any) {
+                console.error("Failed to generate header image:", err);
+                setHeaderImageError("Falha ao carregar imagem dinâmica do cabeçalho.");
+                if (!initialImageSetFromCache) { 
+                    // If no initial image was set from cache, clear the header image state
+                    // This will cause the fallback background color to be used.
+                    setHeaderImage(null); 
+                }
+            } finally {
+                // Ensure loading state is false once generation (or error) is complete,
+                // but only if a spinner was actively displayed for this generation cycle.
+                if (!initialImageSetFromCache) { 
+                    setIsHeaderImageLoading(false);
+                }
+            }
+        };
+
+        loadInitialData();
+        loadAndCacheHeaderImage();
+    }, []); // Empty dependency array means it runs once on mount
+
+    const categories = useMemo(() => {
+        const allCategories = restaurants.map(r => r.category);
+        return ['Todos', ...Array.from(new Set(allCategories))];
+    }, [restaurants]);
+
+    const filteredRestaurants = useMemo(() => {
+        return restaurants.filter(restaurant => {
+            const matchesCategory = selectedCategory === 'Todos' || !selectedCategory || restaurant.category === selectedCategory;
+            const matchesSearch = restaurant.name.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesOpenFilter = !showOpenOnly || isRestaurantOpen(restaurant);
+            return matchesCategory && matchesSearch && matchesOpenFilter;
+        });
+    }, [restaurants, searchTerm, selectedCategory, showOpenOnly]);
+
+    if (isLoading) {
+        return <div className="h-screen flex items-center justify-center"><Spinner message="Buscando os melhores restaurantes..." /></div>;
+    }
+    
+    // Display global error (e.g., failed to fetch restaurants)
+    if (error) {
+        return <div className="h-screen flex items-center justify-center p-4"><p className="text-red-500 text-center">{error}</p></div>
+    }
+
+    if (selectedRestaurant) {
+        return <RestaurantMenu restaurant={selectedRestaurant} onBack={() => setSelectedRestaurant(null)} />;
+    }
+
+    return (
+        <>
+            <header className="p-4 sticky top-0 bg-white shadow-md z-20">
+                 <div className="flex justify-between items-center">
+                  <Logo />
+                  <button onClick={onGoToLogin} className="flex items-center space-x-2 text-sm font-semibold text-gray-600 hover:text-orange-600 p-2 rounded-lg hover:bg-orange-50 transition-colors">
+                      <UserCircleIcon className="w-6 h-6"/>
+                      <span>Acessar Painel</span>
+                  </button>
+                </div>
+            </header>
+
+            <main>
+                <div
+                    className="relative p-6 sm:p-10 text-center border-b border-orange-100 min-h-[250px] flex flex-col justify-center"
+                    style={{
+                        backgroundImage: headerImage ? `url(${headerImage})` : undefined,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        backgroundRepeat: 'no-repeat',
+                        backgroundColor: headerImageError ? '#fee2e2' : '#fff7ed' // Fallback colors: bg-red-100 or bg-orange-50
+                    }}
+                    role="banner"
+                >
+                    {isHeaderImageLoading && (
+                        <div className="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center" aria-live="polite" aria-label="Gerando imagem para o cabeçalho">
+                            <Spinner message="Gerando imagem para o cabeçalho..." />
+                        </div>
+                    )}
+                    {!isHeaderImageLoading && headerImageError && (
+                        <div className="absolute inset-0 bg-red-600 bg-opacity-80 flex items-center justify-center p-4" role="alert">
+                            <p className="text-white text-center text-sm">{headerImageError}</p>
+                        </div>
+                    )}
+                    <div className={`relative z-10 flex flex-col items-center ${headerImage ? 'bg-black bg-opacity-40 p-4 rounded-lg' : ''}`}>
+                        <h1 className={`text-3xl sm:text-4xl font-extrabold mb-2 ${headerImage ? 'text-white' : 'text-gray-800'}`}>Sua fome pede, GuaraFood entrega.</h1>
+                        <p className={`max-w-2xl mx-auto mb-6 ${headerImage ? 'text-gray-100' : 'text-gray-600'}`}>Uma praça de alimentação completa na palma da sua mão.</p>
+                        <div className="relative max-w-xl mx-auto w-full">
+                            <input
+                                type="text"
+                                placeholder="Buscar por nome do restaurante..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full p-3 pl-10 border rounded-full bg-white shadow-sm focus:ring-2 focus:ring-orange-400 focus:outline-none"
+                                aria-label="Buscar restaurantes"
+                            />
+                            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" aria-hidden="true" />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-4">
+                    <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-3">
+                        <h2 className="text-xl font-semibold">Categorias</h2>
+                        <label htmlFor="open-toggle" className="flex items-center cursor-pointer flex-shrink-0">
+                            <span className="mr-3 text-sm font-medium text-gray-900">Abertos agora</span>
+                            <div className="relative">
+                                <input id="open-toggle" type="checkbox" className="sr-only peer" checked={showOpenOnly} onChange={e => setShowOpenOnly(e.target.checked)} />
+                                <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
+                            </div>
+                        </label>
+                    </div>
+                    <div className="flex space-x-3 overflow-x-auto pb-3 -mx-4 px-4">
+                        {categories.map(category => (
+                            <button
+                                key={category}
+                                onClick={() => setSelectedCategory(category)}
+                                className={`px-4 py-2 rounded-full font-semibold text-sm whitespace-nowrap transform transition-all duration-200 ease-in-out hover:scale-105 ${
+                                    selectedCategory === category 
+                                        ? 'bg-orange-600 text-white shadow-lg' 
+                                        : 'bg-white text-gray-700 border hover:shadow-md'
+                                }`}
+                            >
+                                {category}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="p-4">
+                    <h2 className="text-xl font-semibold mb-3">Restaurantes</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {filteredRestaurants.map(restaurant => {
+                            const isOpen = isRestaurantOpen(restaurant);
+                            return <RestaurantCard key={restaurant.id} restaurant={restaurant} onClick={() => setSelectedRestaurant(restaurant)} isOpen={isOpen} />;
+                        })}
+                    </div>
+                    {filteredRestaurants.length === 0 && <p className="text-center text-gray-500 col-span-full py-8">Nenhum restaurante encontrado.</p>}
+                </div>
+            </main>
+             <Cart restaurant={selectedRestaurant} />
+        </>
+    );
+};
+
+
+const AppContent: React.FC = () => {
+    const [view, setView] = useState<'customer' | 'login'>('customer');
+    const { currentUser, loading, authError } = useAuth();
+
+    const handleBackToCustomerView = () => setView('customer');
+
+    const renderContent = () => {
+        if (authError) {
+            return (
+                <div className="h-screen flex items-center justify-center p-4 bg-red-50">
+                    <div className="max-w-xl text-center bg-white p-8 rounded-lg shadow-lg">
+                        <h1 className="text-2xl font-bold text-red-700 mb-4">Erro Crítico de Autenticação</h1>
+                        <p className="text-gray-700 text-left">Não foi possível carregar os dados do seu perfil de usuário devido a um erro de configuração no banco de dados.</p>
+                        <div className="text-gray-600 mt-4 text-sm bg-gray-100 p-3 rounded-md text-left font-mono break-words">
+                            <p className="font-semibold">Detalhes do Erro:</p>
+                            <p>{authError}</p>
+                        </div>
+                        <p className="text-gray-500 mt-4 text-xs text-left">
+                            <b>Solução:</b> Este erro geralmente ocorre por uma regra de segurança (RLS) mal configurada no Supabase. Verifique suas políticas na tabela <code>profiles</code>. A política para permitir que usuários leiam seus próprios dados deve usar <code>auth.uid() = id</code> e não deve fazer uma subconsulta que acione a mesma política novamente.
+                        </p>
+                    </div>
+                </div>
+            );
+        }
+
+        if (loading) {
+            return <div className="h-screen flex items-center justify-center"><Spinner message="Carregando..." /></div>;
+        }
+
+        if (currentUser) {
+            if (currentUser.role === 'admin') {
+                return <AdminDashboard onBack={handleBackToCustomerView} />;
+            }
+            if (currentUser.role === 'merchant') {
+                return <OrderManagement onBack={handleBackToCustomerView} />;
+            }
+        }
+        
+        if (view === 'login') {
+            return <LoginScreen onLoginSuccess={() => {
+                setView('customer');
+            }} onBack={handleBackToCustomerView} />;
+        }
+        
+        return <CustomerView onGoToLogin={() => setView('login')} />;
+    };
+
+    return (
+        <div className="container mx-auto max-w-7xl bg-white md:bg-gray-50 min-h-screen">
+            {renderContent()}
+        </div>
+    );
+};
+
+const App: React.FC = () => {
+    const supabaseError = getInitializationError();
+
+    if (supabaseError) {
+        return (
+            <div className="h-screen flex items-center justify-center p-4 bg-red-50">
+                <div className="max-w-md text-center bg-white p-8 rounded-lg shadow-lg">
+                     <h1 className="text-2xl font-bold text-red-700 mb-4">Erro de Configuração</h1>
+                    <p className="text-gray-700">Não foi possível conectar ao banco de dados.</p>
+                    <p className="text-600 mt-2 text-sm">{supabaseError.message}</p>
+                     <p className="text-gray-500 mt-4 text-xs">Por favor, configure as variáveis de ambiente <code>SUPABASE_URL</code> e <code>SUPABASE_ANON_KEY</code> no seu projeto e recarregue a página.</p>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <AnimationProvider>
+            <CartProvider>
+                <AuthProvider>
+                    <NotificationProvider>
+                        <AppContent />
+                    </NotificationProvider>
+                </AuthProvider>
+            </CartProvider>
+        </AnimationProvider>
+    )
+}
+
+export default App;

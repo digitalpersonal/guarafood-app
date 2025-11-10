@@ -1,0 +1,158 @@
+
+
+export interface Restaurant {
+  id: number;
+  name: string;
+  category: string;
+  deliveryTime: string;
+  rating: number;
+  imageUrl: string;
+  paymentGateways: string[];
+  address: string;
+  phone: string;
+  openingHours: string;
+  closingHours: string;
+  deliveryFee: number;
+  mercado_pago_credentials?: { accessToken: string };
+}
+
+export interface Addon {
+  id: number;
+  name: string;
+  price: number;
+  restaurantId: number;
+}
+
+// New SizeOption interface for menu items
+export interface SizeOption {
+  name: string;
+  price: number;
+  freeAddonCount?: number;
+}
+
+export interface MenuItem {
+  id: number;
+  name: string;
+  description: string;
+  price: number; // Will represent the base/default price
+  originalPrice?: number;
+  imageUrl: string;
+  restaurantId: number;
+  categoryId?: number; // Added for DB-driven categories
+  activePromotion?: Promotion;
+  isPizza?: boolean;
+  isAcai?: boolean;
+  freeAddonCount?: number; // Kept for simple items, but sizes will override
+  availableAddonIds?: number[];
+  sizes?: SizeOption[]; // Array for different sizes
+  isDailySpecial?: boolean; // For "Destaque do Dia"
+  isWeeklySpecial?: boolean; // For supermarket "Promoções da Semana"
+  availableDays?: number[]; // For "Prato do Dia". 0=Sun, 1=Mon, etc.
+}
+
+export interface Combo {
+  id: number;
+  name:string;
+  description: string;
+  price: number;
+  originalPrice?: number;
+  imageUrl: string;
+  restaurantId: number;
+  menuItemIds: number[];
+  activePromotion?: Promotion;
+  categoryId?: number; // Added for DB interaction
+}
+
+export interface MenuCategory {
+  id: number; // Added for DB interaction
+  name: string;
+  items: MenuItem[];
+  combos?: Combo[];
+  restaurantId: number;
+  displayOrder?: number; // Added for reordering
+  iconUrl?: string; // NEW FIELD
+}
+
+// New Promotion interface
+export interface Promotion {
+  id: number;
+  name: string;
+  description: string;
+  discountType: 'PERCENTAGE' | 'FIXED';
+  discountValue: number;
+  targetType: 'ITEM' | 'COMBO' | 'CATEGORY';
+  targetIds: (number | string)[]; // Can be item IDs, combo IDs, or category names
+  startDate: string; // ISO 8601 format
+  endDate: string; // ISO 8601 format
+  restaurantId: number;
+  is_featured?: boolean;
+  restaurant?: { name: string }; // For admin view joins
+}
+
+export interface Coupon {
+  id: number;
+  code: string;
+  description: string;
+  discountType: 'PERCENTAGE' | 'FIXED';
+  discountValue: number;
+  minOrderValue?: number; // Optional minimum order value
+  expirationDate: string; // ISO 8601 format
+  isActive: boolean;
+  restaurantId: number;
+}
+
+// Refactored CartItem to support custom pizzas and addons
+export interface CartItem {
+  id: string; // Composite key like 'item-101' or 'pizza-201-202-addon-1'
+  name: string;
+  price: number; // Final price including addons and half-pizza logic
+  basePrice: number; // Price before addons
+  imageUrl: string;
+  quantity: number;
+  description: string;
+  originalPrice?: number;
+  promotionName?: string;
+  halves?: { name: string; price: number }[]; // For half-and-half pizzas
+  selectedAddons?: Addon[]; // For addons
+  sizeName?: string; // To display selected size, e.g., "Grande"
+}
+
+export type OrderStatus = 'Aguardando Pagamento' | 'Novo Pedido' | 'Preparando' | 'A Caminho' | 'Entregue' | 'Cancelado';
+
+export interface Order {
+  id: string;
+  timestamp: string;
+  status: OrderStatus;
+  customerName: string;
+  customerPhone: string;
+  customerAddress?: {
+    zipCode: string;
+    street: string;
+    number: string;
+    neighborhood: string;
+    complement?: string;
+  };
+  items: CartItem[];
+  totalPrice: number;
+  restaurantId: number;
+  restaurantName: string;
+  restaurantAddress: string;
+  restaurantPhone: string;
+  paymentMethod: string;
+  couponCode?: string;
+  discountAmount?: number;
+  subtotal?: number;
+  deliveryFee?: number;
+  payment_id?: string;
+  payment_details?: any;
+}
+
+export type Role = 'admin' | 'merchant';
+
+export interface User {
+  id: string;
+  email: string;
+  role: Role;
+  name: string;
+  restaurantId?: number;
+}
