@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from './types';
-import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant, generateImage } from './services/geminiService';
+import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant } from './services/databaseService';
 import { AuthProvider, useAuth } from './services/authService';
 import { getInitializationError } from './services/api';
 
