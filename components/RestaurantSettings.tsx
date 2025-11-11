@@ -78,7 +78,7 @@ const NotificationSettings: React.FC = () => {
                  <label htmlFor="notification-toggle" className="flex items-center cursor-pointer">
                     <div className="relative">
                         <input id="notification-toggle" type="checkbox" className="sr-only peer" checked={notificationsEnabled} onChange={handleToggleNotifications} />
-                        <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                        <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
                     </div>
                 </label>
             </div>
@@ -173,7 +173,7 @@ const RestaurantSettings: React.FC = () => {
                         <button
                             onClick={handleSaveChanges}
                             disabled={isSaving}
-                            className="bg-red-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-red-700 transition-colors disabled:bg-red-300"
+                            className="bg-orange-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-orange-700 transition-colors disabled:bg-orange-300"
                         >
                             {isSaving ? 'Salvando...' : 'Salvar Alterações'}
                         </button>

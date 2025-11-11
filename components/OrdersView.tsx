@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
@@ -90,10 +89,15 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                     </div>
                 );
             case 'A Caminho':
-                return <button onClick={(e) => {
-                    e.stopPropagation();
-                    handleConfirmAndUpdate("Confirmar que o pedido foi entregue ao cliente?", 'Entregue');
-                }} className="w-full bg-green-600 text-white font-bold py-2 rounded-lg hover:bg-green-700">Marcar como Entregue</button>;
+                return (
+                    <div className="grid grid-cols-2 gap-2">
+                        <button onClick={(e) => { e.stopPropagation(); onNotify(order); }} className="bg-blue-600 text-white font-bold py-2 px-3 rounded-lg hover:bg-blue-700 text-sm">Notificar Entrega</button>
+                        <button onClick={(e) => {
+                            e.stopPropagation();
+                            handleConfirmAndUpdate("Confirmar que o pedido foi entregue ao cliente?", 'Entregue');
+                        }} className="bg-green-600 text-white font-bold py-2 px-3 rounded-lg hover:bg-green-700 text-sm">Marcar Entregue</button>
+                    </div>
+                );
             default:
                 return null;
         }
@@ -212,8 +216,17 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders }) => {
 
     const handleNotify = (order: Order) => {
         const cleanRestaurantPhone = order.restaurantPhone.replace(/\D/g, '');
-        const restaurantWhatsAppLink = `https://wa.me/${cleanRestaurantPhone}`;
-        const message = `Olá ${order.customerName}! Seu pedido no restaurante *${order.restaurantName}* foi confirmado e já estamos preparando tudo com muito carinho. O total é de R$ ${order.totalPrice.toFixed(2)}. Se precisar falar conosco, nosso WhatsApp é: ${restaurantWhatsAppLink}`;
+        const restaurantWhatsAppLink = `https://wa.me/55${cleanRestaurantPhone}`;
+        let message = '';
+        
+        if (order.status === 'Preparando') {
+            message = `Olá ${order.customerName}! Seu pedido no restaurante *${order.restaurantName}* foi confirmado e já estamos preparando tudo com muito carinho. O total é de R$ ${order.totalPrice.toFixed(2)}. Se precisar falar conosco, nosso WhatsApp é: ${restaurantWhatsAppLink}`;
+        } else if (order.status === 'A Caminho') {
+            message = `Olá ${order.customerName}! Boas notícias! Seu pedido do restaurante *${order.restaurantName}* já saiu para entrega e logo chegará até você!`;
+        } else {
+            return; // Don't send for other statuses
+        }
+
         const whatsappUrl = `https://wa.me/${order.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
         window.open(whatsappUrl, '_blank');
     };
@@ -251,9 +264,9 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders }) => {
         { title: 'A Caminho', status: 'A Caminho' as OrderStatus },
     ];
     const historySections = [
+        { title: 'Aguardando Pagamento', status: 'Aguardando Pagamento' as OrderStatus },
         { title: 'Entregues', status: 'Entregue' as OrderStatus },
         { title: 'Cancelados', status: 'Cancelado' as OrderStatus },
-        { title: 'Aguardando Pagamento', status: 'Aguardando Pagamento' as OrderStatus },
     ];
 
     const RenderOrderList = ({ groupedOrders, sections }: { groupedOrders: any, sections: any[] }) => (
@@ -282,7 +295,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders }) => {
                         placeholder="Buscar por cliente ou ID do pedido..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full p-3 pl-10 border rounded-full bg-white focus:ring-2 focus:ring-red-400 focus:outline-none"
+                        className="w-full p-3 pl-10 border rounded-full bg-white focus:ring-2 focus:ring-orange-400 focus:outline-none"
                         aria-label="Buscar pedidos"
                     />
                     <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" aria-hidden="true" />
@@ -292,7 +305,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders }) => {
                 <div className="flex space-x-2 rounded-lg bg-gray-200 p-1" role="tablist">
                     <button 
                         onClick={() => setViewMode('active')} 
-                        className={`w-full text-center font-semibold p-2 rounded-md transition-colors ${viewMode === 'active' ? 'bg-white shadow text-red-600' : 'text-gray-600'}`}
+                        className={`w-full text-center font-semibold p-2 rounded-md transition-colors ${viewMode === 'active' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}
                         role="tab"
                         aria-selected={viewMode === 'active'}
                         id="tab-active-orders"
@@ -302,7 +315,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders }) => {
                     </button>
                     <button 
                         onClick={() => setViewMode('history')} 
-                        className={`w-full text-center font-semibold p-2 rounded-md transition-colors ${viewMode === 'history' ? 'bg-white shadow text-red-600' : 'text-gray-600'}`}
+                        className={`w-full text-center font-semibold p-2 rounded-md transition-colors ${viewMode === 'history' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}
                         role="tab"
                         aria-selected={viewMode === 'history'}
                         id="tab-history-orders"
@@ -344,4 +357,3 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders }) => {
 };
 
 export default OrdersView;
-    

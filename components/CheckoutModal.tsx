@@ -36,6 +36,12 @@ const ShoppingBagIcon: React.FC<{ className?: string }> = ({ className }) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.658-.463 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
     </svg>
 );
+const ClipboardIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v3.043c0 .317-.135.619-.372.83h-9.312a1.125 1.125 0 01-1.125-1.125v-3.043c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+    </svg>
+);
+
 
 const steps: { id: CheckoutStep; title: string; icon: React.FC<{ className?: string }> }[] = [
     { id: 'SUMMARY', title: 'Resumo', icon: ShoppingBagIcon },
@@ -156,6 +162,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setIsSubmitting(true);
         setPixError(null);
         try {
+            // NOTE: This assumes a Supabase Edge Function named 'create-payment' exists.
             const response = await supabase.functions.invoke('create-payment', {
                 body: { restaurantId: restaurant.id, orderData },
             });
@@ -190,6 +197,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         }
                         if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
                         setCurrentStep('SUCCESS');
+                        localStorage.setItem(`customerData-${customerName.toLowerCase()}`, JSON.stringify({ phone: customerPhone, address }));
                         setTimeout(() => {
                             clearCart();
                             onClose();
@@ -303,6 +311,13 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const paymentOptions = ["Pix", "Cartão de Crédito/Débito", "Dinheiro"];
     const currentStepIndex = steps.findIndex(step => step.id === currentStep);
+
+    const handleCopyPixCode = () => {
+        if (pixData?.qrCode) {
+            navigator.clipboard.writeText(pixData.qrCode);
+            addToast({ message: 'Código Pix copiado!', type: 'success' });
+        }
+    };
 
     const renderStepper = () => (
         <div className="flex justify-between items-center px-4 py-3 bg-gray-50 border-b" role="navigation" aria-label="Progresso do Checkout">
@@ -483,12 +498,24 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const renderPixPayment = () => (
         <div className="text-center flex flex-col items-center p-4" role="region" aria-labelledby="pix-payment-heading">
             <h3 id="pix-payment-heading" className="text-xl font-bold text-gray-800 mb-2">Pague com Pix para confirmar</h3>
-            <p className="text-sm text-gray-500 mb-4">Use o app do seu banco para escanear o QR Code.</p>
+            <p className="text-sm text-gray-500 mb-4">Use o app do seu banco para escanear o QR Code ou copie o código abaixo.</p>
             {pixData ? (
                 <>
                     <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="PIX QR Code" className="w-48 h-48 mx-auto my-2 border-4 border-gray-700 p-1 rounded-lg" />
-                    <button onClick={() => navigator.clipboard.writeText(pixData.qrCode)} className="text-sm bg-gray-200 px-3 py-1 rounded-lg hover:bg-gray-300 mb-2" aria-label="Copiar código Pix">Copiar Código</button>
-                    <div className="font-mono bg-gray-100 p-2 rounded-lg text-xs break-all hidden">{pixData.qrCode}</div>
+                    <button 
+                        onClick={handleCopyPixCode} 
+                        className="flex items-center justify-center gap-2 bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors my-2 w-full max-w-xs" 
+                        aria-label="Copiar código Pix"
+                    >
+                        <ClipboardIcon className="w-5 h-5"/>
+                        <span>Copiar Código Pix</span>
+                    </button>
+                    <textarea 
+                        readOnly 
+                        value={pixData.qrCode} 
+                        className="font-mono bg-gray-100 p-2 rounded-lg text-xs w-full max-w-xs h-20 resize-none text-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                        aria-label="Código Pix Copia e Cola"
+                    />
                     <p className="text-2xl font-bold text-orange-600 mt-2">R$ {finalPriceWithFee.toFixed(2)}</p>
                     <div className="mt-4 text-sm font-semibold text-gray-700" aria-live="polite">Tempo restante: {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}</div>
                 </>

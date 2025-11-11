@@ -1,4 +1,3 @@
-
 import React from 'react';
 import type { Restaurant } from '../types';
 
@@ -36,7 +35,7 @@ const WhatsAppIcon: React.FC<{ className?: string }> = ({ className }) => (
 const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, isOpen }) => {
 
   const cleanedPhone = restaurant.phone.replace(/\D/g, '');
-  const whatsappUrl = `https://wa.me/${cleanedPhone}`;
+  const whatsappUrl = `https://wa.me/55${cleanedPhone}`;
 
   return (
     <div 

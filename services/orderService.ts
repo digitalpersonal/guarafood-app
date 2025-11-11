@@ -1,5 +1,3 @@
-
-
 import type { Order, OrderStatus, CartItem } from '../types';
 import { supabase, handleSupabaseError } from './api';
 
@@ -79,7 +77,7 @@ export interface NewOrderData {
 export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
     const newOrderPayload = {
         ...orderData,
-        status: 'Novo Pedido' as OrderStatus,
+        status: orderData.paymentMethod === 'Pix' ? 'Aguardando Pagamento' as OrderStatus : 'Novo Pedido' as OrderStatus,
         timestamp: new Date().toISOString(),
     };
     const { data, error } = await supabase.from('orders').insert(newOrderPayload).select().single();

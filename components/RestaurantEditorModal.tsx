@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect } from 'react';
 import type { Restaurant } from '../types';
 import ImageUploader from './ImageUploader';
@@ -14,8 +12,8 @@ interface RestaurantEditorModalProps {
 }
 
 // FIX: Type definition to handle the structure of mercado_pago_credentials
-type FormData = Omit<Restaurant, 'id' | 'mercado_pago_credentials'> & {
-    mercado_pago_credentials?: { accessToken: string };
+type FormData = Omit<Restaurant, 'id'> & {
+    // This makes the nested property optional as well
 };
 
 
