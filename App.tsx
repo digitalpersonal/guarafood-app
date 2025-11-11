@@ -334,8 +334,6 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     );
 };
 
-const HEADER_IMAGE_CACHE_KEY = 'guara-food-header-image';
-
 const CustomerView: React.FC<{
     onGoToLogin: () => void;
 }> = ({ onGoToLogin }) => {
@@ -348,9 +346,8 @@ const CustomerView: React.FC<{
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
     const [showOpenOnly, setShowOpenOnly] = useState(false);
 
-    const [headerImage, setHeaderImage] = useState<string | null>(null);
-    const [isHeaderImageLoading, setIsHeaderImageLoading] = useState(false);
-    const [headerImageError, setHeaderImageError] = useState<string | null>(null);
+    // Use a fixed header image to avoid API quota issues.
+    const [headerImage, setHeaderImage] = useState<string>('https://images.pexels.com/photos/376464/pexels-photo-376464.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2');
 
     useEffect(() => {
         const loadInitialData = async () => {
@@ -369,53 +366,7 @@ const CustomerView: React.FC<{
             }
         };
 
-        // Function to load header image from cache or generate it
-        const loadAndCacheHeaderImage = async () => {
-            setHeaderImageError(null);
-
-            const cachedImage = localStorage.getItem(HEADER_IMAGE_CACHE_KEY);
-            let initialImageSetFromCache = false;
-
-            if (cachedImage) {
-                setHeaderImage(cachedImage);
-                initialImageSetFromCache = true;
-                console.log("Loaded header image from cache.");
-            } else {
-                // Only show spinner if no cached image to display immediately
-                setIsHeaderImageLoading(true); 
-                console.log("No cached header image found, generating a new one.");
-            }
-
-            try {
-                const prompt = "A wide, vibrant, and appetizing food photography image for a food delivery app, showing a variety of delicious dishes like pizza, sushi, burgers, and pasta. High resolution, professional studio lighting, shallow depth of field, warm inviting colors.";
-                const imageUrl = await generateImage(prompt);
-                
-                if (imageUrl !== cachedImage) {
-                    setHeaderImage(imageUrl);
-                    localStorage.setItem(HEADER_IMAGE_CACHE_KEY, imageUrl);
-                    console.log("Generated and cached new header image.");
-                } else {
-                    console.log("Generated header image is same as cached, no update needed.");
-                }
-            } catch (err: any) {
-                console.error("Failed to generate header image:", err);
-                setHeaderImageError("Falha ao carregar imagem dinâmica do cabeçalho.");
-                if (!initialImageSetFromCache) { 
-                    // If no initial image was set from cache, clear the header image state
-                    // This will cause the fallback background color to be used.
-                    setHeaderImage(null); 
-                }
-            } finally {
-                // Ensure loading state is false once generation (or error) is complete,
-                // but only if a spinner was actively displayed for this generation cycle.
-                if (!initialImageSetFromCache) { 
-                    setIsHeaderImageLoading(false);
-                }
-            }
-        };
-
         loadInitialData();
-        loadAndCacheHeaderImage();
     }, []); // Empty dependency array means it runs once on mount
 
     const categories = useMemo(() => {
@@ -447,10 +398,10 @@ const CustomerView: React.FC<{
 
     return (
         <>
-            <header className="p-4 sticky top-0 bg-white shadow-md z-20">
+            <header className="p-4 sticky top-0 bg-orange-600 shadow-md z-20">
                  <div className="flex justify-between items-center">
                   <Logo />
-                  <button onClick={onGoToLogin} className="flex items-center space-x-2 text-sm font-semibold text-gray-600 hover:text-orange-600 p-2 rounded-lg hover:bg-orange-50 transition-colors">
+                  <button onClick={onGoToLogin} className="flex items-center space-x-2 text-sm font-semibold text-white p-2 rounded-lg hover:bg-orange-700 transition-colors">
                       <UserCircleIcon className="w-6 h-6"/>
                       <span>Acessar Painel</span>
                   </button>
@@ -465,20 +416,10 @@ const CustomerView: React.FC<{
                         backgroundSize: 'cover',
                         backgroundPosition: 'center',
                         backgroundRepeat: 'no-repeat',
-                        backgroundColor: headerImageError ? '#fee2e2' : '#fff7ed' // Fallback colors: bg-red-100 or bg-orange-50
+                        backgroundColor: '#fff7ed' // Fallback color: bg-orange-50
                     }}
                     role="banner"
                 >
-                    {isHeaderImageLoading && (
-                        <div className="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center" aria-live="polite" aria-label="Gerando imagem para o cabeçalho">
-                            <Spinner message="Gerando imagem para o cabeçalho..." />
-                        </div>
-                    )}
-                    {!isHeaderImageLoading && headerImageError && (
-                        <div className="absolute inset-0 bg-red-600 bg-opacity-80 flex items-center justify-center p-4" role="alert">
-                            <p className="text-white text-center text-sm">{headerImageError}</p>
-                        </div>
-                    )}
                     <div className={`relative z-10 flex flex-col items-center ${headerImage ? 'bg-black bg-opacity-40 p-4 rounded-lg' : ''}`}>
                         <h1 className={`text-3xl sm:text-4xl font-extrabold mb-2 ${headerImage ? 'text-white' : 'text-gray-800'}`}>Sua fome pede, GuaraFood entrega.</h1>
                         <p className={`max-w-2xl mx-auto mb-6 ${headerImage ? 'text-gray-100' : 'text-gray-600'}`}>Uma praça de alimentação completa na palma da sua mão.</p>
