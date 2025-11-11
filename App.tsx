@@ -14,7 +14,6 @@ import { Logo } from './components/Logo';
 import LoginScreen from './components/LoginScreen';
 import AdminDashboard from './components/AdminDashboard';
 import OrderManagement from './components/OrderManagement';
-import HomePromotionalBanner from './components/HomePromotionalBanner'; // Changed from PromotionalBanner
 import CouponDisplay from './components/CouponDisplay'; // NEW IMPORT
 import { CartProvider } from './hooks/useCart';
 import { AnimationProvider } from './hooks/useAnimation';
@@ -147,27 +146,6 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
         loadMenu();
     }, [restaurant]);
 
-    const featuredPromotion = useMemo(() => {
-        if (!dailyPromotions || dailyPromotions.length === 0) {
-            return null;
-        }
-
-        // Prioritize category-wide promotions
-        const categoryPromotionItem = dailyPromotions.find(item => item.activePromotion?.targetType === 'CATEGORY');
-        if (categoryPromotionItem) {
-            return categoryPromotionItem.activePromotion;
-        }
-
-        // Then combo promotions
-        const comboPromotionItem = dailyPromotions.find(item => 'menuItemIds' in item && item.activePromotion);
-        if (comboPromotionItem) {
-            return comboPromotionItem.activePromotion;
-        }
-
-        // Fallback to the first available promotion
-        return dailyPromotions[0].activePromotion || null;
-    }, [dailyPromotions]);
-
     useEffect(() => {
         if (isLoading || menu.length === 0) return;
 
@@ -229,10 +207,6 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                 <h1 className="text-3xl font-bold">{restaurant.name}</h1>
                 <p className="text-gray-600">{restaurant.category}</p>
             </div>
-            
-            {!isLoading && featuredPromotion && (
-                <HomePromotionalBanner promotion={featuredPromotion} />
-            )}
             
             {!isLoading && restaurant.category === 'Supermercado' && weeklySpecials.length > 0 && (
                 <div className="p-4 bg-green-50 border-b-2 border-t-2 border-green-200">

@@ -85,8 +85,6 @@ export interface Promotion {
   startDate: string; // ISO 8601 format
   endDate: string; // ISO 8601 format
   restaurantId: number;
-  is_featured?: boolean;
-  restaurant?: { name: string }; // For admin view joins
 }
 
 export interface Coupon {

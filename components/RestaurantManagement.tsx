@@ -1,0 +1,157 @@
+
+
+import React, { useState, useEffect, useCallback } from 'react';
+import type { Restaurant } from '../types';
+import { fetchRestaurants, createRestaurant, updateRestaurant, deleteRestaurant } from '../services/databaseService';
+import { useNotification } from '../hooks/useNotification';
+import Spinner from './Spinner';
+import RestaurantEditorModal from './RestaurantEditorModal';
+
+const EditIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
+);
+const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+);
+const StarIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={className}>
+    <path fillRule="evenodd" d="M10.868 2.884c.321-.662 1.215-.662 1.536 0l1.82 3.745 4.13.602c.73.107 1.02.998.494 1.506l-2.988 2.91.705 4.114c.124.726-.635 1.28-1.288.943L10 15.158l-3.69 1.94c-.653.337-1.412-.217-1.288-.943l.705-4.114-2.988-2.91c-.525-.508-.236-1.399.494-1.506l4.13-.602 1.82-3.745z" clipRule="evenodd" />
+  </svg>
+);
+
+
+const RestaurantManagement: React.FC = () => {
+    const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [isEditorOpen, setIsEditorOpen] = useState(false);
+    const [editingRestaurant, setEditingRestaurant] = useState<Restaurant | null>(null);
+    const { addToast, confirm } = useNotification();
+
+    const loadRestaurants = useCallback(async () => {
+        try {
+            setIsLoading(true);
+            const data = await fetchRestaurants();
+            setRestaurants(data);
+        } catch (err) {
+            setError('Falha ao carregar restaurantes.');
+            console.error(err);
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadRestaurants();
+    }, [loadRestaurants]);
+
+    const handleOpenEditor = (restaurant: Restaurant | null) => {
+        setEditingRestaurant(restaurant);
+        setIsEditorOpen(true);
+    };
+
+    const handleCloseEditor = () => {
+        setEditingRestaurant(null);
+        setIsEditorOpen(false);
+    };
+
+    const handleSaveRestaurant = async (restaurantData: Omit<Restaurant, 'id'> | Restaurant) => {
+        try {
+            if ('id' in restaurantData) {
+                await updateRestaurant(restaurantData.id, restaurantData);
+                addToast({ message: 'Restaurante atualizado com sucesso!', type: 'success' });
+            } else {
+                await createRestaurant(restaurantData);
+                addToast({ message: 'Restaurante criado com sucesso!', type: 'success' });
+            }
+            handleCloseEditor();
+            await loadRestaurants();
+        } catch (err) {
+            console.error("Failed to save restaurant", err);
+            addToast({ message: `Erro ao salvar restaurante: ${err}`, type: 'error' });
+        }
+    };
+
+    const handleDeleteRestaurant = async (restaurantId: number) => {
+        const confirmed = await confirm({
+            title: 'Excluir Restaurante',
+            message: 'Tem certeza que deseja excluir este restaurante? Esta ação também removerá a conta do comerciante associada.',
+            confirmText: 'Excluir',
+            isDestructive: true,
+        });
+
+        if (confirmed) {
+            try {
+                await deleteRestaurant(restaurantId);
+                addToast({ message: 'Restaurante excluído.', type: 'info' });
+                await loadRestaurants();
+            } catch (err) {
+                console.error("Failed to delete restaurant", err);
+                addToast({ message: `Erro ao excluir restaurante: ${err}`, type: 'error' });
+            }
+        }
+    };
+
+    if (isLoading) return <Spinner message="Carregando restaurantes..." />;
+    if (error) return <p className="text-center text-red-500">{error}</p>;
+
+    return (
+        <div className="bg-white p-4 rounded-lg shadow-md">
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-800">Gerenciar Restaurantes</h2>
+                <button
+                    onClick={() => handleOpenEditor(null)}
+                    className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 transition-colors"
+                >
+                    Adicionar Novo Restaurante
+                </button>
+            </div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left text-gray-600">
+                    <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                        <tr>
+                            <th scope="col" className="px-6 py-3">Nome</th>
+                            <th scope="col" className="px-6 py-3">Categoria</th>
+                            <th scope="col" className="px-6 py-3">Nota</th>
+                            <th scope="col" className="px-6 py-3">Telefone</th>
+                            <th scope="col" className="px-6 py-3">Endereço</th>
+                            <th scope="col" className="px-6 py-3">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {restaurants.map(restaurant => (
+                            <tr key={restaurant.id} className="bg-white border-b hover:bg-gray-50">
+                                <td className="px-6 py-4 font-semibold text-gray-900">{restaurant.name}</td>
+                                <td className="px-6 py-4">{restaurant.category}</td>
+                                <td className="px-6 py-4">
+                                    <div className="flex items-center">
+                                        <StarIcon className="w-4 h-4 text-yellow-500 mr-1" />
+                                        <span className="font-bold text-gray-700">{restaurant.rating.toFixed(1)}</span>
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4">{restaurant.phone}</td>
+                                <td className="px-6 py-4">{restaurant.address}</td>
+                                <td className="px-6 py-4">
+                                    <div className="flex space-x-2">
+                                        <button onClick={() => handleOpenEditor(restaurant)} className="p-2 text-gray-500 hover:text-blue-600"><EditIcon className="w-5 h-5"/></button>
+                                        <button onClick={() => handleDeleteRestaurant(restaurant.id)} className="p-2 text-gray-500 hover:text-red-600"><TrashIcon className="w-5 h-5"/></button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+             {isEditorOpen && (
+                <RestaurantEditorModal
+                    isOpen={isEditorOpen}
+                    onClose={handleCloseEditor}
+                    onSave={handleSaveRestaurant}
+                    existingRestaurant={editingRestaurant}
+                />
+            )}
+        </div>
+    );
+};
+
+export default RestaurantManagement;
