@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect } from 'react';
 import type { Combo, MenuItem } from '../types';
 
@@ -72,9 +71,9 @@ const ComboEditorModal: React.FC<ComboEditorModalProps> = ({ isOpen, onClose, on
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose}>
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="combo-editor-modal-title">
             <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                <h2 className="text-2xl font-bold mb-4">{existingCombo ? 'Editar Combo' : 'Criar Novo Combo'}</h2>
+                <h2 id="combo-editor-modal-title" className="text-2xl font-bold mb-4">{existingCombo ? 'Editar Combo' : 'Criar Novo Combo'}</h2>
                 
                 <div className="overflow-y-auto space-y-4 pr-2 -mr-2">
                     <input

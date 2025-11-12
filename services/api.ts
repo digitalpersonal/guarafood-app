@@ -1,8 +1,9 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config';
 
-const supabaseUrl = 'https://xfousvlrhinlvrpryscy.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhmb3VzdmxyaGlubHZycHJ5c2N5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI2MTg0NDYsImV4cCI6MjA3ODE5NDQ0Nn0.ah4qi9NtkUAyxrcOMPQi9T6pmgEW6ZMHcjhA9tNI8s0';
+const supabaseUrl = SUPABASE_URL;
+const supabaseKey = SUPABASE_ANON_KEY;
 
 
 let supabaseInstance: SupabaseClient;
@@ -11,12 +12,12 @@ let initializationError: Error | null = null;
 
 
 try {
-  // Add checks for missing credentials.
-  if (!supabaseUrl) {
-    throw new Error("A variável de ambiente SUPABASE_URL não foi encontrada.");
+  // Add checks for placeholder credentials.
+  if (!supabaseUrl || supabaseUrl.includes('your-project-id')) {
+    throw new Error("A variável SUPABASE_URL não foi configurada. Por favor, edite o arquivo 'config.ts'.");
   }
-  if (!supabaseKey) {
-      throw new Error("A variável de ambiente SUPABASE_ANON_KEY não foi encontrada.");
+  if (!supabaseKey || supabaseKey.includes('your-public-anon-key')) {
+      throw new Error("A variável SUPABASE_ANON_KEY não foi configurada. Por favor, edite o arquivo 'config.ts'.");
   }
 
   // This is the standard client that will manage user sessions for authenticated actions.
@@ -53,8 +54,6 @@ try {
 
 export const supabase = supabaseInstance;
 export const supabaseAnon = supabaseAnonInstance;
-export const SUPABASE_URL = supabaseUrl;
-export const SUPABASE_ANON_KEY = supabaseKey;
 
 export const getInitializationError = () => initializationError;
 

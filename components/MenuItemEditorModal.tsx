@@ -1,8 +1,4 @@
 
-
-
-
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { MenuItem, SizeOption, Addon } from '../types';
 
@@ -231,9 +227,9 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
     const hasSizes = sizes.length > 0;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose}>
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="menuitem-editor-modal-title">
             <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                <h2 className="text-2xl font-bold mb-4">{existingItem ? 'Editar Item do Cardápio' : 'Adicionar Novo Item'}</h2>
+                <h2 id="menuitem-editor-modal-title" className="text-2xl font-bold mb-4">{existingItem ? 'Editar Item do Cardápio' : 'Adicionar Novo Item'}</h2>
                 
                 <div className="overflow-y-auto space-y-4 pr-2 -mr-2">
                     <input type="text" placeholder="Nome do Item (ex: X-Bacon)" value={name} onChange={(e) => setName(e.target.value)} className="w-full p-3 border rounded-lg bg-gray-50"/>

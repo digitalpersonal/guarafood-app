@@ -519,8 +519,8 @@ const App: React.FC = () => {
                 <div className="max-w-md text-center bg-white p-8 rounded-lg shadow-lg">
                      <h1 className="text-2xl font-bold text-red-700 mb-4">Erro de Configuração</h1>
                     <p className="text-gray-700">Não foi possível conectar ao banco de dados.</p>
-                    <p className="text-600 mt-2 text-sm">{supabaseError.message}</p>
-                     <p className="text-gray-500 mt-4 text-xs">Por favor, configure as variáveis de ambiente <code>SUPABASE_URL</code> e <code>SUPABASE_ANON_KEY</code> no seu projeto e recarregue a página.</p>
+                    <p className="text-red-600 mt-2 text-sm">{supabaseError.message}</p>
+                     <p className="text-gray-500 mt-4 text-xs">Por favor, abra o arquivo <code>config.ts</code> no seu projeto, siga as instruções nos comentários para adicionar suas credenciais do Supabase e recarregue a página.</p>
                 </div>
             </div>
         );

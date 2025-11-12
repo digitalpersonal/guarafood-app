@@ -10,10 +10,10 @@ interface ComboCardProps {
 }
 
 const ComboDetailsModal: React.FC<{ combo: Combo; items: MenuItem[]; onClose: () => void }> = ({ combo, items, onClose }) => (
-    <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="combo-details-modal-title">
         <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center border-b pb-3 mb-4">
-                <h2 className="text-xl font-bold text-gray-800">{combo.name}</h2>
+                <h2 id="combo-details-modal-title" className="text-xl font-bold text-gray-800">{combo.name}</h2>
                 <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl font-bold" aria-label="Fechar">&times;</button>
             </div>
             <div className="overflow-y-auto space-y-4 pr-2 -mr-2">

@@ -122,10 +122,10 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose}>
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="pizza-modal-title">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                 <div className="p-4 border-b flex justify-between items-center">
-                    <h2 className="text-xl font-bold text-gray-800">Monte sua Pizza</h2>
+                    <h2 id="pizza-modal-title" className="text-xl font-bold text-gray-800">Monte sua Pizza</h2>
                     <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl font-bold" aria-label="Fechar">&times;</button>
                 </div>
 

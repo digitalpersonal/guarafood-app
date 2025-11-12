@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import type { Coupon } from '../types';
 
@@ -77,9 +78,9 @@ const CouponEditorModal: React.FC<CouponEditorModalProps> = ({ isOpen, onClose, 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose}>
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="coupon-editor-modal-title">
             <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                <h2 className="text-2xl font-bold mb-4">{existingCoupon ? 'Editar Cupom' : 'Criar Novo Cupom'}</h2>
+                <h2 id="coupon-editor-modal-title" className="text-2xl font-bold mb-4">{existingCoupon ? 'Editar Cupom' : 'Criar Novo Cupom'}</h2>
                 
                 <div className="overflow-y-auto space-y-4 pr-2 -mr-2">
                     <input type="text" placeholder="Código do Cupom (ex: BEMVINDO10)" value={code} onChange={e => setCode(e.target.value.toUpperCase())} className="w-full p-3 border rounded-lg bg-gray-50 uppercase"/>

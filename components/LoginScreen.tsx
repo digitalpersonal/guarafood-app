@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useAuth } from '../services/authService';
 import Spinner from './Spinner';
@@ -20,6 +21,13 @@ const LoginScreen: React.FC<{ onLoginSuccess: () => void; onBack: () => void; }>
         e.preventDefault();
         setIsLoggingIn(true);
         setError('');
+
+        if (password.length < 6) {
+            setError('A senha deve ter pelo menos 6 caracteres.');
+            setIsLoggingIn(false);
+            return;
+        }
+
         try {
             await login(email, password);
             onLoginSuccess();

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import type { Restaurant } from '../types';
 import ImageUploader from './ImageUploader';
@@ -124,9 +125,9 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
     const imagePromptSuggestion = `A vibrant and appealing photo for a restaurant named '${formData.name || 'our restaurant'}' in the category '${formData.category || 'food'}'. Professional food photography style, appetizing, high-resolution.`;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose}>
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="restaurant-editor-modal-title">
             <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                <h2 className="text-2xl font-bold mb-4">{existingRestaurant ? 'Editar Restaurante' : 'Adicionar Novo Restaurante'}</h2>
+                <h2 id="restaurant-editor-modal-title" className="text-2xl font-bold mb-4">{existingRestaurant ? 'Editar Restaurante' : 'Adicionar Novo Restaurante'}</h2>
                 
                 <div className="overflow-y-auto space-y-4 pr-2 -mr-2">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

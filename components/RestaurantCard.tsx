@@ -1,3 +1,4 @@
+
 import React from 'react';
 import type { Restaurant } from '../types';
 
@@ -51,7 +52,7 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, is
         {restaurant.category}
       </div>
       <div className="flex items-center space-x-4 p-3 flex-grow">
-        <img src={restaurant.imageUrl} alt={restaurant.name} className="w-20 h-20 rounded-md object-cover flex-shrink-0" />
+        <img src={restaurant.imageUrl} alt={restaurant.name} className="w-20 h-20 rounded-md object-cover flex-shrink-0" loading="lazy" />
         <div className="flex-grow min-w-0">
           <h3 className="text-lg font-bold text-gray-800 truncate">{restaurant.name}</h3>
           <div className="flex items-center text-sm text-gray-500 mt-1 flex-wrap">

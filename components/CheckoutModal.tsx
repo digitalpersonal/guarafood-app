@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, Coupon, Order } from '../types';
 import { useCart } from '../hooks/useCart';
@@ -237,6 +238,17 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             setFormError('Preencha todos os campos obrigatórios, incluindo o endereço completo.');
             return;
         }
+        
+        const phoneDigits = customerPhone.replace(/\D/g, '');
+        if (!/^\d{10,11}$/.test(phoneDigits)) {
+            setFormError('Por favor, insira um número de telefone válido com DDD (10 ou 11 dígitos).');
+            return;
+        }
+        if (!/^\d{5}-?\d{3}$/.test(address.zipCode)) {
+            setFormError('Por favor, insira um CEP válido (ex: 12345-678).');
+            return;
+        }
+
         setFormError(null);
 
         let finalPaymentMethod = paymentMethod;
