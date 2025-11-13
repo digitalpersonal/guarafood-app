@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import type { Restaurant } from '../types';
-import ImageUploader from './ImageUploader';
 import { useNotification } from '../hooks/useNotification';
 import { supabase } from '../services/api'; // Import supabase client
 
@@ -110,11 +109,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         }));
     };
 
-
-    const handleImageUpdate = (newUrl: string) => {
-        setFormData(prev => ({ ...prev, imageUrl: newUrl }));
-    };
-
     const handleSubmit = async () => {
         setError('');
         if (!formData.name || !formData.category || !formData.address || !formData.phone) {
@@ -171,8 +165,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
 
     if (!isOpen) return null;
 
-    const imagePromptSuggestion = `A vibrant and appealing photo for a restaurant named '${formData.name || 'our restaurant'}' in the category '${formData.category || 'food'}'. Professional food photography style, appetizing, high-resolution.`;
-
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="restaurant-editor-modal-title">
             <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
@@ -208,12 +200,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                             <input name="closingHours" type="time" value={formData.closingHours} onChange={handleChange} className="w-full p-2 border rounded-lg bg-gray-50"/>
                         </div>
                     </div>
-                    
-                    <ImageUploader
-                        imageUrl={formData.imageUrl}
-                        onImageUpdate={handleImageUpdate}
-                        promptSuggestion={imagePromptSuggestion}
-                    />
 
                     {/* NEW: Merchant user creation fields - only for new restaurants */}
                     {!existingRestaurant && (

@@ -1,11 +1,13 @@
 
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { subscribeToOrders } from '../services/orderService';
 import { useAuth } from '../services/authService';
-import type { Order } from '../types';
+import type { Order, Restaurant } from '../types';
 import OrderDetailsModal from './OrderDetailsModal';
 import SalesDashboard from './SalesDashboard';
 import RestaurantManagement from './RestaurantManagement';
+import MenuManagement from './MenuManagement';
 
 
 // Re-usable Icons
@@ -134,6 +136,7 @@ const OrdersView: React.FC = () => {
 const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { logout } = useAuth();
     const [activeTab, setActiveTab] = useState<'overview' | 'sales' | 'restaurants'>('overview');
+    const [managingMenuFor, setManagingMenuFor] = useState<Restaurant | null>(null);
 
     const renderContent = () => {
         switch (activeTab) {
@@ -142,11 +145,36 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             case 'sales':
                 return <SalesDashboard />;
             case 'restaurants':
-                return <RestaurantManagement />;
+                return <RestaurantManagement onEditMenu={setManagingMenuFor} />;
             default:
                 return null;
         }
     };
+
+    if (managingMenuFor) {
+        return (
+            <div className="w-full min-h-screen bg-gray-50">
+                <header className="p-4 sticky top-0 bg-gray-50 z-20 border-b">
+                    <div className="flex justify-between items-center gap-4">
+                        <div className="flex items-center space-x-4">
+                            <button onClick={() => setManagingMenuFor(null)} className="bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition-colors flex-shrink-0">
+                                <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
+                            </button>
+                            <div>
+                                <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Gerenciando Cardápio</h1>
+                                <p className="text-sm text-gray-500">{managingMenuFor.name}</p>
+                            </div>
+                        </div>
+                        <button onClick={logout} className="flex items-center space-x-2 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition-colors font-semibold" title="Sair">
+                            <LogoutIcon className="w-6 h-6" />
+                            <span className="hidden sm:inline">Sair</span>
+                        </button>
+                    </div>
+                </header>
+                <MenuManagement restaurantId={managingMenuFor.id} />
+            </div>
+        );
+    }
 
     return (
         <div className="w-full min-h-screen bg-gray-50">

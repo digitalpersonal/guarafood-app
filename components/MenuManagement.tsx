@@ -55,7 +55,7 @@ const ClipboardIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 
 
-const MenuManagement: React.FC = () => {
+const MenuManagement: React.FC<{ restaurantId?: number }> = ({ restaurantId: propRestaurantId }) => {
     const { currentUser } = useAuth();
     const { addToast, confirm, prompt } = useNotification();
     const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([]);
@@ -79,7 +79,7 @@ const MenuManagement: React.FC = () => {
     // Category editing state
     const [editingCategory, setEditingCategory] = useState<{ id: number; oldName: string; newName: string; newIconUrl: string | null } | null>(null);
 
-    const restaurantId = currentUser?.restaurantId;
+    const restaurantId = propRestaurantId || currentUser?.restaurantId;
 
     const allMenuItems = menuCategories.flatMap(c => c.items);
     const allCombos = menuCategories.flatMap(c => c.combos || []);
@@ -592,7 +592,7 @@ const MenuManagement: React.FC = () => {
             </div>
 
             {isComboModalOpen && <ComboEditorModal isOpen={isComboModalOpen} onClose={() => setIsComboModalOpen(false)} onSave={handleSaveCombo} existingCombo={editingCombo} menuItems={allMenuItems} />}
-            {isItemModalOpen && <MenuItemEditorModal isOpen={isItemModalOpen} onClose={() => setIsItemModalOpen(false)} onSave={handleSaveItem} existingItem={editingItem?.item} initialCategory={editingItem?.categoryName} restaurantCategories={menuCategories.map(c => c.name)} allAddons={addons} />}
+            {isItemModalOpen && restaurantId && <MenuItemEditorModal isOpen={isItemModalOpen} onClose={() => setIsItemModalOpen(false)} onSave={handleSaveItem} existingItem={editingItem?.item} initialCategory={editingItem?.categoryName} restaurantCategories={menuCategories.map(c => c.name)} allAddons={addons} restaurantId={restaurantId} />}
             {isPromoModalOpen && <PromotionEditorModal isOpen={isPromoModalOpen} onClose={() => setIsPromoModalOpen(false)} onSave={handleSavePromo} existingPromotion={editingPromo} menuItems={allMenuItems} combos={allCombos} categories={menuCategories.map(c => c.name)}/>}
             {isCouponModalOpen && <CouponEditorModal isOpen={isCouponModalOpen} onClose={() => setIsCouponModalOpen(false)} onSave={handleSaveCoupon} existingCoupon={editingCoupon} />}
         </main>

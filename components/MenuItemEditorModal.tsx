@@ -1,6 +1,8 @@
 
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { MenuItem, SizeOption, Addon } from '../types';
+import { supabase } from '../services/api';
 
 // Icon for the Combobox dropdown
 const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -101,14 +103,14 @@ interface MenuItemEditorModalProps {
     initialCategory?: string;
     restaurantCategories: string[];
     allAddons: Addon[];
+    restaurantId: number;
 }
 
-const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClose, onSave, existingItem, initialCategory = '', restaurantCategories, allAddons }) => {
+const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClose, onSave, existingItem, initialCategory = '', restaurantCategories, allAddons, restaurantId }) => {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [price, setPrice] = useState('');
     const [originalPrice, setOriginalPrice] = useState('');
-    const [imageUrl, setImageUrl] = useState('');
     const [category, setCategory] = useState('');
     const [isAcai, setIsAcai] = useState(false);
     const [isDailySpecial, setIsDailySpecial] = useState(false);
@@ -119,13 +121,18 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
     const [addonSearchTerm, setAddonSearchTerm] = useState('');
     const [error, setError] = useState('');
 
+    const [imageFile, setImageFile] = useState<File | null>(null);
+    const [imagePreview, setImagePreview] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+
+
     useEffect(() => {
         if (existingItem) {
             setName(existingItem.name);
             setDescription(existingItem.description);
             setPrice(String(existingItem.price));
             setOriginalPrice(String(existingItem.originalPrice || ''));
-            setImageUrl(existingItem.imageUrl);
+            setImagePreview(existingItem.imageUrl || null);
             setCategory(initialCategory);
             setIsAcai(existingItem.isAcai || false);
             setIsDailySpecial(existingItem.isDailySpecial || false);
@@ -139,7 +146,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             setDescription('');
             setPrice('');
             setOriginalPrice('');
-            setImageUrl('');
+            setImagePreview(null);
             setCategory(initialCategory);
             setIsAcai(false);
             setIsDailySpecial(false);
@@ -149,8 +156,32 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             setSelectedAddonIds(new Set());
         }
         setAddonSearchTerm('');
+        setImageFile(null);
         setError('');
+        setIsSaving(false);
     }, [existingItem, initialCategory, isOpen]);
+
+    // Cleanup for image preview object URL
+    useEffect(() => {
+        return () => {
+            if (imagePreview && imagePreview.startsWith('blob:')) {
+                URL.revokeObjectURL(imagePreview);
+            }
+        };
+    }, [imagePreview]);
+
+
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setImageFile(file);
+            if (imagePreview && imagePreview.startsWith('blob:')) {
+                URL.revokeObjectURL(imagePreview); // Clean up previous local URL
+            }
+            setImagePreview(URL.createObjectURL(file));
+        }
+    };
+
 
     const handleSizeChange = (index: number, field: keyof SizeOption, value: string) => {
         const newSizes = [...sizes];
@@ -192,7 +223,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
         return allAddons.filter(addon => addon.name.toLowerCase().includes(addonSearchTerm.toLowerCase()));
     }, [allAddons, addonSearchTerm]);
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         const hasSizes = sizes.length > 0;
         if (!name || (!hasSizes && !price) || !category) {
             setError('Nome, Preço de Venda e Categoria são obrigatórios.');
@@ -204,6 +235,38 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             setError('O preço de venda deve ser um número válido e maior que zero.');
             return;
         }
+        if (!restaurantId) {
+             setError('ID do restaurante não encontrado. Não é possível salvar a imagem.');
+             return;
+        }
+
+        setIsSaving(true);
+        let finalImageUrl = existingItem?.imageUrl || '';
+
+        if (imageFile) {
+            try {
+                // Public bucket: 'product-images', Path: {restaurant_id}/{uuid}.{ext}
+                const fileExt = imageFile.name.split('.').pop();
+                const filePath = `${restaurantId}/${crypto.randomUUID()}.${fileExt}`;
+
+                const { error: uploadError } = await supabase.storage
+                    .from('product-images')
+                    .upload(filePath, imageFile);
+
+                if (uploadError) throw uploadError;
+
+                const { data } = supabase.storage
+                    .from('product-images')
+                    .getPublicUrl(filePath);
+
+                finalImageUrl = data.publicUrl;
+            } catch (uploadError: any) {
+                setError(`Erro no upload da imagem: ${uploadError.message}`);
+                setIsSaving(false);
+                return;
+            }
+        }
+
 
         const numericOriginalPrice = parseFloat(originalPrice);
 
@@ -212,7 +275,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             description,
             price: basePrice,
             originalPrice: numericOriginalPrice > 0 ? numericOriginalPrice : undefined,
-            imageUrl,
+            imageUrl: finalImageUrl,
             isAcai,
             isDailySpecial,
             isWeeklySpecial,
@@ -232,6 +295,37 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                 <h2 id="menuitem-editor-modal-title" className="text-2xl font-bold mb-4">{existingItem ? 'Editar Item do Cardápio' : 'Adicionar Novo Item'}</h2>
                 
                 <div className="overflow-y-auto space-y-4 pr-2 -mr-2">
+                    <div className="flex flex-col md:flex-row items-start gap-4">
+                         <div className="flex-shrink-0">
+                            {imagePreview ? (
+                                <img src={imagePreview} alt="Preview" className="w-24 h-24 rounded-md object-cover" />
+                            ) : (
+                                <div className="w-24 h-24 rounded-md bg-gray-100 flex items-center justify-center text-gray-400 text-sm text-center p-2">
+                                    Sem Imagem
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex-grow">
+                             <label htmlFor="imageUpload" className="block text-sm font-medium text-gray-700 mb-1">
+                                Imagem do Produto
+                            </label>
+                            <input
+                                id="imageUpload"
+                                type="file"
+                                accept="image/png, image/jpeg, image/webp"
+                                onChange={handleImageChange}
+                                className="block w-full text-sm text-gray-500
+                                    file:mr-4 file:py-2 file:px-4
+                                    file:rounded-full file:border-0
+                                    file:text-sm file:font-semibold
+                                    file:bg-orange-50 file:text-orange-700
+                                    hover:file:bg-orange-100"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">Envie um arquivo do seu dispositivo. Recomendado: 1:1 (quadrado).</p>
+                        </div>
+                    </div>
+
+
                     <input type="text" placeholder="Nome do Item (ex: X-Bacon)" value={name} onChange={(e) => setName(e.target.value)} className="w-full p-3 border rounded-lg bg-gray-50"/>
                     <textarea placeholder="Descrição do Item" value={description} onChange={(e) => setDescription(e.target.value)} className="w-full p-3 border rounded-lg bg-gray-50" rows={3}/>
                     
@@ -254,8 +348,6 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                             title="Preço 'por'. Este é o preço que o cliente paga."
                         />
                     </div>
-
-                    <input type="text" placeholder="URL da Imagem" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="w-full p-3 border rounded-lg bg-gray-50"/>
                     
                     {/* --- SIZES MANAGEMENT --- */}
                     <div className="p-3 bg-gray-50 rounded-lg border">
@@ -349,8 +441,10 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                 {error && <p className="text-red-500 text-sm mt-4">{error}</p>}
                 
                 <div className="mt-6 pt-4 border-t flex justify-end space-x-3">
-                    <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300">Cancelar</button>
-                    <button onClick={handleSubmit} className="px-6 py-2 rounded-lg bg-orange-600 text-white font-bold hover:bg-orange-700">Salvar Item</button>
+                    <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300" disabled={isSaving}>Cancelar</button>
+                    <button onClick={handleSubmit} className="px-6 py-2 rounded-lg bg-orange-600 text-white font-bold hover:bg-orange-700 disabled:bg-orange-300" disabled={isSaving}>
+                        {isSaving ? 'Salvando...' : 'Salvar Item'}
+                    </button>
                 </div>
             </div>
         </div>

@@ -6,6 +6,11 @@ import Spinner from './Spinner';
 import RestaurantEditorModal from './RestaurantEditorModal';
 import { supabase } from '../services/api'; // Import Supabase client
 
+const MenuBookIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+    </svg>
+);
 const EditIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
 );
@@ -18,8 +23,11 @@ const StarIcon: React.FC<{ className?: string }> = ({ className }) => (
   </svg>
 );
 
+interface RestaurantManagementProps {
+    onEditMenu: (restaurant: Restaurant) => void;
+}
 
-const RestaurantManagement: React.FC = () => {
+const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu }) => {
     const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -119,8 +127,11 @@ const RestaurantManagement: React.FC = () => {
                                 <td className="px-6 py-4">{restaurant.address}</td>
                                 <td className="px-6 py-4">
                                     <div className="flex space-x-2">
-                                        <button onClick={() => handleOpenEditor(restaurant)} className="p-2 text-gray-500 hover:text-blue-600"><EditIcon className="w-5 h-5"/></button>
-                                        <button onClick={() => handleDeleteRestaurant(restaurant.id)} className="p-2 text-gray-500 hover:text-red-600"><TrashIcon className="w-5 h-5"/></button>
+                                        <button onClick={() => onEditMenu(restaurant)} className="p-2 text-gray-500 hover:text-green-600" title="Gerenciar Cardápio">
+                                            <MenuBookIcon className="w-5 h-5"/>
+                                        </button>
+                                        <button onClick={() => handleOpenEditor(restaurant)} className="p-2 text-gray-500 hover:text-blue-600" title="Editar Restaurante"><EditIcon className="w-5 h-5"/></button>
+                                        <button onClick={() => handleDeleteRestaurant(restaurant.id)} className="p-2 text-gray-500 hover:text-red-600" title="Excluir Restaurante"><TrashIcon className="w-5 h-5"/></button>
                                     </div>
                                 </td>
                             </tr>
