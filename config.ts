@@ -22,7 +22,7 @@
 export const SUPABASE_URL = 'https://xfousvlrhinlvrpryscy.supabase.co'; 
 
 // COLE SUA CHAVE ANON (PUBLIC) AQUI
-export const SUPABASE_ANON_KEY = 'your-public-anon-key';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhmb3VzdmxyaGlubHZycHJ5c2N5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI2MTg0NDYsImV4cCI6MjA3ODE5NDQ0Nn0.ah4qi9NtkUAyxrcOMPQi9T6pmgEW6ZMHcjhA9tNI8s0';
 
 // Exemplo de como deve ficar:
 // export const SUPABASE_URL = 'https://xabcdeffghijklnmop.supabase.co';
