@@ -1,14 +1,13 @@
-
 import React, { useState, useEffect } from 'react';
 import type { Restaurant } from '../types';
 import ImageUploader from './ImageUploader';
 import { useNotification } from '../hooks/useNotification';
-
+import { supabase } from '../services/api'; // Import supabase client
 
 interface RestaurantEditorModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (restaurantData: Omit<Restaurant, 'id'> | Restaurant) => void;
+    onSaveSuccess: () => void; // Changed from onSave to onSaveSuccess
     existingRestaurant: Restaurant | null;
 }
 
@@ -18,7 +17,7 @@ type FormData = Omit<Restaurant, 'id'> & {
 };
 
 
-const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, onClose, onSave, existingRestaurant }) => {
+const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, onClose, onSaveSuccess, existingRestaurant }) => {
     const { addToast } = useNotification();
     const [formData, setFormData] = useState<FormData>({
         name: '',
@@ -34,8 +33,14 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         deliveryFee: 0,
         mercado_pago_credentials: { accessToken: '' },
     });
+    // New state for merchant user creation
+    const [merchantEmail, setMerchantEmail] = useState('');
+    const [merchantPassword, setMerchantPassword] = useState('');
+
     const [newGateway, setNewGateway] = useState('');
     const [error, setError] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+
 
     useEffect(() => {
         if (existingRestaurant) {
@@ -58,6 +63,9 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 deliveryFee: 0,
                 mercado_pago_credentials: { accessToken: '' },
             });
+            // Reset merchant fields for new restaurant
+            setMerchantEmail('');
+            setMerchantPassword('');
         }
         setError('');
     }, [existingRestaurant, isOpen]);
@@ -107,18 +115,59 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         setFormData(prev => ({ ...prev, imageUrl: newUrl }));
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
+        setError('');
         if (!formData.name || !formData.category || !formData.address || !formData.phone) {
             setError('Nome, Categoria, Endereço e Telefone são obrigatórios.');
             return;
         }
 
-        if (existingRestaurant) {
-             onSave({ ...formData, id: existingRestaurant.id });
-        } else {
-             onSave(formData);
+        // Additional validation for new restaurant with user
+        if (!existingRestaurant && (!merchantEmail || !merchantPassword)) {
+            setError('Email e Senha para o lojista são obrigatórios ao criar um novo restaurante.');
+            return;
+        }
+        if (!existingRestaurant && merchantPassword.length < 6) {
+             setError('A senha do lojista deve ter pelo menos 6 caracteres.');
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            if (existingRestaurant) {
+                // UPDATE existing restaurant - Call Supabase directly
+                const { error: updateError } = await supabase.from('restaurants').update(formData).eq('id', existingRestaurant.id);
+                if (updateError) throw updateError;
+                addToast({ message: 'Restaurante atualizado com sucesso!', type: 'success' });
+            } else {
+                // CREATE new restaurant and user - Invoke Edge Function
+                const { data, error: functionError } = await supabase.functions.invoke('create-restaurant-with-user', {
+                    body: {
+                        restaurantData: formData,
+                        userData: { email: merchantEmail, password: merchantPassword }
+                    },
+                });
+
+                if (functionError) {
+                   throw new Error(functionError.message);
+                }
+                if (data?.error) { // Handle errors returned from the function body
+                    throw new Error(data.error);
+                }
+
+                addToast({ message: 'Restaurante e usuário do lojista criados com sucesso!', type: 'success' });
+            }
+            onSaveSuccess();
+            onClose();
+        } catch (err: any) {
+            console.error("Failed to save restaurant:", err);
+            setError(`Erro ao salvar: ${err.message}`);
+            addToast({ message: `Erro ao salvar restaurante: ${err.message}`, type: 'error' });
+        } finally {
+            setIsSaving(false);
         }
     };
+
 
     if (!isOpen) return null;
 
@@ -166,6 +215,31 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                         promptSuggestion={imagePromptSuggestion}
                     />
 
+                    {/* NEW: Merchant user creation fields - only for new restaurants */}
+                    {!existingRestaurant && (
+                        <div className="border-t pt-4 space-y-3">
+                             <h3 className="text-lg font-semibold text-gray-700">Criar Acesso para o Lojista</h3>
+                             <p className="text-sm text-gray-500">Crie as credenciais para o proprietário do restaurante acessar o painel de gerenciamento de pedidos.</p>
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <input 
+                                    type="email" 
+                                    placeholder="Email do Lojista" 
+                                    value={merchantEmail}
+                                    onChange={(e) => setMerchantEmail(e.target.value)}
+                                    className="w-full p-3 border rounded-lg bg-gray-50"
+                                />
+                                <input 
+                                    type="password" 
+                                    placeholder="Senha (mínimo 6 caracteres)" 
+                                    value={merchantPassword}
+                                    onChange={(e) => setMerchantPassword(e.target.value)}
+                                    className="w-full p-3 border rounded-lg bg-gray-50"
+                                />
+                             </div>
+                        </div>
+                    )}
+
+
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">Formas de Pagamento</label>
                          <div className="p-3 border rounded-lg bg-gray-50 space-y-3">
@@ -210,14 +284,14 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                     </div>
                 </div>
 
-                {error && <p className="text-red-500 text-sm mt-4">{error}</p>}
+                {error && <p className="text-red-500 text-sm mt-4 text-center">{error}</p>}
                 
                 <div className="mt-6 pt-4 border-t flex justify-end space-x-3">
-                    <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300">
+                    <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300" disabled={isSaving}>
                         Cancelar
                     </button>
-                    <button onClick={handleSubmit} className="px-6 py-2 rounded-lg bg-orange-600 text-white font-bold hover:bg-orange-700">
-                        Salvar
+                    <button onClick={handleSubmit} className="px-6 py-2 rounded-lg bg-orange-600 text-white font-bold hover:bg-orange-700 disabled:bg-orange-300" disabled={isSaving}>
+                        {isSaving ? 'Salvando...' : 'Salvar'}
                     </button>
                 </div>
             </div>

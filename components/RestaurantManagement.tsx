@@ -1,11 +1,10 @@
-
-
 import React, { useState, useEffect, useCallback } from 'react';
 import type { Restaurant } from '../types';
-import { fetchRestaurants, createRestaurant, updateRestaurant, deleteRestaurant } from '../services/databaseService';
+import { fetchRestaurants, deleteRestaurant } from '../services/databaseService';
 import { useNotification } from '../hooks/useNotification';
 import Spinner from './Spinner';
 import RestaurantEditorModal from './RestaurantEditorModal';
+import { supabase } from '../services/api'; // Import Supabase client
 
 const EditIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
@@ -55,39 +54,26 @@ const RestaurantManagement: React.FC = () => {
         setIsEditorOpen(false);
     };
 
-    const handleSaveRestaurant = async (restaurantData: Omit<Restaurant, 'id'> | Restaurant) => {
-        try {
-            if ('id' in restaurantData) {
-                await updateRestaurant(restaurantData.id, restaurantData);
-                addToast({ message: 'Restaurante atualizado com sucesso!', type: 'success' });
-            } else {
-                await createRestaurant(restaurantData);
-                addToast({ message: 'Restaurante criado com sucesso!', type: 'success' });
-            }
-            handleCloseEditor();
-            await loadRestaurants();
-        } catch (err) {
-            console.error("Failed to save restaurant", err);
-            addToast({ message: `Erro ao salvar restaurante: ${err}`, type: 'error' });
-        }
-    };
-
     const handleDeleteRestaurant = async (restaurantId: number) => {
         const confirmed = await confirm({
             title: 'Excluir Restaurante',
-            message: 'Tem certeza que deseja excluir este restaurante? Esta ação também removerá a conta do comerciante associada.',
+            message: 'Tem certeza que deseja excluir este restaurante? Esta ação também removerá permanentemente a conta do lojista associada.',
             confirmText: 'Excluir',
             isDestructive: true,
         });
 
         if (confirmed) {
             try {
-                await deleteRestaurant(restaurantId);
-                addToast({ message: 'Restaurante excluído.', type: 'info' });
+                const { error: functionError } = await supabase.functions.invoke('delete-restaurant-and-user', {
+                    body: { restaurantId },
+                });
+                if (functionError) throw functionError;
+
+                addToast({ message: 'Restaurante e usuário associado foram excluídos.', type: 'info' });
                 await loadRestaurants();
-            } catch (err) {
+            } catch (err: any) {
                 console.error("Failed to delete restaurant", err);
-                addToast({ message: `Erro ao excluir restaurante: ${err}`, type: 'error' });
+                addToast({ message: `Erro ao excluir restaurante: ${err.message}`, type: 'error' });
             }
         }
     };
@@ -146,7 +132,7 @@ const RestaurantManagement: React.FC = () => {
                 <RestaurantEditorModal
                     isOpen={isEditorOpen}
                     onClose={handleCloseEditor}
-                    onSave={handleSaveRestaurant}
+                    onSaveSuccess={loadRestaurants}
                     existingRestaurant={editingRestaurant}
                 />
             )}
