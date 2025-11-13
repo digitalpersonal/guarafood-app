@@ -83,6 +83,16 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons 
               </div>
           )}
           <p className="text-sm text-gray-500 my-1">{item.description}</p>
+          {item.isMarmita && item.marmitaOptions && item.marmitaOptions.length > 0 && (
+              <div className="mt-2 p-2 bg-yellow-50 border border-yellow-300 rounded-lg">
+                <p className="text-xs font-bold text-yellow-800">Composição de Hoje:</p>
+                <ul className="text-sm text-yellow-900 list-disc list-inside space-y-1 mt-1">
+                    {item.marmitaOptions.map((option, index) => (
+                        <li key={index}>{option}</li>
+                    ))}
+                </ul>
+              </div>
+            )}
            {item.originalPrice ? (
                <div className="flex items-baseline gap-2">
                   <p className="font-bold text-orange-600 text-md">R$ {item.price.toFixed(2)}</p>

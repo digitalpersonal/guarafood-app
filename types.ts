@@ -1,5 +1,15 @@
 
 
+export interface Banner {
+  id: number;
+  title: string;
+  description: string;
+  imageUrl: string;
+  ctaText: string;
+  targetType: 'restaurant' | 'category';
+  targetValue: string; // Restaurant name or Category name
+}
+
 export interface Restaurant {
   id: number;
   name: string;
@@ -42,6 +52,8 @@ export interface MenuItem {
   activePromotion?: Promotion;
   isPizza?: boolean;
   isAcai?: boolean;
+  isMarmita?: boolean; // For daily specials like lunch boxes
+  marmitaOptions?: string[]; // Editable daily text options for marmitas
   freeAddonCount?: number; // Kept for simple items, but sizes will override
   availableAddonIds?: number[];
   sizes?: SizeOption[]; // Array for different sizes

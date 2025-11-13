@@ -36,6 +36,9 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
     const [merchantEmail, setMerchantEmail] = useState('');
     const [merchantPassword, setMerchantPassword] = useState('');
 
+    const [logoFile, setLogoFile] = useState<File | null>(null);
+    const [logoPreview, setLogoPreview] = useState<string | null>(null);
+
     const [newGateway, setNewGateway] = useState('');
     const [error, setError] = useState('');
     const [isSaving, setIsSaving] = useState(false);
@@ -47,6 +50,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 ...existingRestaurant,
                 mercado_pago_credentials: existingRestaurant.mercado_pago_credentials || { accessToken: '' }
             });
+            setLogoPreview(existingRestaurant.imageUrl);
         } else {
             setFormData({
                 name: '',
@@ -65,13 +69,35 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             // Reset merchant fields for new restaurant
             setMerchantEmail('');
             setMerchantPassword('');
+            setLogoPreview(null);
         }
+        setLogoFile(null);
         setError('');
     }, [existingRestaurant, isOpen]);
+    
+    // Cleanup for image preview object URL
+    useEffect(() => {
+        return () => {
+            if (logoPreview && logoPreview.startsWith('blob:')) {
+                URL.revokeObjectURL(logoPreview);
+            }
+        };
+    }, [logoPreview]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: (name === 'rating' || name === 'deliveryFee') ? parseFloat(value) : value }));
+    };
+    
+    const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setLogoFile(file);
+            if (logoPreview && logoPreview.startsWith('blob:')) {
+                URL.revokeObjectURL(logoPreview); // Clean up previous local URL
+            }
+            setLogoPreview(URL.createObjectURL(file));
+        }
     };
 
     const handleCredentialsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -127,17 +153,57 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         }
 
         setIsSaving(true);
+        let finalImageUrl = existingRestaurant?.imageUrl || '';
+
+        if (logoFile) {
+            try {
+                // Public bucket: 'restaurant-logos', Path: {uuid}.{ext}
+                const fileExt = logoFile.name.split('.').pop();
+                const filePath = `public/${crypto.randomUUID()}.${fileExt}`;
+
+                // If updating and there's an old logo, delete it
+                if (existingRestaurant?.imageUrl) {
+                    try {
+                        const oldFilePath = new URL(existingRestaurant.imageUrl).pathname.split('/restaurant-logos/')[1];
+                        if (oldFilePath) {
+                           await supabase.storage.from('restaurant-logos').remove([oldFilePath]);
+                        }
+                    } catch (e) {
+                        console.warn("Could not parse or remove old logo. It may not exist in storage.", e);
+                    }
+                }
+
+                const { error: uploadError } = await supabase.storage
+                    .from('restaurant-logos')
+                    .upload(filePath, logoFile);
+
+                if (uploadError) throw uploadError;
+
+                const { data } = supabase.storage
+                    .from('restaurant-logos')
+                    .getPublicUrl(filePath);
+
+                finalImageUrl = data.publicUrl;
+            } catch (uploadError: any) {
+                setError(`Erro no upload da logo: ${uploadError.message}`);
+                setIsSaving(false);
+                return;
+            }
+        }
+        
+        const dataToSave = { ...formData, imageUrl: finalImageUrl };
+
         try {
             if (existingRestaurant) {
                 // UPDATE existing restaurant - Call Supabase directly
-                const { error: updateError } = await supabase.from('restaurants').update(formData).eq('id', existingRestaurant.id);
+                const { error: updateError } = await supabase.from('restaurants').update(dataToSave).eq('id', existingRestaurant.id);
                 if (updateError) throw updateError;
                 addToast({ message: 'Restaurante atualizado com sucesso!', type: 'success' });
             } else {
                 // CREATE new restaurant and user - Invoke Edge Function
                 const { data, error: functionError } = await supabase.functions.invoke('create-restaurant-with-user', {
                     body: {
-                        restaurantData: formData,
+                        restaurantData: dataToSave,
                         userData: { email: merchantEmail, password: merchantPassword }
                     },
                 });
@@ -171,6 +237,36 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 <h2 id="restaurant-editor-modal-title" className="text-2xl font-bold mb-4">{existingRestaurant ? 'Editar Restaurante' : 'Adicionar Novo Restaurante'}</h2>
                 
                 <div className="overflow-y-auto space-y-4 pr-2 -mr-2">
+                    <div className="flex flex-col md:flex-row items-start gap-4">
+                        <div className="flex-shrink-0">
+                            {logoPreview ? (
+                                <img src={logoPreview} alt="Preview da Logo" className="w-24 h-24 rounded-md object-cover border" />
+                            ) : (
+                                <div className="w-24 h-24 rounded-md bg-gray-100 flex items-center justify-center text-gray-400 text-sm text-center p-2 border">
+                                    Logo
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex-grow">
+                             <label htmlFor="logoUpload" className="block text-sm font-medium text-gray-700 mb-1">
+                                Logomarca do Restaurante
+                            </label>
+                            <input
+                                id="logoUpload"
+                                type="file"
+                                accept="image/png, image/jpeg, image/webp"
+                                onChange={handleLogoChange}
+                                className="block w-full text-sm text-gray-500
+                                    file:mr-4 file:py-2 file:px-4
+                                    file:rounded-full file:border-0
+                                    file:text-sm file:font-semibold
+                                    file:bg-orange-50 file:text-orange-700
+                                    hover:file:bg-orange-100"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">Envie um arquivo de imagem (PNG, JPG, WEBP).</p>
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <input name="name" value={formData.name} onChange={handleChange} placeholder="Nome do Restaurante" className="w-full p-3 border rounded-lg bg-gray-50"/>
                         <input name="category" value={formData.category} onChange={handleChange} placeholder="Categoria (ex: Italiana)" className="w-full p-3 border rounded-lg bg-gray-50"/>

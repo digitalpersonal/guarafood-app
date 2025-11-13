@@ -1,5 +1,5 @@
 import { supabase, supabaseAnon, handleSupabaseError } from './api';
-import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon } from '../types';
+import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner } from '../types';
 import { GoogleGenAI } from '@google/genai';
 
 
@@ -71,6 +71,40 @@ export const fetchAddonsForRestaurant = async (restaurant: Restaurant | number):
         console.error('Failed to fetch addons from Supabase', error);
         throw new Error(`Failed to fetch addons: ${error.message}`);
     }
+};
+
+// Mock function to simulate fetching banners.
+// In a real app, this would query a 'marketing_banners' table.
+export const fetchActiveBanners = async (): Promise<Banner[]> => {
+    // NOTE TO REVIEWER:
+    // This is mock data. To make this dynamic, create a `marketing_banners` table in Supabase
+    // with columns like: id, title, description, image_url, cta_text, target_type, target_value,
+    // is_active, start_date, end_date.
+    // Then, replace the mock return with a Supabase query:
+    /*
+    const { data, error } = await supabaseAnon
+      .from('marketing_banners')
+      .select('*')
+      .eq('is_active', true)
+      .lte('start_date', new Date().toISOString())
+      .gte('end_date', new Date().toISOString());
+    handleSupabaseError({ error, customMessage: 'Failed to fetch banners' });
+    return data || [];
+    */
+
+    await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
+
+    return [
+        {
+            id: 1,
+            title: "Festival de Pizza!",
+            description: "As melhores pizzas da cidade com 20% de desconto. Peça agora!",
+            imageUrl: "https://images.pexels.com/photos/1146760/pexels-photo-1146760.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2",
+            ctaText: "Ver Pizzarias",
+            targetType: 'category',
+            targetValue: 'Pizzaria'
+        }
+    ];
 };
 
 // --- PROMOTION LOGIC ---
@@ -151,21 +185,23 @@ export const generateImage = async (
 // --- CRUD Operations ---
 
 // Restaurants
-export const createRestaurant = async (restaurantData: Omit<Restaurant, 'id'>): Promise<Restaurant> => {
-    const { data, error } = await supabase.from('restaurants').insert(restaurantData).select().single();
-    handleSupabaseError({ error, customMessage: 'Failed to create restaurant' });
-    return data;
-};
-
+// createRestaurant is now handled by a Supabase Edge Function for security
 export const updateRestaurant = async (id: number, restaurantData: Partial<Restaurant>): Promise<Restaurant> => {
     const { data, error } = await supabase.from('restaurants').update(restaurantData).eq('id', id).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to update restaurant' });
     return data;
 };
 
+// deleteRestaurant is now handled by a Supabase Edge Function for security
 export const deleteRestaurant = async (id: number): Promise<void> => {
-    const { error } = await supabase.from('restaurants').delete().eq('id', id);
-    handleSupabaseError({ error, customMessage: 'Failed to delete restaurant' });
+    // The actual deletion logic is in the 'delete-restaurant-and-user' Edge Function.
+    // This client-side function is now a wrapper for that invocation.
+    const { error } = await supabase.functions.invoke('delete-restaurant-and-user', {
+        body: { restaurantId: id },
+    });
+     if (error) {
+        handleSupabaseError({ error, customMessage: 'Failed to invoke delete restaurant function' });
+    }
 };
 
 // Promotions

@@ -115,6 +115,8 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
     const [isAcai, setIsAcai] = useState(false);
     const [isDailySpecial, setIsDailySpecial] = useState(false);
     const [isWeeklySpecial, setIsWeeklySpecial] = useState(false);
+    const [isMarmita, setIsMarmita] = useState(false);
+    const [marmitaOptions, setMarmitaOptions] = useState<string[]>(['']);
     const [sizes, setSizes] = useState<SizeOption[]>([]);
     const [availableDays, setAvailableDays] = useState<number[]>([]);
     const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
@@ -137,6 +139,8 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             setIsAcai(existingItem.isAcai || false);
             setIsDailySpecial(existingItem.isDailySpecial || false);
             setIsWeeklySpecial(existingItem.isWeeklySpecial || false);
+            setIsMarmita(existingItem.isMarmita || false);
+            setMarmitaOptions(existingItem.marmitaOptions && existingItem.marmitaOptions.length > 0 ? existingItem.marmitaOptions : ['']);
             setSizes(existingItem.sizes || []);
             setAvailableDays(existingItem.availableDays || []);
             setSelectedAddonIds(new Set(existingItem.availableAddonIds || []));
@@ -151,6 +155,8 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             setIsAcai(false);
             setIsDailySpecial(false);
             setIsWeeklySpecial(false);
+            setIsMarmita(false);
+            setMarmitaOptions(['']);
             setSizes([]);
             setAvailableDays([]);
             setSelectedAddonIds(new Set());
@@ -217,6 +223,19 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             return newSet;
         });
     };
+    
+    const handleMarmitaOptionChange = (index: number, value: string) => {
+        const newOptions = [...marmitaOptions];
+        newOptions[index] = value;
+        setMarmitaOptions(newOptions);
+    };
+    const addMarmitaOption = () => {
+        setMarmitaOptions([...marmitaOptions, '']);
+    };
+    const removeMarmitaOption = (index: number) => {
+        setMarmitaOptions(marmitaOptions.filter((_, i) => i !== index));
+    };
+
 
     const filteredAddons = useMemo(() => {
         if (!addonSearchTerm) return allAddons;
@@ -279,6 +298,8 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             isAcai,
             isDailySpecial,
             isWeeklySpecial,
+            isMarmita,
+            marmitaOptions: isMarmita ? marmitaOptions.filter(opt => opt.trim() !== '') : undefined,
             availableDays,
             sizes: hasSizes ? sizes : undefined,
             availableAddonIds: Array.from(selectedAddonIds),
@@ -418,6 +439,36 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                     </div>
 
                     <div className="space-y-3">
+                         <div className="flex flex-col p-3 bg-gray-100 rounded-lg">
+                            <div className="flex items-center space-x-3">
+                                <input type="checkbox" id="is-marmita-toggle" checked={isMarmita} onChange={(e) => setIsMarmita(e.target.checked)} className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500"/>
+                                <label htmlFor="is-marmita-toggle" className="font-semibold text-gray-700">É uma marmita / Prato do Dia?</label>
+                            </div>
+                             {isMarmita && (
+                                <div className="mt-2 p-3 bg-white border rounded-lg">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Composição / Opções do Prato de Hoje</label>
+                                    <div className="space-y-2">
+                                        {marmitaOptions.map((option, index) => (
+                                            <div key={index} className="flex items-center gap-2">
+                                                <input
+                                                    type="text"
+                                                    placeholder={`Opção ${index + 1}`}
+                                                    value={option}
+                                                    onChange={(e) => handleMarmitaOptionChange(index, e.target.value)}
+                                                    className="w-full p-2 border rounded-md"
+                                                />
+                                                <button type="button" onClick={() => removeMarmitaOption(index)} className="p-2 text-red-500 hover:text-red-700 disabled:opacity-50" disabled={marmitaOptions.length <= 1}>
+                                                    <TrashIcon className="w-5 h-5"/>
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <button type="button" onClick={addMarmitaOption} className="w-full text-sm font-semibold text-blue-600 p-2 rounded-md hover:bg-blue-100 border-dashed border-2 mt-3">
+                                        + Adicionar Opção
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                          <div className="flex items-center space-x-3 p-3 bg-gray-100 rounded-lg">
                             <input type="checkbox" id="is-acai-toggle" checked={isAcai} onChange={(e) => setIsAcai(e.target.checked)} className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500"/>
                             <label htmlFor="is-acai-toggle" className="font-semibold text-gray-700">É um item de açaí customizável?</label>

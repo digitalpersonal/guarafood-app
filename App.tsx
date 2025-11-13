@@ -15,6 +15,7 @@ import LoginScreen from './components/LoginScreen';
 import AdminDashboard from './components/AdminDashboard';
 import OrderManagement from './components/OrderManagement';
 import CouponDisplay from './components/CouponDisplay'; // NEW IMPORT
+import HomePromotionalBanner from './components/HomePromotionalBanner';
 import { CartProvider } from './hooks/useCart';
 import { AnimationProvider } from './hooks/useAnimation';
 import { NotificationProvider } from './hooks/useNotification';
@@ -357,6 +358,27 @@ const CustomerView: React.FC<{
         });
     }, [restaurants, searchTerm, selectedCategory, showOpenOnly]);
 
+    const handleBannerClick = (targetType: 'restaurant' | 'category', targetValue: string) => {
+        if (targetType === 'restaurant') {
+            const targetRestaurant = restaurants.find(r => r.name === targetValue);
+            if (targetRestaurant) {
+                setSelectedRestaurant(targetRestaurant);
+            } else {
+                console.warn(`Banner clicked for non-existent restaurant: ${targetValue}`);
+            }
+        } else if (targetType === 'category') {
+            const targetCategory = categories.find(c => c === targetValue);
+            if (targetCategory) {
+                setSelectedCategory(targetCategory);
+                // Also clear search term to ensure category is visible
+                setSearchTerm('');
+            } else {
+                console.warn(`Banner clicked for non-existent category: ${targetValue}`);
+            }
+        }
+    };
+
+
     if (isLoading) {
         return <div className="h-screen flex items-center justify-center"><Spinner message="Buscando os melhores restaurantes..." /></div>;
     }
@@ -410,6 +432,8 @@ const CustomerView: React.FC<{
                         </div>
                     </div>
                 </div>
+
+                <HomePromotionalBanner onBannerClick={handleBannerClick} />
 
                 <div className="p-4">
                     <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-3">
@@ -520,7 +544,7 @@ const App: React.FC = () => {
                      <h1 className="text-2xl font-bold text-red-700 mb-4">Erro de Configuração</h1>
                     <p className="text-gray-700">Não foi possível conectar ao banco de dados.</p>
                     <p className="text-red-600 mt-2 text-sm">{supabaseError.message}</p>
-                     <p className="text-gray-500 mt-4 text-xs">Por favor, abra o arquivo <code>config.ts</code> no seu projeto, siga as instruções nos comentários para adicionar suas credenciais do Supabase e recarregue a página.</p>
+                     <p className="text-gray-500 mt-4 text-xs">Por favor, edite o arquivo <code>config.ts</code> na raiz do seu projeto com as suas credenciais do Supabase e recarregue a página.</p>
                 </div>
             </div>
         );

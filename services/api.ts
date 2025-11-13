@@ -12,12 +12,12 @@ let initializationError: Error | null = null;
 
 
 try {
-  // Add checks for placeholder credentials.
+  // Add checks for missing configuration in config.ts.
   if (!supabaseUrl || supabaseUrl.includes('your-project-id')) {
-    throw new Error("A variável SUPABASE_URL não foi configurada. Por favor, edite o arquivo 'config.ts'.");
+    throw new Error("A variável SUPABASE_URL não foi configurada corretamente no arquivo config.ts. Por favor, adicione o URL do seu projeto Supabase.");
   }
   if (!supabaseKey || supabaseKey.includes('your-public-anon-key')) {
-      throw new Error("A variável SUPABASE_ANON_KEY não foi configurada. Por favor, edite o arquivo 'config.ts'.");
+      throw new Error("A variável SUPABASE_ANON_KEY não foi configurada corretamente no arquivo config.ts. Por favor, adicione a chave 'public (anon)' do seu projeto Supabase.");
   }
 
   // This is the standard client that will manage user sessions for authenticated actions.
