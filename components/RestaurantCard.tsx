@@ -1,6 +1,7 @@
 
 import React from 'react';
 import type { Restaurant } from '../types';
+import OptimizedImage from './OptimizedImage';
 
 interface RestaurantCardProps {
   restaurant: Restaurant;
@@ -52,7 +53,7 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, is
       onClick={onClick}
     >
       {!isOpen && (
-        <div className="absolute top-0 right-0 bg-gray-700 text-white text-xs font-bold px-2 py-0.5 rounded-bl-lg z-10">
+        <div className="absolute top-0 right-0 bg-gray-700 text-white text-xs font-bold px-2 py-0.5 rounded-bl-lg z-20">
             FECHADO
         </div>
       )}
@@ -60,7 +61,11 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, is
         {restaurant.category}
       </div>
       <div className="flex items-start space-x-4 p-3 flex-grow">
-        <img src={restaurant.imageUrl} alt={restaurant.name} className="w-20 h-20 rounded-md object-cover flex-shrink-0" loading="lazy" />
+        <OptimizedImage 
+          src={restaurant.imageUrl} 
+          alt={restaurant.name} 
+          className="w-20 h-20 rounded-md flex-shrink-0"
+        />
         <div className="flex-grow min-w-0">
           <div className="flex justify-between items-start">
               <h3 className="text-lg font-bold text-gray-800 truncate">{restaurant.name}</h3>

@@ -14,11 +14,12 @@ import { Logo } from './components/Logo';
 import LoginScreen from './components/LoginScreen';
 import AdminDashboard from './components/AdminDashboard';
 import OrderManagement from './components/OrderManagement';
-import CouponDisplay from './components/CouponDisplay'; // NEW IMPORT
+import CouponDisplay from './components/CouponDisplay';
 import HomePromotionalBanner from './components/HomePromotionalBanner';
 import { CartProvider } from './hooks/useCart';
 import { AnimationProvider } from './hooks/useAnimation';
 import { NotificationProvider } from './hooks/useNotification';
+import OptimizedImage from './components/OptimizedImage';
 
 
 const SearchIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -111,7 +112,6 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     const [menu, setMenu] = useState<MenuCategory[]>([]);
     const [dailyPromotions, setDailyPromotions] = useState<(MenuItem | Combo)[]>([]);
     const [dailySpecials, setDailySpecials] = useState<MenuItem[]>([]);
-    // FIX: Declared 'weeklySpecials' as state.
     const [weeklySpecials, setWeeklySpecials] = useState<MenuItem[]>([]);
     const [addons, setAddons] = useState<Addon[]>([]);
     const [allPizzas, setAllPizzas] = useState<MenuItem[]>([]);
@@ -135,7 +135,6 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                 const specials = menuData.flatMap(category => category.items).filter(item => item.isDailySpecial);
                 setDailySpecials(specials);
                 
-                // FIX: Used the correct state setter for weekly specials.
                 const weeklyPromos = menuData.flatMap(category => category.items).filter(item => item.isWeeklySpecial);
                 setWeeklySpecials(weeklyPromos);
                 
@@ -218,9 +217,9 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     return (
         <div className="w-full">
             <div className="relative h-48 bg-gray-200">
-                <img src={restaurant.imageUrl} alt={restaurant.name} className="w-full h-full object-cover"/>
+                <OptimizedImage src={restaurant.imageUrl} alt={restaurant.name} className="w-full h-full" />
                 <div className="absolute inset-0 bg-black bg-opacity-30"></div>
-                 <button onClick={onBack} className="absolute top-4 left-4 bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition-colors">
+                 <button onClick={onBack} className="absolute top-4 left-4 bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition-colors z-20">
                     <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
                 </button>
             </div>

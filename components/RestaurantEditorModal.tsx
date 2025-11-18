@@ -270,21 +270,22 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         const openingHoursSummary = openDays.length > 0 ? openDays[0].opens : '';
         const closingHoursSummary = openDays.length > 0 ? openDays[0].closes : '';
 
-        // SNAKE_CASE PAYLOAD FOR DATABASE COMPATIBILITY
+        // STRICTLY CONSTRUCT DB PAYLOAD WITH SNAKE_CASE ONLY
+        // Do NOT spread formData here to avoid leaking camelCase keys like 'deliveryFee'
         const dbPayload = {
             name: formData.name,
             category: formData.category,
-            delivery_time: formData.deliveryTime, // Mapped to SnakeCase
+            delivery_time: formData.deliveryTime, 
             rating: formData.rating,
-            image_url: finalImageUrl,           // Mapped to SnakeCase
-            payment_gateways: formData.paymentGateways, // Mapped to SnakeCase
+            image_url: finalImageUrl,           
+            payment_gateways: formData.paymentGateways, 
             address: formData.address,
             phone: formData.phone,
-            opening_hours: openingHoursSummary, // Mapped to SnakeCase
-            closing_hours: closingHoursSummary, // Mapped to SnakeCase
-            delivery_fee: formData.deliveryFee,  // Mapped to SnakeCase
-            mercado_pago_credentials: formData.mercado_pago_credentials, // Already SnakeCase in type
-            operating_hours: formData.operatingHours, // Mapped to SnakeCase
+            opening_hours: openingHoursSummary, 
+            closing_hours: closingHoursSummary, 
+            delivery_fee: formData.deliveryFee !== undefined ? parseFloat(String(formData.deliveryFee)) : 0,
+            mercado_pago_credentials: formData.mercado_pago_credentials, 
+            operating_hours: formData.operatingHours,
         };
 
         try {
@@ -294,6 +295,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 addToast({ message: 'Restaurante atualizado com sucesso!', type: 'success' });
             } else {
                 try {
+                    // Attempt to create with Edge Function first
                     const { data, error: functionError } = await supabase.functions.invoke('create-restaurant-with-user', {
                         body: {
                             restaurantData: dbPayload,
@@ -327,7 +329,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             console.error("Failed to save restaurant:", err);
             let msg = `Erro ao salvar: ${err.message || JSON.stringify(err)}`;
             if (msg.includes('schema cache') || msg.includes('column')) {
-                msg += " (Verifique se as colunas no Supabase correspondem ao formato esperado: delivery_fee, closing_hours, etc.)";
+                msg += " (Erro de esquema: verifique se deliveryFee está vazando como chave)";
             }
             setError(msg);
             addToast({ message: msg, type: 'error' });

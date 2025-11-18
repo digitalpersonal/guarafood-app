@@ -1,9 +1,9 @@
 
-
 import React, { useMemo, useState } from 'react';
 import type { Combo, MenuItem } from '../types';
 import { useCart } from '../hooks/useCart';
 import { useAnimation } from '../hooks/useAnimation';
+import OptimizedImage from './OptimizedImage';
 
 interface ComboCardProps {
   combo: Combo;
@@ -18,7 +18,9 @@ const ComboDetailsModal: React.FC<{ combo: Combo; items: MenuItem[]; onClose: ()
                 <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl font-bold" aria-label="Fechar">&times;</button>
             </div>
             <div className="overflow-y-auto space-y-4 pr-2 -mr-2">
-                <img src={combo.imageUrl} alt={combo.name} className="w-full h-48 object-cover rounded-md mb-2" loading="lazy"/>
+                <div className="w-full h-48 mb-2">
+                    <OptimizedImage src={combo.imageUrl} alt={combo.name} className="w-full h-full rounded-md" />
+                </div>
                 {combo.originalPrice ? (
                     <div className="flex items-baseline gap-2">
                         <p className="font-bold text-orange-600 text-2xl">R$ {combo.price.toFixed(2)}</p>
@@ -33,10 +35,10 @@ const ComboDetailsModal: React.FC<{ combo: Combo; items: MenuItem[]; onClose: ()
                 <ul className="space-y-3">
                     {items.map(item => (
                         <li key={item.id} className="flex items-center space-x-4 p-2 bg-gray-50 rounded-lg">
-                            <img src={item.imageUrl} alt={item.name} className="w-14 h-14 rounded-md object-cover flex-shrink-0" loading="lazy"/>
+                            <OptimizedImage src={item.imageUrl} alt={item.name} className="w-14 h-14 rounded-md flex-shrink-0" />
                             <div className="flex-grow">
                                 <p className="font-semibold text-gray-800">{item.name}</p>
-                                <p className="text-sm text-gray-500">{item.description}</p>
+                                <p className="text-sm text-gray-500 line-clamp-1">{item.description}</p>
                             </div>
                         </li>
                     ))}
@@ -81,7 +83,7 @@ const ComboCard: React.FC<ComboCardProps> = ({ combo, menuItems }) => {
             <h4 className="font-bold text-md text-gray-800 mt-2">{combo.name}</h4>
             <div className="text-xs text-gray-500 my-1 space-y-0.5">
                 {includedItems.map(item => (
-                    <p key={item.id}>+ {item.name}</p>
+                    <p key={item.id} className="truncate">+ {item.name}</p>
                 ))}
             </div>
           </div>
@@ -101,11 +103,11 @@ const ComboCard: React.FC<ComboCardProps> = ({ combo, menuItems }) => {
             </button>
           </div>
         </div>
-        <div className="flex-shrink-0 relative">
-          <img src={combo.imageUrl} alt={combo.name} className="w-24 h-24 rounded-md object-cover" loading="lazy" />
+        <div className="flex-shrink-0 relative w-24 h-24">
+          <OptimizedImage src={combo.imageUrl} alt={combo.name} className="w-full h-full rounded-md" />
           <button 
             onClick={handleAddToCart}
-            className="absolute -bottom-2 -right-2 bg-gray-800 text-white rounded-full w-9 h-9 flex items-center justify-center text-xl font-bold shadow-lg hover:bg-orange-600 transition-colors"
+            className="absolute -bottom-2 -right-2 bg-gray-800 text-white rounded-full w-9 h-9 flex items-center justify-center text-xl font-bold shadow-lg hover:bg-orange-600 transition-colors z-10"
             aria-label={`Adicionar ${combo.name} ao carrinho`}
           >
             +

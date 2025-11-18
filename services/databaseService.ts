@@ -33,7 +33,7 @@ export const fetchRestaurants = async (): Promise<Restaurant[]> => {
     const { data, error } = await supabaseAnon.from('restaurants').select('*');
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants' });
     
-    const rawData = (data || []).filter(restaurant => restaurant.name !== 'Bella Pizza');
+    const rawData = data || [];
     
     return rawData.map(r => {
         const normalized = normalizeRestaurant(r);
@@ -275,33 +275,34 @@ export const updateRestaurant = async (id: number, restaurantData: Partial<Resta
     // Map keys to match snake_case schema structure for all fields to ensure compatibility
     const payload: any = { ...restaurantData };
 
-    if (restaurantData.imageUrl) {
-        payload.image_url = restaurantData.imageUrl;
+    if (payload.imageUrl) {
+        payload.image_url = payload.imageUrl;
         delete payload.imageUrl;
     }
-    if (restaurantData.paymentGateways) {
-        payload.payment_gateways = restaurantData.paymentGateways;
+    if (payload.paymentGateways) {
+        payload.payment_gateways = payload.paymentGateways;
         delete payload.paymentGateways;
     }
-    if (restaurantData.openingHours) {
-        payload.opening_hours = restaurantData.openingHours;
+    if (payload.openingHours) {
+        payload.opening_hours = payload.openingHours;
         delete payload.openingHours;
     }
-    if (restaurantData.closingHours) {
-        payload.closing_hours = restaurantData.closingHours;
+    if (payload.closingHours) {
+        payload.closing_hours = payload.closingHours;
         delete payload.closingHours;
     }
-    if (restaurantData.operatingHours) {
-        payload.operating_hours = restaurantData.operatingHours;
+    if (payload.operatingHours) {
+        payload.operating_hours = payload.operatingHours;
         delete payload.operatingHours;
     }
-    // Explicit mapping for delivery fields to snake_case
-    if (restaurantData.deliveryTime) {
-        payload.delivery_time = restaurantData.deliveryTime;
+    // Explicit mapping for delivery fields to snake_case.
+    // Uses 'in' operator to detect key presence even if value is undefined/null.
+    if ('deliveryTime' in payload) {
+        payload.delivery_time = payload.deliveryTime;
         delete payload.deliveryTime;
     }
-    if (restaurantData.deliveryFee !== undefined) {
-        payload.delivery_fee = restaurantData.deliveryFee;
+    if ('deliveryFee' in payload) {
+        payload.delivery_fee = payload.deliveryFee;
         delete payload.deliveryFee;
     }
 
@@ -311,11 +312,22 @@ export const updateRestaurant = async (id: number, restaurantData: Partial<Resta
 };
 
 export const deleteRestaurant = async (id: number): Promise<void> => {
+    // First try using the Edge Function to delete everything (restaurant + auth user)
     const { error } = await supabase.functions.invoke('delete-restaurant-and-user', {
         body: { restaurantId: id },
     });
+
      if (error) {
-        handleSupabaseError({ error, customMessage: 'Failed to invoke delete restaurant function' });
+        console.warn("Edge function failed (likely not configured), falling back to direct SQL delete.", error);
+        
+        // Fallback: Try deleting the restaurant record directly.
+        // This might fail if RLS rules are strict or if foreign keys restrict it,
+        // but it handles the case where the user just wants to remove "ghost" data from the main table.
+        const { error: dbError } = await supabase.from('restaurants').delete().eq('id', id);
+        
+        if (dbError) {
+            handleSupabaseError({ error: dbError, customMessage: 'Failed to delete restaurant (both Function and Direct methods failed)' });
+        }
     }
 };
 

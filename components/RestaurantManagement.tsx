@@ -75,12 +75,8 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
 
         if (confirmed) {
             try {
-                const { error: functionError } = await supabase.functions.invoke('delete-restaurant-and-user', {
-                    body: { restaurantId },
-                });
-                if (functionError) throw functionError;
-
-                addToast({ message: 'Restaurante e usuário associado foram excluídos.', type: 'info' });
+                await deleteRestaurant(restaurantId);
+                addToast({ message: 'Restaurante excluído.', type: 'info' });
                 await loadRestaurants();
             } catch (err: any) {
                 console.error("Failed to delete restaurant", err);
@@ -109,7 +105,6 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
                         <tr>
                             <th scope="col" className="px-6 py-3">Nome</th>
                             <th scope="col" className="px-6 py-3">Categoria</th>
-                            <th scope="col" className="px-6 py-3">Nota</th>
                             <th scope="col" className="px-6 py-3">Telefone</th>
                             <th scope="col" className="px-6 py-3">Endereço</th>
                             <th scope="col" className="px-6 py-3">Ações</th>
@@ -120,12 +115,6 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
                             <tr key={restaurant.id} className="bg-white border-b hover:bg-gray-50">
                                 <td className="px-6 py-4 font-semibold text-gray-900">{restaurant.name}</td>
                                 <td className="px-6 py-4">{restaurant.category}</td>
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center">
-                                        <StarIcon className="w-4 h-4 text-yellow-500 mr-1" />
-                                        <span className="font-bold text-gray-700">{restaurant.rating.toFixed(1)}</span>
-                                    </div>
-                                </td>
                                 <td className="px-6 py-4">{restaurant.phone}</td>
                                 <td className="px-6 py-4">{restaurant.address}</td>
                                 <td className="px-6 py-4">

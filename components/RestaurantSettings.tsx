@@ -6,6 +6,7 @@ import { useNotification } from '../hooks/useNotification';
 import { fetchRestaurantByIdSecure, updateRestaurant } from '../services/databaseService';
 import type { Restaurant, OperatingHours } from '../types';
 import Spinner from './Spinner';
+import { SUPABASE_URL } from '../config';
 
 const NotificationSettings: React.FC = () => {
     const { addToast } = useNotification();
@@ -174,6 +175,8 @@ const RestaurantSettings: React.FC = () => {
         }
     };
 
+    const webhookUrl = restaurantId ? `${SUPABASE_URL}/functions/v1/payment-webhook?restaurantId=${restaurantId}` : 'Carregando...';
+
     if (isLoading) return <div className="p-4"><Spinner message="Carregando configurações..." /></div>;
     if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
     if (!restaurant) return null;
@@ -231,19 +234,39 @@ const RestaurantSettings: React.FC = () => {
 
                      <div className="border-t pt-6">
                         <h3 className="text-lg font-semibold text-gray-700 mb-3">Gateway de Pagamento (Pix Automático)</h3>
-                        <p className="text-sm text-gray-500 mb-4">Conecte sua conta do Mercado Pago para receber pagamentos via Pix de forma automática. O dinheiro irá direto para sua conta.</p>
-                        <div>
-                            <label htmlFor="mercadoPagoToken" className="block text-sm font-medium text-gray-600 mb-1">
-                                Access Token do Vendedor (Mercado Pago)
-                            </label>
-                            <input
-                                id="mercadoPagoToken"
-                                type="password"
-                                placeholder="APP_USR-..."
-                                value={mercadoPagoToken}
-                                onChange={(e) => setMercadoPagoToken(e.target.value)}
-                                className="w-full p-3 border rounded-lg bg-gray-50"
-                            />
+                        <p className="text-sm text-gray-500 mb-4">Conecte sua conta do Mercado Pago para receber pagamentos via Pix de forma automática.</p>
+                        
+                        <div className="space-y-6">
+                            <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+                                <h4 className="font-bold text-orange-800 mb-2">Passo 1: Obter Access Token (No Mercado Pago)</h4>
+                                <p className="text-sm text-orange-700 mb-2">Acesse o painel do Mercado Pago Developers, crie uma aplicação e copie o "Access Token de Produção".</p>
+                                <label htmlFor="mercadoPagoToken" className="block text-sm font-medium text-gray-600 mb-1 mt-3">
+                                    Cole seu Access Token aqui:
+                                </label>
+                                <input
+                                    id="mercadoPagoToken"
+                                    type="password"
+                                    placeholder="APP_USR-..."
+                                    value={mercadoPagoToken}
+                                    onChange={(e) => setMercadoPagoToken(e.target.value)}
+                                    className="w-full p-3 border rounded-lg bg-white"
+                                />
+                            </div>
+
+                            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                                <h4 className="font-bold text-blue-800 mb-2">Passo 2: Configurar Webhook (No Mercado Pago)</h4>
+                                <p className="text-sm text-blue-700 mb-2">
+                                    1. No painel da sua aplicação no Mercado Pago, vá em <strong>Notificações Webhooks</strong>.<br/>
+                                    2. Em <strong>URL de produção</strong>, cole o endereço abaixo.<br/>
+                                    3. Em <strong>Eventos</strong>, marque a caixa <strong>"Pagamentos"</strong>.<br/>
+                                </p>
+                                <div className="mt-2">
+                                    <label className="block text-xs font-bold text-blue-600 mb-1">Sua URL de Webhook Exclusiva:</label>
+                                    <code className="block bg-white p-3 rounded border border-blue-200 text-xs text-gray-600 break-all select-all cursor-text font-mono">
+                                        {webhookUrl}
+                                    </code>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     

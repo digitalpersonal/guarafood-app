@@ -134,6 +134,9 @@ const BannerEditorModal: React.FC<BannerEditorModalProps> = ({ isOpen, onClose, 
                                     : categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)
                                 }
                             </select>
+                            {restaurants.length === 0 && formData.targetType === 'restaurant' && (
+                                <p className="text-xs text-red-500 mt-1">Nenhum restaurante carregado.</p>
+                            )}
                         </div>
                     </div>
 
@@ -169,21 +172,42 @@ const MarketingManagement: React.FC = () => {
 
     const loadData = async () => {
         setIsLoading(true);
-        try {
-            const [bannersData, restaurantsData, categoriesData] = await Promise.all([
-                fetchBanners(),
-                fetchRestaurantsSecure(),
-                fetchRestaurantCategories()
-            ]);
-            setBanners(bannersData);
-            setRestaurants(restaurantsData);
-            setCategories(categoriesData);
-        } catch (err) {
-            console.error(err);
-            addToast({ message: 'Erro ao carregar dados de marketing.', type: 'error' });
-        } finally {
-            setIsLoading(false);
+        
+        // Using Promise.allSettled to allow partial loading of data
+        // This prevents one failure (e.g. restaurants) from blocking the whole page
+        const results = await Promise.allSettled([
+            fetchBanners(),
+            fetchRestaurantsSecure(),
+            fetchRestaurantCategories()
+        ]);
+
+        const [bannersResult, restaurantsResult, categoriesResult] = results;
+
+        // Handle Banners
+        if (bannersResult.status === 'fulfilled') {
+            setBanners(bannersResult.value);
+        } else {
+            console.error("Failed to fetch banners:", bannersResult.reason);
+            addToast({ message: 'Aviso: Não foi possível carregar os banners existentes.', type: 'error' });
         }
+
+        // Handle Restaurants
+        if (restaurantsResult.status === 'fulfilled') {
+            setRestaurants(restaurantsResult.value);
+        } else {
+            console.error("Failed to fetch restaurants:", restaurantsResult.reason);
+            addToast({ message: 'Aviso: Não foi possível carregar a lista de restaurantes.', type: 'error' });
+        }
+
+        // Handle Categories
+        if (categoriesResult.status === 'fulfilled') {
+            setCategories(categoriesResult.value);
+        } else {
+            console.error("Failed to fetch categories:", categoriesResult.reason);
+            // No toast needed, usually defaults fall back inside the service
+        }
+
+        setIsLoading(false);
     };
 
     useEffect(() => {

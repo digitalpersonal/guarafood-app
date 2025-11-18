@@ -6,6 +6,7 @@ import { useAnimation } from '../hooks/useAnimation';
 import PizzaCustomizationModal from './PizzaCustomizationModal';
 import AcaiCustomizationModal from './AcaiCustomizationModal';
 import GenericCustomizationModal from './GenericCustomizationModal';
+import OptimizedImage from './OptimizedImage';
 
 interface MenuItemCardProps {
   item: MenuItem;
@@ -62,7 +63,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons 
 
   return (
     <>
-      <div className="bg-white rounded-lg overflow-hidden flex p-3 space-x-4 relative">
+      <div className="bg-white rounded-lg overflow-hidden flex p-3 space-x-4 relative shadow-sm hover:shadow-md transition-shadow">
           {item.isDailySpecial && (
             <div className="absolute top-0 left-0 bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded-br-lg z-10 flex items-center gap-1">
                 <StarIcon className="w-3 h-3" />
@@ -82,7 +83,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons 
                   <span>Menu do Dia</span>
               </div>
           )}
-          <p className="text-sm text-gray-500 my-1">{item.description}</p>
+          <p className="text-sm text-gray-500 my-1 line-clamp-2">{item.description}</p>
           {item.isMarmita && item.marmitaOptions && item.marmitaOptions.length > 0 && (
               <div className="mt-2 p-2 bg-yellow-50 border border-yellow-300 rounded-lg">
                 <p className="text-xs font-bold text-yellow-800">Composição de Hoje:</p>
@@ -112,11 +113,11 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons 
             </div>
           )}
         </div>
-        <div className="flex-shrink-0 relative">
-          <img src={item.imageUrl} alt={item.name} className="w-24 h-24 rounded-md object-cover" loading="lazy" />
+        <div className="flex-shrink-0 relative w-24 h-24">
+          <OptimizedImage src={item.imageUrl} alt={item.name} className="w-full h-full rounded-md" />
           <button 
             onClick={handleAddToCartClick}
-            className="absolute -bottom-2 -right-2 bg-gray-800 text-white rounded-full w-9 h-9 flex items-center justify-center text-xl font-bold shadow-lg hover:bg-orange-600 transition-colors"
+            className="absolute -bottom-2 -right-2 bg-gray-800 text-white rounded-full w-9 h-9 flex items-center justify-center text-xl font-bold shadow-lg hover:bg-orange-600 transition-colors z-10"
           >
             +
           </button>

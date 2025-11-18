@@ -1,13 +1,11 @@
 
-
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useCart } from '../hooks/useCart';
 import type { Restaurant } from '../types';
 import { useAnimation } from '../hooks/useAnimation';
 import { useNotification } from '../hooks/useNotification';
 import CheckoutModal from './CheckoutModal';
+import OptimizedImage from './OptimizedImage';
 
 
 const CartIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -106,7 +104,7 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
                         <div className="overflow-y-auto p-4 flex-grow">
                             {cartItems.map(item => (
                                 <div key={item.id} className="flex items-start space-x-4 mb-4">
-                                    <img src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-md object-cover" loading="lazy"/>
+                                    <OptimizedImage src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-md flex-shrink-0" />
                                     <div className="flex-grow">
                                         <p className="font-semibold text-gray-800">
                                             {item.name} {item.sizeName && `(${item.sizeName})`}
