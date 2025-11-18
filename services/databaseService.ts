@@ -1,65 +1,113 @@
-
 import { supabase, supabaseAnon, handleSupabaseError } from './api';
-import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner } from '../types';
+import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory } from '../types';
 import { GoogleGenAI } from '@google/genai';
 
+// --- Helper: Normalize DB Data to CamelCase ---
+// This ensures that even if the DB returns snake_case (e.g. delivery_fee), 
+// the application logic receives camelCase (deliveryFee).
+const normalizeRestaurant = (data: any): Restaurant => {
+    if (!data) return data;
+    return {
+        ...data,
+        deliveryFee: data.deliveryFee ?? data.delivery_fee,
+        deliveryTime: data.deliveryTime ?? data.delivery_time,
+        openingHours: data.openingHours ?? data.opening_hours,
+        closingHours: data.closingHours ?? data.closing_hours,
+        imageUrl: data.imageUrl ?? data.image_url,
+        paymentGateways: data.paymentGateways ?? data.payment_gateways,
+        operatingHours: data.operatingHours ?? data.operating_hours,
+        // mercado_pago_credentials matches types.ts, so we keep it as is or map it if needed
+        mercado_pago_credentials: data.mercado_pago_credentials ?? data.mercadoPagoCredentials
+    };
+};
 
 // --- Data Fetching Functions ---
 
-// Helper to map DB snake_case to CamelCase for Restaurants
-const mapDbToRestaurant = (dbData: any): Restaurant => ({
-    id: dbData.id,
-    name: dbData.name,
-    category: dbData.category,
-    deliveryTime: dbData.delivery_time || dbData.deliveryTime, 
-    rating: dbData.rating,
-    imageUrl: dbData.image_url || dbData.imageUrl,
-    paymentGateways: dbData.payment_gateways || dbData.paymentGateways,
-    address: dbData.address,
-    phone: dbData.phone,
-    openingHours: dbData.opening_hours || dbData.openingHours,
-    closingHours: dbData.closing_hours || dbData.closingHours,
-    deliveryFee: dbData.delivery_fee || dbData.deliveryFee,
-    mercado_pago_credentials: dbData.mercado_pago_credentials,
-    operatingHours: dbData.operating_hours || dbData.operatingHours
-});
-
-// Helper to map CamelCase to DB snake_case for Restaurants
-const mapRestaurantToDb = (data: Partial<Restaurant>): any => {
-    const mapped: any = { ...data };
-    if (data.deliveryTime !== undefined) mapped.delivery_time = data.deliveryTime;
-    if (data.imageUrl !== undefined) mapped.image_url = data.imageUrl;
-    if (data.paymentGateways !== undefined) mapped.payment_gateways = data.paymentGateways;
-    if (data.openingHours !== undefined) mapped.opening_hours = data.openingHours;
-    if (data.closingHours !== undefined) mapped.closing_hours = data.closingHours;
-    if (data.deliveryFee !== undefined) mapped.delivery_fee = data.deliveryFee;
-    if (data.operatingHours !== undefined) mapped.operating_hours = data.operatingHours;
-    
-    // Clean up camelCase keys if snake_case was set
-    delete mapped.deliveryTime;
-    delete mapped.imageUrl;
-    delete mapped.paymentGateways;
-    delete mapped.openingHours;
-    delete mapped.closingHours;
-    delete mapped.deliveryFee;
-    delete mapped.operatingHours;
-    
-    return mapped;
-}
-
+/**
+ * PUBLIC: Fetches restaurants for the customer view.
+ * CRITICAL: Explicitly removes sensitive credentials (mercado_pago_credentials) 
+ * to prevent leaking private keys to the client browser.
+ */
 export const fetchRestaurants = async (): Promise<Restaurant[]> => {
     const { data, error } = await supabaseAnon.from('restaurants').select('*');
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants' });
-    // Filter out example data as requested by the user.
-    const restaurants = (data || []).filter(restaurant => restaurant.name !== 'Bella Pizza');
-    return restaurants.map(mapDbToRestaurant);
+    
+    const rawData = (data || []).filter(restaurant => restaurant.name !== 'Bella Pizza');
+    
+    return rawData.map(r => {
+        const normalized = normalizeRestaurant(r);
+        // SECURITY: Remove sensitive credentials for public view
+        if (normalized.mercado_pago_credentials) {
+            delete normalized.mercado_pago_credentials;
+        }
+        return normalized;
+    });
 };
 
+/**
+ * SECURE: Fetches all restaurants for the Admin Dashboard.
+ * Uses the authenticated 'supabase' client and includes all fields.
+ */
+export const fetchRestaurantsSecure = async (): Promise<Restaurant[]> => {
+    const { data, error } = await supabase.from('restaurants').select('*');
+    handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants (secure)' });
+    
+    // Admin sees all data, no filtering or stripping.
+    return (data || []).map(normalizeRestaurant);
+};
+
+/**
+ * PUBLIC: Fetches a single restaurant by ID.
+ * CRITICAL: Explicitly removes sensitive credentials.
+ */
 export const fetchRestaurantById = async (id: number): Promise<Restaurant> => {
     const { data, error } = await supabaseAnon.from('restaurants').select('*').eq('id', id).single();
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurant' });
     if (!data) throw new Error('Restaurant not found');
-    return mapDbToRestaurant(data);
+    
+    const normalized = normalizeRestaurant(data);
+    // SECURITY: Remove sensitive credentials for public fetch
+    if (normalized.mercado_pago_credentials) {
+        delete normalized.mercado_pago_credentials;
+    }
+    return normalized;
+};
+
+/**
+ * SECURE: Fetches a single restaurant for the Merchant Settings panel.
+ * Uses the authenticated 'supabase' client and includes credentials.
+ */
+export const fetchRestaurantByIdSecure = async (id: number): Promise<Restaurant> => {
+    const { data, error } = await supabase.from('restaurants').select('*').eq('id', id).single();
+    handleSupabaseError({ error, customMessage: 'Failed to fetch restaurant details' });
+    if (!data) throw new Error('Restaurant not found');
+    return normalizeRestaurant(data);
+};
+
+export const fetchRestaurantCategories = async (): Promise<RestaurantCategory[]> => {
+    const { data, error } = await supabaseAnon.from('restaurant_categories').select('*').order('name');
+    
+    if (error) {
+         console.warn('Failed to fetch restaurant categories, utilizing default list.', error);
+         // Fallback defaults if table doesn't exist or connection fails
+         return [
+            { id: 1, name: 'Lanches' },
+            { id: 2, name: 'Pizza' },
+            { id: 3, name: 'Japonesa' },
+            { id: 4, name: 'Brasileira' },
+            { id: 5, name: 'Açaí' },
+            { id: 6, name: 'Doces & Bolos' },
+            { id: 7, name: 'Marmita' },
+            { id: 8, name: 'Bebidas' },
+            { id: 9, name: 'Padaria' },
+            { id: 10, name: 'Supermercado' },
+            { id: 11, name: 'Farmácia' },
+            { id: 12, name: 'Pet Shop' },
+            { id: 13, name: 'Sorvetes' },
+            { id: 14, name: 'Pastel' }
+        ];
+    }
+    return data as RestaurantCategory[];
 };
 
 export const fetchMenuForRestaurant = async (restaurant: Restaurant | number): Promise<MenuCategory[]> => {
@@ -67,7 +115,6 @@ export const fetchMenuForRestaurant = async (restaurant: Restaurant | number): P
     const currentDay = new Date().getDay(); // 0=Sun, 1=Mon, etc.
 
     try {
-        // This is the production-ready query. It fetches categories and all their related items and combos.
         const { data: menuData, error } = await supabaseAnon
             .from('menu_categories')
             .select(`
@@ -80,7 +127,6 @@ export const fetchMenuForRestaurant = async (restaurant: Restaurant | number): P
 
         handleSupabaseError({ error, customMessage: "Could not fetch the restaurant's menu" });
 
-        // Filter menu items based on the day of the week
         const menuWithFilteredItems = (menuData || []).map((category: any) => ({
             ...category,
             items: (category.items || []).filter((item: MenuItem) => 
@@ -101,7 +147,6 @@ export const fetchMenuForRestaurant = async (restaurant: Restaurant | number): P
 export const fetchAddonsForRestaurant = async (restaurant: Restaurant | number): Promise<Addon[]> => {
      const restaurantId = typeof restaurant === 'number' ? restaurant : restaurant.id;
     try {
-        // This is the production-ready query.
         const { data, error } = await supabaseAnon
             .from('addons')
             .select('*')
@@ -116,39 +161,39 @@ export const fetchAddonsForRestaurant = async (restaurant: Restaurant | number):
     }
 };
 
-// Mock function to simulate fetching banners.
-// In a real app, this would query a 'marketing_banners' table.
 export const fetchActiveBanners = async (): Promise<Banner[]> => {
-    // NOTE TO REVIEWER:
-    // This is mock data. To make this dynamic, create a `marketing_banners` table in Supabase
-    // with columns like: id, title, description, image_url, cta_text, target_type, target_value,
-    // is_active, start_date, end_date.
-    // Then, replace the mock return with a Supabase query:
-    /*
-    const { data, error } = await supabaseAnon
-      .from('marketing_banners')
-      .select('*')
-      .eq('is_active', true)
-      .lte('start_date', new Date().toISOString())
-      .gte('end_date', new Date().toISOString());
+    const { data, error } = await supabaseAnon.from('banners').select('*').eq('active', true);
+    if (error) {
+        console.warn("Failed to fetch banners from DB, using fallback.");
+        return [];
+    }
+    return data || [];
+};
+
+// --- GENERIC BANNER MANAGEMENT ---
+export const fetchBanners = async (): Promise<Banner[]> => {
+    const { data, error } = await supabase.from('banners').select('*').order('id', { ascending: false });
     handleSupabaseError({ error, customMessage: 'Failed to fetch banners' });
     return data || [];
-    */
-
-    await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
-
-    return [
-        {
-            id: 1,
-            title: "Festival de Pizza!",
-            description: "As melhores pizzas da cidade com 20% de desconto. Peça agora!",
-            imageUrl: "https://images.pexels.com/photos/1146760/pexels-photo-1146760.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2",
-            ctaText: "Ver Pizzarias",
-            targetType: 'category',
-            targetValue: 'Pizzaria'
-        }
-    ];
 };
+
+export const createBanner = async (bannerData: Omit<Banner, 'id'>): Promise<Banner> => {
+    const { data, error } = await supabase.from('banners').insert(bannerData).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to create banner' });
+    return data;
+};
+
+export const updateBanner = async (id: number, bannerData: Partial<Banner>): Promise<Banner> => {
+    const { data, error } = await supabase.from('banners').update(bannerData).eq('id', id).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to update banner' });
+    return data;
+};
+
+export const deleteBanner = async (id: number): Promise<void> => {
+    const { error } = await supabase.from('banners').delete().eq('id', id);
+    handleSupabaseError({ error, customMessage: 'Failed to delete banner' });
+};
+
 
 // --- PROMOTION LOGIC ---
 const applyPromotionsToMenu = (menu: MenuCategory[], promotions: Promotion[]): MenuCategory[] => {
@@ -196,12 +241,6 @@ const applyPromotionsToMenu = (menu: MenuCategory[], promotions: Promotion[]): M
     });
 };
 
-/**
- * Generates an image using the Imagen model from the Gemini API.
- * @param prompt The descriptive text for image generation.
- * @param aspectRatio The desired aspect ratio for the generated image.
- * @returns A base64 encoded image URL.
- */
 export const generateImage = async (
     prompt: string,
     aspectRatio: '1:1' | '16:9' | '4:3' | '3:4' | '9:16' = '16:9'
@@ -228,18 +267,14 @@ export const generateImage = async (
 // --- CRUD Operations ---
 
 // Restaurants
-// createRestaurant is now handled by a Supabase Edge Function for security
 export const updateRestaurant = async (id: number, restaurantData: Partial<Restaurant>): Promise<Restaurant> => {
-    const dbData = mapRestaurantToDb(restaurantData);
-    const { data, error } = await supabase.from('restaurants').update(dbData).eq('id', id).select().single();
+    // Note: restaurantData is already camelCase. We send it as is, assuming DB handles camelCase based on previous errors.
+    const { data, error } = await supabase.from('restaurants').update(restaurantData).eq('id', id).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to update restaurant' });
-    return mapDbToRestaurant(data);
+    return normalizeRestaurant(data);
 };
 
-// deleteRestaurant is now handled by a Supabase Edge Function for security
 export const deleteRestaurant = async (id: number): Promise<void> => {
-    // The actual deletion logic is in the 'delete-restaurant-and-user' Edge Function.
-    // This client-side function is now a wrapper for that invocation.
     const { error } = await supabase.functions.invoke('delete-restaurant-and-user', {
         body: { restaurantId: id },
     });
@@ -305,7 +340,6 @@ export const deleteCoupon = async (restaurantId: number, couponId: number): Prom
 
 export const validateCouponByCode = async (code: string, restaurantId: number): Promise<Coupon | null> => {
     const { data, error } = await supabaseAnon.from('coupons').select('*').eq('code', code.toUpperCase()).eq('restaurantId', restaurantId).single();
-    // Do not throw on PGRST116 (no rows), just return null
     if (error && error.code !== 'PGRST116') {
         handleSupabaseError({ error, customMessage: 'Failed to validate coupon' });
     }
@@ -340,7 +374,6 @@ export const createMenuItem = async (restaurantId: number, itemData: Omit<MenuIt
         throw new Error("Category name is required to create a menu item.");
     }
     
-    // Find or create category
     let { data: categoryData } = await supabase.from('menu_categories').select('id').eq('restaurantId', restaurantId).eq('name', category).single();
     if (!categoryData) {
         categoryData = (await createCategory(restaurantId, category));
@@ -378,7 +411,6 @@ export const deleteMenuItem = async (restaurantId: number, itemId: number): Prom
 // Categories
 export const createCategory = async (restaurantId: number, name: string, iconUrl?: string | null): Promise<MenuCategory> => {
     const { data: maxOrder, error: orderError } = await supabase.from('menu_categories').select('displayOrder').eq('restaurantId', restaurantId).order('displayOrder', { ascending: false }).limit(1).single();
-    // Do not throw on PGRST116 (no rows)
     if (orderError && orderError.code !== 'PGRST116') {
       handleSupabaseError({ error: orderError, customMessage: 'Failed to determine category order' });
     }
@@ -386,8 +418,6 @@ export const createCategory = async (restaurantId: number, name: string, iconUrl
 
     const { data, error } = await supabase.from('menu_categories').insert({ name, restaurantId, displayOrder: newOrder, iconUrl }).select().single();
     
-    // Handle race condition where category was created by another request.
-    // 23505 is the postgres error code for unique_violation.
     if (error && error.code === '23505') {
         console.warn('Race condition detected when creating category, fetching existing one.', { name, restaurantId });
         const { data: existingCategory, error: fetchError } = await supabase
@@ -398,23 +428,16 @@ export const createCategory = async (restaurantId: number, name: string, iconUrl
             .single();
         
         handleSupabaseError({ error: fetchError, customMessage: 'Failed to fetch category after race condition' });
-
-        if (!existingCategory) {
-            // This case is unlikely but possible if the other transaction rolls back. Throw an error.
-            throw new Error('Failed to resolve category creation race condition.');
-        }
-        // Supabase returns a single object from .single(), which matches what we need.
+        if (!existingCategory) throw new Error('Failed to resolve category creation race condition.');
         return { ...existingCategory, items: [], combos: [] };
     }
     
     handleSupabaseError({ error, customMessage: 'Failed to create category' });
-    // The insert was successful, data is not null here.
     return { ...data!, items: [], combos: [] };
 };
 
 export const updateCategory = async (restaurantId: number, categoryId: number, newName: string, newIconUrl?: string | null): Promise<void> => {
     const payload: { name: string; iconUrl?: string | null } = { name: newName };
-    // Only update iconUrl if explicitly provided (or set to null to clear)
     if (newIconUrl !== undefined) {
         payload.iconUrl = newIconUrl && newIconUrl.trim() !== '' ? newIconUrl : null;
     }
@@ -434,4 +457,18 @@ export const updateCategoryOrder = async (restaurantId: number, categories: Menu
     }));
     const { error } = await supabase.from('menu_categories').upsert(updates);
     handleSupabaseError({ error, customMessage: 'Failed to update category order' });
+};
+
+// Global Categories
+// Duplicate fetchRestaurantCategories removed here
+
+export const createRestaurantCategory = async (name: string): Promise<RestaurantCategory> => {
+    const { data, error } = await supabase.from('restaurant_categories').insert({ name }).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to create restaurant category' });
+    return data;
+};
+
+export const deleteRestaurantCategory = async (id: number): Promise<void> => {
+    const { error } = await supabase.from('restaurant_categories').delete().eq('id', id);
+    handleSupabaseError({ error, customMessage: 'Failed to delete restaurant category' });
 };

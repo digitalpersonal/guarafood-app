@@ -1,10 +1,12 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import type { Restaurant } from '../types';
-import { fetchRestaurants, deleteRestaurant } from '../services/databaseService';
+// Import fetchRestaurantsSecure instead of fetchRestaurants
+import { fetchRestaurantsSecure, deleteRestaurant } from '../services/databaseService';
 import { useNotification } from '../hooks/useNotification';
 import Spinner from './Spinner';
 import RestaurantEditorModal from './RestaurantEditorModal';
-import { supabase } from '../services/api'; // Import Supabase client
+import { supabase } from '../services/api'; 
 
 const MenuBookIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -38,7 +40,8 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
     const loadRestaurants = useCallback(async () => {
         try {
             setIsLoading(true);
-            const data = await fetchRestaurants();
+            // Use the secure fetch to ensure admin can see credentials if needed for editing
+            const data = await fetchRestaurantsSecure();
             setRestaurants(data);
         } catch (err) {
             setError('Falha ao carregar restaurantes.');

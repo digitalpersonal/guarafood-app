@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
-// Fix: The database functions are in databaseService, not geminiService.
-import { fetchRestaurantById, updateRestaurant } from '../services/databaseService';
+// Use fetchRestaurantByIdSecure to get the token
+import { fetchRestaurantByIdSecure, updateRestaurant } from '../services/databaseService';
 import type { Restaurant, OperatingHours } from '../types';
 import Spinner from './Spinner';
 
@@ -118,7 +118,8 @@ const RestaurantSettings: React.FC = () => {
         }
         try {
             setIsLoading(true);
-            const data = await fetchRestaurantById(restaurantId);
+            // Use the secure fetch to retrieve existing credentials
+            const data = await fetchRestaurantByIdSecure(restaurantId);
             setRestaurant(data);
             setMercadoPagoToken(data.mercado_pago_credentials?.accessToken || '');
             if (data.operatingHours && data.operatingHours.length === 7) {

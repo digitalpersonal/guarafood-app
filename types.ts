@@ -11,6 +11,11 @@ export interface Banner {
   targetValue: string; // Restaurant name or Category name
 }
 
+export interface RestaurantCategory {
+  id: number;
+  name: string;
+}
+
 // New interface for detailed operating hours
 export interface OperatingHours {
   dayOfWeek: number; // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
