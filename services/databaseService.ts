@@ -1,3 +1,4 @@
+
 import { supabase, supabaseAnon, handleSupabaseError } from './api';
 import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory } from '../types';
 import { GoogleGenAI } from '@google/genai';
@@ -268,8 +269,32 @@ export const generateImage = async (
 
 // Restaurants
 export const updateRestaurant = async (id: number, restaurantData: Partial<Restaurant>): Promise<Restaurant> => {
-    // Note: restaurantData is already camelCase. We send it as is, assuming DB handles camelCase based on previous errors.
-    const { data, error } = await supabase.from('restaurants').update(restaurantData).eq('id', id).select().single();
+    // Map keys to match hybrid schema structure (Camel for Delivery, Snake for others)
+    const payload: any = { ...restaurantData };
+
+    if (restaurantData.imageUrl) {
+        payload.image_url = restaurantData.imageUrl;
+        delete payload.imageUrl;
+    }
+    if (restaurantData.paymentGateways) {
+        payload.payment_gateways = restaurantData.paymentGateways;
+        delete payload.paymentGateways;
+    }
+    if (restaurantData.openingHours) {
+        payload.opening_hours = restaurantData.openingHours;
+        delete payload.openingHours;
+    }
+    if (restaurantData.closingHours) {
+        payload.closing_hours = restaurantData.closingHours;
+        delete payload.closingHours;
+    }
+    if (restaurantData.operatingHours) {
+        payload.operating_hours = restaurantData.operatingHours;
+        delete payload.operatingHours;
+    }
+    // deliveryFee and deliveryTime remain CamelCase as determined by previous error history.
+
+    const { data, error } = await supabase.from('restaurants').update(payload).eq('id', id).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to update restaurant' });
     return normalizeRestaurant(data);
 };

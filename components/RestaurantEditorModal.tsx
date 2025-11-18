@@ -1,8 +1,4 @@
 
-
-
-
-
 import React, { useState, useEffect } from 'react';
 import type { Restaurant, OperatingHours, RestaurantCategory } from '../types';
 import { useNotification } from '../hooks/useNotification';
@@ -27,6 +23,19 @@ const PREDEFINED_PAYMENT_METHODS = [
     "Dinheiro",
     "Marcar na minha conta"
 ];
+
+const EyeIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+);
+
+const EyeSlashIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+    </svg>
+);
 
 const getDefaultOperatingHours = (): OperatingHours[] =>
     daysOfWeek.map((_, index) => ({
@@ -57,6 +66,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
     
     const [merchantEmail, setMerchantEmail] = useState('');
     const [merchantPassword, setMerchantPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
 
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -119,6 +129,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         }
         setLogoFile(null);
         setError('');
+        setShowPassword(false);
     }, [existingRestaurant, isOpen]);
     
     useEffect(() => {
@@ -249,7 +260,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
 
                 finalImageUrl = data.publicUrl;
             } catch (uploadError: any) {
-                setError(`Erro no upload da logo: ${uploadError.message}`);
+                setError(`Erro no upload da imagem: ${uploadError.message}`);
                 setIsSaving(false);
                 return;
             }
@@ -259,21 +270,21 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         const openingHoursSummary = openDays.length > 0 ? openDays[0].opens : '';
         const closingHoursSummary = openDays.length > 0 ? openDays[0].closes : '';
 
-        // We use camelCase payload because snake_case fetch failed previously, implies camelCase columns.
+        // HYBRID PAYLOAD CONSTRUCTION
         const dbPayload = {
             name: formData.name,
             category: formData.category,
-            deliveryTime: formData.deliveryTime,
+            deliveryTime: formData.deliveryTime, // Presumed CamelCase
             rating: formData.rating,
-            imageUrl: finalImageUrl,
-            paymentGateways: formData.paymentGateways,
+            image_url: finalImageUrl,           // Mapped to SnakeCase
+            payment_gateways: formData.paymentGateways, // Mapped to SnakeCase
             address: formData.address,
             phone: formData.phone,
-            openingHours: openingHoursSummary,
-            closingHours: closingHoursSummary,
-            deliveryFee: formData.deliveryFee,
-            mercado_pago_credentials: formData.mercado_pago_credentials,
-            operatingHours: formData.operatingHours,
+            opening_hours: openingHoursSummary, // Mapped to SnakeCase
+            closing_hours: closingHoursSummary, // Mapped to SnakeCase
+            deliveryFee: formData.deliveryFee,  // Presumed CamelCase
+            mercado_pago_credentials: formData.mercado_pago_credentials, // Already SnakeCase in type
+            operating_hours: formData.operatingHours, // Mapped to SnakeCase
         };
 
         try {
@@ -314,10 +325,9 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             onClose();
         } catch (err: any) {
             console.error("Failed to save restaurant:", err);
-            // Enhanced error message specifically for schema issues
             let msg = `Erro ao salvar: ${err.message || JSON.stringify(err)}`;
             if (msg.includes('schema cache') || msg.includes('column')) {
-                msg += " (Verifique se as colunas no Supabase correspondem ao camelCase: deliveryTime, deliveryFee, etc.)";
+                msg += " (Verifique se as colunas no Supabase correspondem ao formato esperado: deliveryFee, closing_hours, etc.)";
             }
             setError(msg);
             addToast({ message: msg, type: 'error' });
@@ -379,15 +389,11 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                         <input name="phone" value={formData.phone} onChange={handleChange} placeholder="Telefone" className="w-full p-3 border rounded-lg bg-gray-50"/>
                         <input name="address" value={formData.address} onChange={handleChange} placeholder="Endereço" className="w-full p-3 border rounded-lg bg-gray-50"/>
                     </div>
-                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <input name="deliveryTime" value={formData.deliveryTime} onChange={handleChange} placeholder="Tempo Entrega" className="w-full p-3 border rounded-lg bg-gray-50"/>
                          <div>
                             <label className="text-xs text-gray-500">Taxa de Entrega (R$)</label>
                             <input name="deliveryFee" type="number" value={formData.deliveryFee} onChange={handleChange} min="0" step="0.50" className="w-full p-2 border rounded-lg bg-gray-50"/>
-                         </div>
-                         <div>
-                            <label className="text-xs text-gray-500">Nota (1-5)</label>
-                            <input name="rating" type="number" value={formData.rating} onChange={handleChange} min="1" max="5" step="0.1" className="w-full p-2 border rounded-lg bg-gray-50"/>
                          </div>
                     </div>
                     
@@ -418,7 +424,23 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                              <h3 className="text-lg font-semibold text-gray-700">Criar Acesso para o Lojista</h3>
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <input type="email" placeholder="Email do Lojista" value={merchantEmail} onChange={(e) => setMerchantEmail(e.target.value)} className="w-full p-3 border rounded-lg bg-gray-50"/>
-                                <input type="password" placeholder="Senha" value={merchantPassword} onChange={(e) => setMerchantPassword(e.target.value)} className="w-full p-3 border rounded-lg bg-gray-50"/>
+                                <div className="relative">
+                                    <input 
+                                        type={showPassword ? "text" : "password"} 
+                                        placeholder="Senha" 
+                                        value={merchantPassword} 
+                                        onChange={(e) => setMerchantPassword(e.target.value)} 
+                                        className="w-full p-3 border rounded-lg bg-gray-50 pr-10"
+                                    />
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setShowPassword(!showPassword)} 
+                                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700"
+                                        title={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                                    >
+                                        {showPassword ? <EyeSlashIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
+                                    </button>
+                                </div>
                              </div>
                         </div>
                     )}
