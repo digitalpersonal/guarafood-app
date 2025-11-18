@@ -1,5 +1,6 @@
 
 
+
 export interface Banner {
   id: number;
   title: string;
@@ -8,6 +9,14 @@ export interface Banner {
   ctaText: string;
   targetType: 'restaurant' | 'category';
   targetValue: string; // Restaurant name or Category name
+}
+
+// New interface for detailed operating hours
+export interface OperatingHours {
+  dayOfWeek: number; // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  opens: string;     // "HH:MM"
+  closes: string;    // "HH:MM"
+  isOpen: boolean;
 }
 
 export interface Restaurant {
@@ -20,10 +29,11 @@ export interface Restaurant {
   paymentGateways: string[];
   address: string;
   phone: string;
-  openingHours: string;
-  closingHours: string;
+  openingHours: string; // Can be a summary like "18:00 - 23:00"
+  closingHours: string; // Kept for simple cases/backwards compatibility
   deliveryFee: number;
   mercado_pago_credentials?: { accessToken: string };
+  operatingHours?: OperatingHours[]; // The new detailed structure
 }
 
 export interface Addon {

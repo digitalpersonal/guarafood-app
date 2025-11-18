@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
 // Fix: The database functions are in databaseService, not geminiService.
 import { fetchRestaurantById, updateRestaurant } from '../services/databaseService';
-import type { Restaurant } from '../types';
+import type { Restaurant, OperatingHours } from '../types';
 import Spinner from './Spinner';
 
 const NotificationSettings: React.FC = () => {
@@ -86,12 +87,23 @@ const NotificationSettings: React.FC = () => {
     );
 };
 
+const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+const getDefaultOperatingHours = (): OperatingHours[] =>
+    daysOfWeek.map((_, index) => ({
+        dayOfWeek: index,
+        opens: '18:00',
+        closes: '23:00',
+        isOpen: false,
+    }));
+
 
 const RestaurantSettings: React.FC = () => {
     const { currentUser } = useAuth();
     const { addToast } = useNotification();
     const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
     const [mercadoPagoToken, setMercadoPagoToken] = useState('');
+    const [operatingHours, setOperatingHours] = useState<OperatingHours[]>(getDefaultOperatingHours());
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -109,6 +121,11 @@ const RestaurantSettings: React.FC = () => {
             const data = await fetchRestaurantById(restaurantId);
             setRestaurant(data);
             setMercadoPagoToken(data.mercado_pago_credentials?.accessToken || '');
+            if (data.operatingHours && data.operatingHours.length === 7) {
+                setOperatingHours(data.operatingHours);
+            } else {
+                setOperatingHours(getDefaultOperatingHours());
+            }
             setError(null);
         } catch (err) {
             setError('Falha ao carregar as configurações do restaurante.');
@@ -121,13 +138,30 @@ const RestaurantSettings: React.FC = () => {
     useEffect(() => {
         loadData();
     }, [loadData]);
+    
+    const handleOperatingHoursChange = (dayIndex: number, field: 'isOpen' | 'opens' | 'closes', value: string | boolean) => {
+        setOperatingHours(prev => {
+            const newHours = [...prev];
+            const day = { ...newHours[dayIndex] };
+            (day as any)[field] = value;
+            newHours[dayIndex] = day;
+            return newHours;
+        });
+    };
 
     const handleSaveChanges = async () => {
         if (!restaurantId) return;
         setIsSaving(true);
         try {
+            const openDays = operatingHours.filter(d => d.isOpen);
+            const openingHoursSummary = openDays.length > 0 ? openDays[0].opens : '';
+            const closingHoursSummary = openDays.length > 0 ? openDays[0].closes : '';
+
             const updatePayload: Partial<Restaurant> = {
-                mercado_pago_credentials: { accessToken: mercadoPagoToken }
+                mercado_pago_credentials: { accessToken: mercadoPagoToken },
+                operatingHours: operatingHours,
+                openingHours: openingHoursSummary,
+                closingHours: closingHoursSummary
             };
             await updateRestaurant(restaurantId, updatePayload);
             addToast({ message: 'Configurações salvas com sucesso!', type: 'success' });
@@ -150,6 +184,49 @@ const RestaurantSettings: React.FC = () => {
                 
                 <div className="space-y-6">
                     <NotificationSettings />
+
+                     <div className="border-t pt-6">
+                        <h3 className="text-lg font-semibold text-gray-700 mb-3">Horário de Funcionamento</h3>
+                        <p className="text-sm text-gray-500 mb-4">Defina os dias e horários em que seu restaurante estará aberto para receber pedidos. Isso será exibido para os clientes.</p>
+                        <div className="space-y-3">
+                            {operatingHours.map((day, index) => (
+                                <div key={index} className="grid grid-cols-12 gap-2 items-center p-2 rounded-lg bg-gray-50 border">
+                                    <div className="col-span-4 flex items-center">
+                                        <input 
+                                            type="checkbox" 
+                                            id={`isopen-merchant-${index}`}
+                                            checked={day.isOpen}
+                                            onChange={(e) => handleOperatingHoursChange(index, 'isOpen', e.target.checked)}
+                                            className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500 mr-2"
+                                        />
+                                        <label htmlFor={`isopen-merchant-${index}`} className="font-semibold text-gray-700">{daysOfWeek[index]}</label>
+                                    </div>
+                                    <div className="col-span-4">
+                                        <label htmlFor={`opens-merchant-${index}`} className="text-xs text-gray-500">Abre às</label>
+                                        <input 
+                                            id={`opens-merchant-${index}`}
+                                            type="time" 
+                                            value={day.opens}
+                                            onChange={(e) => handleOperatingHoursChange(index, 'opens', e.target.value)}
+                                            disabled={!day.isOpen}
+                                            className="w-full p-1 border rounded-md disabled:bg-gray-200"
+                                        />
+                                    </div>
+                                    <div className="col-span-4">
+                                        <label htmlFor={`closes-merchant-${index}`} className="text-xs text-gray-500">Fecha às</label>
+                                        <input 
+                                            id={`closes-merchant-${index}`}
+                                            type="time" 
+                                            value={day.closes}
+                                            onChange={(e) => handleOperatingHoursChange(index, 'closes', e.target.value)}
+                                            disabled={!day.isOpen}
+                                            className="w-full p-1 border rounded-md disabled:bg-gray-200"
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
 
                      <div className="border-t pt-6">
                         <h3 className="text-lg font-semibold text-gray-700 mb-3">Gateway de Pagamento (Pix Automático)</h3>

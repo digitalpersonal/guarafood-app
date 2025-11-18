@@ -106,7 +106,7 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
                         <div className="overflow-y-auto p-4 flex-grow">
                             {cartItems.map(item => (
                                 <div key={item.id} className="flex items-start space-x-4 mb-4">
-                                    <img src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-md object-cover"/>
+                                    <img src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-md object-cover" loading="lazy"/>
                                     <div className="flex-grow">
                                         <p className="font-semibold text-gray-800">
                                             {item.name} {item.sizeName && `(${item.sizeName})`}

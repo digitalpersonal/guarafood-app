@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect } from 'react';
 import type { MenuItem, Addon, CartItem, SizeOption } from '../types';
 
@@ -117,7 +118,7 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
                     
                     {/* --- Base Item Display --- */}
                     <div className="border rounded-lg p-3 flex items-center space-x-3 bg-gray-50">
-                        <img src={initialItem.imageUrl} alt={initialItem.name} className="w-14 h-14 rounded-md object-cover"/>
+                        <img src={initialItem.imageUrl} alt={initialItem.name} className="w-14 h-14 rounded-md object-cover" loading="lazy"/>
                         <div>
                             <p className="font-bold text-lg">{initialItem.name} {selectedSize && selectedSize.name !== 'Único' ? `(${selectedSize.name})` : ''}</p>
                             <p className="text-md text-gray-700">R$ {(selectedSize?.price || initialItem.price).toFixed(2)}</p>

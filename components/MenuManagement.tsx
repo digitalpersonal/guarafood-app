@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
@@ -465,13 +466,13 @@ const MenuManagement: React.FC<{ restaurantId?: number }> = ({ restaurantId: pro
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {allCombos.map(combo => (
                             <div key={combo.id} className="bg-gray-50 p-4 rounded-lg border">
-                                <img src={combo.imageUrl} alt={combo.name} className="w-full h-32 object-cover rounded-md mb-3" />
+                                <img src={combo.imageUrl} alt={combo.name} className="w-full h-32 object-cover rounded-md mb-3" loading="lazy" />
                                 <h3 className="font-bold text-lg">{combo.name}</h3>
                                 <div className="text-xs text-gray-600 border-t pt-2 mt-2">
                                     <div className="space-y-2 mt-1">
                                         {combo.menuItemIds.map(id => allMenuItems.find(item => item.id === id)).filter(Boolean).map(item => (
                                             <div key={item!.id} className="flex items-center space-x-2">
-                                                <img src={item!.imageUrl} alt={item!.name} className="w-6 h-6 rounded-full object-cover"/>
+                                                <img src={item!.imageUrl} alt={item!.name} className="w-6 h-6 rounded-full object-cover" loading="lazy"/>
                                                 <span className="text-gray-700">{item!.name}</span>
                                             </div>
                                         ))}

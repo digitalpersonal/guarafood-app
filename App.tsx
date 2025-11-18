@@ -62,27 +62,47 @@ const timeToMinutes = (timeString: string): number => {
 const slugify = (text: string) => `category-${text.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '')}`;
 
 const isRestaurantOpen = (restaurant: Restaurant): boolean => {
-    const { openingHours, closingHours } = restaurant;
-    if (!openingHours || !closingHours) {
-        return true; // Assume open if data is missing in demo
+    const { operatingHours, openingHours, closingHours } = restaurant;
+    const now = new Date();
+    const currentDay = now.getDay(); // 0 for Sunday
+    const currentTimeInMinutes = now.getHours() * 60 + now.getMinutes();
+
+    // New logic using detailed operating hours
+    if (operatingHours && operatingHours.length === 7) {
+        const todayHours = operatingHours[currentDay];
+        if (!todayHours || !todayHours.isOpen) {
+            return false;
+        }
+        
+        try {
+            const openTimeInMinutes = timeToMinutes(todayHours.opens);
+            const closeTimeInMinutes = timeToMinutes(todayHours.closes);
+            
+            // Handle overnight case (e.g., opens 18:00, closes 02:00)
+            if (closeTimeInMinutes < openTimeInMinutes) {
+                return currentTimeInMinutes >= openTimeInMinutes || currentTimeInMinutes < closeTimeInMinutes;
+            }
+
+            return currentTimeInMinutes >= openTimeInMinutes && currentTimeInMinutes < closeTimeInMinutes;
+        } catch (e) {
+            console.error("Error parsing detailed restaurant hours:", restaurant.name, e);
+            return true; // Fallback to open
+        }
     }
 
+    // Fallback logic for old data structure
+    if (!openingHours || !closingHours) {
+        return true; // Assume open if data is missing
+    }
     try {
-        const now = new Date();
-        const currentTimeInMinutes = now.getHours() * 60 + now.getMinutes();
-
         const openTimeInMinutes = timeToMinutes(openingHours);
         const closeTimeInMinutes = timeToMinutes(closingHours);
-
-        // Handle overnight case (e.g., opens 18:00, closes 02:00)
         if (closeTimeInMinutes < openTimeInMinutes) {
             return currentTimeInMinutes >= openTimeInMinutes || currentTimeInMinutes < closeTimeInMinutes;
         }
-
         return currentTimeInMinutes >= openTimeInMinutes && currentTimeInMinutes < closeTimeInMinutes;
-
     } catch (e) {
-        console.error("Error parsing restaurant hours:", restaurant.name, e);
+        console.error("Error parsing simple restaurant hours:", restaurant.name, e);
         return true;
     }
 };
@@ -539,28 +559,40 @@ const App: React.FC = () => {
 
     if (supabaseError) {
         return (
-            <div className="h-screen flex items-center justify-center p-4 bg-red-50">
-                <div className="max-w-md text-center bg-white p-8 rounded-lg shadow-lg">
-                     <h1 className="text-2xl font-bold text-red-700 mb-4">Erro de Configuração</h1>
-                    <p className="text-gray-700">Não foi possível conectar ao banco de dados.</p>
-                    <p className="text-red-600 mt-2 text-sm">{supabaseError.message}</p>
-                     <p className="text-gray-500 mt-4 text-xs">Por favor, edite o arquivo <code>config.ts</code> na raiz do seu projeto com as suas credenciais do Supabase e recarregue a página.</p>
+            <div className="h-screen flex items-center justify-center p-4 bg-orange-50">
+                <div className="max-w-2xl text-center bg-white p-8 rounded-lg shadow-lg">
+                    <h1 className="text-3xl font-bold text-orange-600 mb-4">Erro de Configuração do GuaraFood</h1>
+                    <p className="text-gray-700 text-left mb-4">
+                        O aplicativo não conseguiu se conectar ao banco de dados. Isso geralmente acontece porque as credenciais do Supabase não foram configuradas corretamente no arquivo <strong>config.ts</strong>.
+                    </p>
+                    <div className="text-gray-600 mt-4 text-sm bg-gray-100 p-4 rounded-md text-left font-mono break-words">
+                        <p className="font-semibold">Detalhes do Erro:</p>
+                        <p>{supabaseError.message}</p>
+                    </div>
+                    <p className="text-gray-500 mt-6 text-sm text-left">
+                        <strong>Como resolver:</strong>
+                        <ol className="list-decimal list-inside mt-2 space-y-1">
+                            <li>Localize o arquivo <code>config.ts</code> na raiz do projeto.</li>
+                            <li>Abra o arquivo e substitua os valores de exemplo <code>'https://your-project-id.supabase.co'</code> e <code>'your-public-anon-key'</code> pelas suas credenciais reais do Supabase.</li>
+                            <li>Salve o arquivo e a pré-visualização será atualizada automaticamente.</li>
+                        </ol>
+                    </p>
                 </div>
             </div>
         );
     }
 
     return (
-        <AnimationProvider>
-            <CartProvider>
-                <AuthProvider>
-                    <NotificationProvider>
+        <NotificationProvider>
+            <AnimationProvider>
+                <CartProvider>
+                    <AuthProvider>
                         <AppContent />
-                    </NotificationProvider>
-                </AuthProvider>
-            </CartProvider>
-        </AnimationProvider>
-    )
-}
+                    </AuthProvider>
+                </CartProvider>
+            </AnimationProvider>
+        </NotificationProvider>
+    );
+};
 
 export default App;

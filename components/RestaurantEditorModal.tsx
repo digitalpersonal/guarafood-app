@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import type { Restaurant } from '../types';
+import type { Restaurant, OperatingHours } from '../types';
 import { useNotification } from '../hooks/useNotification';
 import { supabase } from '../services/api'; // Import supabase client
 
@@ -14,6 +15,25 @@ interface RestaurantEditorModalProps {
 type FormData = Omit<Restaurant, 'id'> & {
     // This makes the nested property optional as well
 };
+
+const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+const PREDEFINED_PAYMENT_METHODS = [
+    "Pix",
+    "Cartão de Crédito",
+    "Cartão de Débito",
+    "Dinheiro",
+    "Marcar na minha conta"
+];
+
+// Function to generate default hours (all closed)
+const getDefaultOperatingHours = (): OperatingHours[] =>
+    daysOfWeek.map((_, index) => ({
+        dayOfWeek: index,
+        opens: '18:00',
+        closes: '23:00',
+        isOpen: false,
+    }));
 
 
 const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, onClose, onSaveSuccess, existingRestaurant }) => {
@@ -31,6 +51,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         closingHours: '',
         deliveryFee: 0,
         mercado_pago_credentials: { accessToken: '' },
+        operatingHours: getDefaultOperatingHours(),
     });
     // New state for merchant user creation
     const [merchantEmail, setMerchantEmail] = useState('');
@@ -48,7 +69,10 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         if (existingRestaurant) {
             setFormData({
                 ...existingRestaurant,
-                mercado_pago_credentials: existingRestaurant.mercado_pago_credentials || { accessToken: '' }
+                mercado_pago_credentials: existingRestaurant.mercado_pago_credentials || { accessToken: '' },
+                operatingHours: existingRestaurant.operatingHours && existingRestaurant.operatingHours.length === 7 
+                    ? existingRestaurant.operatingHours 
+                    : getDefaultOperatingHours(),
             });
             setLogoPreview(existingRestaurant.imageUrl);
         } else {
@@ -65,6 +89,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 closingHours: '',
                 deliveryFee: 0,
                 mercado_pago_credentials: { accessToken: '' },
+                operatingHours: getDefaultOperatingHours(),
             });
             // Reset merchant fields for new restaurant
             setMerchantEmail('');
@@ -108,6 +133,16 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         }));
     };
 
+    const handleOperatingHoursChange = (dayIndex: number, field: 'isOpen' | 'opens' | 'closes', value: string | boolean) => {
+        setFormData(prev => {
+            const newHours = [...(prev.operatingHours || getDefaultOperatingHours())];
+            const day = { ...newHours[dayIndex] };
+            (day as any)[field] = value;
+            newHours[dayIndex] = day;
+            return { ...prev, operatingHours: newHours };
+        });
+    };
+
     const handleAddGateway = () => {
         const trimmedGateway = newGateway.trim();
         if (!trimmedGateway) return;
@@ -126,6 +161,18 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             paymentGateways: [...prev.paymentGateways, trimmedGateway]
         }));
         setNewGateway('');
+    };
+
+    const togglePredefinedGateway = (method: string) => {
+        const exists = formData.paymentGateways.includes(method);
+        if (exists) {
+             handleRemoveGateway(method);
+        } else {
+             setFormData(prev => ({
+                ...prev,
+                paymentGateways: [...prev.paymentGateways, method]
+            }));
+        }
     };
     
     const handleRemoveGateway = (gatewayToRemove: string) => {
@@ -191,7 +238,17 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             }
         }
         
-        const dataToSave = { ...formData, imageUrl: finalImageUrl };
+        // Generate summary for old fields
+        const openDays = formData.operatingHours?.filter(d => d.isOpen) || [];
+        const openingHoursSummary = openDays.length > 0 ? openDays[0].opens : '';
+        const closingHoursSummary = openDays.length > 0 ? openDays[0].closes : '';
+
+        const dataToSave = { 
+            ...formData, 
+            imageUrl: finalImageUrl,
+            openingHours: openingHoursSummary,
+            closingHours: closingHoursSummary
+        };
 
         try {
             if (existingRestaurant) {
@@ -240,7 +297,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                     <div className="flex flex-col md:flex-row items-start gap-4">
                         <div className="flex-shrink-0">
                             {logoPreview ? (
-                                <img src={logoPreview} alt="Preview da Logo" className="w-24 h-24 rounded-md object-cover border" />
+                                <img src={logoPreview} alt="Preview da Logo" className="w-24 h-24 rounded-md object-cover border" loading="lazy" />
                             ) : (
                                 <div className="w-24 h-24 rounded-md bg-gray-100 flex items-center justify-center text-gray-400 text-sm text-center p-2 border">
                                     Logo
@@ -286,16 +343,49 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                             <input name="rating" type="number" value={formData.rating} onChange={handleChange} min="1" max="5" step="0.1" className="w-full p-2 border rounded-lg bg-gray-50"/>
                          </div>
                     </div>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-sm text-gray-500">Horário de Abertura</label>
-                            <input name="openingHours" type="time" value={formData.openingHours} onChange={handleChange} className="w-full p-2 border rounded-lg bg-gray-50"/>
-                        </div>
-                        <div>
-                            <label className="text-sm text-gray-500">Horário de Fechamento</label>
-                            <input name="closingHours" type="time" value={formData.closingHours} onChange={handleChange} className="w-full p-2 border rounded-lg bg-gray-50"/>
+                    
+                    <div className="border-t pt-4">
+                        <h3 className="text-lg font-semibold text-gray-700 mb-2">Horário de Funcionamento</h3>
+                        <div className="space-y-3">
+                            {(formData.operatingHours || []).map((day, index) => (
+                                <div key={index} className="grid grid-cols-12 gap-2 items-center p-2 rounded-lg bg-gray-50 border">
+                                    <div className="col-span-4 flex items-center">
+                                        <input 
+                                            type="checkbox" 
+                                            id={`isopen-${index}`}
+                                            checked={day.isOpen}
+                                            onChange={(e) => handleOperatingHoursChange(index, 'isOpen', e.target.checked)}
+                                            className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500 mr-2"
+                                        />
+                                        <label htmlFor={`isopen-${index}`} className="font-semibold text-gray-700">{daysOfWeek[index]}</label>
+                                    </div>
+                                    <div className="col-span-4">
+                                        <label htmlFor={`opens-${index}`} className="text-xs text-gray-500">Abre às</label>
+                                        <input 
+                                            id={`opens-${index}`}
+                                            type="time" 
+                                            value={day.opens}
+                                            onChange={(e) => handleOperatingHoursChange(index, 'opens', e.target.value)}
+                                            disabled={!day.isOpen}
+                                            className="w-full p-1 border rounded-md disabled:bg-gray-200"
+                                        />
+                                    </div>
+                                    <div className="col-span-4">
+                                        <label htmlFor={`closes-${index}`} className="text-xs text-gray-500">Fecha às</label>
+                                        <input 
+                                            id={`closes-${index}`}
+                                            type="time" 
+                                            value={day.closes}
+                                            onChange={(e) => handleOperatingHoursChange(index, 'closes', e.target.value)}
+                                            disabled={!day.isOpen}
+                                            className="w-full p-1 border rounded-md disabled:bg-gray-200"
+                                        />
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
+
 
                     {/* NEW: Merchant user creation fields - only for new restaurants */}
                     {!existingRestaurant && (
@@ -325,6 +415,21 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">Formas de Pagamento</label>
                          <div className="p-3 border rounded-lg bg-gray-50 space-y-3">
+                             <div className="flex flex-wrap gap-2 mb-3">
+                                 {PREDEFINED_PAYMENT_METHODS.map(method => (
+                                     <button
+                                        key={method}
+                                        onClick={() => togglePredefinedGateway(method)}
+                                        className={`px-3 py-1 text-xs font-bold rounded-full border transition-colors ${
+                                            formData.paymentGateways.includes(method) 
+                                                ? 'bg-orange-600 text-white border-orange-600' 
+                                                : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'
+                                        }`}
+                                     >
+                                         {formData.paymentGateways.includes(method) ? '✓ ' : '+ '} {method}
+                                     </button>
+                                 ))}
+                             </div>
                              <div className="flex flex-wrap gap-2">
                                 {formData.paymentGateways.map((gateway, index) => (
                                      <div key={index} className="flex items-center bg-gray-200 text-gray-800 text-sm font-medium pl-3 pr-2 py-1 rounded-full">
@@ -341,7 +446,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                                     value={newGateway}
                                     onChange={(e) => setNewGateway(e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddGateway())}
-                                    placeholder="Adicionar nova forma..."
+                                    placeholder="Outra forma (ex: Ticket)..."
                                     className="flex-grow p-2 border rounded-md bg-white"
                                 />
                                 <button type="button" onClick={handleAddGateway} className="bg-blue-600 text-white font-semibold px-4 rounded-md hover:bg-blue-700">

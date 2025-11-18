@@ -42,6 +42,11 @@ const ClipboardIcon: React.FC<{ className?: string }> = ({ className }) => (
       <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v3.043c0 .317-.135.619-.372.83h-9.312a1.125 1.125 0 01-1.125-1.125v-3.043c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
     </svg>
 );
+const WarningIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+    </svg>
+);
 
 
 const steps: { id: CheckoutStep; title: string; icon: React.FC<{ className?: string }> }[] = [
@@ -57,7 +62,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [currentStep, setCurrentStep] = useState<CheckoutStep>('SUMMARY');
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
-    const [paymentMethod, setPaymentMethod] = useState('Pix'); // Default to Pix
+    const [paymentMethod, setPaymentMethod] = useState(''); 
     const [changeFor, setChangeFor] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     
@@ -84,11 +89,17 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [formError, setFormError] = useState<string | null>(null);
     const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
 
+    const paymentOptions = useMemo(() => {
+        return restaurant.paymentGateways && restaurant.paymentGateways.length > 0 
+            ? restaurant.paymentGateways 
+            : ["Pix", "Cartão de Crédito", "Cartão de Débito", "Dinheiro"];
+    }, [restaurant]);
+
     const resetState = () => {
         setCurrentStep('SUMMARY');
         setCustomerName('');
         setCustomerPhone('');
-        setPaymentMethod('Pix'); // Default to Pix
+        setPaymentMethod(paymentOptions[0] || 'Pix'); 
         setChangeFor('');
         setIsSubmitting(false);
         setCouponCodeInput('');
@@ -252,13 +263,16 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setFormError(null);
 
         let finalPaymentMethod = paymentMethod;
-        if (paymentMethod === 'Dinheiro' && changeFor) {
+        const paymentLower = paymentMethod.toLowerCase();
+
+        if (paymentLower === 'dinheiro' && changeFor) {
             const changeValue = parseFloat(changeFor);
             if (!isNaN(changeValue) && changeValue > 0) {
                 finalPaymentMethod = `Dinheiro (Troco para R$ ${changeValue.toFixed(2)})`;
             }
-        } else if (paymentMethod === 'Cartão de Crédito/Débito') {
-            finalPaymentMethod = 'Cartão (levar maquininha)';
+        } else if (paymentLower.includes('cartão')) {
+             // Keep original string, typically "Cartão de Crédito" or "Cartão de Débito"
+             // Merchant knows to send machine based on this.
         }
 
         const orderData: NewOrderData = {
@@ -275,6 +289,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             },
         };
 
+        // Only use automatic Mercado Pago Pix if string matches exactly "Pix"
         if (paymentMethod === 'Pix') {
             await handlePixPayment(orderData);
         } else {
@@ -321,7 +336,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     if (!isOpen) return null;
 
-    const paymentOptions = ["Pix", "Cartão de Crédito/Débito", "Dinheiro"];
     const currentStepIndex = steps.findIndex(step => step.id === currentStep);
 
     const handleCopyPixCode = () => {
@@ -376,7 +390,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 <div className="space-y-3" role="list">
                     {cartItems.map(item => (
                         <div key={item.id} className="flex items-start space-x-3 border-b pb-3 last:border-b-0 last:pb-0" role="listitem">
-                            <img src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-md object-cover flex-shrink-0"/>
+                            <img src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-md object-cover flex-shrink-0" loading="lazy"/>
                             <div className="flex-grow">
                                 <p className="font-semibold text-gray-800">
                                     {item.quantity}x {item.name} {item.sizeName && `(${item.sizeName})`}
@@ -474,7 +488,17 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                 <input type="radio" name="payment" value={gateway} checked={paymentMethod === gateway} onChange={e => setPaymentMethod(e.target.value)} className="h-4 w-4 text-orange-600 focus:ring-orange-500"/>
                                 <div className="ml-3 flex flex-col">
                                     <span className="text-gray-700">{gateway}</span>
-                                    {gateway === 'Cartão de Crédito/Débito' && <span className="text-xs text-gray-500">A maquininha será levada pelo entregador.</span>}
+                                    {gateway.toLowerCase().includes('cartão') && (
+                                        <span className="text-xs text-blue-600 font-medium mt-0.5">
+                                            ⓘ O entregador levará a maquininha.
+                                        </span>
+                                    )}
+                                     {gateway === 'Marcar na minha conta' && (
+                                        <span className="text-xs text-orange-600 font-medium mt-0.5">
+                                            <WarningIcon className="w-3 h-3 inline mr-1" />
+                                            Sujeito a aprovação do estabelecimento.
+                                        </span>
+                                    )}
                                 </div>
                             </label>
                             {gateway === 'Dinheiro' && paymentMethod === 'Dinheiro' && (

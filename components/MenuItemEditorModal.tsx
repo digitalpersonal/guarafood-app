@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { MenuItem, SizeOption, Addon } from '../types';
 import { supabase } from '../services/api';
@@ -319,7 +320,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                     <div className="flex flex-col md:flex-row items-start gap-4">
                          <div className="flex-shrink-0">
                             {imagePreview ? (
-                                <img src={imagePreview} alt="Preview" className="w-24 h-24 rounded-md object-cover" />
+                                <img src={imagePreview} alt="Preview" className="w-24 h-24 rounded-md object-cover" loading="lazy" />
                             ) : (
                                 <div className="w-24 h-24 rounded-md bg-gray-100 flex items-center justify-center text-gray-400 text-sm text-center p-2">
                                     Sem Imagem

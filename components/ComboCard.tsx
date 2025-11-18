@@ -1,4 +1,5 @@
 
+
 import React, { useMemo, useState } from 'react';
 import type { Combo, MenuItem } from '../types';
 import { useCart } from '../hooks/useCart';
@@ -17,7 +18,7 @@ const ComboDetailsModal: React.FC<{ combo: Combo; items: MenuItem[]; onClose: ()
                 <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl font-bold" aria-label="Fechar">&times;</button>
             </div>
             <div className="overflow-y-auto space-y-4 pr-2 -mr-2">
-                <img src={combo.imageUrl} alt={combo.name} className="w-full h-48 object-cover rounded-md mb-2"/>
+                <img src={combo.imageUrl} alt={combo.name} className="w-full h-48 object-cover rounded-md mb-2" loading="lazy"/>
                 {combo.originalPrice ? (
                     <div className="flex items-baseline gap-2">
                         <p className="font-bold text-orange-600 text-2xl">R$ {combo.price.toFixed(2)}</p>
@@ -32,7 +33,7 @@ const ComboDetailsModal: React.FC<{ combo: Combo; items: MenuItem[]; onClose: ()
                 <ul className="space-y-3">
                     {items.map(item => (
                         <li key={item.id} className="flex items-center space-x-4 p-2 bg-gray-50 rounded-lg">
-                            <img src={item.imageUrl} alt={item.name} className="w-14 h-14 rounded-md object-cover flex-shrink-0"/>
+                            <img src={item.imageUrl} alt={item.name} className="w-14 h-14 rounded-md object-cover flex-shrink-0" loading="lazy"/>
                             <div className="flex-grow">
                                 <p className="font-semibold text-gray-800">{item.name}</p>
                                 <p className="text-sm text-gray-500">{item.description}</p>
