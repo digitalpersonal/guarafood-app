@@ -9,6 +9,7 @@ export interface Banner {
   ctaText: string;
   targetType: 'restaurant' | 'category';
   targetValue: string; // Restaurant name or Category name
+  active?: boolean; // Added active state
 }
 
 export interface RestaurantCategory {
@@ -28,6 +29,7 @@ export interface Restaurant {
   id: number;
   name: string;
   category: string;
+  description?: string; // Added short description
   deliveryTime: string;
   rating: number;
   imageUrl: string;

@@ -142,7 +142,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: (name === 'rating' || name === 'deliveryFee') ? parseFloat(value) : value }));
+        setFormData(prev => ({ ...prev, [name]: (name === 'deliveryFee') ? parseFloat(value) : value }));
     };
     
     const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -270,11 +270,11 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         const openingHoursSummary = openDays.length > 0 ? openDays[0].opens : '';
         const closingHoursSummary = openDays.length > 0 ? openDays[0].closes : '';
 
-        // HYBRID PAYLOAD CONSTRUCTION
+        // SNAKE_CASE PAYLOAD FOR DATABASE COMPATIBILITY
         const dbPayload = {
             name: formData.name,
             category: formData.category,
-            deliveryTime: formData.deliveryTime, // Presumed CamelCase
+            delivery_time: formData.deliveryTime, // Mapped to SnakeCase
             rating: formData.rating,
             image_url: finalImageUrl,           // Mapped to SnakeCase
             payment_gateways: formData.paymentGateways, // Mapped to SnakeCase
@@ -282,7 +282,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             phone: formData.phone,
             opening_hours: openingHoursSummary, // Mapped to SnakeCase
             closing_hours: closingHoursSummary, // Mapped to SnakeCase
-            deliveryFee: formData.deliveryFee,  // Presumed CamelCase
+            delivery_fee: formData.deliveryFee,  // Mapped to SnakeCase
             mercado_pago_credentials: formData.mercado_pago_credentials, // Already SnakeCase in type
             operating_hours: formData.operatingHours, // Mapped to SnakeCase
         };
@@ -327,7 +327,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             console.error("Failed to save restaurant:", err);
             let msg = `Erro ao salvar: ${err.message || JSON.stringify(err)}`;
             if (msg.includes('schema cache') || msg.includes('column')) {
-                msg += " (Verifique se as colunas no Supabase correspondem ao formato esperado: deliveryFee, closing_hours, etc.)";
+                msg += " (Verifique se as colunas no Supabase correspondem ao formato esperado: delivery_fee, closing_hours, etc.)";
             }
             setError(msg);
             addToast({ message: msg, type: 'error' });
@@ -390,7 +390,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                         <input name="address" value={formData.address} onChange={handleChange} placeholder="Endereço" className="w-full p-3 border rounded-lg bg-gray-50"/>
                     </div>
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <input name="deliveryTime" value={formData.deliveryTime} onChange={handleChange} placeholder="Tempo Entrega" className="w-full p-3 border rounded-lg bg-gray-50"/>
+                        <input name="deliveryTime" value={formData.deliveryTime} onChange={handleChange} placeholder="Tempo Entrega (ex: 40-50 min)" className="w-full p-3 border rounded-lg bg-gray-50"/>
                          <div>
                             <label className="text-xs text-gray-500">Taxa de Entrega (R$)</label>
                             <input name="deliveryFee" type="number" value={formData.deliveryFee} onChange={handleChange} min="0" step="0.50" className="w-full p-2 border rounded-lg bg-gray-50"/>

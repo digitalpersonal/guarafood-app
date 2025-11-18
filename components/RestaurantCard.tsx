@@ -32,11 +32,19 @@ const WhatsAppIcon: React.FC<{ className?: string }> = ({ className }) => (
   </svg>
 );
 
+const BookOpenIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+    </svg>
+);
+
 
 const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, isOpen }) => {
 
   const cleanedPhone = restaurant.phone.replace(/\D/g, '');
   const whatsappUrl = `https://wa.me/55${cleanedPhone}`;
+  
+  const acceptsFiado = restaurant.paymentGateways?.some(pg => pg.toLowerCase() === "marcar na minha conta");
 
   return (
     <div 
@@ -51,46 +59,57 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, is
       <div className="bg-orange-600 text-white text-sm font-bold px-4 py-1 text-center">
         {restaurant.category}
       </div>
-      <div className="flex items-center space-x-4 p-3 flex-grow">
+      <div className="flex items-start space-x-4 p-3 flex-grow">
         <img src={restaurant.imageUrl} alt={restaurant.name} className="w-20 h-20 rounded-md object-cover flex-shrink-0" loading="lazy" />
         <div className="flex-grow min-w-0">
-          <h3 className="text-lg font-bold text-gray-800 truncate">{restaurant.name}</h3>
-          <div className="flex items-center text-sm text-gray-500 mt-1 flex-wrap">
+          <div className="flex justify-between items-start">
+              <h3 className="text-lg font-bold text-gray-800 truncate">{restaurant.name}</h3>
+          </div>
+          
+          {restaurant.description && (
+             <p className="text-xs text-gray-500 line-clamp-2 mt-0.5 mb-1 leading-tight">{restaurant.description}</p>
+          )}
+
+          <div className="flex items-center text-sm text-gray-500 mt-1 flex-wrap gap-y-1">
             <StarIcon className="w-4 h-4 text-yellow-500 mr-1" />
             <span className="font-bold text-yellow-600">{restaurant.rating.toFixed(1)}</span>
             <span className="mx-2">&bull;</span>
             <span>{restaurant.deliveryTime}</span>
             <span className="mx-2">&bull;</span>
             <span>{restaurant.deliveryFee > 0 ? `R$ ${restaurant.deliveryFee.toFixed(2)}` : 'Grátis'}</span>
-            {restaurant.openingHours && restaurant.closingHours && (
-              <>
-                <span className="mx-2">&bull;</span>
-                <div className="flex items-center">
-                  <ClockIcon className="w-4 h-4 mr-1 flex-shrink-0" />
-                  <span>{restaurant.openingHours} - {restaurant.closingHours}</span>
+          </div>
+
+           {acceptsFiado && (
+               <div className="mt-2 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                   <BookOpenIcon className="w-3 h-3 mr-1" />
+                   Aceita Fiado/Conta
+               </div>
+           )}
+
+          <div className="flex items-center justify-between mt-2">
+             {restaurant.paymentGateways && restaurant.paymentGateways.length > 0 && (
+                <div className="flex items-center text-xs text-gray-500" title={`Aceita: ${restaurant.paymentGateways.join(', ')}`}>
+                    <CreditCardIcon className="w-4 h-4 mr-1.5 flex-shrink-0" />
+                    <span className="truncate max-w-[120px]">
+                        {restaurant.paymentGateways.slice(0, 2).join(', ')}
+                        {restaurant.paymentGateways.length > 2 && '...'}
+                    </span>
                 </div>
-              </>
+            )}
+            {restaurant.phone && (
+                <a
+                    href={whatsappUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex items-center text-xs text-green-600 group ml-auto"
+                    aria-label={`Conversar com ${restaurant.name} no WhatsApp`}
+                >
+                    <WhatsAppIcon className="w-4 h-4 mr-1 flex-shrink-0" />
+                    <span className="group-hover:underline font-semibold hidden sm:inline">WhatsApp</span>
+                </a>
             )}
           </div>
-          {restaurant.paymentGateways && restaurant.paymentGateways.length > 0 && (
-            <div className="flex items-center text-xs text-gray-500 mt-2" title={`Aceita: ${restaurant.paymentGateways.join(', ')}`}>
-              <CreditCardIcon className="w-4 h-4 mr-1.5 flex-shrink-0" />
-              <span className="truncate">{restaurant.paymentGateways.join(', ')}</span>
-            </div>
-          )}
-           {restaurant.phone && (
-              <a
-                href={whatsappUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="flex items-center text-xs text-green-600 mt-2 group"
-                aria-label={`Conversar com ${restaurant.name} no WhatsApp`}
-              >
-                  <WhatsAppIcon className="w-4 h-4 mr-1.5 flex-shrink-0" />
-                  <span className="group-hover:underline font-semibold">{restaurant.phone}</span>
-              </a>
-          )}
         </div>
       </div>
     </div>

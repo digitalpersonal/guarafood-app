@@ -174,7 +174,10 @@ export const fetchActiveBanners = async (): Promise<Banner[]> => {
 // --- GENERIC BANNER MANAGEMENT ---
 export const fetchBanners = async (): Promise<Banner[]> => {
     const { data, error } = await supabase.from('banners').select('*').order('id', { ascending: false });
-    handleSupabaseError({ error, customMessage: 'Failed to fetch banners' });
+    if (error) {
+        console.warn("Error fetching banners (table might be missing):", error);
+        return [];
+    }
     return data || [];
 };
 
@@ -269,7 +272,7 @@ export const generateImage = async (
 
 // Restaurants
 export const updateRestaurant = async (id: number, restaurantData: Partial<Restaurant>): Promise<Restaurant> => {
-    // Map keys to match hybrid schema structure (Camel for Delivery, Snake for others)
+    // Map keys to match snake_case schema structure for all fields to ensure compatibility
     const payload: any = { ...restaurantData };
 
     if (restaurantData.imageUrl) {
@@ -292,7 +295,15 @@ export const updateRestaurant = async (id: number, restaurantData: Partial<Resta
         payload.operating_hours = restaurantData.operatingHours;
         delete payload.operatingHours;
     }
-    // deliveryFee and deliveryTime remain CamelCase as determined by previous error history.
+    // Explicit mapping for delivery fields to snake_case
+    if (restaurantData.deliveryTime) {
+        payload.delivery_time = restaurantData.deliveryTime;
+        delete payload.deliveryTime;
+    }
+    if (restaurantData.deliveryFee !== undefined) {
+        payload.delivery_fee = restaurantData.deliveryFee;
+        delete payload.deliveryFee;
+    }
 
     const { data, error } = await supabase.from('restaurants').update(payload).eq('id', id).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to update restaurant' });
