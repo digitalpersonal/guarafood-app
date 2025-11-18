@@ -92,7 +92,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const paymentOptions = useMemo(() => {
         return restaurant.paymentGateways && restaurant.paymentGateways.length > 0 
             ? restaurant.paymentGateways 
-            : ["Pix", "Cartão de Crédito", "Cartão de Débito", "Dinheiro"];
+            : ["Pix", "Cartão de Crédito", "Cartão de Débito", "Dinheiro", "Marcar na minha conta"];
     }, [restaurant]);
 
     const resetState = () => {
@@ -494,7 +494,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                         </span>
                                     )}
                                      {gateway === 'Marcar na minha conta' && (
-                                        <span className="text-xs text-orange-600 font-medium mt-0.5">
+                                        <span className="text-xs text-orange-600 font-bold mt-0.5 flex items-center">
                                             <WarningIcon className="w-3 h-3 inline mr-1" />
                                             Sujeito a aprovação do estabelecimento.
                                         </span>

@@ -257,29 +257,41 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 if (updateError) throw updateError;
                 addToast({ message: 'Restaurante atualizado com sucesso!', type: 'success' });
             } else {
-                // CREATE new restaurant and user - Invoke Edge Function
-                const { data, error: functionError } = await supabase.functions.invoke('create-restaurant-with-user', {
-                    body: {
-                        restaurantData: dataToSave,
-                        userData: { email: merchantEmail, password: merchantPassword }
-                    },
-                });
+                // CREATE new restaurant and user - Try Edge Function first
+                try {
+                    const { data, error: functionError } = await supabase.functions.invoke('create-restaurant-with-user', {
+                        body: {
+                            restaurantData: dataToSave,
+                            userData: { email: merchantEmail, password: merchantPassword }
+                        },
+                    });
 
-                if (functionError) {
-                   throw new Error(functionError.message);
-                }
-                if (data?.error) { // Handle errors returned from the function body
-                    throw new Error(data.error);
-                }
+                    if (functionError) throw functionError;
+                    if (data?.error) throw new Error(data.error);
 
-                addToast({ message: 'Restaurante e usuário do lojista criados com sucesso!', type: 'success' });
+                    addToast({ message: 'Restaurante e usuário do lojista criados com sucesso!', type: 'success' });
+                } catch (edgeError: any) {
+                     console.warn("Edge function failed, likely due to environment. Falling back to direct insert.", edgeError);
+                     
+                     // FALLBACK: Insert restaurant directly. 
+                     // This allows the Admin UI to work even if the backend/edge function for user creation fails.
+                     const { error: restError } = await supabase.from('restaurants').insert(dataToSave);
+                     
+                     if (restError) throw restError;
+                     
+                     addToast({ 
+                         message: 'Restaurante criado! (Nota: O usuário do lojista não pôde ser criado automaticamente devido a erro no servidor).', 
+                         type: 'info', 
+                         duration: 6000 
+                    });
+                }
             }
             onSaveSuccess();
             onClose();
         } catch (err: any) {
             console.error("Failed to save restaurant:", err);
             setError(`Erro ao salvar: ${err.message}`);
-            addToast({ message: `Erro ao salvar restaurante: ${err.message}`, type: 'error' });
+            addToast({ message: `Erro crítico ao salvar: ${err.message}`, type: 'error' });
         } finally {
             setIsSaving(false);
         }

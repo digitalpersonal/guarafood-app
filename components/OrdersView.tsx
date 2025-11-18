@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
@@ -136,7 +137,10 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                     <h4 className="font-semibold text-sm text-gray-500 mb-1">Pagamento</h4>
                     <div className="flex items-center text-sm">
                         <CreditCardIcon className="w-4 h-4 mr-1.5 text-gray-600 flex-shrink-0" aria-hidden="true" />
-                        <p className="font-bold text-gray-800 truncate">{order.paymentMethod}</p>
+                        <p className={`font-bold truncate ${order.paymentMethod === 'Marcar na minha conta' ? 'text-red-600' : 'text-gray-800'}`}>
+                            {order.paymentMethod}
+                            {order.paymentMethod === 'Marcar na minha conta' && <span className="text-xs font-normal ml-1">(Verificar cadastro)</span>}
+                        </p>
                     </div>
                 </div>
             </div>
