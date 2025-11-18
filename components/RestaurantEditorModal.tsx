@@ -243,17 +243,27 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         const openingHoursSummary = openDays.length > 0 ? openDays[0].opens : '';
         const closingHoursSummary = openDays.length > 0 ? openDays[0].closes : '';
 
-        const dataToSave = { 
-            ...formData, 
-            imageUrl: finalImageUrl,
-            openingHours: openingHoursSummary,
-            closingHours: closingHoursSummary
+        // Map camelCase form data to snake_case database columns
+        const dbPayload = {
+            name: formData.name,
+            category: formData.category,
+            delivery_time: formData.deliveryTime,
+            rating: formData.rating,
+            image_url: finalImageUrl,
+            payment_gateways: formData.paymentGateways,
+            address: formData.address,
+            phone: formData.phone,
+            opening_hours: openingHoursSummary,
+            closing_hours: closingHoursSummary,
+            delivery_fee: formData.deliveryFee,
+            mercado_pago_credentials: formData.mercado_pago_credentials,
+            operating_hours: formData.operatingHours,
         };
 
         try {
             if (existingRestaurant) {
-                // UPDATE existing restaurant - Call Supabase directly
-                const { error: updateError } = await supabase.from('restaurants').update(dataToSave).eq('id', existingRestaurant.id);
+                // UPDATE existing restaurant - Call Supabase directly with mapped payload
+                const { error: updateError } = await supabase.from('restaurants').update(dbPayload).eq('id', existingRestaurant.id);
                 if (updateError) throw updateError;
                 addToast({ message: 'Restaurante atualizado com sucesso!', type: 'success' });
             } else {
@@ -261,7 +271,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 try {
                     const { data, error: functionError } = await supabase.functions.invoke('create-restaurant-with-user', {
                         body: {
-                            restaurantData: dataToSave,
+                            restaurantData: dbPayload,
                             userData: { email: merchantEmail, password: merchantPassword }
                         },
                     });
@@ -273,9 +283,8 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 } catch (edgeError: any) {
                      console.warn("Edge function failed, likely due to environment. Falling back to direct insert.", edgeError);
                      
-                     // FALLBACK: Insert restaurant directly. 
-                     // This allows the Admin UI to work even if the backend/edge function for user creation fails.
-                     const { error: restError } = await supabase.from('restaurants').insert(dataToSave);
+                     // FALLBACK: Insert restaurant directly using mapped payload
+                     const { error: restError } = await supabase.from('restaurants').insert(dbPayload);
                      
                      if (restError) throw restError;
                      

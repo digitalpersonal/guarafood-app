@@ -1,3 +1,4 @@
+
 import { supabase, supabaseAnon, handleSupabaseError } from './api';
 import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner } from '../types';
 import { GoogleGenAI } from '@google/genai';
@@ -5,18 +6,60 @@ import { GoogleGenAI } from '@google/genai';
 
 // --- Data Fetching Functions ---
 
+// Helper to map DB snake_case to CamelCase for Restaurants
+const mapDbToRestaurant = (dbData: any): Restaurant => ({
+    id: dbData.id,
+    name: dbData.name,
+    category: dbData.category,
+    deliveryTime: dbData.delivery_time || dbData.deliveryTime, 
+    rating: dbData.rating,
+    imageUrl: dbData.image_url || dbData.imageUrl,
+    paymentGateways: dbData.payment_gateways || dbData.paymentGateways,
+    address: dbData.address,
+    phone: dbData.phone,
+    openingHours: dbData.opening_hours || dbData.openingHours,
+    closingHours: dbData.closing_hours || dbData.closingHours,
+    deliveryFee: dbData.delivery_fee || dbData.deliveryFee,
+    mercado_pago_credentials: dbData.mercado_pago_credentials,
+    operatingHours: dbData.operating_hours || dbData.operatingHours
+});
+
+// Helper to map CamelCase to DB snake_case for Restaurants
+const mapRestaurantToDb = (data: Partial<Restaurant>): any => {
+    const mapped: any = { ...data };
+    if (data.deliveryTime !== undefined) mapped.delivery_time = data.deliveryTime;
+    if (data.imageUrl !== undefined) mapped.image_url = data.imageUrl;
+    if (data.paymentGateways !== undefined) mapped.payment_gateways = data.paymentGateways;
+    if (data.openingHours !== undefined) mapped.opening_hours = data.openingHours;
+    if (data.closingHours !== undefined) mapped.closing_hours = data.closingHours;
+    if (data.deliveryFee !== undefined) mapped.delivery_fee = data.deliveryFee;
+    if (data.operatingHours !== undefined) mapped.operating_hours = data.operatingHours;
+    
+    // Clean up camelCase keys if snake_case was set
+    delete mapped.deliveryTime;
+    delete mapped.imageUrl;
+    delete mapped.paymentGateways;
+    delete mapped.openingHours;
+    delete mapped.closingHours;
+    delete mapped.deliveryFee;
+    delete mapped.operatingHours;
+    
+    return mapped;
+}
+
 export const fetchRestaurants = async (): Promise<Restaurant[]> => {
     const { data, error } = await supabaseAnon.from('restaurants').select('*');
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants' });
     // Filter out example data as requested by the user.
-    return (data || []).filter(restaurant => restaurant.name !== 'Bella Pizza');
+    const restaurants = (data || []).filter(restaurant => restaurant.name !== 'Bella Pizza');
+    return restaurants.map(mapDbToRestaurant);
 };
 
 export const fetchRestaurantById = async (id: number): Promise<Restaurant> => {
     const { data, error } = await supabaseAnon.from('restaurants').select('*').eq('id', id).single();
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurant' });
     if (!data) throw new Error('Restaurant not found');
-    return data;
+    return mapDbToRestaurant(data);
 };
 
 export const fetchMenuForRestaurant = async (restaurant: Restaurant | number): Promise<MenuCategory[]> => {
@@ -187,9 +230,10 @@ export const generateImage = async (
 // Restaurants
 // createRestaurant is now handled by a Supabase Edge Function for security
 export const updateRestaurant = async (id: number, restaurantData: Partial<Restaurant>): Promise<Restaurant> => {
-    const { data, error } = await supabase.from('restaurants').update(restaurantData).eq('id', id).select().single();
+    const dbData = mapRestaurantToDb(restaurantData);
+    const { data, error } = await supabase.from('restaurants').update(dbData).eq('id', id).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to update restaurant' });
-    return data;
+    return mapDbToRestaurant(data);
 };
 
 // deleteRestaurant is now handled by a Supabase Edge Function for security
