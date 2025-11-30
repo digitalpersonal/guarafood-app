@@ -78,6 +78,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     // Pix Payment State
     const [pixData, setPixData] = useState<{ qrCode: string; qrCodeBase64: string } | null>(null);
     const [pixError, setPixError] = useState<string | null>(null);
+    const [isManualPix, setIsManualPix] = useState(false); // NEW: State for manual pix fallback
     const [countdown, setCountdown] = useState(300); // 5 minutes
     const countdownIntervalRef = useRef<number | null>(null);
     const pixChannelRef = useRef<any>(null);
@@ -107,6 +108,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setFormError(null);
         setPixData(null);
         setPixError(null);
+        setIsManualPix(false);
         setCountdown(300);
         setAddress({ zipCode: '', street: '', number: '', neighborhood: '', complement: '' });
         if (countdownIntervalRef.current) {
@@ -171,14 +173,33 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     };
 
     const handlePixPayment = async (orderData: NewOrderData) => {
+        // Fallback Logic Check
+        const hasAutoPix = !!restaurant.mercado_pago_credentials?.accessToken;
+        const hasManualPix = !!restaurant.manualPixKey;
+
+        // If no auto credentials, go straight to manual
+        if (!hasAutoPix && hasManualPix) {
+            setIsManualPix(true);
+            setCurrentStep('PIX_PAYMENT');
+            return;
+        }
+
         setIsSubmitting(true);
         setPixError(null);
         try {
-            // NOTE: This assumes a Supabase Edge Function named 'create-payment' exists.
             const response = await supabase.functions.invoke('create-payment', {
                 body: { restaurantId: restaurant.id, orderData },
             });
-            if (response.error) throw new Error(response.error.message);
+            
+            if (response.error) {
+                // If Edge Function invocation fails (e.g., deployment issue), treat as trigger for fallback
+                throw new Error(response.error.message || "Falha na conexão com o servidor de pagamento");
+            }
+
+            // Also check for error in response body if function executed but failed logically
+            if (response.data && response.data.error) {
+                 throw new Error(response.data.error);
+            }
 
             const { orderId, qrCode, qrCodeBase64 } = response.data;
             setPixData({ qrCode, qrCodeBase64 });
@@ -219,8 +240,15 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             ).subscribe();
 
         } catch (err: any) {
-            setPixError(`Erro ao gerar Pix: ${err.message}. Tente novamente.`);
-            console.error(err);
+            console.error("Pix Auto Error:", err);
+            // FALLBACK TO MANUAL PIX ON ERROR
+            if (hasManualPix) {
+                addToast({ message: "Geração automática indisponível. Usando chave Pix manual.", type: 'info', duration: 5000 });
+                setIsManualPix(true);
+                setCurrentStep('PIX_PAYMENT');
+            } else {
+                setPixError(`Erro ao gerar Pix: ${err.message || 'Erro desconhecido'}. Tente outra forma de pagamento.`);
+            }
         } finally {
             setIsSubmitting(false);
         }
@@ -241,6 +269,24 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         } finally {
             setIsSubmitting(false);
         }
+    };
+
+    const handleConfirmManualPix = async () => {
+        // Re-construct order data for submission
+        const orderData: NewOrderData = {
+            customerName, customerPhone, items: cartItems, totalPrice: finalPriceWithFee, subtotal: totalPrice,
+            discountAmount, couponCode: appliedCoupon?.code, deliveryFee, restaurantId: restaurant.id,
+            restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
+            paymentMethod: "Pix (Comprovante via WhatsApp)", // Adjusted for manual
+            customerAddress: {
+                zipCode: address.zipCode,
+                street: address.street,
+                number: address.number,
+                neighborhood: address.neighborhood,
+                complement: address.complement,
+            },
+        };
+        await handlePayOnDelivery(orderData);
     };
 
     const handleSubmitDetails = async (e: React.FormEvent) => {
@@ -270,9 +316,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             if (!isNaN(changeValue) && changeValue > 0) {
                 finalPaymentMethod = `Dinheiro (Troco para R$ ${changeValue.toFixed(2)})`;
             }
-        } else if (paymentLower.includes('cartão')) {
-             // Keep original string, typically "Cartão de Crédito" or "Cartão de Débito"
-             // Merchant knows to send machine based on this.
         }
 
         const orderData: NewOrderData = {
@@ -309,6 +352,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setCurrentStep('DETAILS');
         setPixData(null);
         setPixError(null);
+        setIsManualPix(false);
         addToast({ message: "Pagamento Pix cancelado.", type: 'info' });
     };
 
@@ -344,6 +388,13 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             addToast({ message: 'Código Pix copiado!', type: 'success' });
         }
     };
+    
+    const handleCopyManualKey = () => {
+        if (restaurant.manualPixKey) {
+            navigator.clipboard.writeText(restaurant.manualPixKey);
+            addToast({ message: 'Chave Pix copiada!', type: 'success' });
+        }
+    }
 
     const renderStepper = () => (
         <div className="flex justify-between items-center px-4 py-3 bg-gray-50 border-b" role="navigation" aria-label="Progresso do Checkout">
@@ -531,42 +582,79 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         </form>
     );
 
-    const renderPixPayment = () => (
-        <div className="text-center flex flex-col items-center p-4" role="region" aria-labelledby="pix-payment-heading">
-            <h3 id="pix-payment-heading" className="text-xl font-bold text-gray-800 mb-2">Pague com Pix para confirmar</h3>
-            <p className="text-sm text-gray-500 mb-4">Use o app do seu banco para escanear o QR Code ou copie o código abaixo.</p>
-            {pixData ? (
-                <>
-                    <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="PIX QR Code" className="w-48 h-48 mx-auto my-2 border-4 border-gray-700 p-1 rounded-lg" />
+    const renderPixPayment = () => {
+        if (isManualPix) {
+            return (
+                <div className="text-center flex flex-col items-center p-4" role="region" aria-labelledby="manual-pix-heading">
+                    <h3 id="manual-pix-heading" className="text-xl font-bold text-gray-800 mb-2">Pagamento Pix Manual</h3>
+                    <p className="text-sm text-gray-600 mb-4 px-4">
+                        O sistema automático está indisponível. Por favor, faça o Pix manualmente usando a chave abaixo e envie o comprovante se solicitado.
+                    </p>
+                    
+                    <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg w-full max-w-sm mb-4">
+                        <p className="text-xs text-orange-700 font-bold uppercase mb-1">Chave Pix</p>
+                        <div className="flex items-center justify-between gap-2">
+                            <span className="text-lg font-mono font-bold text-gray-800 break-all">{restaurant.manualPixKey}</span>
+                            <button 
+                                onClick={handleCopyManualKey} 
+                                className="bg-orange-200 text-orange-800 p-2 rounded hover:bg-orange-300 flex-shrink-0"
+                                aria-label="Copiar chave"
+                            >
+                                <ClipboardIcon className="w-5 h-5"/>
+                            </button>
+                        </div>
+                    </div>
+
+                    <p className="text-2xl font-bold text-gray-800 mb-6">Valor: R$ {finalPriceWithFee.toFixed(2)}</p>
+
                     <button 
-                        onClick={handleCopyPixCode} 
-                        className="flex items-center justify-center gap-2 bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors my-2 w-full max-w-xs" 
-                        aria-label="Copiar código Pix"
+                        onClick={handleConfirmManualPix} 
+                        className="bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 transition-colors w-full max-w-xs shadow-lg animate-pulse"
+                        disabled={isSubmitting}
                     >
-                        <ClipboardIcon className="w-5 h-5"/>
-                        <span>Copiar Código Pix</span>
+                        {isSubmitting ? <Spinner message="Enviando..." /> : 'JÁ FIZ O PAGAMENTO'}
                     </button>
-                    <textarea 
-                        readOnly 
-                        value={pixData.qrCode} 
-                        className="font-mono bg-gray-100 p-2 rounded-lg text-xs w-full max-w-xs h-20 resize-none text-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400"
-                        aria-label="Código Pix Copia e Cola"
-                    />
-                    <p className="text-2xl font-bold text-orange-600 mt-2">R$ {finalPriceWithFee.toFixed(2)}</p>
-                    <div className="mt-4 text-sm font-semibold text-gray-700" aria-live="polite">Tempo restante: {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}</div>
-                </>
-            ) : isSubmitting ? (
-                <Spinner message="Gerando QR Code..." />
-            ) : null}
-            {pixError && <p className="text-red-500 text-sm mt-2" role="alert">{pixError}</p>}
-        </div>
-    );
+                </div>
+            );
+        }
+
+        return (
+            <div className="text-center flex flex-col items-center p-4" role="region" aria-labelledby="pix-payment-heading">
+                <h3 id="pix-payment-heading" className="text-xl font-bold text-gray-800 mb-2">Pague com Pix para confirmar</h3>
+                <p className="text-sm text-gray-500 mb-4">Use o app do seu banco para escanear o QR Code ou copie o código abaixo.</p>
+                {pixData ? (
+                    <>
+                        <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="PIX QR Code" className="w-48 h-48 mx-auto my-2 border-4 border-gray-700 p-1 rounded-lg" />
+                        <button 
+                            onClick={handleCopyPixCode} 
+                            className="flex items-center justify-center gap-2 bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors my-2 w-full max-w-xs" 
+                            aria-label="Copiar código Pix"
+                        >
+                            <ClipboardIcon className="w-5 h-5"/>
+                            <span>Copiar Código Pix</span>
+                        </button>
+                        <textarea 
+                            readOnly 
+                            value={pixData.qrCode} 
+                            className="font-mono bg-gray-100 p-2 rounded-lg text-xs w-full max-w-xs h-20 resize-none text-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                            aria-label="Código Pix Copia e Cola"
+                        />
+                        <p className="text-2xl font-bold text-orange-600 mt-2">R$ {finalPriceWithFee.toFixed(2)}</p>
+                        <div className="mt-4 text-sm font-semibold text-gray-700" aria-live="polite">Tempo restante: {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}</div>
+                    </>
+                ) : isSubmitting ? (
+                    <Spinner message="Gerando QR Code..." />
+                ) : null}
+                {pixError && <p className="text-red-500 text-sm mt-2" role="alert">{pixError}</p>}
+            </div>
+        );
+    };
 
     const renderSuccess = () => (
         <div className="text-center flex flex-col items-center justify-center p-8" role="status" aria-live="assertive">
             <svg className="w-20 h-20 text-green-500 mb-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-            <h3 className="text-2xl font-bold text-gray-800">Pagamento Aprovado!</h3>
-            <p className="text-gray-600 mt-2">Seu pedido foi enviado para o restaurante. Você pode fechar esta janela.</p>
+            <h3 className="text-2xl font-bold text-gray-800">Pedido Enviado!</h3>
+            <p className="text-gray-600 mt-2">Seu pedido foi recebido pelo restaurante. Acompanhe o status na tela inicial.</p>
              <p className="text-sm text-gray-500 mt-4">Redirecionando em 4 segundos...</p>
         </div>
     );
@@ -595,7 +683,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 {currentStep === 'PIX_PAYMENT' && renderPixPayment()}
                 {currentStep === 'SUCCESS' && renderSuccess()}
                 
-                {(currentStep === 'SUMMARY' || currentStep === 'DETAILS' || currentStep === 'PIX_PAYMENT') && (
+                {(currentStep === 'SUMMARY' || currentStep === 'DETAILS' || (currentStep === 'PIX_PAYMENT' && !isManualPix)) && (
                     <div className="mt-auto p-4 border-t bg-gray-50 rounded-b-lg flex justify-between items-center">
                         {currentStep === 'SUMMARY' && (
                             <button
@@ -615,7 +703,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                 Voltar
                             </button>
                         )}
-                        {currentStep === 'PIX_PAYMENT' && (
+                        {currentStep === 'PIX_PAYMENT' && !isManualPix && (
                             <button
                                 type="button"
                                 onClick={handlePrevStep}
@@ -647,6 +735,17 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                 </button>
                             )}
                         </div>
+                    </div>
+                )}
+                 {currentStep === 'PIX_PAYMENT' && isManualPix && (
+                    <div className="mt-auto p-4 border-t bg-gray-50 rounded-b-lg flex justify-start">
+                         <button
+                            type="button"
+                            onClick={handlePrevStep}
+                            className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300"
+                        >
+                            Voltar / Cancelar
+                        </button>
                     </div>
                 )}
             </div>

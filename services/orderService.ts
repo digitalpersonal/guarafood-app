@@ -1,9 +1,34 @@
+
 import type { Order, OrderStatus, CartItem } from '../types';
 import { supabase, handleSupabaseError } from './api';
 
-// --- Real-time Order Subscription ---
+// Mapeia do Banco (snake_case) para o App (camelCase)
+const normalizeOrder = (data: any): Order => {
+    return {
+        id: data.id,
+        timestamp: data.timestamp || data.created_at,
+        status: data.status,
+        customerName: data.customer_name,
+        customerPhone: data.customer_phone,
+        customerAddress: data.customer_address,
+        items: data.items,
+        totalPrice: data.total_price,
+        restaurantId: data.restaurant_id,
+        restaurantName: data.restaurant_name,
+        restaurantAddress: data.restaurant_address,
+        restaurantPhone: data.restaurant_phone,
+        paymentMethod: data.payment_method,
+        couponCode: data.coupon_code,
+        discountAmount: data.discount_amount,
+        subtotal: data.subtotal,
+        deliveryFee: data.delivery_fee,
+        payment_id: data.payment_id,
+        payment_details: data.payment_details
+    };
+};
+
 export const subscribeToOrders = (callback: (orders: Order[]) => void, restaurantId?: number): (() => void) => {
-    // Initial fetch
+    // Busca inicial
     fetchOrders(restaurantId).then(callback).catch(console.error);
 
     const channelName = restaurantId ? `public:orders:restaurantId=eq.${restaurantId}` : 'public:orders';
@@ -16,39 +41,29 @@ export const subscribeToOrders = (callback: (orders: Order[]) => void, restauran
                 event: '*', 
                 schema: 'public', 
                 table: 'orders', 
-                filter: restaurantId ? `restaurantId=eq.${restaurantId}` : undefined 
+                filter: restaurantId ? `restaurant_id=eq.${restaurantId}` : undefined 
             },
             (payload) => {
-                console.log('Realtime change received!', payload);
-                // Refetch all orders for simplicity to ensure consistency
+                console.log('Change received!', payload);
                 fetchOrders(restaurantId).then(callback).catch(console.error);
             }
         )
-        .subscribe((status, err) => {
-            if (status === 'SUBSCRIBED') {
-                console.log(`Subscribed to orders for restaurant ${restaurantId ?? 'ALL'}`);
-            }
-            if (err) {
-                console.error(`Subscription error for restaurant ${restaurantId ?? 'ALL'}:`, err);
-            }
-        });
+        .subscribe();
 
-    // Return an unsubscribe function
     return () => {
-        console.log(`Unsubscribing from orders for restaurant ${restaurantId ?? 'ALL'}`);
         supabase.removeChannel(channel);
     };
 };
 
-
 export const fetchOrders = async (restaurantId?: number): Promise<Order[]> => {
     let query = supabase.from('orders').select('*');
     if (restaurantId) {
-        query = query.eq('restaurantId', restaurantId);
+        query = query.eq('restaurant_id', restaurantId);
     }
     const { data, error } = await query.order('timestamp', { ascending: false });
     handleSupabaseError({ error, customMessage: 'Failed to fetch orders' });
-    return data as Order[];
+    
+    return (data || []).map(normalizeOrder);
 };
 
 export interface NewOrderData {
@@ -75,28 +90,33 @@ export interface NewOrderData {
 }
 
 export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
+    // CONVERSÃO IMPORTANTE: CamelCase (App) -> snake_case (Banco)
     const newOrderPayload = {
-        ...orderData,
-        status: orderData.paymentMethod === 'Pix' ? 'Aguardando Pagamento' as OrderStatus : 'Novo Pedido' as OrderStatus,
+        customer_name: orderData.customerName,
+        customer_phone: orderData.customerPhone,
+        customer_address: orderData.customerAddress,
+        items: orderData.items,
+        total_price: orderData.totalPrice,
+        restaurant_id: orderData.restaurantId,
+        restaurant_name: orderData.restaurantName,
+        restaurant_address: orderData.restaurantAddress,
+        restaurant_phone: orderData.restaurantPhone,
+        payment_method: orderData.paymentMethod,
+        coupon_code: orderData.couponCode,
+        discount_amount: orderData.discountAmount,
+        subtotal: orderData.subtotal,
+        delivery_fee: orderData.deliveryFee,
+        status: orderData.paymentMethod === 'Pix' ? 'Aguardando Pagamento' : 'Novo Pedido',
         timestamp: new Date().toISOString(),
     };
+
     const { data, error } = await supabase.from('orders').insert(newOrderPayload).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to create order' });
-    return data as Order;
+    return normalizeOrder(data);
 };
 
 export const updateOrderStatus = async (orderId: string, status: OrderStatus): Promise<Order> => {
     const { data, error } = await supabase.from('orders').update({ status }).eq('id', orderId).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to update order status' });
-    return data as Order;
-};
-
-
-// The real-time order simulator is no longer needed as we are using Supabase Realtime.
-export const startOrderSimulator = () => {
-    console.log("Order simulator is deprecated. Using Supabase Realtime.");
-};
-
-export const stopOrderSimulator = () => {
-     console.log("Order simulator is deprecated. Using Supabase Realtime.");
+    return normalizeOrder(data);
 };

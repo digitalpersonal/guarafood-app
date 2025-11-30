@@ -6,6 +6,7 @@ import type { Order } from '../types';
 import OrdersView from './OrdersView';
 import MenuManagement from './MenuManagement';
 import RestaurantSettings from './RestaurantSettings';
+import PrintableOrder from './PrintableOrder';
 
 // Reusable Icons
 const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -20,35 +21,87 @@ const LogoutIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+const SpeakerIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+    </svg>
+);
+
 
 const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { currentUser, logout } = useAuth();
     const [activeTab, setActiveTab] = useState<'orders' | 'menu' | 'settings'>('orders');
     const [orders, setOrders] = useState<Order[]>([]);
-    const previousOrderIdsRef = useRef<Set<string>>(new Set());
+    
+    // State for Automatic Printing
+    const [orderToPrint, setOrderToPrint] = useState<Order | null>(null);
+    const [audioAllowed, setAudioAllowed] = useState(false);
+    
+    // Ref to track STATUS of orders, not just IDs. Map<OrderId, Status>
+    const previousOrdersStatusRef = useRef<Map<string, string>>(new Map());
+    const isFirstLoadRef = useRef(true);
     const audioCtxRef = useRef<AudioContext | null>(null);
 
-    const playNotificationSound = useCallback(() => {
+    // Initialize Audio Context on first user interaction
+    const enableAudio = useCallback(() => {
         if (!audioCtxRef.current) {
-            audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+            if (AudioContextClass) {
+                audioCtxRef.current = new AudioContextClass();
+                setAudioAllowed(true);
+            }
         }
-        const audioCtx = audioCtxRef.current;
-        if (audioCtx.state === 'suspended') {
-            audioCtx.resume();
+        if (audioCtxRef.current?.state === 'suspended') {
+            audioCtxRef.current.resume().then(() => {
+                setAudioAllowed(true);
+                console.log("Audio Context Resumed");
+            });
         }
+    }, []);
 
-        const oscillator = audioCtx.createOscillator();
-        const gainNode = audioCtx.createGain();
+    const playNotificationSound = useCallback(() => {
+        try {
+            if (!audioCtxRef.current) {
+                console.warn("Audio context not initialized yet. Waiting for user interaction.");
+                return;
+            }
+            
+            const audioCtx = audioCtxRef.current;
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            // "Ding-Dong" effect
+            const now = audioCtx.currentTime;
+            
+            // First tone (Ding)
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(660, now);
+            oscillator.frequency.exponentialRampToValueAtTime(880, now + 0.1);
+            
+            gainNode.gain.setValueAtTime(0.5, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 1.5);
         
-        oscillator.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
-        
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
-        gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
-    
-        oscillator.start(audioCtx.currentTime);
-        oscillator.stop(audioCtx.currentTime + 0.2);
+            oscillator.start(now);
+            oscillator.stop(now + 1.5);
+        } catch (e) {
+            console.error("Audio play failed", e);
+        }
+    }, []);
+
+    const triggerAutoPrint = useCallback((order: Order) => {
+        setOrderToPrint(order);
+        // Wait for React to render the PrintableOrder component in the hidden div
+        setTimeout(() => {
+            window.print();
+            // Optional: Clear order to print after printing dialog closes (or keeps it for reference)
+        }, 800); 
     }, []);
 
     useEffect(() => {
@@ -56,30 +109,60 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
         // Subscribe to orders and handle notifications
         const unsubscribe = subscribeToOrders((allOrders) => {
-            const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true' && Notification.permission === 'granted';
+            const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
 
-            if (areNotificationsEnabled && document.hidden) { // Only notify if tab is not active
-                const newOrders = allOrders.filter(order => 
-                    order.status === 'Novo Pedido' && !previousOrderIdsRef.current.has(order.id)
-                );
+            // Create a map of current order statuses
+            const currentStatusMap = new Map<string, string>();
+            allOrders.forEach(o => currentStatusMap.set(o.id, o.status));
 
-                if (newOrders.length > 0) {
-                    const newestOrder = newOrders[0];
-                    new Notification('Novo Pedido Recebido!', {
-                        body: `Cliente: ${newestOrder.customerName} - Total: R$ ${newestOrder.totalPrice.toFixed(2)}`,
-                        icon: '/vite.svg',
-                        tag: newestOrder.id
-                    });
+            // Only trigger effects if it's NOT the first load
+            if (!isFirstLoadRef.current) {
+                // Find orders that need alerting
+                const ordersToAlert = allOrders.filter(order => {
+                    const prevStatus = previousOrdersStatusRef.current.get(order.id);
+                    
+                    // Trigger if current status is 'Novo Pedido' AND
+                    // (It is a brand new order OR It existed but status changed to 'Novo Pedido')
+                    // This covers: 
+                    // 1. Pay on Delivery (Created as 'Novo Pedido')
+                    // 2. Pix (Created as 'Aguardando Pagamento' -> Changes to 'Novo Pedido')
+                    return order.status === 'Novo Pedido' && prevStatus !== 'Novo Pedido';
+                });
+
+                if (ordersToAlert.length > 0) {
+                    const newestOrder = ordersToAlert[0];
+                    console.log("Novo pedido (ou confirmação de pagamento) detectado:", newestOrder.id);
+                    
+                    // 1. Notification API (Visual)
+                    if (areNotificationsEnabled && Notification.permission === 'granted') {
+                         try {
+                             new Notification('Novo Pedido Recebido!', {
+                                body: `Pedido #${newestOrder.id.substring(0,6)} - R$ ${newestOrder.totalPrice.toFixed(2)}`,
+                                icon: '/vite.svg',
+                                tag: newestOrder.id
+                            });
+                         } catch (e) {
+                             console.error("Notification API error", e);
+                         }
+                    }
+                    
+                    // 2. Sound
                     playNotificationSound();
+
+                    // 3. Auto Print
+                    triggerAutoPrint(newestOrder);
                 }
             }
 
-            previousOrderIdsRef.current = new Set(allOrders.map(o => o.id));
+            // Update the Ref for next comparison
+            previousOrdersStatusRef.current = currentStatusMap;
             setOrders(allOrders);
+            isFirstLoadRef.current = false;
+
         }, currentUser.restaurantId);
         
         return () => unsubscribe();
-    }, [currentUser, playNotificationSound]);
+    }, [currentUser, playNotificationSound, triggerAutoPrint]);
 
     
     const renderContent = () => {
@@ -96,7 +179,15 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     }
     
     return (
-        <div className="w-full min-h-screen bg-gray-50">
+        <div className="w-full min-h-screen bg-gray-50" onClick={enableAudio} onTouchStart={enableAudio}>
+            {!audioAllowed && (
+                <div className="bg-orange-600 text-white text-center text-sm font-bold p-2 cursor-pointer animate-pulse" onClick={enableAudio}>
+                    <div className="flex items-center justify-center gap-2">
+                        <SpeakerIcon className="w-5 h-5" />
+                        Clique em qualquer lugar para ativar alertas sonoros
+                    </div>
+                </div>
+            )}
             <header className="p-4 sticky top-0 bg-gray-50 z-20 border-b">
                 <div className="flex justify-between items-center gap-4">
                     <div className="flex items-center space-x-4 flex-grow min-w-0">
@@ -137,6 +228,13 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             </div>
 
             {renderContent()}
+
+            {/* Hidden Area for Automatic Printing */}
+            <div className="hidden">
+                <div id="printable-order">
+                    {orderToPrint && <PrintableOrder order={orderToPrint} />}
+                </div>
+            </div>
         </div>
     );
 };

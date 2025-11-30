@@ -4,6 +4,7 @@ import type { Restaurant, OperatingHours, RestaurantCategory } from '../types';
 import { useNotification } from '../hooks/useNotification';
 import { supabase } from '../services/api';
 import { fetchRestaurantCategories } from '../services/databaseService';
+import { SUPABASE_URL } from '../config';
 
 interface RestaurantEditorModalProps {
     isOpen: boolean;
@@ -37,6 +38,12 @@ const EyeSlashIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+const ClipboardIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v3.043c0 .317-.135.619-.372.83h-9.312a1.125 1.125 0 01-1.125-1.125v-3.043c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+    </svg>
+);
+
 const getDefaultOperatingHours = (): OperatingHours[] =>
     daysOfWeek.map((_, index) => ({
         dayOfWeek: index,
@@ -62,6 +69,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         deliveryFee: 0,
         mercado_pago_credentials: { accessToken: '' },
         operatingHours: getDefaultOperatingHours(),
+        manualPixKey: '',
     });
     
     const [merchantEmail, setMerchantEmail] = useState('');
@@ -105,6 +113,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 operatingHours: existingRestaurant.operatingHours && existingRestaurant.operatingHours.length === 7 
                     ? existingRestaurant.operatingHours 
                     : getDefaultOperatingHours(),
+                manualPixKey: existingRestaurant.manualPixKey || '',
             });
             setLogoPreview(existingRestaurant.imageUrl);
         } else {
@@ -122,6 +131,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 deliveryFee: 0,
                 mercado_pago_credentials: { accessToken: '' },
                 operatingHours: getDefaultOperatingHours(),
+                manualPixKey: '',
             });
             setMerchantEmail('');
             setMerchantPassword('');
@@ -212,6 +222,14 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             paymentGateways: prev.paymentGateways.filter(g => g !== gatewayToRemove)
         }));
     };
+    
+    const handleCopyWebhook = () => {
+        if (existingRestaurant) {
+            const url = `${SUPABASE_URL}/functions/v1/payment-webhook?restaurantId=${existingRestaurant.id}`;
+            navigator.clipboard.writeText(url);
+            addToast({ message: 'URL do Webhook copiada!', type: 'success' });
+        }
+    };
 
     const handleSubmit = async () => {
         setError('');
@@ -286,6 +304,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             delivery_fee: formData.deliveryFee !== undefined ? parseFloat(String(formData.deliveryFee)) : 0,
             mercado_pago_credentials: formData.mercado_pago_credentials, 
             operating_hours: formData.operatingHours,
+            manual_pix_key: formData.manualPixKey,
         };
 
         try {
@@ -465,10 +484,51 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                         </div>
                     </div>
                     
-                     {/* Mercado Pago */}
-                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Credenciais do Mercado Pago</label>
-                        <input type="password" placeholder="Access Token" value={formData.mercado_pago_credentials?.accessToken || ''} onChange={handleCredentialsChange} className="w-full p-3 border rounded-lg bg-gray-50"/>
+                    {/* Manual Pix Key (Alternative) */}
+                    <div className="border-t pt-4">
+                         <label className="block text-sm font-medium text-gray-700 mb-1">Chave Pix Manual (Modo Simplificado)</label>
+                         <input 
+                            type="text" 
+                            placeholder="CPF, CNPJ, Email ou Celular (exibe para o cliente pagar)" 
+                            value={formData.manualPixKey || ''} 
+                            onChange={(e) => setFormData(prev => ({ ...prev, manualPixKey: e.target.value }))} 
+                            className="w-full p-3 border rounded-lg bg-gray-50"
+                        />
+                         <p className="text-xs text-gray-500 mt-1">
+                             ⚠️ <strong>Use este campo se o comando de terminal falhou.</strong> O sistema usará essa chave e pedirá o comprovante ao cliente.
+                         </p>
+                    </div>
+
+                    {/* Mercado Pago Automático */}
+                     <div className="border-t pt-4 bg-blue-50 p-4 rounded-lg">
+                        <h3 className="text-sm font-bold text-blue-800 mb-2">Automação com Mercado Pago (Opcional)</h3>
+                        <p className="text-xs text-blue-600 mb-3">Para confirmação automática de pagamento. Requer configuração avançada via terminal.</p>
+                        
+                        <div className="mb-3">
+                            <label className="block text-xs font-bold text-gray-700 mb-1">Passo 1: Access Token</label>
+                            <input type="password" placeholder="Cole o Access Token aqui..." value={formData.mercado_pago_credentials?.accessToken || ''} onChange={handleCredentialsChange} className="w-full p-2 border rounded-lg bg-white text-sm"/>
+                        </div>
+                        
+                        <div>
+                             <label className="block text-xs font-bold text-gray-700 mb-1">Passo 2: URL do Webhook</label>
+                             <div className="flex gap-2">
+                                <input 
+                                    type="text" 
+                                    readOnly 
+                                    value={existingRestaurant ? `${SUPABASE_URL}/functions/v1/payment-webhook?restaurantId=${existingRestaurant.id}` : 'Salve o restaurante primeiro para gerar este link.'} 
+                                    className="w-full p-2 border rounded-lg bg-gray-200 text-gray-600 text-xs font-mono"
+                                />
+                                <button 
+                                    type="button" 
+                                    onClick={handleCopyWebhook} 
+                                    disabled={!existingRestaurant}
+                                    className="bg-blue-600 text-white font-bold px-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 text-xs flex items-center"
+                                    title="Copiar URL"
+                                >
+                                    <ClipboardIcon className="w-4 h-4"/>
+                                </button>
+                             </div>
+                        </div>
                     </div>
                 </div>
 

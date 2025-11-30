@@ -1,6 +1,3 @@
-
-
-
 export interface Banner {
   id: number;
   title: string;
@@ -41,6 +38,8 @@ export interface Restaurant {
   deliveryFee: number;
   mercado_pago_credentials?: { accessToken: string };
   operatingHours?: OperatingHours[]; // The new detailed structure
+  manualPixKey?: string;
+  hasPixConfigured?: boolean;
 }
 
 export interface Addon {

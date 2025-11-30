@@ -3,7 +3,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-// Declare Deno to avoid TS errors in some environments
 declare const Deno: any;
 
 const corsHeaders = {
@@ -24,7 +23,7 @@ serve(async (req: Request) => {
 
     const { restaurantId, orderData } = await req.json()
 
-    // 1. Buscar credenciais do restaurante
+    // 1. Buscar credenciais
     const { data: restaurant, error: restError } = await supabaseClient
       .from('restaurants')
       .select('mercado_pago_credentials')
@@ -37,24 +36,38 @@ serve(async (req: Request) => {
 
     const accessToken = restaurant.mercado_pago_credentials.accessToken
 
-    // 2. Criar o pedido no Banco de Dados (Status: Aguardando Pagamento)
+    // 2. SALVAR PEDIDO NO BANCO (Mapeando para snake_case)
+    const dbOrderPayload = {
+      restaurant_id: orderData.restaurantId,
+      customer_name: orderData.customerName,
+      customer_phone: orderData.customerPhone,
+      customer_address: orderData.customerAddress,
+      items: orderData.items,
+      total_price: orderData.totalPrice,
+      restaurant_name: orderData.restaurantName,
+      restaurant_address: orderData.restaurantAddress,
+      restaurant_phone: orderData.restaurantPhone,
+      payment_method: orderData.paymentMethod,
+      coupon_code: orderData.couponCode,
+      discount_amount: orderData.discountAmount,
+      subtotal: orderData.subtotal,
+      delivery_fee: orderData.deliveryFee,
+      status: 'Aguardando Pagamento',
+      timestamp: new Date().toISOString()
+    }
+
     const { data: order, error: orderError } = await supabaseClient
       .from('orders')
-      .insert({
-        ...orderData,
-        status: 'Aguardando Pagamento',
-        timestamp: new Date().toISOString()
-      })
+      .insert(dbOrderPayload)
       .select()
       .single()
 
     if (orderError) throw new Error("Erro ao salvar pedido no banco: " + orderError.message)
     
-    // 3. URL de Notificação (Webhook)
-    // CRUCIAL: Incluímos o restaurantId na query string para que o webhook saiba qual token usar
+    // 3. Webhook URL
     const notificationUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/payment-webhook?restaurantId=${restaurantId}`;
 
-    // 4. Chamar API do Mercado Pago
+    // 4. Criar Pix no Mercado Pago
     const mpResponse = await fetch('https://api.mercadopago.com/v1/payments', {
       method: 'POST',
       headers: {
@@ -64,12 +77,12 @@ serve(async (req: Request) => {
       },
       body: JSON.stringify({
         transaction_amount: orderData.totalPrice,
-        description: `Pedido #${order.id.substring(0,6)} - ${order.restaurantName}`,
+        description: `Pedido #${order.id.substring(0,6)}`,
         payment_method_id: 'pix',
         payer: {
           email: 'cliente@email.com', 
           first_name: orderData.customerName.split(' ')[0],
-          last_name: orderData.customerName.split(' ').slice(1).join(' ') || 'Cliente',
+          last_name: 'Cliente'
         },
         external_reference: order.id, 
         notification_url: notificationUrl
@@ -79,12 +92,11 @@ serve(async (req: Request) => {
     const paymentData = await mpResponse.json()
 
     if (!mpResponse.ok) {
-      // Se falhar no MP, tentamos cancelar o pedido no DB para não ficar "sujo"
       await supabaseClient.from('orders').update({ status: 'Cancelado' }).eq('id', order.id);
-      throw new Error(`Erro Mercado Pago: ${paymentData.message || JSON.stringify(paymentData)}`)
+      throw new Error(`Erro Mercado Pago: ${paymentData.message || 'Verifique o token'}`)
     }
     
-    // Atualiza o pedido com o ID do pagamento do MP para referência futura
+    // Salva o ID do pagamento no pedido
     if (paymentData.id) {
          await supabaseClient.from('orders').update({ payment_id: String(paymentData.id) }).eq('id', order.id);
     }

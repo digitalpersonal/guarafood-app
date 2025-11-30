@@ -3,81 +3,145 @@ import { supabase, supabaseAnon, handleSupabaseError } from './api';
 import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory } from '../types';
 import { GoogleGenAI } from '@google/genai';
 
-// --- Helper: Normalize DB Data to CamelCase ---
-// This ensures that even if the DB returns snake_case (e.g. delivery_fee), 
-// the application logic receives camelCase (deliveryFee).
+// ==============================================================================
+// 🔄 NORMALIZADORES (Banco de Dados -> App)
+// Converte snake_case (do Postgres) para camelCase (do TypeScript)
+// ==============================================================================
+
 const normalizeRestaurant = (data: any): Restaurant => {
     if (!data) return data;
     return {
-        ...data,
-        deliveryFee: data.deliveryFee ?? data.delivery_fee,
-        deliveryTime: data.deliveryTime ?? data.delivery_time,
-        openingHours: data.openingHours ?? data.opening_hours,
-        closingHours: data.closingHours ?? data.closing_hours,
-        imageUrl: data.imageUrl ?? data.image_url,
-        paymentGateways: data.paymentGateways ?? data.payment_gateways,
-        operatingHours: data.operatingHours ?? data.operating_hours,
-        // mercado_pago_credentials matches types.ts, so we keep it as is or map it if needed
-        mercado_pago_credentials: data.mercado_pago_credentials ?? data.mercadoPagoCredentials
+        id: data.id,
+        name: data.name,
+        category: data.category,
+        description: data.description,
+        deliveryTime: data.delivery_time, // mapping
+        rating: data.rating,
+        imageUrl: data.image_url,         // mapping
+        paymentGateways: data.payment_gateways || [], // mapping
+        address: data.address,
+        phone: data.phone,
+        openingHours: data.opening_hours, // mapping
+        closingHours: data.closing_hours, // mapping
+        deliveryFee: data.delivery_fee,   // mapping
+        operatingHours: data.operating_hours, // mapping
+        mercado_pago_credentials: data.mercado_pago_credentials,
+        manualPixKey: data.manual_pix_key, // mapping
+        // Flag calculada (não vem do banco)
+        hasPixConfigured: (!!data.mercado_pago_credentials?.accessToken) || (!!data.manual_pix_key)
     };
 };
 
-// --- Data Fetching Functions ---
+const normalizeCategory = (data: any): MenuCategory => ({
+    ...data,
+    restaurantId: data.restaurant_id,
+    displayOrder: data.display_order,
+    iconUrl: data.icon_url
+});
 
-/**
- * PUBLIC: Fetches restaurants for the customer view.
- * CRITICAL: Explicitly removes sensitive credentials (mercado_pago_credentials) 
- * to prevent leaking private keys to the client browser.
- */
+const normalizeItem = (data: any): MenuItem => ({
+    ...data,
+    restaurantId: data.restaurant_id,
+    categoryId: data.category_id,
+    imageUrl: data.image_url,
+    originalPrice: data.original_price,
+    isPizza: data.is_pizza,
+    isAcai: data.is_acai,
+    isMarmita: data.is_marmita,
+    marmitaOptions: data.marmita_options,
+    isDailySpecial: data.is_daily_special,
+    isWeeklySpecial: data.is_weekly_special,
+    availableDays: data.available_days,
+    availableAddonIds: data.available_addon_ids
+});
+
+const normalizeCombo = (data: any): Combo => ({
+    ...data,
+    restaurantId: data.restaurant_id,
+    categoryId: data.category_id,
+    imageUrl: data.image_url,
+    originalPrice: data.original_price,
+    menuItemIds: data.menu_item_ids
+});
+
+const normalizeAddon = (data: any): Addon => ({
+    ...data,
+    restaurantId: data.restaurant_id
+});
+
+const normalizePromotion = (data: any): Promotion => ({
+    ...data,
+    restaurantId: data.restaurant_id,
+    discountType: data.discount_type,
+    discountValue: data.discount_value,
+    targetType: data.target_type,
+    targetIds: data.target_ids,
+    startDate: data.start_date,
+    endDate: data.end_date
+});
+
+const normalizeCoupon = (data: any): Coupon => ({
+    ...data,
+    restaurantId: data.restaurant_id,
+    discountType: data.discount_type,
+    discountValue: data.discount_value,
+    minOrderValue: data.min_order_value,
+    expirationDate: data.expiration_date,
+    isActive: data.is_active
+});
+
+const normalizeBanner = (data: any): Banner => ({
+    ...data,
+    imageUrl: data.image_url,
+    ctaText: data.cta_text,
+    targetType: data.target_type,
+    targetValue: data.target_value
+});
+
+
+// ==============================================================================
+// 🛠️ FUNÇÕES DE SERVIÇO
+// ==============================================================================
+
+// --- RESTAURANTS ---
+
 export const fetchRestaurants = async (): Promise<Restaurant[]> => {
     const { data, error } = await supabaseAnon.from('restaurants').select('*');
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants' });
     
-    const rawData = data || [];
-    
-    return rawData.map(r => {
-        const normalized = normalizeRestaurant(r);
-        // SECURITY: Remove sensitive credentials for public view
-        if (normalized.mercado_pago_credentials) {
-            delete normalized.mercado_pago_credentials;
-        }
-        return normalized;
-    });
+    return (data || [])
+        .filter(r => r.name.toLowerCase() !== 'bella pizza') 
+        .map(r => {
+            const normalized = normalizeRestaurant(r);
+            // Segurança: Remove credenciais no front público
+            if (normalized.mercado_pago_credentials) {
+                delete normalized.mercado_pago_credentials;
+            }
+            return normalized;
+        });
 };
 
-/**
- * SECURE: Fetches all restaurants for the Admin Dashboard.
- * Uses the authenticated 'supabase' client and includes all fields.
- */
 export const fetchRestaurantsSecure = async (): Promise<Restaurant[]> => {
     const { data, error } = await supabase.from('restaurants').select('*');
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants (secure)' });
     
-    // Admin sees all data, no filtering or stripping.
-    return (data || []).map(normalizeRestaurant);
+    return (data || [])
+        .filter(r => r.name.toLowerCase() !== 'bella pizza') 
+        .map(normalizeRestaurant);
 };
 
-/**
- * PUBLIC: Fetches a single restaurant by ID.
- * CRITICAL: Explicitly removes sensitive credentials.
- */
 export const fetchRestaurantById = async (id: number): Promise<Restaurant> => {
     const { data, error } = await supabaseAnon.from('restaurants').select('*').eq('id', id).single();
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurant' });
     if (!data) throw new Error('Restaurant not found');
     
     const normalized = normalizeRestaurant(data);
-    // SECURITY: Remove sensitive credentials for public fetch
     if (normalized.mercado_pago_credentials) {
         delete normalized.mercado_pago_credentials;
     }
     return normalized;
 };
 
-/**
- * SECURE: Fetches a single restaurant for the Merchant Settings panel.
- * Uses the authenticated 'supabase' client and includes credentials.
- */
 export const fetchRestaurantByIdSecure = async (id: number): Promise<Restaurant> => {
     const { data, error } = await supabase.from('restaurants').select('*').eq('id', id).single();
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurant details' });
@@ -85,35 +149,73 @@ export const fetchRestaurantByIdSecure = async (id: number): Promise<Restaurant>
     return normalizeRestaurant(data);
 };
 
+export const updateRestaurant = async (id: number, restaurantData: Partial<Restaurant>): Promise<Restaurant> => {
+    // MAPEAMENTO EXPLÍCITO: CamelCase -> snake_case
+    // Isso garante que nunca enviaremos chaves erradas para o banco.
+    const payload: any = {};
+    
+    if (restaurantData.name !== undefined) payload.name = restaurantData.name;
+    if (restaurantData.category !== undefined) payload.category = restaurantData.category;
+    if (restaurantData.deliveryTime !== undefined) payload.delivery_time = restaurantData.deliveryTime;
+    if (restaurantData.rating !== undefined) payload.rating = restaurantData.rating;
+    if (restaurantData.imageUrl !== undefined) payload.image_url = restaurantData.imageUrl;
+    if (restaurantData.paymentGateways !== undefined) payload.payment_gateways = restaurantData.paymentGateways;
+    if (restaurantData.address !== undefined) payload.address = restaurantData.address;
+    if (restaurantData.phone !== undefined) payload.phone = restaurantData.phone;
+    if (restaurantData.openingHours !== undefined) payload.opening_hours = restaurantData.openingHours;
+    if (restaurantData.closingHours !== undefined) payload.closing_hours = restaurantData.closingHours;
+    if (restaurantData.deliveryFee !== undefined) payload.delivery_fee = restaurantData.deliveryFee;
+    if (restaurantData.operatingHours !== undefined) payload.operating_hours = restaurantData.operatingHours;
+    if (restaurantData.mercado_pago_credentials !== undefined) payload.mercado_pago_credentials = restaurantData.mercado_pago_credentials;
+    if (restaurantData.manualPixKey !== undefined) payload.manual_pix_key = restaurantData.manualPixKey;
+
+    const { data, error } = await supabase.from('restaurants').update(payload).eq('id', id).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to update restaurant' });
+    return normalizeRestaurant(data);
+};
+
+export const deleteRestaurant = async (id: number): Promise<void> => {
+    const { error } = await supabase.functions.invoke('delete-restaurant-and-user', {
+        body: { restaurantId: id },
+    });
+
+     if (error) {
+        console.warn("Edge function failed, falling back to direct SQL delete.", error);
+        const { error: dbError } = await supabase.from('restaurants').delete().eq('id', id);
+        if (dbError) handleSupabaseError({ error: dbError, customMessage: 'Failed to delete restaurant' });
+    }
+};
+
+// --- RESTAURANT CATEGORIES ---
+
 export const fetchRestaurantCategories = async (): Promise<RestaurantCategory[]> => {
     const { data, error } = await supabaseAnon.from('restaurant_categories').select('*').order('name');
-    
     if (error) {
-         console.warn('Failed to fetch restaurant categories, utilizing default list.', error);
-         // Fallback defaults if table doesn't exist or connection fails
+         console.warn('Using default categories due to fetch error:', error);
          return [
-            { id: 1, name: 'Lanches' },
-            { id: 2, name: 'Pizza' },
-            { id: 3, name: 'Japonesa' },
-            { id: 4, name: 'Brasileira' },
-            { id: 5, name: 'Açaí' },
-            { id: 6, name: 'Doces & Bolos' },
-            { id: 7, name: 'Marmita' },
-            { id: 8, name: 'Bebidas' },
-            { id: 9, name: 'Padaria' },
-            { id: 10, name: 'Supermercado' },
-            { id: 11, name: 'Farmácia' },
-            { id: 12, name: 'Pet Shop' },
-            { id: 13, name: 'Sorvetes' },
-            { id: 14, name: 'Pastel' }
+            { id: 1, name: 'Lanches' }, { id: 2, name: 'Pizza' }, { id: 3, name: 'Japonesa' },
+            { id: 4, name: 'Brasileira' }, { id: 5, name: 'Açaí' }
         ];
     }
     return data as RestaurantCategory[];
 };
 
+export const createRestaurantCategory = async (name: string): Promise<RestaurantCategory> => {
+    const { data, error } = await supabase.from('restaurant_categories').insert({ name }).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to create restaurant category' });
+    return data;
+};
+
+export const deleteRestaurantCategory = async (id: number): Promise<void> => {
+    const { error } = await supabase.from('restaurant_categories').delete().eq('id', id);
+    handleSupabaseError({ error, customMessage: 'Failed to delete restaurant category' });
+};
+
+// --- MENU & ITEMS ---
+
 export const fetchMenuForRestaurant = async (restaurant: Restaurant | number): Promise<MenuCategory[]> => {
     const restaurantId = typeof restaurant === 'number' ? restaurant : restaurant.id;
-    const currentDay = new Date().getDay(); // 0=Sun, 1=Mon, etc.
+    const currentDay = new Date().getDay();
 
     try {
         const { data: menuData, error } = await supabaseAnon
@@ -124,73 +226,372 @@ export const fetchMenuForRestaurant = async (restaurant: Restaurant | number): P
                 combos(*)
             `)
             .eq('restaurant_id', restaurantId)
-            .order('displayOrder', { ascending: true });
+            .order('display_order', { ascending: true }); // snake_case in order
 
         handleSupabaseError({ error, customMessage: "Could not fetch the restaurant's menu" });
 
-        const menuWithFilteredItems = (menuData || []).map((category: any) => ({
-            ...category,
-            items: (category.items || []).filter((item: MenuItem) => 
+        const rawMenu = menuData || [];
+        const menuWithFilteredItems = rawMenu.map((category: any) => {
+            const normalizedCat = normalizeCategory(category);
+            
+            // Normalize items and filter by day
+            const items = (category.items || []).map(normalizeItem).filter((item: MenuItem) => 
                 !item.availableDays || item.availableDays.length === 0 || item.availableDays.includes(currentDay)
-            )
-        }));
+            );
+            
+            // Normalize combos
+            const combos = (category.combos || []).map(normalizeCombo);
+
+            return { ...normalizedCat, items, combos };
+        });
 
         const promotions = await fetchPromotionsForRestaurant(restaurantId);
-        return applyPromotionsToMenu(menuWithFilteredItems as MenuCategory[] || [], promotions);
+        return applyPromotionsToMenu(menuWithFilteredItems, promotions);
 
     } catch (error: any) {
-        console.error('Failed to fetch menu from Supabase', error);
+        console.error('Failed to fetch menu', error);
         throw new Error(`Failed to fetch menu: ${error.message}`);
     }
 };
 
-
 export const fetchAddonsForRestaurant = async (restaurant: Restaurant | number): Promise<Addon[]> => {
      const restaurantId = typeof restaurant === 'number' ? restaurant : restaurant.id;
     try {
-        const { data, error } = await supabaseAnon
-            .from('addons')
-            .select('*')
-            .eq('restaurant_id', restaurantId);
-
-        handleSupabaseError({ error, customMessage: "Could not fetch addons for the restaurant" });
-        return data || [];
-        
+        const { data, error } = await supabaseAnon.from('addons').select('*').eq('restaurant_id', restaurantId);
+        handleSupabaseError({ error, customMessage: "Could not fetch addons" });
+        return (data || []).map(normalizeAddon);
     } catch (error: any) {
-        console.error('Failed to fetch addons from Supabase', error);
         throw new Error(`Failed to fetch addons: ${error.message}`);
     }
 };
 
-export const fetchActiveBanners = async (): Promise<Banner[]> => {
-    const { data, error } = await supabaseAnon.from('banners').select('*').eq('active', true);
-    if (error) {
-        console.warn("Failed to fetch banners from DB, using fallback.");
-        return [];
+export const createMenuItem = async (restaurantId: number, itemData: any): Promise<MenuItem> => {
+    const { category, ...rest } = itemData;
+    
+    // Find or create category
+    let { data: catData } = await supabase.from('menu_categories')
+        .select('id')
+        .eq('restaurant_id', restaurantId)
+        .eq('name', category)
+        .single();
+        
+    if (!catData) {
+        catData = await createCategoryInternal(restaurantId, category);
     }
-    return data || [];
+
+    const payload = {
+        restaurant_id: restaurantId,
+        category_id: catData.id,
+        name: rest.name,
+        description: rest.description,
+        price: rest.price,
+        original_price: rest.originalPrice,
+        image_url: rest.imageUrl,
+        is_pizza: rest.isPizza,
+        is_acai: rest.isAcai,
+        is_marmita: rest.isMarmita,
+        marmita_options: rest.marmitaOptions,
+        is_daily_special: rest.isDailySpecial,
+        is_weekly_special: rest.isWeeklySpecial,
+        available_days: rest.availableDays,
+        sizes: rest.sizes,
+        available_addon_ids: rest.availableAddonIds
+    };
+
+    const { data, error } = await supabase.from('menu_items').insert(payload).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to create menu item' });
+    return normalizeItem(data);
 };
 
-// --- GENERIC BANNER MANAGEMENT ---
+export const updateMenuItem = async (restaurantId: number, itemId: number, itemData: any): Promise<MenuItem> => {
+    const payload: any = {};
+    // Map fields
+    if (itemData.name) payload.name = itemData.name;
+    if (itemData.description) payload.description = itemData.description;
+    if (itemData.price) payload.price = itemData.price;
+    if (itemData.originalPrice !== undefined) payload.original_price = itemData.originalPrice;
+    if (itemData.imageUrl) payload.image_url = itemData.imageUrl;
+    if (itemData.isPizza !== undefined) payload.is_pizza = itemData.isPizza;
+    if (itemData.isAcai !== undefined) payload.is_acai = itemData.isAcai;
+    if (itemData.isMarmita !== undefined) payload.is_marmita = itemData.isMarmita;
+    if (itemData.marmitaOptions) payload.marmita_options = itemData.marmitaOptions;
+    if (itemData.isDailySpecial !== undefined) payload.is_daily_special = itemData.isDailySpecial;
+    if (itemData.isWeeklySpecial !== undefined) payload.is_weekly_special = itemData.isWeeklySpecial;
+    if (itemData.availableDays) payload.available_days = itemData.availableDays;
+    if (itemData.sizes) payload.sizes = itemData.sizes;
+    if (itemData.availableAddonIds) payload.available_addon_ids = itemData.availableAddonIds;
+
+    // Handle Category Change
+    if (itemData.category) {
+        let { data: catData } = await supabase.from('menu_categories')
+            .select('id')
+            .eq('restaurant_id', restaurantId)
+            .eq('name', itemData.category)
+            .single();
+        if (!catData) catData = await createCategoryInternal(restaurantId, itemData.category);
+        payload.category_id = catData.id;
+    }
+
+    const { data, error } = await supabase.from('menu_items').update(payload).eq('id', itemId).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to update menu item' });
+    return normalizeItem(data);
+};
+
+export const deleteMenuItem = async (restaurantId: number, itemId: number): Promise<void> => {
+    const { error } = await supabase.from('menu_items').delete().eq('id', itemId).eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to delete menu item' });
+};
+
+// --- CATEGORIES (Internal) ---
+
+const createCategoryInternal = async (restaurantId: number, name: string) => {
+    const { data: maxOrder } = await supabase.from('menu_categories')
+        .select('display_order')
+        .eq('restaurant_id', restaurantId)
+        .order('display_order', { ascending: false })
+        .limit(1)
+        .single();
+        
+    const newOrder = (maxOrder?.display_order ?? -1) + 1;
+    
+    const { data, error } = await supabase.from('menu_categories')
+        .insert({ name, restaurant_id: restaurantId, display_order: newOrder })
+        .select('id, name')
+        .single();
+        
+    if (error) throw error;
+    return data;
+};
+
+export const createCategory = async (restaurantId: number, name: string, iconUrl?: string | null): Promise<MenuCategory> => {
+    const { data: maxOrder } = await supabase.from('menu_categories')
+        .select('display_order')
+        .eq('restaurant_id', restaurantId)
+        .order('display_order', { ascending: false })
+        .limit(1)
+        .single();
+    const newOrder = (maxOrder?.display_order ?? -1) + 1;
+
+    const payload = {
+        name,
+        restaurant_id: restaurantId,
+        display_order: newOrder,
+        icon_url: iconUrl
+    };
+
+    const { data, error } = await supabase.from('menu_categories').insert(payload).select().single();
+    
+    // Handle race condition (if created simultaneously)
+    if (error && error.code === '23505') {
+        const { data: existing } = await supabase.from('menu_categories').select('*').eq('restaurant_id', restaurantId).eq('name', name).single();
+        if (existing) return { ...normalizeCategory(existing), items: [], combos: [] };
+    }
+    
+    handleSupabaseError({ error, customMessage: 'Failed to create category' });
+    return { ...normalizeCategory(data), items: [], combos: [] };
+};
+
+export const updateCategory = async (restaurantId: number, categoryId: number, newName: string, newIconUrl?: string | null): Promise<void> => {
+    const payload: any = { name: newName };
+    if (newIconUrl !== undefined) payload.icon_url = newIconUrl;
+    
+    const { error } = await supabase.from('menu_categories').update(payload).eq('id', categoryId);
+    handleSupabaseError({ error, customMessage: 'Failed to update category' });
+};
+
+export const deleteCategory = async (restaurantId: number, name: string): Promise<void> => {
+    const { error } = await supabase.from('menu_categories').delete().eq('restaurant_id', restaurantId).eq('name', name);
+    handleSupabaseError({ error, customMessage: 'Failed to delete category' });
+};
+
+export const updateCategoryOrder = async (restaurantId: number, categories: MenuCategory[]): Promise<void> => {
+    const updates = categories.map((category, index) => ({
+        id: category.id,
+        display_order: index,
+        restaurant_id: restaurantId // Required for upsert to match partition/index if defined
+    }));
+    const { error } = await supabase.from('menu_categories').upsert(updates);
+    handleSupabaseError({ error, customMessage: 'Failed to update category order' });
+};
+
+// --- COMBOS ---
+
+export const createCombo = async (restaurantId: number, comboData: any): Promise<Combo> => {
+    const payload = {
+        restaurant_id: restaurantId,
+        name: comboData.name,
+        description: comboData.description,
+        price: comboData.price,
+        image_url: comboData.imageUrl,
+        menu_item_ids: comboData.menuItemIds
+    };
+    const { data, error } = await supabase.from('combos').insert(payload).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to create combo' });
+    return normalizeCombo(data);
+};
+
+export const updateCombo = async (restaurantId: number, comboId: number, comboData: any): Promise<Combo> => {
+    const payload: any = {};
+    if (comboData.name) payload.name = comboData.name;
+    if (comboData.description) payload.description = comboData.description;
+    if (comboData.price) payload.price = comboData.price;
+    if (comboData.imageUrl) payload.image_url = comboData.imageUrl;
+    if (comboData.menuItemIds) payload.menu_item_ids = comboData.menuItemIds;
+
+    const { data, error } = await supabase.from('combos').update(payload).eq('id', comboId).eq('restaurant_id', restaurantId).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to update combo' });
+    return normalizeCombo(data);
+};
+
+export const deleteCombo = async (restaurantId: number, comboId: number): Promise<void> => {
+    const { error } = await supabase.from('combos').delete().eq('id', comboId).eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to delete combo' });
+};
+
+// --- PROMOTIONS & COUPONS ---
+
+export const fetchPromotionsForRestaurant = async (restaurantId: number): Promise<Promotion[]> => {
+    const { data, error } = await supabaseAnon.from('promotions').select('*').eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to fetch promotions' });
+    return (data || []).map(normalizePromotion);
+};
+
+export const createPromotion = async (restaurantId: number, promoData: any): Promise<Promotion> => {
+    const payload = {
+        restaurant_id: restaurantId,
+        name: promoData.name,
+        description: promoData.description,
+        discount_type: promoData.discountType,
+        discount_value: promoData.discountValue,
+        target_type: promoData.targetType,
+        target_ids: promoData.targetIds,
+        start_date: promoData.startDate,
+        end_date: promoData.endDate
+    };
+    const { data, error } = await supabase.from('promotions').insert(payload).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to create promotion' });
+    return normalizePromotion(data);
+};
+
+export const updatePromotion = async (restaurantId: number, promoId: number, promoData: any): Promise<Promotion> => {
+    const payload: any = {};
+    // Auto-map simple fields, manual map snake_case
+    if (promoData.name) payload.name = promoData.name;
+    if (promoData.description) payload.description = promoData.description;
+    if (promoData.discountType) payload.discount_type = promoData.discountType;
+    if (promoData.discountValue) payload.discount_value = promoData.discountValue;
+    if (promoData.targetType) payload.target_type = promoData.targetType;
+    if (promoData.targetIds) payload.target_ids = promoData.targetIds;
+    if (promoData.startDate) payload.start_date = promoData.startDate;
+    if (promoData.endDate) payload.end_date = promoData.endDate;
+
+    const { data, error } = await supabase.from('promotions').update(payload).eq('id', promoId).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to update promotion' });
+    return normalizePromotion(data);
+};
+
+export const deletePromotion = async (restaurantId: number, promoId: number): Promise<void> => {
+    const { error } = await supabase.from('promotions').delete().eq('id', promoId).eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to delete promotion' });
+};
+
+export const fetchCouponsForRestaurant = async (restaurantId: number): Promise<Coupon[]> => {
+    const { data, error } = await supabaseAnon.from('coupons').select('*').eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to fetch coupons' });
+    return (data || []).map(normalizeCoupon);
+};
+
+export const createCoupon = async (restaurantId: number, couponData: any): Promise<Coupon> => {
+    const payload = {
+        restaurant_id: restaurantId,
+        code: couponData.code.toUpperCase(),
+        description: couponData.description,
+        discount_type: couponData.discountType,
+        discount_value: couponData.discountValue,
+        min_order_value: couponData.minOrderValue,
+        expiration_date: couponData.expirationDate,
+        is_active: couponData.isActive
+    };
+    const { data, error } = await supabase.from('coupons').insert(payload).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to create coupon' });
+    return normalizeCoupon(data);
+};
+
+export const updateCoupon = async (restaurantId: number, couponId: number, couponData: any): Promise<Coupon> => {
+    const payload: any = {};
+    if (couponData.code) payload.code = couponData.code.toUpperCase();
+    if (couponData.description) payload.description = couponData.description;
+    if (couponData.discountType) payload.discount_type = couponData.discountType;
+    if (couponData.discountValue) payload.discount_value = couponData.discountValue;
+    if (couponData.minOrderValue !== undefined) payload.min_order_value = couponData.minOrderValue;
+    if (couponData.expirationDate) payload.expiration_date = couponData.expirationDate;
+    if (couponData.isActive !== undefined) payload.is_active = couponData.isActive;
+
+    const { data, error } = await supabase.from('coupons').update(payload).eq('id', couponId).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to update coupon' });
+    return normalizeCoupon(data);
+};
+
+export const deleteCoupon = async (restaurantId: number, couponId: number): Promise<void> => {
+    const { error } = await supabase.from('coupons').delete().eq('id', couponId).eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to delete coupon' });
+};
+
+export const validateCouponByCode = async (code: string, restaurantId: number): Promise<Coupon | null> => {
+    const { data, error } = await supabaseAnon.from('coupons')
+        .select('*')
+        .eq('code', code.toUpperCase())
+        .eq('restaurant_id', restaurantId)
+        .single();
+        
+    if (error && error.code !== 'PGRST116') {
+        handleSupabaseError({ error, customMessage: 'Failed to validate coupon' });
+    }
+    return data ? normalizeCoupon(data) : null;
+};
+
+// --- BANNERS ---
+
 export const fetchBanners = async (): Promise<Banner[]> => {
     const { data, error } = await supabase.from('banners').select('*').order('id', { ascending: false });
-    if (error) {
-        console.warn("Error fetching banners (table might be missing):", error);
-        return [];
-    }
-    return data || [];
+    if (error) { console.warn("Error fetching banners:", error); return []; }
+    return (data || []).map(normalizeBanner);
 };
 
-export const createBanner = async (bannerData: Omit<Banner, 'id'>): Promise<Banner> => {
-    const { data, error } = await supabase.from('banners').insert(bannerData).select().single();
+export const fetchActiveBanners = async (): Promise<Banner[]> => {
+    const { data, error } = await supabaseAnon.from('banners').select('*').eq('active', true);
+    if (error) return [];
+    return (data || []).map(normalizeBanner);
+};
+
+export const createBanner = async (bannerData: any): Promise<Banner> => {
+    const payload = {
+        title: bannerData.title,
+        description: bannerData.description,
+        image_url: bannerData.imageUrl,
+        cta_text: bannerData.ctaText,
+        target_type: bannerData.targetType,
+        target_value: bannerData.targetValue,
+        active: bannerData.active
+    };
+    const { data, error } = await supabase.from('banners').insert(payload).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to create banner' });
-    return data;
+    return normalizeBanner(data);
 };
 
-export const updateBanner = async (id: number, bannerData: Partial<Banner>): Promise<Banner> => {
-    const { data, error } = await supabase.from('banners').update(bannerData).eq('id', id).select().single();
+export const updateBanner = async (id: number, bannerData: any): Promise<Banner> => {
+    const payload: any = {};
+    if (bannerData.title) payload.title = bannerData.title;
+    if (bannerData.description) payload.description = bannerData.description;
+    if (bannerData.imageUrl) payload.image_url = bannerData.imageUrl;
+    if (bannerData.ctaText) payload.cta_text = bannerData.ctaText;
+    if (bannerData.targetType) payload.target_type = bannerData.targetType;
+    if (bannerData.targetValue) payload.target_value = bannerData.targetValue;
+    if (bannerData.active !== undefined) payload.active = bannerData.active;
+
+    const { data, error } = await supabase.from('banners').update(payload).eq('id', id).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to update banner' });
-    return data;
+    return normalizeBanner(data);
 };
 
 export const deleteBanner = async (id: number): Promise<void> => {
@@ -198,8 +599,8 @@ export const deleteBanner = async (id: number): Promise<void> => {
     handleSupabaseError({ error, customMessage: 'Failed to delete banner' });
 };
 
+// --- HELPER LOGIC (Promotions) ---
 
-// --- PROMOTION LOGIC ---
 const applyPromotionsToMenu = (menu: MenuCategory[], promotions: Promotion[]): MenuCategory[] => {
     const now = new Date();
     const activePromotions = promotions.filter(promo => {
@@ -227,17 +628,18 @@ const applyPromotionsToMenu = (menu: MenuCategory[], promotions: Promotion[]): M
     };
 
     return menu.map(category => {
+        // Promoção de Categoria inteira
+        const categoryPromo = activePromotions.find(p => p.targetType === 'CATEGORY' && p.targetIds.includes(category.name));
+
         return {
             ...category,
             items: category.items.map(item => {
                 const itemPromo = activePromotions.find(p => p.targetType === 'ITEM' && p.targetIds.includes(item.id));
-                const categoryPromo = activePromotions.find(p => p.targetType === 'CATEGORY' && p.targetIds.includes(category.name));
                 const promo = itemPromo || categoryPromo;
                 return promo ? applyPromotion(item, promo) : item;
             }),
             combos: category.combos?.map(combo => {
                  const comboPromo = activePromotions.find(p => p.targetType === 'COMBO' && p.targetIds.includes(combo.id));
-                 const categoryPromo = activePromotions.find(p => p.targetType === 'CATEGORY' && p.targetIds.includes(category.name));
                  const promo = comboPromo || categoryPromo;
                 return promo ? applyPromotion(combo, promo) : combo;
             }),
@@ -265,258 +667,4 @@ export const generateImage = async (
         throw new Error("Image generation failed to return an image.");
     }
     return `data:image/jpeg;base64,${base64ImageBytes}`;
-};
-
-
-// --- CRUD Operations ---
-
-// Restaurants
-export const updateRestaurant = async (id: number, restaurantData: Partial<Restaurant>): Promise<Restaurant> => {
-    // Map keys to match snake_case schema structure for all fields to ensure compatibility
-    const payload: any = { ...restaurantData };
-
-    if (payload.imageUrl) {
-        payload.image_url = payload.imageUrl;
-        delete payload.imageUrl;
-    }
-    if (payload.paymentGateways) {
-        payload.payment_gateways = payload.paymentGateways;
-        delete payload.paymentGateways;
-    }
-    if (payload.openingHours) {
-        payload.opening_hours = payload.openingHours;
-        delete payload.openingHours;
-    }
-    if (payload.closingHours) {
-        payload.closing_hours = payload.closingHours;
-        delete payload.closingHours;
-    }
-    if (payload.operatingHours) {
-        payload.operating_hours = payload.operatingHours;
-        delete payload.operatingHours;
-    }
-    // Explicit mapping for delivery fields to snake_case.
-    // Uses 'in' operator to detect key presence even if value is undefined/null.
-    if ('deliveryTime' in payload) {
-        payload.delivery_time = payload.deliveryTime;
-        delete payload.deliveryTime;
-    }
-    if ('deliveryFee' in payload) {
-        payload.delivery_fee = payload.deliveryFee;
-        delete payload.deliveryFee;
-    }
-
-    const { data, error } = await supabase.from('restaurants').update(payload).eq('id', id).select().single();
-    handleSupabaseError({ error, customMessage: 'Failed to update restaurant' });
-    return normalizeRestaurant(data);
-};
-
-export const deleteRestaurant = async (id: number): Promise<void> => {
-    // First try using the Edge Function to delete everything (restaurant + auth user)
-    const { error } = await supabase.functions.invoke('delete-restaurant-and-user', {
-        body: { restaurantId: id },
-    });
-
-     if (error) {
-        console.warn("Edge function failed (likely not configured), falling back to direct SQL delete.", error);
-        
-        // Fallback: Try deleting the restaurant record directly.
-        // This might fail if RLS rules are strict or if foreign keys restrict it,
-        // but it handles the case where the user just wants to remove "ghost" data from the main table.
-        const { error: dbError } = await supabase.from('restaurants').delete().eq('id', id);
-        
-        if (dbError) {
-            handleSupabaseError({ error: dbError, customMessage: 'Failed to delete restaurant (both Function and Direct methods failed)' });
-        }
-    }
-};
-
-// Promotions
-export const fetchPromotionsForRestaurant = async (restaurantId: number): Promise<Promotion[]> => {
-    const { data, error } = await supabaseAnon.from('promotions').select('*').eq('restaurantId', restaurantId);
-    handleSupabaseError({ error, customMessage: 'Failed to fetch promotions' });
-    return data || [];
-};
-
-export const createPromotion = async (restaurantId: number, promoData: Omit<Promotion, 'id' | 'restaurantId'>): Promise<Promotion> => {
-    const payload = { ...promoData, restaurantId };
-    const { data, error } = await supabase.from('promotions').insert(payload).select().single();
-    handleSupabaseError({ error, customMessage: 'Failed to create promotion' });
-    return data;
-};
-
-export const updatePromotion = async (restaurantId: number, promoId: number, promoData: Partial<Promotion>): Promise<Promotion> => {
-    const { data, error } = await supabase.from('promotions').update(promoData).eq('id', promoId).eq('restaurantId', restaurantId).select().single();
-    handleSupabaseError({ error, customMessage: 'Failed to update promotion' });
-    return data;
-};
-
-export const deletePromotion = async (restaurantId: number, promoId: number): Promise<void> => {
-    const { error } = await supabase.from('promotions').delete().eq('id', promoId).eq('restaurantId', restaurantId);
-    handleSupabaseError({ error, customMessage: 'Failed to delete promotion' });
-};
-
-
-// Coupons
-export const fetchCouponsForRestaurant = async (restaurantId: number): Promise<Coupon[]> => {
-    const { data, error } = await supabaseAnon.from('coupons').select('*').eq('restaurantId', restaurantId);
-    handleSupabaseError({ error, customMessage: 'Failed to fetch coupons' });
-    return data || [];
-};
-
-export const createCoupon = async (restaurantId: number, couponData: Omit<Coupon, 'id' | 'restaurantId'>): Promise<Coupon> => {
-    const payload = { ...couponData, restaurantId, code: couponData.code.toUpperCase() };
-    const { data, error } = await supabase.from('coupons').insert(payload).select().single();
-    handleSupabaseError({ error, customMessage: 'Failed to create coupon' });
-    return data;
-};
-
-export const updateCoupon = async (restaurantId: number, couponId: number, couponData: Partial<Omit<Coupon, 'id' | 'restaurantId'>>): Promise<Coupon> => {
-    const payload = { ...couponData };
-    if (payload.code) {
-        payload.code = payload.code.toUpperCase();
-    }
-    const { data, error } = await supabase.from('coupons').update(payload).eq('id', couponId).eq('restaurantId', restaurantId).select().single();
-    handleSupabaseError({ error, customMessage: 'Failed to update coupon' });
-    return data;
-};
-
-export const deleteCoupon = async (restaurantId: number, couponId: number): Promise<void> => {
-    const { error } = await supabase.from('coupons').delete().eq('id', couponId).eq('restaurantId', restaurantId);
-    handleSupabaseError({ error, customMessage: 'Failed to delete coupon' });
-};
-
-export const validateCouponByCode = async (code: string, restaurantId: number): Promise<Coupon | null> => {
-    const { data, error } = await supabaseAnon.from('coupons').select('*').eq('code', code.toUpperCase()).eq('restaurantId', restaurantId).single();
-    if (error && error.code !== 'PGRST116') {
-        handleSupabaseError({ error, customMessage: 'Failed to validate coupon' });
-    }
-    return data;
-};
-
-
-// Combos
-export const createCombo = async (restaurantId: number, comboData: Omit<Combo, 'id' | 'restaurantId'>): Promise<Combo> => {
-    const payload = { ...comboData, restaurantId };
-    const { data, error } = await supabase.from('combos').insert(payload).select().single();
-    handleSupabaseError({ error, customMessage: 'Failed to create combo' });
-    return data;
-};
-
-export const updateCombo = async (restaurantId: number, comboId: number, comboData: Partial<Combo>): Promise<Combo> => {
-    const { data, error } = await supabase.from('combos').update(comboData).eq('id', comboId).eq('restaurantId', restaurantId).select().single();
-    handleSupabaseError({ error, customMessage: 'Failed to update combo' });
-    return data;
-};
-
-export const deleteCombo = async (restaurantId: number, comboId: number): Promise<void> => {
-    const { error } = await supabase.from('combos').delete().eq('id', comboId).eq('restaurantId', restaurantId);
-    handleSupabaseError({ error, customMessage: 'Failed to delete combo' });
-};
-
-// Menu Items
-export const createMenuItem = async (restaurantId: number, itemData: Omit<MenuItem, 'id' | 'restaurantId'> & { category?: string }): Promise<MenuItem> => {
-    const { category, ...restOfItemData } = itemData;
-
-    if (!category) {
-        throw new Error("Category name is required to create a menu item.");
-    }
-    
-    let { data: categoryData } = await supabase.from('menu_categories').select('id').eq('restaurantId', restaurantId).eq('name', category).single();
-    if (!categoryData) {
-        categoryData = (await createCategory(restaurantId, category));
-    }
-
-    const payload = { ...restOfItemData, restaurantId, category_id: categoryData!.id };
-    const { data, error } = await supabase.from('menu_items').insert(payload).select().single();
-    handleSupabaseError({ error, customMessage: 'Failed to create menu item' });
-    return data;
-};
-
-export const updateMenuItem = async (restaurantId: number, itemId: number, itemData: Partial<MenuItem> & { category?: string }): Promise<MenuItem> => {
-    const { category, ...restOfItemData } = itemData;
-    let category_id = itemData.categoryId;
-
-    if (category) {
-        let { data: categoryData } = await supabase.from('menu_categories').select('id').eq('restaurantId', restaurantId).eq('name', category).single();
-         if (!categoryData) {
-            categoryData = (await createCategory(restaurantId, category));
-        }
-        category_id = categoryData!.id;
-    }
-    
-    const payload = { ...restOfItemData, category_id };
-    const { data, error } = await supabase.from('menu_items').update(payload).eq('id', itemId).eq('restaurantId', restaurantId).select().single();
-    handleSupabaseError({ error, customMessage: 'Failed to update menu item' });
-    return data;
-};
-
-export const deleteMenuItem = async (restaurantId: number, itemId: number): Promise<void> => {
-    const { error } = await supabase.from('menu_items').delete().eq('id', itemId).eq('restaurantId', restaurantId);
-    handleSupabaseError({ error, customMessage: 'Failed to delete menu item' });
-};
-
-// Categories
-export const createCategory = async (restaurantId: number, name: string, iconUrl?: string | null): Promise<MenuCategory> => {
-    const { data: maxOrder, error: orderError } = await supabase.from('menu_categories').select('displayOrder').eq('restaurantId', restaurantId).order('displayOrder', { ascending: false }).limit(1).single();
-    if (orderError && orderError.code !== 'PGRST116') {
-      handleSupabaseError({ error: orderError, customMessage: 'Failed to determine category order' });
-    }
-    const newOrder = (maxOrder?.displayOrder ?? -1) + 1;
-
-    const { data, error } = await supabase.from('menu_categories').insert({ name, restaurantId, displayOrder: newOrder, iconUrl }).select().single();
-    
-    if (error && error.code === '23505') {
-        console.warn('Race condition detected when creating category, fetching existing one.', { name, restaurantId });
-        const { data: existingCategory, error: fetchError } = await supabase
-            .from('menu_categories')
-            .select('*')
-            .eq('restaurantId', restaurantId)
-            .eq('name', name)
-            .single();
-        
-        handleSupabaseError({ error: fetchError, customMessage: 'Failed to fetch category after race condition' });
-        if (!existingCategory) throw new Error('Failed to resolve category creation race condition.');
-        return { ...existingCategory, items: [], combos: [] };
-    }
-    
-    handleSupabaseError({ error, customMessage: 'Failed to create category' });
-    return { ...data!, items: [], combos: [] };
-};
-
-export const updateCategory = async (restaurantId: number, categoryId: number, newName: string, newIconUrl?: string | null): Promise<void> => {
-    const payload: { name: string; iconUrl?: string | null } = { name: newName };
-    if (newIconUrl !== undefined) {
-        payload.iconUrl = newIconUrl && newIconUrl.trim() !== '' ? newIconUrl : null;
-    }
-    const { error } = await supabase.from('menu_categories').update(payload).eq('id', categoryId);
-    handleSupabaseError({ error, customMessage: 'Failed to update category name or icon' });
-};
-
-export const deleteCategory = async (restaurantId: number, name: string): Promise<void> => {
-    const { error } = await supabase.from('menu_categories').delete().eq('restaurantId', restaurantId).eq('name', name);
-    handleSupabaseError({ error, customMessage: 'Failed to delete category' });
-};
-
-export const updateCategoryOrder = async (restaurantId: number, categories: MenuCategory[]): Promise<void> => {
-    const updates = categories.map((category, index) => ({
-        id: category.id,
-        displayOrder: index,
-    }));
-    const { error } = await supabase.from('menu_categories').upsert(updates);
-    handleSupabaseError({ error, customMessage: 'Failed to update category order' });
-};
-
-// Global Categories
-// Duplicate fetchRestaurantCategories removed here
-
-export const createRestaurantCategory = async (name: string): Promise<RestaurantCategory> => {
-    const { data, error } = await supabase.from('restaurant_categories').insert({ name }).select().single();
-    handleSupabaseError({ error, customMessage: 'Failed to create restaurant category' });
-    return data;
-};
-
-export const deleteRestaurantCategory = async (id: number): Promise<void> => {
-    const { error } = await supabase.from('restaurant_categories').delete().eq('id', id);
-    handleSupabaseError({ error, customMessage: 'Failed to delete restaurant category' });
 };
