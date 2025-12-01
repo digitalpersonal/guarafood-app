@@ -100,6 +100,9 @@ export const handleSupabaseError = ({ error, customMessage, tableName }: { error
             else if (errorMessage.includes('manual_pix_key')) {
                  enhancedMessage = `Erro de Banco de Dados: A coluna 'manual_pix_key' está faltando na tabela 'restaurants'.\nSOLUÇÃO: Execute no SQL Editor:\nALTER TABLE restaurants ADD COLUMN IF NOT EXISTS manual_pix_key text;`;
             }
+            else if (errorMessage.includes('mercado_pago_credentials')) {
+                 enhancedMessage = `Erro de Banco de Dados: A coluna 'mercado_pago_credentials' está faltando.\nSOLUÇÃO: Execute no SQL Editor:\nALTER TABLE restaurants ADD COLUMN IF NOT EXISTS mercado_pago_credentials jsonb default '{}';`;
+            }
         } 
         else if (error?.code === '42701' && tableName === 'promotions' && fullErrorMessageLower.includes('column "') && fullErrorMessageLower.includes('" of relation "promotions" already exists')) {
             console.log(`[GuaraFood Info] Coluna já existe na tabela 'promotions'. Isso não é um erro crítico. Detalhes: ${errorMessage}`, error);

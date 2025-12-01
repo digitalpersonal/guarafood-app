@@ -358,6 +358,8 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 console.warn("SQL FIX COMMAND:", "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS delivery_fee numeric default 0;");
             } else if (msg.includes('manual_pix_key')) {
                  msg = "ERRO DE BANCO DE DADOS: A coluna 'manual_pix_key' não existe. \n\nSOLUÇÃO: Rode no SQL Editor: \nALTER TABLE restaurants ADD COLUMN IF NOT EXISTS manual_pix_key text;";
+            } else if (msg.includes('mercado_pago_credentials')) {
+                 msg = "ERRO DE BANCO DE DADOS: A coluna 'mercado_pago_credentials' não existe. \n\nSOLUÇÃO: Rode no SQL Editor: \nALTER TABLE restaurants ADD COLUMN IF NOT EXISTS mercado_pago_credentials jsonb default '{}';";
             } else if (msg.includes('schema cache') || msg.includes('column')) {
                 msg += " (Verifique se as colunas existem no banco de dados)";
             }

@@ -170,9 +170,15 @@ const RestaurantSettings: React.FC = () => {
             };
             await updateRestaurant(restaurantId, updatePayload);
             addToast({ message: 'Configurações salvas com sucesso!', type: 'success' });
-        } catch (err) {
+            setError(null);
+        } catch (err: any) {
             console.error(err);
-            addToast({ message: `Erro ao salvar: ${err}`, type: 'error' });
+            let msg = `Erro ao salvar: ${err.message}`;
+            if (msg.includes('mercado_pago_credentials')) {
+                 msg = "ERRO DE BANCO DE DADOS: A coluna 'mercado_pago_credentials' não existe.\nSOLUÇÃO: Rode no SQL Editor:\nALTER TABLE restaurants ADD COLUMN IF NOT EXISTS mercado_pago_credentials jsonb default '{}';";
+            }
+            setError(msg);
+            addToast({ message: "Erro ao salvar. Veja detalhes acima.", type: 'error' });
         } finally {
             setIsSaving(false);
         }
@@ -181,7 +187,9 @@ const RestaurantSettings: React.FC = () => {
     const webhookUrl = restaurantId ? `${SUPABASE_URL}/functions/v1/payment-webhook?restaurantId=${restaurantId}` : 'Carregando...';
 
     if (isLoading) return <div className="p-4"><Spinner message="Carregando configurações..." /></div>;
-    if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
+    
+    // We show error inside the component if it exists, but also keep rendering form
+    // if !restaurant return null
     if (!restaurant) return null;
 
     return (
@@ -189,6 +197,12 @@ const RestaurantSettings: React.FC = () => {
             <div className="bg-white rounded-lg shadow-md p-6 max-w-2xl mx-auto">
                 <h2 className="text-2xl font-bold text-gray-800 border-b pb-3 mb-4">Configurações do Restaurante</h2>
                 
+                {error && (
+                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700 whitespace-pre-wrap">
+                        {error}
+                    </div>
+                )}
+
                 <div className="space-y-6">
                     <NotificationSettings />
 
