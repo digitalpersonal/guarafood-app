@@ -85,20 +85,23 @@ export const handleSupabaseError = ({ error, customMessage, tableName }: { error
             enhancedMessage = `Erro Crítico de Banco de Dados: Recursão infinita detectada nas políticas de segurança (RLS).\n\nSOLUÇÃO: Vá ao SQL Editor do Supabase e execute o script 'fix_recursion.sql' fornecido para resetar as políticas.`;
         }
         // Check for 'column does not exist' error (PostgreSQL error code 42703 for undefined_column)
-        else if (error?.code === '42703' && tableName === 'promotions') {
-            let columnFixMessage = `Erro de Banco de Dados: Algumas colunas essenciais estão faltando na sua tabela 'promotions'. Para que as promoções funcionem corretamente, por favor, execute os seguintes comandos SQL no seu Supabase:\n\n`;
-            let sqlCommands = '';
-
-            // Assume these are always needed if a 42703 error occurs on 'promotions'
-            sqlCommands += `ALTER TABLE public.promotions ADD COLUMN startDate TIMESTAMP WITH TIME ZONE;\n`;
-            sqlCommands += `ALTER TABLE public.promotions ADD COLUMN endDate TIMESTAMP WITH TIME ZONE;\n`;
-            
-            if (sqlCommands) { 
-                columnFixMessage += sqlCommands;
-                columnFixMessage += `\nCaso algumas colunas já existam, você pode ignorar os erros 'column already exists'.`;
-                enhancedMessage = `Problema com a Tabela de Promoções: ${columnFixMessage}`;
+        else if (error?.code === '42703') { 
+            // Fix for 'promotions' table
+            if (tableName === 'promotions' || errorMessage.includes('promotions')) {
+                let sqlCommands = '';
+                sqlCommands += `ALTER TABLE public.promotions ADD COLUMN IF NOT EXISTS startDate TIMESTAMP WITH TIME ZONE;\n`;
+                sqlCommands += `ALTER TABLE public.promotions ADD COLUMN IF NOT EXISTS endDate TIMESTAMP WITH TIME ZONE;\n`;
+                enhancedMessage = `Problema com a Tabela de Promoções: Execute no SQL Editor:\n${sqlCommands}`;
             }
-        } else if (error?.code === '42701' && tableName === 'promotions' && fullErrorMessageLower.includes('column "') && fullErrorMessageLower.includes('" of relation "promotions" already exists')) {
+            // Fix for 'restaurants' table missing columns
+            else if (errorMessage.includes('delivery_fee')) {
+                 enhancedMessage = `Erro de Banco de Dados: A coluna 'delivery_fee' está faltando na tabela 'restaurants'.\nSOLUÇÃO: Execute no SQL Editor:\nALTER TABLE restaurants ADD COLUMN IF NOT EXISTS delivery_fee numeric default 0;`;
+            } 
+            else if (errorMessage.includes('manual_pix_key')) {
+                 enhancedMessage = `Erro de Banco de Dados: A coluna 'manual_pix_key' está faltando na tabela 'restaurants'.\nSOLUÇÃO: Execute no SQL Editor:\nALTER TABLE restaurants ADD COLUMN IF NOT EXISTS manual_pix_key text;`;
+            }
+        } 
+        else if (error?.code === '42701' && tableName === 'promotions' && fullErrorMessageLower.includes('column "') && fullErrorMessageLower.includes('" of relation "promotions" already exists')) {
             console.log(`[GuaraFood Info] Coluna já existe na tabela 'promotions'. Isso não é um erro crítico. Detalhes: ${errorMessage}`, error);
             return; 
         } else if (error?.code === 'PGRST116') { // No rows found for .single()

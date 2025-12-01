@@ -288,8 +288,12 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         const openingHoursSummary = openDays.length > 0 ? openDays[0].opens : '';
         const closingHoursSummary = openDays.length > 0 ? openDays[0].closes : '';
 
+        // Safely parse delivery fee
+        const deliveryFeeValue = formData.deliveryFee !== undefined && formData.deliveryFee !== '' 
+            ? parseFloat(String(formData.deliveryFee)) 
+            : 0;
+
         // STRICTLY CONSTRUCT DB PAYLOAD WITH SNAKE_CASE ONLY
-        // Do NOT spread formData here to avoid leaking camelCase keys like 'deliveryFee'
         const dbPayload = {
             name: formData.name,
             category: formData.category,
@@ -301,7 +305,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             phone: formData.phone,
             opening_hours: openingHoursSummary, 
             closing_hours: closingHoursSummary, 
-            delivery_fee: formData.deliveryFee !== undefined ? parseFloat(String(formData.deliveryFee)) : 0,
+            delivery_fee: isNaN(deliveryFeeValue) ? 0 : deliveryFeeValue,
             mercado_pago_credentials: formData.mercado_pago_credentials, 
             operating_hours: formData.operatingHours,
             manual_pix_key: formData.manualPixKey,
@@ -347,11 +351,19 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         } catch (err: any) {
             console.error("Failed to save restaurant:", err);
             let msg = `Erro ao salvar: ${err.message || JSON.stringify(err)}`;
-            if (msg.includes('schema cache') || msg.includes('column')) {
-                msg += " (Erro de esquema: verifique se deliveryFee está vazando como chave)";
+            
+            // Check for specific missing column errors to help user
+            if (msg.includes('delivery_fee')) {
+                msg = "ERRO DE BANCO DE DADOS: A coluna 'delivery_fee' não existe na tabela 'restaurants'. \n\nSOLUÇÃO: Vá no Supabase > SQL Editor e rode: \nALTER TABLE restaurants ADD COLUMN IF NOT EXISTS delivery_fee numeric default 0;";
+                console.warn("SQL FIX COMMAND:", "ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS delivery_fee numeric default 0;");
+            } else if (msg.includes('manual_pix_key')) {
+                 msg = "ERRO DE BANCO DE DADOS: A coluna 'manual_pix_key' não existe. \n\nSOLUÇÃO: Rode no SQL Editor: \nALTER TABLE restaurants ADD COLUMN IF NOT EXISTS manual_pix_key text;";
+            } else if (msg.includes('schema cache') || msg.includes('column')) {
+                msg += " (Verifique se as colunas existem no banco de dados)";
             }
+            
             setError(msg);
-            addToast({ message: msg, type: 'error' });
+            addToast({ message: "Erro de banco de dados. Veja detalhes na tela.", type: 'error', duration: 8000 });
         } finally {
             setIsSaving(false);
         }
@@ -532,7 +544,11 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                     </div>
                 </div>
 
-                {error && <p className="text-red-500 text-sm mt-4 text-center">{error}</p>}
+                {error && (
+                    <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700 whitespace-pre-wrap">
+                        {error}
+                    </div>
+                )}
                 
                 <div className="mt-6 pt-4 border-t flex justify-end space-x-3">
                     <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300" disabled={isSaving}>Cancelar</button>
