@@ -218,41 +218,70 @@ export const fetchMenuForRestaurant = async (restaurant: Restaurant | number): P
     const currentDay = new Date().getDay();
 
     try {
-        const { data: menuData, error } = await supabaseAnon
-            .from('menu_categories')
-            .select(`
-                *,
-                items:menu_items(*),
-                combos(*)
-            `)
-            .eq('restaurant_id', restaurantId)
-            .order('display_order', { ascending: true }); // snake_case in order
+        // Robust Fetching Strategy: 
+        // Instead of relying on deep nesting which causes "Could not find relationship" errors,
+        // we fetch tables independently and join them in memory.
+        const [categoriesRes, itemsRes, combosRes] = await Promise.all([
+            supabaseAnon.from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true }),
+            supabaseAnon.from('menu_items').select('*').eq('restaurant_id', restaurantId),
+            supabaseAnon.from('combos').select('*').eq('restaurant_id', restaurantId)
+        ]);
 
-        handleSupabaseError({ error, customMessage: "Could not fetch the restaurant's menu" });
+        if (categoriesRes.error) throw categoriesRes.error;
+        if (itemsRes.error) throw itemsRes.error;
+        if (combosRes.error) throw combosRes.error;
 
-        const rawMenu = menuData || [];
-        const menuWithFilteredItems = rawMenu.map((category: any) => {
-            const normalizedCat = normalizeCategory(category);
-            
-            // Normalize items and filter by day
-            const items = (category.items || []).map(normalizeItem).filter((item: MenuItem) => 
-                !item.availableDays || item.availableDays.length === 0 || item.availableDays.includes(currentDay)
+        const categories = (categoriesRes.data || []).map(normalizeCategory);
+        const allItems = (itemsRes.data || []).map(normalizeItem);
+        const allCombos = (combosRes.data || []).map(normalizeCombo);
+
+        // Map items to categories
+        const menuWithItems = categories.map(category => {
+            // Items for this category, filtered by day availability
+            const items = allItems.filter(item => 
+                item.categoryId === category.id &&
+                (!item.availableDays || item.availableDays.length === 0 || item.availableDays.includes(currentDay))
             );
             
-            // Normalize combos
-            const combos = (category.combos || []).map(normalizeCombo);
-
-            return { ...normalizedCat, items, combos };
+            // Map combos to this category if they have the ID, otherwise we'll handle orphans later
+            const combos = allCombos.filter(c => c.categoryId === category.id);
+            
+            return { ...category, items, combos };
         });
 
+        // Handle combos that don't have a category (or legacy data)
+        // We put them in the first category or create a new one to ensure they are visible
+        const orphanedCombos = allCombos.filter(c => !c.categoryId || !categories.some(cat => cat.id === c.categoryId));
+        
+        if (orphanedCombos.length > 0) {
+            if (menuWithItems.length > 0) {
+                // Add to first category
+                if (!menuWithItems[0].combos) menuWithItems[0].combos = [];
+                menuWithItems[0].combos.push(...orphanedCombos);
+            } else {
+                // Create a virtual category if none exist
+                menuWithItems.push({
+                    id: 999999, // Virtual ID
+                    restaurantId: restaurantId,
+                    name: 'Combos & Ofertas',
+                    items: [],
+                    combos: orphanedCombos,
+                    displayOrder: 0
+                });
+            }
+        }
+
         const promotions = await fetchPromotionsForRestaurant(restaurantId);
-        return applyPromotionsToMenu(menuWithFilteredItems, promotions);
+        return applyPromotionsToMenu(menuWithItems, promotions);
 
     } catch (error: any) {
         console.error('Failed to fetch menu', error);
-        throw new Error(`Failed to fetch menu: ${error.message}`);
+        let msg = typeof error === 'object' ? (error.message || JSON.stringify(error)) : String(error);
+        throw new Error(`Failed to fetch menu: ${msg}`);
     }
 };
+
+// --- ADDONS ---
 
 export const fetchAddonsForRestaurant = async (restaurant: Restaurant | number): Promise<Addon[]> => {
      const restaurantId = typeof restaurant === 'number' ? restaurant : restaurant.id;
@@ -264,6 +293,34 @@ export const fetchAddonsForRestaurant = async (restaurant: Restaurant | number):
         throw new Error(`Failed to fetch addons: ${error.message}`);
     }
 };
+
+export const createAddon = async (restaurantId: number, addonData: any): Promise<Addon> => {
+    const payload = {
+        restaurant_id: restaurantId,
+        name: addonData.name,
+        price: addonData.price
+    };
+    const { data, error } = await supabase.from('addons').insert(payload).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to create addon' });
+    return normalizeAddon(data);
+};
+
+export const updateAddon = async (restaurantId: number, addonId: number, addonData: any): Promise<Addon> => {
+    const payload = {
+        name: addonData.name,
+        price: addonData.price
+    };
+    const { data, error } = await supabase.from('addons').update(payload).eq('id', addonId).eq('restaurant_id', restaurantId).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to update addon' });
+    return normalizeAddon(data);
+};
+
+export const deleteAddon = async (restaurantId: number, addonId: number): Promise<void> => {
+    const { error } = await supabase.from('addons').delete().eq('id', addonId).eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to delete addon' });
+};
+
+// --- ITEMS & CATEGORIES INTERNAL ---
 
 export const createMenuItem = async (restaurantId: number, itemData: any): Promise<MenuItem> => {
     const { category, ...rest } = itemData;

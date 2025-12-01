@@ -71,7 +71,12 @@ export const handleSupabaseError = ({ error, customMessage, tableName }: { error
             errorMessage = error.message;
         } else if (typeof error === 'object') {
             // Tenta pegar message, error_description, ou details. Se não, stringify o objeto.
-            errorMessage = error.message || error.error_description || error.details || error.hint || JSON.stringify(error);
+            errorMessage = error.message || 
+                           error.error_description || 
+                           error.details || 
+                           error.hint || 
+                           (error.code ? `Erro SQL: ${error.code}` : null) ||
+                           JSON.stringify(error);
         } else {
             errorMessage = String(error);
         }

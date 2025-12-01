@@ -4,6 +4,7 @@ import { useAuth } from '../services/authService';
 import RestaurantManagement from './RestaurantManagement';
 import CategoryManagement from './CategoryManagement';
 import MarketingManagement from './MarketingManagement';
+import MenuManagement from './MenuManagement';
 
 
 // Re-usable Icons
@@ -21,11 +22,22 @@ const LogoutIcon: React.FC<{ className?: string }> = ({ className }) => (
 const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { logout } = useAuth();
     const [activeTab, setActiveTab] = useState<'restaurants' | 'categories' | 'marketing'>('restaurants');
+    const [editingMenuRestaurantId, setEditingMenuRestaurantId] = useState<number | null>(null);
+
+    // Se estiver editando um cardápio específico, mostra o componente de Menu
+    if (editingMenuRestaurantId) {
+        return (
+            <MenuManagement 
+                restaurantId={editingMenuRestaurantId} 
+                onBack={() => setEditingMenuRestaurantId(null)} 
+            />
+        );
+    }
 
     const renderContent = () => {
         switch (activeTab) {
             case 'restaurants':
-                return <RestaurantManagement onEditMenu={() => {}} />; // Passing empty fn as we might not need menu edit from here directly or it's handled inside
+                return <RestaurantManagement onEditMenu={(restaurant) => setEditingMenuRestaurantId(restaurant.id)} />;
             case 'categories':
                 return <CategoryManagement />;
             case 'marketing':

@@ -1,6 +1,4 @@
 
-
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
@@ -26,12 +24,16 @@ import {
     updateCoupon,
     deleteCoupon,
     fetchAddonsForRestaurant,
+    createAddon,
+    updateAddon,
+    deleteAddon,
 } from '../services/databaseService';
 import Spinner from './Spinner';
 import ComboEditorModal from './ComboEditorModal';
 import MenuItemEditorModal from './MenuItemEditorModal';
 import PromotionEditorModal from './PromotionEditorModal';
 import CouponEditorModal from './CouponEditorModal';
+import AddonEditorModal from './AddonEditorModal';
 
 const EditIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
@@ -54,9 +56,14 @@ const XIcon: React.FC<{ className?: string }> = ({ className }) => (
 const ClipboardIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v3.043c0 .317-.135.619-.372.83h-9.312a1.125 1.125 0 01-1.125-1.125v-3.043c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" /></svg>
 );
+const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+  </svg>
+);
 
 
-const MenuManagement: React.FC<{ restaurantId?: number }> = ({ restaurantId: propRestaurantId }) => {
+const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> = ({ restaurantId: propRestaurantId, onBack }) => {
     const { currentUser } = useAuth();
     const { addToast, confirm, prompt } = useNotification();
     const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([]);
@@ -75,6 +82,8 @@ const MenuManagement: React.FC<{ restaurantId?: number }> = ({ restaurantId: pro
     const [editingPromo, setEditingPromo] = useState<Promotion | null>(null);
     const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
     const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
+    const [isAddonModalOpen, setIsAddonModalOpen] = useState(false);
+    const [editingAddon, setEditingAddon] = useState<Addon | null>(null);
 
 
     // Category editing state
@@ -86,7 +95,10 @@ const MenuManagement: React.FC<{ restaurantId?: number }> = ({ restaurantId: pro
     const allCombos = menuCategories.flatMap(c => c.combos || []);
 
     const loadData = useCallback(async () => {
-        if (!restaurantId) return;
+        if (!restaurantId) {
+            setIsLoading(false);
+            return;
+        }
         try {
             const [menuData, promoData, couponData, addonData] = await Promise.all([
                 fetchMenuForRestaurant(restaurantId),
@@ -108,9 +120,14 @@ const MenuManagement: React.FC<{ restaurantId?: number }> = ({ restaurantId: pro
     }, [restaurantId]);
 
     useEffect(() => {
-        setIsLoading(true);
-        loadData();
-    }, [loadData]);
+        // Prevent infinite loading if no ID
+        if (restaurantId) {
+            setIsLoading(true);
+            loadData();
+        } else {
+            setIsLoading(false);
+        }
+    }, [loadData, restaurantId]);
 
     // --- Promotion Handlers ---
     const handleOpenPromoModal = (promo: Promotion | null = null) => {
@@ -199,6 +216,45 @@ const MenuManagement: React.FC<{ restaurantId?: number }> = ({ restaurantId: pro
             .catch(err => addToast({ message: 'Falha ao copiar código.', type: 'error' }));
     };
 
+    // --- ADDON HANDLERS ---
+    const handleOpenAddonModal = (addon: Addon | null = null) => {
+        setEditingAddon(addon);
+        setIsAddonModalOpen(true);
+    };
+
+    const handleSaveAddon = async (addonData: Omit<Addon, 'id' | 'restaurantId'>) => {
+        if (!restaurantId) return;
+        try {
+            if (editingAddon) {
+                await updateAddon(restaurantId, editingAddon.id, addonData);
+                addToast({ message: 'Adicional atualizado!', type: 'success' });
+            } else {
+                await createAddon(restaurantId, addonData);
+                addToast({ message: 'Adicional criado!', type: 'success' });
+            }
+            setIsAddonModalOpen(false);
+            await loadData();
+        } catch (error) {
+            console.error("Failed to save addon:", error);
+            addToast({ message: `Erro ao salvar adicional: ${error}`, type: 'error' });
+        }
+    };
+
+    const handleDeleteAddon = async (addonId: number) => {
+        if (!restaurantId) return;
+        const confirmed = await confirm({ title: 'Excluir Adicional', message: 'Tem certeza?', confirmText: 'Excluir', isDestructive: true });
+        if (!confirmed) return;
+
+        try {
+            await deleteAddon(restaurantId, addonId);
+            addToast({ message: 'Adicional excluído.', type: 'info' });
+            await loadData();
+        } catch (error) {
+            console.error("Failed to delete addon:", error);
+            addToast({ message: `Erro ao excluir adicional: ${error}`, type: 'error' });
+        }
+    };
+
 
     // --- Combo Handlers ---
     const handleOpenComboModal = (combo: Combo | null = null) => {
@@ -279,8 +335,8 @@ const MenuManagement: React.FC<{ restaurantId?: number }> = ({ restaurantId: pro
     const handleCreateCategory = async () => {
         const name = await prompt({
             title: "Nova Categoria",
-            message: "Digite o nome da nova categoria:",
-            placeholder: "Ex: Bebidas"
+            message: "Digite o nome da nova categoria (ex: Bebidas, Lanches):",
+            placeholder: "Nome da categoria"
         });
         if (name?.trim() && restaurantId) {
             try {
@@ -380,6 +436,14 @@ const MenuManagement: React.FC<{ restaurantId?: number }> = ({ restaurantId: pro
 
     return (
         <main className="p-4 space-y-8">
+            {onBack && (
+                <div className="flex items-center space-x-2 mb-4">
+                    <button onClick={onBack} className="bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition-colors">
+                        <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
+                    </button>
+                    <h2 className="text-xl font-bold text-gray-800">Gerenciar Cardápio do Restaurante</h2>
+                </div>
+            )}
 
             {/* --- PROMOTIONS --- */}
             <div className="bg-white rounded-lg shadow-md p-6">
@@ -456,6 +520,37 @@ const MenuManagement: React.FC<{ restaurantId?: number }> = ({ restaurantId: pro
                  )}
             </div>
 
+            {/* --- ADDONS --- */}
+            <div className="bg-white rounded-lg shadow-md p-6">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+                    <h2 className="text-2xl font-bold text-gray-800">Banco de Adicionais</h2>
+                    <button onClick={() => handleOpenAddonModal()} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 w-full sm:w-auto">
+                        Criar Adicional
+                    </button>
+                </div>
+                <p className="text-sm text-gray-600 mb-4">
+                    Crie aqui os ingredientes extras (ex: Bacon, Ovo, Queijo) que poderão ser adicionados aos seus lanches e pizzas. Depois, edite cada item para selecionar quais adicionais ele aceita.
+                </p>
+                {addons.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {addons.map(addon => (
+                            <div key={addon.id} className="bg-gray-50 p-3 rounded-lg border flex justify-between items-center">
+                                <div>
+                                    <h4 className="font-bold text-gray-900">{addon.name}</h4>
+                                    <p className="text-sm text-gray-600">R$ {addon.price.toFixed(2)}</p>
+                                </div>
+                                <div className="flex space-x-1">
+                                    <button onClick={() => handleOpenAddonModal(addon)} className="p-1.5 text-gray-500 hover:text-blue-600"><EditIcon className="w-4 h-4"/></button>
+                                    <button onClick={() => handleDeleteAddon(addon.id)} className="p-1.5 text-gray-500 hover:text-red-600"><TrashIcon className="w-4 h-4"/></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-center py-6 bg-gray-100 rounded-lg"><p className="text-gray-500">Nenhum adicional cadastrado.</p></div>
+                )}
+            </div>
+
             {/* --- COMBOS --- */}
             <div className="bg-white rounded-lg shadow-md p-6">
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
@@ -495,10 +590,10 @@ const MenuManagement: React.FC<{ restaurantId?: number }> = ({ restaurantId: pro
                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
                     <h2 className="text-2xl font-bold text-gray-800">Itens do Cardápio</h2>
                     <div className="flex flex-col sm:flex-row gap-2">
-                        <button onClick={() => handleOpenItemModal(null)} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 w-full sm:w-auto">
+                        <button onClick={() => handleOpenItemModal(null)} disabled={menuCategories.length === 0} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 w-full sm:w-auto disabled:bg-blue-400 disabled:cursor-not-allowed">
                             Criar Item
                         </button>
-                        <button onClick={() => handleOpenComboModal(null)} className="bg-yellow-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-yellow-600 w-full sm:w-auto">
+                        <button onClick={() => handleOpenComboModal(null)} disabled={menuCategories.flatMap(c => c.items).length === 0} className="bg-yellow-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-yellow-600 w-full sm:w-auto disabled:bg-yellow-300 disabled:cursor-not-allowed">
                             Criar Combo
                         </button>
                         <button onClick={handleCreateCategory} className="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 w-full sm:w-auto">
@@ -507,95 +602,114 @@ const MenuManagement: React.FC<{ restaurantId?: number }> = ({ restaurantId: pro
                     </div>
                 </div>
 
-                <div className="space-y-6">
-                    {menuCategories.map((category, index) => (
-                        <div key={category.id} className="bg-white rounded-lg shadow-md">
-                            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-t-lg border-b">
-                                <div className="flex items-center gap-2 flex-grow">
-                                    <div className="flex flex-col">
-                                        <button onClick={() => handleReorderCategory(index, 'up')} disabled={index === 0} className="disabled:opacity-20 text-gray-500 hover:text-black"><ChevronUpIcon className="w-5 h-5"/></button>
-                                        <button onClick={() => handleReorderCategory(index, 'down')} disabled={index === menuCategories.length - 1} className="disabled:opacity-20 text-gray-500 hover:text-black"><ChevronDownIcon className="w-5 h-5"/></button>
-                                    </div>
-                                    {editingCategory?.id === category.id ? (
-                                        <div className="flex flex-col w-full max-w-sm gap-2">
-                                            <input 
-                                                type="text" 
-                                                value={editingCategory.newName} 
-                                                onChange={(e) => setEditingCategory({...editingCategory, newName: e.target.value})}
-                                                onKeyDown={(e) => e.key === 'Enter' && handleSaveCategoryChanges()}
-                                                autoFocus
-                                                className="text-xl font-bold p-1 border rounded-md"
-                                                placeholder="Nome da Categoria"
-                                            />
-                                            <input 
-                                                type="text" 
-                                                value={editingCategory.newIconUrl || ''} 
-                                                onChange={(e) => setEditingCategory({...editingCategory, newIconUrl: e.target.value})}
-                                                onKeyDown={(e) => e.key === 'Enter' && handleSaveCategoryChanges()}
-                                                className="text-sm p-1 border rounded-md"
-                                                placeholder="URL do Ícone (Opcional)"
-                                            />
-                                        </div>
-                                    ) : (
-                                        <h3 className="text-xl font-bold text-gray-700 flex items-center gap-2">
-                                            {category.iconUrl && <img src={category.iconUrl} alt={category.name} className="w-6 h-6 object-contain" />}
-                                            {category.name}
-                                        </h3>
-                                    )}
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    {editingCategory?.id === category.id ? (
-                                        <>
-                                            <button onClick={handleSaveCategoryChanges} className="p-2 text-green-600 hover:text-green-800"><CheckIcon className="w-5 h-5"/></button>
-                                            <button onClick={() => setEditingCategory(null)} className="p-2 text-red-600 hover:text-red-800"><XIcon className="w-5 h-5"/></button>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <button onClick={() => handleEditCategory(category)} className="p-2 text-gray-500 hover:text-blue-600"><EditIcon className="w-5 h-5"/></button>
-                                            <button onClick={() => handleDeleteCategory(category.name)} disabled={category.items.length > 0 || (category.combos || []).length > 0} className="p-2 text-gray-500 hover:text-red-600 disabled:opacity-20 disabled:cursor-not-allowed" title={category.items.length > 0 ? "Esvazie a categoria para excluí-la" : "Excluir categoria"}><TrashIcon className="w-5 h-5"/></button>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="overflow-x-auto">
-                                {category.items.length > 0 ? (
-                                    <table className="w-full text-sm text-left text-gray-600">
-                                        <tbody>
-                                            {category.items.map(item => (
-                                                <tr key={item.id} className="border-b hover:bg-gray-50">
-                                                    <td className="p-4">
-                                                        <div className="font-semibold text-gray-900">{item.name}</div>
-                                                        <div className="text-xs text-gray-500">{item.description}</div>
-                                                    </td>
-                                                    <td className="p-4 font-semibold text-right">R$ {item.price.toFixed(2)}</td>
-                                                    <td className="p-4">
-                                                        <div className="flex justify-end space-x-2">
-                                                            <button onClick={() => handleOpenItemModal(item, category.name)} className="p-2 text-gray-500 hover:text-blue-600"><EditIcon className="w-5 h-5"/></button>
-                                                            <button onClick={() => handleDeleteItem(item.id)} className="p-2 text-gray-500 hover:text-red-600"><TrashIcon className="w-5 h-5"/></button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                ) : (
-                                    <p className="text-center py-6 text-gray-500 text-sm">Esta categoria está vazia.</p>
-                                )}
-                            </div>
-                            <div className="p-2 bg-gray-50 rounded-b-lg">
-                                <button onClick={() => handleOpenItemModal(null, category.name)} className="w-full text-center text-sm font-semibold text-blue-600 hover:bg-blue-100 p-2 rounded-md">
-                                    + Adicionar Item a esta Categoria
-                                </button>
-                            </div>
+                {menuCategories.length === 0 ? (
+                    <div className="bg-white rounded-lg shadow-md p-10 text-center border-2 border-dashed border-gray-300">
+                        <div className="text-gray-400 mb-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-16 h-16 mx-auto">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+                            </svg>
                         </div>
-                    ))}
-                </div>
+                        <h3 className="text-xl font-bold text-gray-800 mb-2">Seu cardápio está vazio</h3>
+                        <p className="text-gray-600 mb-6">Para adicionar itens (como pizzas, lanches ou bebidas), você precisa criar uma categoria primeiro.</p>
+                        <button 
+                            onClick={handleCreateCategory}
+                            className="bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 shadow-lg animate-pulse"
+                        >
+                            + Criar Primeira Categoria
+                        </button>
+                    </div>
+                ) : (
+                    <div className="space-y-6">
+                        {menuCategories.map((category, index) => (
+                            <div key={category.id} className="bg-white rounded-lg shadow-md">
+                                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-t-lg border-b">
+                                    <div className="flex items-center gap-2 flex-grow">
+                                        <div className="flex flex-col">
+                                            <button onClick={() => handleReorderCategory(index, 'up')} disabled={index === 0} className="disabled:opacity-20 text-gray-500 hover:text-black"><ChevronUpIcon className="w-5 h-5"/></button>
+                                            <button onClick={() => handleReorderCategory(index, 'down')} disabled={index === menuCategories.length - 1} className="disabled:opacity-20 text-gray-500 hover:text-black"><ChevronDownIcon className="w-5 h-5"/></button>
+                                        </div>
+                                        {editingCategory?.id === category.id ? (
+                                            <div className="flex flex-col w-full max-w-sm gap-2">
+                                                <input 
+                                                    type="text" 
+                                                    value={editingCategory.newName} 
+                                                    onChange={(e) => setEditingCategory({...editingCategory, newName: e.target.value})}
+                                                    onKeyDown={(e) => e.key === 'Enter' && handleSaveCategoryChanges()}
+                                                    autoFocus
+                                                    className="text-xl font-bold p-1 border rounded-md"
+                                                    placeholder="Nome da Categoria"
+                                                />
+                                                <input 
+                                                    type="text" 
+                                                    value={editingCategory.newIconUrl || ''} 
+                                                    onChange={(e) => setEditingCategory({...editingCategory, newIconUrl: e.target.value})}
+                                                    onKeyDown={(e) => e.key === 'Enter' && handleSaveCategoryChanges()}
+                                                    className="text-sm p-1 border rounded-md"
+                                                    placeholder="URL do Ícone (Opcional)"
+                                                />
+                                            </div>
+                                        ) : (
+                                            <h3 className="text-xl font-bold text-gray-700 flex items-center gap-2">
+                                                {category.iconUrl && <img src={category.iconUrl} alt={category.name} className="w-6 h-6 object-contain" />}
+                                                {category.name}
+                                            </h3>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        {editingCategory?.id === category.id ? (
+                                            <>
+                                                <button onClick={handleSaveCategoryChanges} className="p-2 text-green-600 hover:text-green-800"><CheckIcon className="w-5 h-5"/></button>
+                                                <button onClick={() => setEditingCategory(null)} className="p-2 text-red-600 hover:text-red-800"><XIcon className="w-5 h-5"/></button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <button onClick={() => handleEditCategory(category)} className="p-2 text-gray-500 hover:text-blue-600"><EditIcon className="w-5 h-5"/></button>
+                                                <button onClick={() => handleDeleteCategory(category.name)} disabled={category.items.length > 0 || (category.combos || []).length > 0} className="p-2 text-gray-500 hover:text-red-600 disabled:opacity-20 disabled:cursor-not-allowed" title={category.items.length > 0 ? "Esvazie a categoria para excluí-la" : "Excluir categoria"}><TrashIcon className="w-5 h-5"/></button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    {category.items.length > 0 ? (
+                                        <table className="w-full text-sm text-left text-gray-600">
+                                            <tbody>
+                                                {category.items.map(item => (
+                                                    <tr key={item.id} className="border-b hover:bg-gray-50">
+                                                        <td className="p-4">
+                                                            <div className="font-semibold text-gray-900">{item.name}</div>
+                                                            <div className="text-xs text-gray-500">{item.description}</div>
+                                                        </td>
+                                                        <td className="p-4 font-semibold text-right">R$ {item.price.toFixed(2)}</td>
+                                                        <td className="p-4">
+                                                            <div className="flex justify-end space-x-2">
+                                                                <button onClick={() => handleOpenItemModal(item, category.name)} className="p-2 text-gray-500 hover:text-blue-600"><EditIcon className="w-5 h-5"/></button>
+                                                                <button onClick={() => handleDeleteItem(item.id)} className="p-2 text-gray-500 hover:text-red-600"><TrashIcon className="w-5 h-5"/></button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    ) : (
+                                        <p className="text-center py-6 text-gray-500 text-sm">Esta categoria está vazia.</p>
+                                    )}
+                                </div>
+                                <div className="p-2 bg-gray-50 rounded-b-lg">
+                                    <button onClick={() => handleOpenItemModal(null, category.name)} className="w-full text-center text-sm font-semibold text-blue-600 hover:bg-blue-100 p-2 rounded-md">
+                                        + Adicionar Item a esta Categoria
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {isComboModalOpen && <ComboEditorModal isOpen={isComboModalOpen} onClose={() => setIsComboModalOpen(false)} onSave={handleSaveCombo} existingCombo={editingCombo} menuItems={allMenuItems} />}
             {isItemModalOpen && restaurantId && <MenuItemEditorModal isOpen={isItemModalOpen} onClose={() => setIsItemModalOpen(false)} onSave={handleSaveItem} existingItem={editingItem?.item} initialCategory={editingItem?.categoryName} restaurantCategories={menuCategories.map(c => c.name)} allAddons={addons} restaurantId={restaurantId} />}
             {isPromoModalOpen && <PromotionEditorModal isOpen={isPromoModalOpen} onClose={() => setIsPromoModalOpen(false)} onSave={handleSavePromo} existingPromotion={editingPromo} menuItems={allMenuItems} combos={allCombos} categories={menuCategories.map(c => c.name)}/>}
             {isCouponModalOpen && <CouponEditorModal isOpen={isCouponModalOpen} onClose={() => setIsCouponModalOpen(false)} onSave={handleSaveCoupon} existingCoupon={editingCoupon} />}
+            {isAddonModalOpen && <AddonEditorModal isOpen={isAddonModalOpen} onClose={() => setIsAddonModalOpen(false)} onSave={handleSaveAddon} existingAddon={editingAddon} />}
         </main>
     );
 };
