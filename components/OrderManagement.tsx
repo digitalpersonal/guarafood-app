@@ -95,14 +95,16 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }
     }, []);
 
-    const triggerAutoPrint = useCallback((order: Order) => {
-        setOrderToPrint(order);
-        // Wait for React to render the PrintableOrder component in the hidden div
-        setTimeout(() => {
-            window.print();
-            // Optional: Clear order to print after printing dialog closes (or keeps it for reference)
-        }, 800); 
-    }, []);
+    // Effect to trigger print when orderToPrint changes
+    useEffect(() => {
+        if (orderToPrint) {
+            // A small delay to ensure React has flushed the PrintableOrder component to the DOM
+            const timer = setTimeout(() => {
+                window.print();
+            }, 500); 
+            return () => clearTimeout(timer);
+        }
+    }, [orderToPrint]);
 
     useEffect(() => {
         if (!currentUser?.restaurantId) return;
@@ -150,7 +152,8 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     playNotificationSound();
 
                     // 3. Auto Print
-                    triggerAutoPrint(newestOrder);
+                    // We set the state, and the useEffect above handles the actual printing logic
+                    setOrderToPrint(newestOrder);
                 }
             }
 
@@ -162,7 +165,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }, currentUser.restaurantId);
         
         return () => unsubscribe();
-    }, [currentUser, playNotificationSound, triggerAutoPrint]);
+    }, [currentUser, playNotificationSound]);
 
     
     const renderContent = () => {

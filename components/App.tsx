@@ -217,7 +217,12 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     return (
         <div className="w-full">
             <div className="relative h-48 bg-gray-200">
-                <OptimizedImage src={restaurant.imageUrl} alt={restaurant.name} className="w-full h-full" />
+                <OptimizedImage 
+                    src={restaurant.imageUrl} 
+                    alt={restaurant.name} 
+                    priority={true} 
+                    className="w-full h-full" 
+                />
                 <div className="absolute inset-0 bg-black bg-opacity-30"></div>
                  <button onClick={onBack} className="absolute top-4 left-4 bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition-colors z-20">
                     <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
@@ -351,6 +356,19 @@ const CustomerView: React.FC<{
                 const restaurantsData = await fetchRestaurants();
                 setRestaurants(restaurantsData);
 
+                // Check URL for restaurant ID parameter (?r=15)
+                const urlParams = new URLSearchParams(window.location.search);
+                const restaurantIdParam = urlParams.get('r');
+                if (restaurantIdParam) {
+                    const id = parseInt(restaurantIdParam, 10);
+                    if (!isNaN(id)) {
+                        const targetRestaurant = restaurantsData.find(r => r.id === id);
+                        if (targetRestaurant) {
+                            setSelectedRestaurant(targetRestaurant);
+                        }
+                    }
+                }
+
             } catch (err: any) {
                 // Determine error message
                 let message = 'Falha ao buscar restaurantes.';
@@ -401,6 +419,12 @@ const CustomerView: React.FC<{
         }
     };
 
+    const handleBackToHome = () => {
+        setSelectedRestaurant(null);
+        // Clear URL param without refreshing
+        window.history.replaceState({}, '', window.location.pathname);
+    };
+
 
     if (isLoading) {
         return <div className="h-screen flex items-center justify-center"><Spinner message="Buscando os melhores restaurantes..." /></div>;
@@ -430,7 +454,7 @@ const CustomerView: React.FC<{
     }
 
     if (selectedRestaurant) {
-        return <RestaurantMenu restaurant={selectedRestaurant} onBack={() => setSelectedRestaurant(null)} />;
+        return <RestaurantMenu restaurant={selectedRestaurant} onBack={handleBackToHome} />;
     }
 
     return (
@@ -447,19 +471,25 @@ const CustomerView: React.FC<{
 
             <main>
                 <div
-                    className="relative p-6 sm:p-10 text-center border-b border-orange-100 min-h-[250px] flex flex-col justify-center"
-                    style={{
-                        backgroundImage: headerImage ? `url(${headerImage})` : undefined,
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
-                        backgroundRepeat: 'no-repeat',
-                        backgroundColor: '#fff7ed' // Fallback color: bg-orange-50
-                    }}
+                    className="relative p-6 sm:p-10 text-center border-b border-orange-100 min-h-[250px] flex flex-col justify-center overflow-hidden"
                     role="banner"
                 >
-                    <div className={`relative z-10 flex flex-col items-center ${headerImage ? 'bg-black bg-opacity-40 p-4 rounded-lg' : ''}`}>
-                        <h1 className={`text-3xl sm:text-4xl font-extrabold mb-2 ${headerImage ? 'text-white' : 'text-gray-800'}`}>Sua fome pede, GuaraFood entrega.</h1>
-                        <p className={`max-w-2xl mx-auto mb-6 ${headerImage ? 'text-gray-100' : 'text-gray-600'}`}>Uma praça de alimentação completa na palma da sua mão.</p>
+                    {/* Replaced backgroundImage with OptimizedImage for better performance and lazy loading control */}
+                    <div className="absolute inset-0 bg-[#fff7ed]">
+                        {headerImage && (
+                            <OptimizedImage 
+                                src={headerImage} 
+                                alt="Fundo GuaraFood" 
+                                priority={true} 
+                                className="w-full h-full object-cover" 
+                            />
+                        )}
+                        <div className="absolute inset-0 bg-black bg-opacity-40"></div>
+                    </div>
+
+                    <div className="relative z-10 flex flex-col items-center">
+                        <h1 className="text-3xl sm:text-4xl font-extrabold mb-2 text-white">Sua fome pede, GuaraFood entrega.</h1>
+                        <p className="max-w-2xl mx-auto mb-6 text-gray-100">Uma praça de alimentação completa na palma da sua mão.</p>
                         <div className="relative max-w-xl mx-auto w-full">
                             <input
                                 type="text"

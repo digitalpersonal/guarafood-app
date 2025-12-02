@@ -4,9 +4,10 @@ import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
 // Use fetchRestaurantByIdSecure to get the token
 import { fetchRestaurantByIdSecure, updateRestaurant } from '../services/databaseService';
-import type { Restaurant, OperatingHours } from '../types';
+import type { Restaurant, OperatingHours, Order } from '../types';
 import Spinner from './Spinner';
 import { SUPABASE_URL } from '../config';
+import PrintableOrder from './PrintableOrder';
 
 const NotificationSettings: React.FC = () => {
     const { addToast } = useNotification();
@@ -109,6 +110,7 @@ const RestaurantSettings: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [testOrder, setTestOrder] = useState<Order | null>(null);
 
     const restaurantId = currentUser?.restaurantId;
 
@@ -183,6 +185,64 @@ const RestaurantSettings: React.FC = () => {
             setIsSaving(false);
         }
     };
+    
+    const handleTestPrint = () => {
+        if (!restaurant) return;
+        
+        // Create a dummy order object
+        const dummyOrder: Order = {
+            id: 'TESTE-123456',
+            timestamp: new Date().toISOString(),
+            status: 'Novo Pedido',
+            customerName: 'Cliente Teste',
+            customerPhone: '(11) 99999-9999',
+            customerAddress: {
+                zipCode: '00000-000',
+                street: 'Rua de Teste da Impressora',
+                number: '100',
+                neighborhood: 'Centro',
+                complement: 'Apto 10'
+            },
+            items: [
+                {
+                    id: '1',
+                    name: 'X-Burger Especial',
+                    price: 25.50,
+                    basePrice: 20.00,
+                    quantity: 1,
+                    imageUrl: '',
+                    description: 'Sem cebola',
+                    sizeName: 'Grande',
+                    selectedAddons: [{ id: 1, name: 'Bacon', price: 3.00, restaurantId: restaurant.id }, { id: 2, name: 'Ovo', price: 2.50, restaurantId: restaurant.id }]
+                },
+                {
+                    id: '2',
+                    name: 'Coca-Cola Lata',
+                    price: 6.00,
+                    basePrice: 6.00,
+                    quantity: 2,
+                    imageUrl: '',
+                    description: 'Gelada'
+                }
+            ],
+            totalPrice: 37.50,
+            subtotal: 37.50,
+            deliveryFee: 5.00,
+            restaurantId: restaurant.id,
+            restaurantName: restaurant.name,
+            restaurantAddress: restaurant.address,
+            restaurantPhone: restaurant.phone,
+            paymentMethod: 'Dinheiro',
+        };
+        
+        setTestOrder(dummyOrder);
+        // Delay print to allow render
+        setTimeout(() => {
+            window.print();
+            // Clear test order after print dialog opens to keep DOM clean, or keep it.
+            // setTestOrder(null); 
+        }, 500);
+    };
 
     const webhookUrl = restaurantId ? `${SUPABASE_URL}/functions/v1/payment-webhook?restaurantId=${restaurantId}` : 'Carregando...';
 
@@ -204,7 +264,23 @@ const RestaurantSettings: React.FC = () => {
                 )}
 
                 <div className="space-y-6">
-                    <NotificationSettings />
+                    <div className="flex justify-between items-start">
+                        <div className="flex-grow">
+                            <NotificationSettings />
+                        </div>
+                        <div className="ml-4 flex flex-col items-center">
+                            <button 
+                                onClick={handleTestPrint} 
+                                className="bg-gray-800 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-900 transition-colors shadow-md text-sm flex items-center gap-2"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.356-1.07 2.448-2.384 2.448H6.384C5.07 24.948 4 23.856 4 22.5c0-1.44 1.152-3.036 2.405-4.5m11.318 0c.397-1.362.63-2.826.63-4.342 0-1.44-1.152-3.036-2.405-4.5l-1.050-1.242A3.375 3.375 0 0 0 14.25 6H9.75a3.375 3.375 0 0 0-2.345 1.05L6.34 8.292c-1.253 1.464-2.405 3.06-2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z" />
+                                </svg>
+                                Testar Impressora
+                            </button>
+                            <span className="text-[10px] text-gray-500 mt-1">Imprime um cupom de teste</span>
+                        </div>
+                    </div>
 
                      <div className="border-t pt-6">
                         <h3 className="text-lg font-semibold text-gray-700 mb-3">Horário de Funcionamento</h3>
@@ -305,6 +381,13 @@ const RestaurantSettings: React.FC = () => {
                             {isSaving ? 'Salvando...' : 'Salvar Alterações'}
                         </button>
                     </div>
+                </div>
+            </div>
+            
+            {/* Hidden Print Area for Testing */}
+            <div className="hidden">
+                <div id="printable-order">
+                    {testOrder && <PrintableOrder order={testOrder} />}
                 </div>
             </div>
         </main>

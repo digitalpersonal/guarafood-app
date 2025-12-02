@@ -8,7 +8,7 @@ interface PrintableOrderProps {
 
 const PrintableOrder: React.FC<PrintableOrderProps> = ({ order }) => {
     return (
-        <div style={{ fontFamily: '"Courier New", Courier, monospace', padding: '0', color: '#000', width: '80mm', margin: '0' }}>
+        <div style={{ fontFamily: '"Courier New", Courier, monospace', padding: '0', color: '#000', width: '80mm', margin: '0', boxSizing: 'border-box' }}>
             <style>
                 {`
                     @media print {
@@ -20,18 +20,25 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order }) => {
                             margin: 0;
                             padding: 0;
                         }
+                        /* Esconde tudo que não é area de impressão */
                         body * {
                             visibility: hidden;
+                            height: 0; 
+                            overflow: hidden;
                         }
+                        /* Mostra apenas o cupom */
                         #printable-order, #printable-order * {
                             visibility: visible;
+                            height: auto;
+                            overflow: visible;
                         }
                         #printable-order {
                             position: absolute;
                             left: 0;
                             top: 0;
-                            width: 80mm; /* Força largura */
-                            padding: 5px;
+                            width: 100%; /* Força uso total da largura */
+                            max-width: 80mm;
+                            padding: 2px 0;
                         }
                         .print-item {
                             page-break-inside: avoid;
@@ -51,6 +58,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order }) => {
                     .print-text {
                         font-size: 12px;
                         line-height: 1.2;
+                        word-break: break-word; /* Quebra palavras longas */
                     }
                     .print-row {
                          display: flex;
@@ -61,13 +69,13 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order }) => {
             </style>
             
             <div style={{ textAlign: 'center', marginBottom: '10px', borderBottom: '2px solid #000', paddingBottom: '5px' }}>
-                <h1 style={{ fontSize: '16px', fontWeight: 'bold', margin: '0' }}>{order.restaurantName}</h1>
-                <p style={{ fontSize: '10px', margin: '2px 0' }}>{new Date(order.timestamp).toLocaleDateString('pt-BR')} - {new Date(order.timestamp).toLocaleTimeString('pt-BR')}</p>
+                <h1 style={{ fontSize: '16px', fontWeight: 'bold', margin: '0', wordBreak: 'break-word' }}>{order.restaurantName}</h1>
+                <p style={{ fontSize: '10px', margin: '2px 0' }}>{new Date().toLocaleDateString('pt-BR')} - {new Date().toLocaleTimeString('pt-BR')}</p>
             </div>
 
             <div className="print-section">
                 <p className="print-text" style={{ fontSize: '16px', fontWeight: 'bold', textAlign: 'center' }}>PEDIDO #{order.id.substring(0, 6)}</p>
-                <p className="print-text" style={{ textAlign: 'center', marginTop: '2px' }}>Status: {order.status}</p>
+                <p className="print-text" style={{ textAlign: 'center', marginTop: '2px' }}>Via: Cozinha/Entrega</p>
             </div>
             
             <div className="print-section">
@@ -94,18 +102,18 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order }) => {
                             <span className="print-text" style={{ fontWeight: 'bold', width: '70%' }}>{item.quantity}x {item.name}</span>
                             <span className="print-text" style={{ width: '30%', textAlign: 'right' }}>R$ {(item.price * item.quantity).toFixed(2)}</span>
                         </div>
-                        {item.sizeName && <p style={{ fontSize: '10px', margin: '0 0 0 10px', fontStyle: 'italic' }}>Tam: {item.sizeName}</p>}
+                        {item.sizeName && <p style={{ fontSize: '11px', margin: '0 0 0 10px', fontStyle: 'italic' }}>Tam: {item.sizeName}</p>}
                         {item.halves && item.halves.length > 1 && (
-                            <p style={{ fontSize: '10px', margin: '0 0 0 10px' }}>½ {item.halves[0].name} | ½ {item.halves[1].name}</p>
+                            <p style={{ fontSize: '11px', margin: '0 0 0 10px' }}>½ {item.halves[0].name} | ½ {item.halves[1].name}</p>
                         )}
                         {item.selectedAddons && item.selectedAddons.length > 0 && (
-                            <ul style={{ fontSize: '10px', margin: '0 0 0 10px', paddingLeft: '0', listStyle: 'none' }}>
+                            <ul style={{ fontSize: '11px', margin: '0 0 0 10px', paddingLeft: '0', listStyle: 'none' }}>
                                 {item.selectedAddons.map(addon => (
                                     <li key={addon.id}>+ {addon.name}</li>
                                 ))}
                             </ul>
                         )}
-                        {item.description && <p style={{ fontSize: '10px', margin: '0 0 0 10px', color: '#333' }}>Obs: {item.description}</p>}
+                        {item.description && <p style={{ fontSize: '11px', margin: '0 0 0 10px', color: '#000' }}>Obs: {item.description}</p>}
                     </div>
                 ))}
             </div>
@@ -136,9 +144,9 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order }) => {
                 </div>
             </div>
             
-            <div style={{ marginTop: '15px', textAlign: 'center', fontSize: '10px' }}>
-                <p>*** GuaraFood Delivery ***</p>
-                <p>{new Date().toLocaleString('pt-BR')}</p>
+            <div style={{ marginTop: '20px', textAlign: 'center', fontSize: '10px' }}>
+                <p>www.guarafood.com.br</p>
+                <p>.</p> {/* Ponto final para garantir corte de papel */}
             </div>
         </div>
     );

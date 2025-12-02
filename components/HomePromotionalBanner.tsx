@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import type { Banner } from '../types';
 import { fetchActiveBanners } from '../services/databaseService';
+import OptimizedImage from './OptimizedImage';
 
 interface HomePromotionalBannerProps {
     onBannerClick: (targetType: 'restaurant' | 'category', targetValue: string) => void;
@@ -18,7 +19,6 @@ const HomePromotionalBanner: React.FC<HomePromotionalBannerProps> = ({ onBannerC
     const [banners, setBanners] = useState<Banner[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [isImageLoaded, setIsImageLoaded] = useState(false);
 
     useEffect(() => {
         const loadBanners = async () => {
@@ -59,24 +59,17 @@ const HomePromotionalBanner: React.FC<HomePromotionalBannerProps> = ({ onBannerC
                 onClick={() => onBannerClick(banner.targetType, banner.targetValue)}
                 className="relative rounded-xl overflow-hidden cursor-pointer group shadow-lg hover:shadow-2xl transition-shadow duration-300 bg-gray-100 min-h-[12rem]"
             >
-                 {/* Skeleton for image */}
-                 {!isImageLoaded && (
-                    <div className="absolute inset-0 bg-gray-300 animate-pulse z-0" />
-                )}
-
                 <div className="absolute inset-0">
-                    <img 
+                    <OptimizedImage 
                         src={banner.imageUrl} 
                         alt={banner.title} 
-                        loading="lazy" 
-                        decoding="async"
-                        onLoad={() => setIsImageLoaded(true)}
-                        className={`w-full h-full object-cover transition-opacity duration-700 group-hover:scale-105 ${isImageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                        priority={true}
+                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-transparent"></div>
+                    <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-transparent z-10"></div>
                 </div>
 
-                <div className="relative p-8 text-white min-h-[12rem] flex flex-col justify-end items-start z-10">
+                <div className="relative p-8 text-white min-h-[12rem] flex flex-col justify-end items-start z-20">
                     <h2 className="text-3xl font-extrabold drop-shadow-md">{banner.title}</h2>
                     <p className="mt-2 max-w-md text-gray-200 drop-shadow-sm">{banner.description}</p>
                     <div className="mt-4">
