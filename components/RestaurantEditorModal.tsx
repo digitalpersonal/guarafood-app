@@ -158,6 +158,25 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         setFormData(prev => ({ ...prev, [name]: (name === 'deliveryFee') ? parseFloat(value) : value }));
     };
     
+    // NEW: Handle Multi-select Category
+    const toggleCategory = (categoryName: string) => {
+        setFormData(prev => {
+            const currentCategories = prev.category ? prev.category.split(',').map(c => c.trim()) : [];
+            let newCategories;
+            
+            if (currentCategories.includes(categoryName)) {
+                newCategories = currentCategories.filter(c => c !== categoryName);
+            } else {
+                newCategories = [...currentCategories, categoryName];
+            }
+            
+            return {
+                ...prev,
+                category: newCategories.join(', ')
+            };
+        });
+    };
+    
     const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
@@ -367,6 +386,12 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
 
 
     if (!isOpen) return null;
+    
+    // Helper to see if a category is selected
+    const isCategorySelected = (catName: string) => {
+        if (!formData.category) return false;
+        return formData.category.split(',').map(c => c.trim()).includes(catName);
+    };
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog">
@@ -390,28 +415,39 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                     </div>
 
                     {/* Basic Info */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <input name="name" value={formData.name} onChange={handleChange} placeholder="Nome do Restaurante" className="w-full p-3 border rounded-lg bg-gray-50"/>
+                    <div>
+                        <input name="name" value={formData.name} onChange={handleChange} placeholder="Nome do Restaurante" className="w-full p-3 border rounded-lg bg-gray-50 mb-3"/>
                         
-                        <div>
+                        <div className="border rounded-lg bg-gray-50 p-3">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Categorias (Selecione uma ou mais)</label>
                             {loadingCategories ? (
-                                <div className="p-3 text-sm text-gray-500">Carregando categorias...</div>
+                                <div className="p-2 text-sm text-gray-500">Carregando categorias...</div>
                             ) : (
-                                <select 
-                                    name="category" 
-                                    value={formData.category} 
-                                    onChange={handleChange} 
-                                    className="w-full p-3 border rounded-lg bg-gray-50"
-                                >
-                                    <option value="" disabled>Selecione a Categoria</option>
-                                    {categories.map(cat => (
-                                        <option key={cat.id} value={cat.name}>{cat.name}</option>
-                                    ))}
-                                </select>
+                                <div className="flex flex-wrap gap-2">
+                                    {categories.map(cat => {
+                                        const isSelected = isCategorySelected(cat.name);
+                                        return (
+                                            <button
+                                                key={cat.id}
+                                                onClick={() => toggleCategory(cat.name)}
+                                                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors border ${
+                                                    isSelected 
+                                                        ? 'bg-orange-600 text-white border-orange-600' 
+                                                        : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'
+                                                }`}
+                                            >
+                                                {isSelected ? '✓ ' : '+ '} {cat.name}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             )}
                             {categories.length === 0 && !loadingCategories && (
                                 <p className="text-xs text-red-500 mt-1">Nenhuma categoria cadastrada. Vá em "Categorias" no painel para criar.</p>
                             )}
+                            {/* Hidden input to ensure validation works if needed, or visual feedback */}
+                            <input type="hidden" name="category" value={formData.category} />
+                            {formData.category && <p className="text-xs text-gray-500 mt-2">Selecionadas: {formData.category}</p>}
                         </div>
                     </div>
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -430,7 +466,19 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                     <div className="border-t pt-4">
                         <h3 className="text-lg font-semibold text-gray-700 mb-2">Horário de Funcionamento</h3>
                         <div className="space-y-2">
-                            {(formData.operatingHours || []).map((day, index) => (
+                            {(formData.operatingHours || []).map((day, index) => {
+                                // Logic to detect overnight (next day) hours
+                                const isOpen = day.isOpen;
+                                let isOvernight = false;
+                                if (isOpen && day.opens && day.closes) {
+                                    const openParts = day.opens.split(':').map(Number);
+                                    const closeParts = day.closes.split(':').map(Number);
+                                    const openMins = openParts[0] * 60 + openParts[1];
+                                    const closeMins = closeParts[0] * 60 + closeParts[1];
+                                    if (closeMins < openMins) isOvernight = true;
+                                }
+
+                                return (
                                 <div key={index} className="grid grid-cols-12 gap-2 items-center p-2 rounded-lg bg-gray-50 border">
                                     <div className="col-span-4 flex items-center">
                                         <input type="checkbox" checked={day.isOpen} onChange={(e) => handleOperatingHoursChange(index, 'isOpen', e.target.checked)} className="h-4 w-4 mr-2 text-orange-600 rounded focus:ring-orange-500"/>
@@ -439,11 +487,12 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                                     <div className="col-span-4">
                                         <input type="time" value={day.opens} onChange={(e) => handleOperatingHoursChange(index, 'opens', e.target.value)} disabled={!day.isOpen} className="w-full p-1 border rounded text-sm disabled:bg-gray-200"/>
                                     </div>
-                                    <div className="col-span-4">
+                                    <div className="col-span-4 relative">
                                         <input type="time" value={day.closes} onChange={(e) => handleOperatingHoursChange(index, 'closes', e.target.value)} disabled={!day.isOpen} className="w-full p-1 border rounded text-sm disabled:bg-gray-200"/>
+                                        {isOvernight && <span className="absolute -bottom-4 right-0 text-[10px] text-orange-600 font-bold bg-orange-100 px-1 rounded whitespace-nowrap">(+1 dia)</span>}
                                     </div>
                                 </div>
-                            ))}
+                            )})}
                         </div>
                     </div>
 
@@ -533,7 +582,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                         </div>
                         
                         <div>
-                             <label className="block text-xs font-bold text-gray-700 mb-1">Passo 2: URL do Webhook</label>
+                             <label className="block text-xs font-bold text-gray-700 mb-1">Passo 2: URL de Webhook</label>
                              <div className="flex gap-2">
                                 <input 
                                     type="text" 

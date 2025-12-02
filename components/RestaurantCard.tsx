@@ -9,12 +9,6 @@ interface RestaurantCardProps {
   isOpen: boolean;
 }
 
-const StarIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={className}>
-    <path fillRule="evenodd" d="M10.868 2.884c.321-.662 1.215-.662 1.536 0l1.82 3.745 4.13.602c.73.107 1.02.998.494 1.506l-2.988 2.91.705 4.114c.124.726-.635 1.28-1.288.943L10 15.158l-3.69 1.94c-.653.337-1.412-.217-1.288-.943l.705-4.114-2.988-2.91c-.525-.508-.236-1.399.494-1.506l4.13-.602 1.82-3.745z" clipRule="evenodd" />
-  </svg>
-);
-
 const CreditCardIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15A2.25 2.25 0 002.25 6.75v10.5A2.25 2.25 0 004.5 19.5z" />
@@ -76,9 +70,6 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, is
           )}
 
           <div className="flex items-center text-sm text-gray-500 mt-1 flex-wrap gap-y-1">
-            <StarIcon className="w-4 h-4 text-yellow-500 mr-1" />
-            <span className="font-bold text-yellow-600">{restaurant.rating.toFixed(1)}</span>
-            <span className="mx-2">&bull;</span>
             <span>{restaurant.deliveryTime}</span>
             <span className="mx-2">&bull;</span>
             <span>{restaurant.deliveryFee > 0 ? `R$ ${restaurant.deliveryFee.toFixed(2)}` : 'Grátis'}</span>

@@ -342,7 +342,8 @@ const CustomerView: React.FC<{
     const [error, setError] = useState<string | null>(null);
 
     const [searchTerm, setSearchTerm] = useState('');
-    const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+    // Changed: Support multi-select categories. Default 'Todos' means no filter/all.
+    const [selectedCategories, setSelectedCategories] = useState<string[]>(['Todos']);
     const [showOpenOnly, setShowOpenOnly] = useState(false);
 
     // Use a fixed header image to avoid API quota issues.
@@ -386,18 +387,21 @@ const CustomerView: React.FC<{
     }, []); // Empty dependency array means it runs once on mount
 
     const categories = useMemo(() => {
-        const allCategories = restaurants.map(r => r.category);
+        const allCategories = restaurants.flatMap(r => r.category ? r.category.split(',').map(c => c.trim()) : []);
         return ['Todos', ...Array.from(new Set(allCategories))];
     }, [restaurants]);
 
     const filteredRestaurants = useMemo(() => {
         return restaurants.filter(restaurant => {
-            const matchesCategory = selectedCategory === 'Todos' || !selectedCategory || restaurant.category === selectedCategory;
+            // Updated filtering logic for multi-select and comma-separated categories
+            const restaurantCategories = restaurant.category ? restaurant.category.split(',').map(c => c.trim()) : [];
+            const matchesCategory = selectedCategories.includes('Todos') || selectedCategories.length === 0 || selectedCategories.some(sel => restaurantCategories.includes(sel));
+            
             const matchesSearch = restaurant.name.toLowerCase().includes(searchTerm.toLowerCase());
             const matchesOpenFilter = !showOpenOnly || isRestaurantOpen(restaurant);
             return matchesCategory && matchesSearch && matchesOpenFilter;
         });
-    }, [restaurants, searchTerm, selectedCategory, showOpenOnly]);
+    }, [restaurants, searchTerm, selectedCategories, showOpenOnly]);
 
     const handleBannerClick = (targetType: 'restaurant' | 'category', targetValue: string) => {
         if (targetType === 'restaurant') {
@@ -408,15 +412,40 @@ const CustomerView: React.FC<{
                 console.warn(`Banner clicked for non-existent restaurant: ${targetValue}`);
             }
         } else if (targetType === 'category') {
+            // Check if the category exists in the available list
             const targetCategory = categories.find(c => c === targetValue);
             if (targetCategory) {
-                setSelectedCategory(targetCategory);
+                // For banners, we just set the single category
+                setSelectedCategories([targetCategory]);
                 // Also clear search term to ensure category is visible
                 setSearchTerm('');
             } else {
                 console.warn(`Banner clicked for non-existent category: ${targetValue}`);
             }
         }
+    };
+
+    const handleCategoryClick = (category: string) => {
+        if (category === 'Todos') {
+            setSelectedCategories(['Todos']);
+            return;
+        }
+
+        setSelectedCategories(prev => {
+            // If "Todos" was selected, clear it and start fresh with the clicked category
+            if (prev.includes('Todos')) {
+                return [category];
+            }
+
+            // Toggle logic
+            if (prev.includes(category)) {
+                const newSelection = prev.filter(c => c !== category);
+                // If we deselected everything, go back to "Todos"
+                return newSelection.length === 0 ? ['Todos'] : newSelection;
+            } else {
+                return [...prev, category];
+            }
+        });
     };
 
     const handleBackToHome = () => {
@@ -518,19 +547,22 @@ const CustomerView: React.FC<{
                         </label>
                     </div>
                     <div className="flex space-x-3 overflow-x-auto pb-3 -mx-4 px-4">
-                        {categories.map(category => (
-                            <button
-                                key={category}
-                                onClick={() => setSelectedCategory(category)}
-                                className={`px-4 py-2 rounded-full font-semibold text-sm whitespace-nowrap transform transition-all duration-200 ease-in-out hover:scale-105 ${
-                                    selectedCategory === category 
-                                        ? 'bg-orange-600 text-white shadow-lg' 
-                                        : 'bg-white text-gray-700 border hover:shadow-md'
-                                }`}
-                            >
-                                {category}
-                            </button>
-                        ))}
+                        {categories.map(category => {
+                            const isSelected = selectedCategories.includes(category);
+                            return (
+                                <button
+                                    key={category}
+                                    onClick={() => handleCategoryClick(category)}
+                                    className={`px-4 py-2 rounded-full font-semibold text-sm whitespace-nowrap transform transition-all duration-200 ease-in-out hover:scale-105 ${
+                                        isSelected
+                                            ? 'bg-orange-600 text-white shadow-lg' 
+                                            : 'bg-white text-gray-700 border hover:shadow-md'
+                                    }`}
+                                >
+                                    {category}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 

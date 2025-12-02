@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { subscribeToOrders } from '../services/orderService';
 import type { Order } from '../types';
@@ -127,10 +128,14 @@ const SalesDashboard: React.FC = () => {
         const timelineData = Object.entries(salesByDay)
             .map(([label, value]) => ({ label, value }))
             .sort((a, b) => {
-                const [d1, m1] = a.label.split('/').map(Number);
-                const [d2, m2] = b.label.split('/').map(Number);
-                // Ensure values are numbers (fixes TS error if map returns undefined on OOB index)
-                return (m1 || 0) - (m2 || 0) || (d1 || 0) - (d2 || 0);
+                const [d1Str, m1Str] = a.label.split('/');
+                const [d2Str, m2Str] = b.label.split('/');
+                const d1 = parseInt(d1Str || '0', 10);
+                const m1 = parseInt(m1Str || '0', 10);
+                const d2 = parseInt(d2Str || '0', 10);
+                const m2 = parseInt(m2Str || '0', 10);
+                if (m1 !== m2) return Number(m1) - Number(m2);
+                return Number(d1) - Number(d2);
             });
 
         return {
