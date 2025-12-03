@@ -1,9 +1,8 @@
 
-
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { MenuItem, SizeOption, Addon } from '../types';
 import { supabase } from '../services/api';
+import { generateImage } from '../services/databaseService';
 
 // Icon for the Combobox dropdown
 const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -13,6 +12,11 @@ const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+);
+const SparklesIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.898 20.562L16.25 21.75l-.648-1.188a2.25 2.25 0 01-1.4-1.4l-1.188-.648 1.188-.648a2.25 2.25 0 011.4-1.4l.648-1.188.648 1.188a2.25 2.25 0 01-1.4 1.4z" />
+    </svg>
 );
 
 const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -127,6 +131,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
 
 
     useEffect(() => {
@@ -166,6 +171,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
         setImageFile(null);
         setError('');
         setIsSaving(false);
+        setIsGenerating(false);
     }, [existingItem, initialCategory, isOpen]);
 
     // Cleanup for image preview object URL
@@ -177,15 +183,146 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
         };
     }, [imagePreview]);
 
+    // --- COMPRESSÃO DE IMAGEM ---
+    const compressImage = async (file: File): Promise<File> => {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.src = URL.createObjectURL(file);
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    URL.revokeObjectURL(img.src);
+                    reject(new Error("Não foi possível processar a imagem."));
+                    return;
+                }
 
-    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+                // Configurações de otimização
+                const MAX_WIDTH = 800;
+                const MAX_HEIGHT = 800;
+                let width = img.width;
+                let height = img.height;
+
+                // Redimensionar mantendo proporção
+                if (width > height) {
+                    if (width > MAX_WIDTH) {
+                        height *= MAX_WIDTH / width;
+                        width = MAX_WIDTH;
+                    }
+                } else {
+                    if (height > MAX_HEIGHT) {
+                        width *= MAX_HEIGHT / height;
+                        height = MAX_HEIGHT;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Converter para Blob (JPEG com 70% de qualidade)
+                canvas.toBlob((blob) => {
+                    URL.revokeObjectURL(img.src);
+                    if (blob) {
+                        const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
+                            type: 'image/jpeg',
+                            lastModified: Date.now(),
+                        });
+                        console.log(`Imagem comprimida: ${file.size} -> ${compressedFile.size} bytes`);
+                        resolve(compressedFile);
+                    } else {
+                        reject(new Error("Falha na compressão da imagem."));
+                    }
+                }, 'image/jpeg', 0.7); // 0.7 = 70% quality (Bom balanço tamanho/qualidade)
+            };
+            img.onerror = (err) => {
+                URL.revokeObjectURL(img.src);
+                reject(err);
+            };
+        });
+    };
+
+
+    const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            setImageFile(file);
-            if (imagePreview && imagePreview.startsWith('blob:')) {
-                URL.revokeObjectURL(imagePreview); // Clean up previous local URL
+            const originalFile = e.target.files[0];
+            try {
+                // Comprimir imagem antes de setar no estado
+                const compressedFile = await compressImage(originalFile);
+                setImageFile(compressedFile);
+                
+                if (imagePreview && imagePreview.startsWith('blob:')) {
+                    URL.revokeObjectURL(imagePreview);
+                }
+                setImagePreview(URL.createObjectURL(compressedFile));
+            } catch (err) {
+                console.error("Erro ao otimizar imagem:", err);
+                setError("Erro ao processar imagem. Tente outra.");
             }
-            setImagePreview(URL.createObjectURL(file));
+        }
+    };
+
+    // Helper to convert Base64 string to File object
+    const base64ToFile = (base64String: string, filename: string): File => {
+        const arr = base64String.split(',');
+        const mime = arr[0].match(/:(.*?);/)![1];
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+        }
+        return new File([u8arr], filename, { type: mime });
+    };
+
+    const handleGenerateImage = async () => {
+        if (!name) {
+            setError("Por favor, digite o nome do item primeiro.");
+            return;
+        }
+        
+        // Safety check for production environment
+        if (typeof window !== 'undefined' && !(window as any).aistudio) {
+            setError("A geração de imagem por IA só está disponível no ambiente de desenvolvimento do Google AI Studio.");
+            return;
+        }
+
+        setIsGenerating(true);
+        setError('');
+        try {
+            // CRITICAL: Ensure `window.aistudio.hasSelectedApiKey()` is checked and `window.aistudio.openSelectKey()` is called
+            // before generating the image, as per Gemini API guidelines for premium models.
+            if (!await window.aistudio.hasSelectedApiKey()) {
+                await window.aistudio.openSelectKey();
+                // Assume success and proceed, as per race condition guideline.
+            }
+            
+            const prompt = `A delicious close-up photo of ${name}${description ? `, ${description}` : ''}. High quality food photography.`;
+            const base64Image = await generateImage(prompt, '1:1');
+            
+            // Convert to file
+            const rawFile = base64ToFile(base64Image, `ai-generated-${Date.now()}.jpg`);
+            
+            // Compress the AI generated image as well (they can be large PNGs sometimes)
+            const compressedFile = await compressImage(rawFile);
+            
+            setImageFile(compressedFile);
+            
+            if (imagePreview && imagePreview.startsWith('blob:')) {
+                URL.revokeObjectURL(imagePreview);
+            }
+            setImagePreview(URL.createObjectURL(compressedFile));
+            
+        } catch (err: any) {
+            // If the error message indicates a missing entity (e.g., API Key invalid/not selected), prompt again.
+            if (err.message && err.message.includes("Requested entity was not found")) {
+                setError("Chave API não selecionada ou inválida. Por favor, selecione uma chave API paga para gerar imagens (ai.google.dev/gemini-api/docs/billing).");
+                await window.aistudio.openSelectKey(); // Prompt again
+            } else {
+                setError(`Erro ao gerar imagem: ${err.message}`);
+            }
+        } finally {
+            setIsGenerating(false);
         }
     };
 
@@ -263,48 +400,62 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
         setIsSaving(true);
         let finalImageUrl = existingItem?.imageUrl || '';
 
-        if (imageFile) {
-            try {
-                // Public bucket: 'product-images', Path: {restaurant_id}/{uuid}.{ext}
-                const fileExt = imageFile.name.split('.').pop();
-                const filePath = `${restaurantId}/${crypto.randomUUID()}.${fileExt}`;
+        try {
+            if (imageFile) {
+                try {
+                    // Sanitização e caminho robusto
+                    const fileExt = 'jpg'; // We force jpg compression
+                    const fileName = `${crypto.randomUUID()}.${fileExt}`;
+                    const filePath = `${restaurantId}/${fileName}`;
 
-                const { error: uploadError } = await supabase.storage
-                    .from('product-images')
-                    .upload(filePath, imageFile);
+                    const { error: uploadError } = await supabase.storage
+                        .from('product-images')
+                        .upload(filePath, imageFile, {
+                            contentType: 'image/jpeg',
+                            cacheControl: '3600',
+                            upsert: false // Evita sobrescrever se o UUID colidir (impossível, mas boa prática)
+                        });
 
-                if (uploadError) throw uploadError;
+                    if (uploadError) throw uploadError;
 
-                const { data } = supabase.storage
-                    .from('product-images')
-                    .getPublicUrl(filePath);
+                    const { data } = supabase.storage
+                        .from('product-images')
+                        .getPublicUrl(filePath);
 
-                finalImageUrl = data.publicUrl;
-            } catch (uploadError: any) {
-                setError(`Erro no upload da imagem: ${uploadError.message}`);
-                setIsSaving(false);
-                return;
+                    finalImageUrl = data.publicUrl;
+                } catch (uploadError: any) {
+                    setError(`Erro no upload da imagem: ${uploadError.message}`);
+                    return; // Exit here, let the outer finally handle setIsSaving(false)
+                }
             }
+
+
+            const numericOriginalPrice = parseFloat(originalPrice);
+
+            onSave({
+                name,
+                description,
+                price: basePrice,
+                originalPrice: numericOriginalPrice > 0 ? numericOriginalPrice : undefined,
+                imageUrl: finalImageUrl,
+                isAcai,
+                isDailySpecial,
+                isWeeklySpecial,
+                isMarmita,
+                marmitaOptions: isMarmita ? marmitaOptions.filter(opt => opt.trim() !== '') : undefined,
+                availableDays,
+                sizes: hasSizes ? sizes : undefined,
+                availableAddonIds: Array.from(selectedAddonIds),
+            }, category);
+            // If onSave succeeds, close modal.
+            // Moved closing logic to onSave prop callback in MenuManagement.tsx
+            // setIsItemModalOpen(false); // This is handled by parent's onSave callback.
+        } catch (err: any) {
+            console.error("Failed to save menu item in modal:", err);
+            setError(`Erro ao salvar item no cardápio: ${err.message || String(err)}`);
+        } finally {
+            setIsSaving(false); // Ensure saving state is reset in all cases.
         }
-
-
-        const numericOriginalPrice = parseFloat(originalPrice);
-
-        onSave({
-            name,
-            description,
-            price: basePrice,
-            originalPrice: numericOriginalPrice > 0 ? numericOriginalPrice : undefined,
-            imageUrl: finalImageUrl,
-            isAcai,
-            isDailySpecial,
-            isWeeklySpecial,
-            isMarmita,
-            marmitaOptions: isMarmita ? marmitaOptions.filter(opt => opt.trim() !== '') : undefined,
-            availableDays,
-            sizes: hasSizes ? sizes : undefined,
-            availableAddonIds: Array.from(selectedAddonIds),
-        }, category);
     };
 
     if (!isOpen) return null;
@@ -331,19 +482,31 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                              <label htmlFor="imageUpload" className="block text-sm font-medium text-gray-700 mb-1">
                                 Imagem do Produto
                             </label>
-                            <input
-                                id="imageUpload"
-                                type="file"
-                                accept="image/png, image/jpeg, image/webp"
-                                onChange={handleImageChange}
-                                className="block w-full text-sm text-gray-500
-                                    file:mr-4 file:py-2 file:px-4
-                                    file:rounded-full file:border-0
-                                    file:text-sm file:font-semibold
-                                    file:bg-orange-50 file:text-orange-700
-                                    hover:file:bg-orange-100"
-                            />
-                            <p className="text-xs text-gray-500 mt-1">Envie um arquivo do seu dispositivo. Recomendado: 1:1 (quadrado).</p>
+                            <div className="flex gap-2">
+                                <input
+                                    id="imageUpload"
+                                    type="file"
+                                    accept="image/png, image/jpeg, image/webp"
+                                    onChange={handleImageChange}
+                                    className="block w-full text-sm text-gray-500
+                                        file:mr-4 file:py-2 file:px-4
+                                        file:rounded-full file:border-0
+                                        file:text-sm file:font-semibold
+                                        file:bg-orange-50 file:text-orange-700
+                                        hover:file:bg-orange-100"
+                                />
+                                <button 
+                                    type="button"
+                                    onClick={handleGenerateImage}
+                                    disabled={isGenerating || !name}
+                                    className="bg-purple-600 text-white text-xs font-bold py-2 px-3 rounded-full hover:bg-purple-700 disabled:bg-purple-300 flex items-center gap-1 whitespace-nowrap shadow-md transition-all hover:scale-105"
+                                    title={!name ? "Digite o nome do prato primeiro" : "Gerar imagem com IA"}
+                                >
+                                    <SparklesIcon className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
+                                    {isGenerating ? 'Gerando...' : 'Gerar com IA'}
+                                </button>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">Envie um arquivo ou use a IA. Imagens serão otimizadas automaticamente para celular.</p>
                         </div>
                     </div>
 

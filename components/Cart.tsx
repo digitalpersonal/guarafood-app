@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useCart } from '../hooks/useCart';
-import type { Restaurant } from '../types';
-import { useAnimation } from '../hooks/useAnimation';
-import { useNotification } from '../hooks/useNotification';
-import CheckoutModal from './CheckoutModal';
-import OptimizedImage from './OptimizedImage';
+import { useCart } from '../hooks/useCart.ts';
+import type { Restaurant } from '../types.ts';
+import { useAnimation } from '../hooks/useAnimation.ts';
+import { useNotification } from '../hooks/useNotification.ts';
+import CheckoutModal from './CheckoutModal.tsx';
+import OptimizedImage from './OptimizedImage.tsx';
 
 
 const CartIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -20,14 +20,24 @@ const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+const PencilIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+    </svg>
+);
+
 
 const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
-    const { cartItems, updateQuantity, removeFromCart, totalPrice, totalItems, clearCart } = useCart();
+    const { cartItems, updateQuantity, updateItemNotes, removeFromCart, totalPrice, totalItems, clearCart } = useCart();
     const { addToast } = useNotification();
     const { setCartElement } = useAnimation();
     const cartButtonRef = useRef<HTMLButtonElement>(null);
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+    
+    // State to track which item's note input is visible (if empty)
+    // If note exists, it's always visible.
+    const [activeNoteInputId, setActiveNoteInputId] = useState<string | null>(null);
 
     useEffect(() => {
         if (cartButtonRef.current) {
@@ -101,48 +111,78 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
                             Sua sacola está vazia.
                         </div>
                     ) : (
-                        <div className="overflow-y-auto p-4 flex-grow">
-                            {cartItems.map(item => (
-                                <div key={item.id} className="flex items-start space-x-4 mb-4">
-                                    <OptimizedImage src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-md flex-shrink-0" />
-                                    <div className="flex-grow">
-                                        <p className="font-semibold text-gray-800">
-                                            {item.name} {item.sizeName && `(${item.sizeName})`}
-                                        </p>
-                                        {item.halves && item.halves.length > 1 && (
-                                            <p className="text-xs text-gray-500 pl-1">
-                                                (Meia {item.halves.map(h => h.name).join(' / Meia ')})
-                                            </p>
-                                        )}
-                                        {item.selectedAddons && item.selectedAddons.length > 0 && (
-                                            <ul className="text-xs text-gray-500 pl-1 mt-1">
-                                                {item.selectedAddons.map(addon => (
-                                                    <li key={addon.id}>
-                                                        + {addon.name} {addon.price > 0 && `(R$ ${addon.price.toFixed(2)})`}
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        )}
+                        <div className="overflow-y-auto p-4 flex-grow space-y-6">
+                            {cartItems.map(item => {
+                                const hasNotes = item.notes && item.notes.trim().length > 0;
+                                const isNoteOpen = hasNotes || activeNoteInputId === item.id;
 
-                                         {item.originalPrice ? (
-                                            <div className="flex items-baseline gap-2 mt-1">
-                                                <p className="text-sm text-orange-600 font-bold">R$ {item.price.toFixed(2)}</p>
-                                                <p className="text-xs text-gray-500 line-through">R$ {item.originalPrice.toFixed(2)}</p>
+                                return (
+                                <div key={item.id} className="flex flex-col space-y-2 border-b pb-4 last:border-b-0 last:pb-0">
+                                    <div className="flex items-start space-x-4">
+                                        <OptimizedImage src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-md flex-shrink-0" />
+                                        <div className="flex-grow">
+                                            <p className="font-semibold text-gray-800">
+                                                {item.name} {item.sizeName && `(${item.sizeName})`}
+                                            </p>
+                                            {item.halves && item.halves.length > 1 && (
+                                                <p className="text-xs text-gray-500 pl-1">
+                                                    (Meia {item.halves.map(h => h.name).join(' / Meia ')})
+                                                </p>
+                                            )}
+                                            {item.selectedAddons && item.selectedAddons.length > 0 && (
+                                                <ul className="text-xs text-gray-500 pl-1 mt-1">
+                                                    {item.selectedAddons.map(addon => (
+                                                        <li key={addon.id}>
+                                                            + {addon.name} {addon.price > 0 && `(R$ ${addon.price.toFixed(2)})`}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+
+                                             {item.originalPrice ? (
+                                                <div className="flex items-baseline gap-2 mt-1">
+                                                    <p className="text-sm text-orange-600 font-bold">R$ {item.price.toFixed(2)}</p>
+                                                    <p className="text-xs text-gray-500 line-through">R$ {item.originalPrice.toFixed(2)}</p>
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm text-orange-600 font-bold mt-1">R$ {item.price.toFixed(2)}</p>
+                                            )}
+                                        </div>
+                                        <div className="flex flex-col items-end space-y-2">
+                                            <button onClick={() => removeFromCart(item.id)} className="text-gray-400 hover:text-red-500" aria-label={`Remover ${item.name}`}>
+                                                <TrashIcon className="w-5 h-5"/>
+                                            </button>
+                                            <div className="flex items-center space-x-2 flex-shrink-0 bg-gray-100 rounded-lg p-1">
+                                                <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="w-6 h-6 flex items-center justify-center text-lg font-bold text-gray-600 hover:bg-white rounded">-</button>
+                                                <span className="font-bold w-4 text-center text-sm">{item.quantity}</span>
+                                                <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="w-6 h-6 flex items-center justify-center text-lg font-bold text-gray-600 hover:bg-white rounded">+</button>
                                             </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Observations Section */}
+                                    <div className="pl-20"> {/* Indent to align with text */}
+                                        {!isNoteOpen ? (
+                                            <button 
+                                                onClick={() => setActiveNoteInputId(item.id)}
+                                                className="text-xs text-blue-600 hover:text-blue-800 flex items-center space-x-1 font-medium"
+                                            >
+                                                <PencilIcon className="w-3 h-3" />
+                                                <span>Adicionar observação</span>
+                                            </button>
                                         ) : (
-                                            <p className="text-sm text-orange-600 font-bold mt-1">R$ {item.price.toFixed(2)}</p>
+                                            <textarea
+                                                placeholder="Ex: Sem cebola, bem passado..."
+                                                value={item.notes || ''}
+                                                onChange={(e) => updateItemNotes(item.id, e.target.value)}
+                                                className="w-full text-xs p-2 border rounded-md bg-gray-50 focus:bg-white focus:ring-1 focus:ring-orange-300 outline-none resize-none"
+                                                rows={2}
+                                                autoFocus={activeNoteInputId === item.id && !hasNotes} // Focus only if newly opened
+                                            />
                                         )}
                                     </div>
-                                    <div className="flex items-center space-x-2 flex-shrink-0">
-                                        <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="w-7 h-7 rounded-full border text-gray-600 flex items-center justify-center text-lg">-</button>
-                                        <span className="font-bold w-4 text-center">{item.quantity}</span>
-                                        <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="w-7 h-7 rounded-full border text-gray-600 flex items-center justify-center text-lg">+</button>
-                                    </div>
-                                    <button onClick={() => removeFromCart(item.id)} className="text-gray-400 hover:text-red-500" aria-label={`Remover ${item.name}`}>
-                                        <TrashIcon className="w-5 h-5"/>
-                                    </button>
                                 </div>
-                            ))}
+                            )})}
                         </div>
                     )}
 

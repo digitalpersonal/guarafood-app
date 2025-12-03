@@ -1,8 +1,9 @@
 
+
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../services/authService';
-import { useNotification } from '../hooks/useNotification';
-import type { MenuItem, Combo, MenuCategory, Promotion, Coupon, Addon } from '../types';
+import { useAuth } from '../services/authService.ts';
+import { useNotification } from '../hooks/useNotification.ts';
+import type { MenuItem, Combo, MenuCategory, Promotion, Coupon, Addon } from '../types.ts';
 import {
     fetchMenuForRestaurant,
     createCombo,
@@ -27,13 +28,14 @@ import {
     createAddon,
     updateAddon,
     deleteAddon,
-} from '../services/databaseService';
-import Spinner from './Spinner';
-import ComboEditorModal from './ComboEditorModal';
-import MenuItemEditorModal from './MenuItemEditorModal';
-import PromotionEditorModal from './PromotionEditorModal';
-import CouponEditorModal from './CouponEditorModal';
-import AddonEditorModal from './AddonEditorModal';
+} from '../services/databaseService.ts';
+import Spinner from './Spinner.tsx';
+import ComboEditorModal from './ComboEditorModal.tsx';
+import MenuItemEditorModal from './MenuItemEditorModal.tsx';
+import PromotionEditorModal from './PromotionEditorModal.tsx';
+import CouponEditorModal from './CouponEditorModal.tsx';
+import AddonEditorModal from './AddonEditorModal.tsx';
+import { getErrorMessage } from '../services/api.ts';
 
 const EditIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
@@ -100,6 +102,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             return;
         }
         try {
+            setIsLoading(true);
             const [menuData, promoData, couponData, addonData] = await Promise.all([
                 fetchMenuForRestaurant(restaurantId),
                 fetchPromotionsForRestaurant(restaurantId),
@@ -112,8 +115,8 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             setAddons(addonData);
             setError(null);
         } catch (err) {
-            setError('Falha ao carregar os dados do cardápio e promoções.');
-            console.error(err);
+            console.error("Failed to load menu management data:", err);
+            setError(`Falha ao carregar os dados do cardápio e promoções: ${getErrorMessage(err)}`);
         } finally {
             setIsLoading(false);
         }
@@ -148,7 +151,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             await loadData();
         } catch (error) { 
             console.error("Failed to save promotion:", error);
-            addToast({ message: `Erro ao salvar promoção: ${error}`, type: 'error' });
+            addToast({ message: `Erro ao salvar promoção: ${getErrorMessage(error)}`, type: 'error' });
         }
     };
      const handleDeletePromo = async (promoId: number) => {
@@ -167,7 +170,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             await loadData();
         } catch (error) { 
             console.error("Failed to delete promotion:", error);
-            addToast({ message: `Erro ao excluir promoção: ${error}`, type: 'error' });
+            addToast({ message: `Erro ao excluir promoção: ${getErrorMessage(error)}`, type: 'error' });
         }
     };
 
@@ -191,7 +194,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             await loadData();
         } catch (error) {
             console.error("Failed to save coupon:", error);
-            addToast({ message: `Erro ao salvar cupom: ${error}`, type: 'error' });
+            addToast({ message: `Erro ao salvar cupom: ${getErrorMessage(error)}`, type: 'error' });
         }
     };
 
@@ -206,7 +209,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             await loadData();
         } catch (error) {
             console.error("Failed to delete coupon:", error);
-            addToast({ message: `Erro ao excluir cupom: ${error}`, type: 'error' });
+            addToast({ message: `Erro ao excluir cupom: ${getErrorMessage(error)}`, type: 'error' });
         }
     };
     
@@ -236,7 +239,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             await loadData();
         } catch (error) {
             console.error("Failed to save addon:", error);
-            addToast({ message: `Erro ao salvar adicional: ${error}`, type: 'error' });
+            addToast({ message: `Erro ao salvar adicional: ${getErrorMessage(error)}`, type: 'error' });
         }
     };
 
@@ -251,7 +254,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             await loadData();
         } catch (error) {
             console.error("Failed to delete addon:", error);
-            addToast({ message: `Erro ao excluir adicional: ${error}`, type: 'error' });
+            addToast({ message: `Erro ao excluir adicional: ${getErrorMessage(error)}`, type: 'error' });
         }
     };
 
@@ -275,7 +278,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             await loadData();
         } catch (error) { 
             console.error("Failed to save combo:", error);
-            addToast({ message: `Erro ao salvar combo: ${error}`, type: 'error' });
+            addToast({ message: `Erro ao salvar combo: ${getErrorMessage(error)}`, type: 'error' });
         }
     };
     const handleDeleteCombo = async (comboId: number) => {
@@ -289,7 +292,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             await loadData();
         } catch (error) {
             console.error("Failed to delete combo:", error);
-            addToast({ message: `Erro ao excluir combo: ${error}`, type: 'error' });
+            addToast({ message: `Erro ao excluir combo: ${getErrorMessage(error)}`, type: 'error' });
         }
     };
 
@@ -313,7 +316,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             await loadData();
         } catch (error) {
             console.error("Failed to save menu item:", error);
-            addToast({ message: `Erro ao salvar item: ${error}`, type: 'error' });
+            addToast({ message: `Erro ao salvar item: ${getErrorMessage(error)}`, type: 'error' });
         }
     };
     const handleDeleteItem = async (itemId: number) => {
@@ -327,7 +330,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             await loadData();
         } catch (error) {
             console.error("Failed to delete menu item:", error);
-            addToast({ message: `Erro ao excluir item: ${error}`, type: 'error' });
+            addToast({ message: `Erro ao excluir item: ${getErrorMessage(error)}`, type: 'error' });
         }
     };
 
@@ -344,7 +347,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                 await loadData();
                 addToast({ message: 'Categoria criada!', type: 'success' });
             } catch (error) {
-                addToast({ message: `Erro: ${error}`, type: 'error' });
+                addToast({ message: `Erro: ${getErrorMessage(error)}`, type: 'error' });
             }
         }
     };
@@ -371,7 +374,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             await loadData();
             addToast({ message: 'Categoria atualizada!', type: 'success' });
         } catch (error) {
-            addToast({ message: `Erro ao salvar categoria: ${error}`, type: 'error' });
+            addToast({ message: `Erro ao salvar categoria: ${getErrorMessage(error)}`, type: 'error' });
         }
     };
 
@@ -394,7 +397,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                 await deleteCategory(restaurantId, categoryName);
                 await loadData();
             } catch (error) {
-                addToast({ message: `Erro ao excluir: ${error}`, type: 'error' });
+                addToast({ message: `Erro ao excluir: ${getErrorMessage(error)}`, type: 'error' });
             }
         }
     };

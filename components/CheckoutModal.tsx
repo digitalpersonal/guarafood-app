@@ -47,6 +47,12 @@ const WarningIcon: React.FC<{ className?: string }> = ({ className }) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
     </svg>
 );
+const EyeIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+);
 
 
 const steps: { id: CheckoutStep; title: string; icon: React.FC<{ className?: string }> }[] = [
@@ -66,9 +72,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [changeFor, setChangeFor] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     
-    // Address State
+    // Address State - ZIP CODE FIXED TO 37810-000
     const [address, setAddress] = useState({
-        zipCode: '',
+        zipCode: '37810-000', 
         street: '',
         number: '',
         neighborhood: '',
@@ -110,7 +116,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setPixError(null);
         setIsManualPix(false);
         setCountdown(300);
-        setAddress({ zipCode: '', street: '', number: '', neighborhood: '', complement: '' });
+        setAddress({ zipCode: '37810-000', street: '', number: '', neighborhood: '', complement: '' });
         if (countdownIntervalRef.current) {
             clearInterval(countdownIntervalRef.current);
             countdownIntervalRef.current = null;
@@ -147,7 +153,11 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         if (storedData) {
             const { phone, address: savedAddress } = JSON.parse(storedData);
             setCustomerPhone(phone);
-            setAddress(savedAddress);
+            // Ensure zipCode is set to the fixed value, overriding stored data if necessary
+            setAddress({
+                ...savedAddress,
+                zipCode: '37810-000'
+            });
             addToast({ message: 'Seus dados foram preenchidos. Verifique se estão corretos!', type: 'info' });
         }
     };
@@ -170,6 +180,39 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setAppliedCoupon(null);
         setCouponCodeInput('');
         setFormError(null);
+    };
+
+    const saveOrderToHistory = (orderId: string) => {
+        try {
+            const existing = localStorage.getItem('guarafood-active-orders');
+            const orders = existing ? JSON.parse(existing) : [];
+            if (!orders.includes(orderId)) {
+                orders.push(orderId);
+                localStorage.setItem('guarafood-active-orders', JSON.stringify(orders));
+            }
+        } catch (e) {
+            console.error("Failed to save order ID history", e);
+        }
+    };
+
+    const saveOrderDetailsToHistory = (order: Order) => {
+        try {
+            const existing = localStorage.getItem('guarafood-order-history');
+            const orders = existing ? JSON.parse(existing) : [];
+            
+            // Check duplicates
+            const exists = orders.some((o: Order) => o.id === order.id);
+            if (!exists) {
+                // Keep only essential info to save space if needed, or full object
+                orders.push(order);
+                // Optional: Limit history size
+                if (orders.length > 50) orders.shift();
+                
+                localStorage.setItem('guarafood-order-history', JSON.stringify(orders));
+            }
+        } catch (e) {
+            console.error("Failed to save order details history", e);
+        }
     };
 
     const handlePixPayment = async (orderData: NewOrderData) => {
@@ -229,12 +272,15 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                             pixChannelRef.current = null;
                         }
                         if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+                        
+                        saveOrderToHistory(orderId);
+                        saveOrderDetailsToHistory(updatedOrder); // Save full object for history
                         setCurrentStep('SUCCESS');
                         localStorage.setItem(`customerData-${customerName.toLowerCase()}`, JSON.stringify({ phone: customerPhone, address }));
                         setTimeout(() => {
                             clearCart();
                             onClose();
-                        }, 4000);
+                        }, 6000); // Give user time to read the tracking message
                     }
                 }
             ).subscribe();
@@ -257,12 +303,14 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const handlePayOnDelivery = async (orderData: NewOrderData) => {
         setIsSubmitting(true);
         try {
-            await createOrder(orderData);
+            const order = await createOrder(orderData);
+            saveOrderToHistory(order.id);
+            saveOrderDetailsToHistory(order); // Save full object for history
             localStorage.setItem(`customerData-${customerName.toLowerCase()}`, JSON.stringify({ phone: customerPhone, address }));
             addToast({ message: 'Pedido enviado com sucesso!', type: 'success' });
             clearCart();
             setCurrentStep('SUCCESS');
-            setTimeout(() => onClose(), 4000); // Close after 4 seconds
+            setTimeout(() => onClose(), 6000); // Close after 6 seconds to read message
         } catch (err) {
             console.error('Failed to create order:', err);
             addToast({ message: `Erro ao enviar pedido: ${err}`, type: 'error' });
@@ -291,7 +339,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const handleSubmitDetails = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!customerName || !customerPhone || !paymentMethod || !address.zipCode || !address.street || !address.number || !address.neighborhood) {
+        // Validation without ZIP code requirement (it's hidden/default)
+        if (!customerName || !customerPhone || !paymentMethod || !address.street || !address.number || !address.neighborhood) {
             setFormError('Preencha todos os campos obrigatórios, incluindo o endereço completo.');
             return;
         }
@@ -299,10 +348,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         const phoneDigits = customerPhone.replace(/\D/g, '');
         if (!/^\d{10,11}$/.test(phoneDigits)) {
             setFormError('Por favor, insira um número de telefone válido com DDD (10 ou 11 dígitos).');
-            return;
-        }
-        if (!/^\d{5}-?\d{3}$/.test(address.zipCode)) {
-            setFormError('Por favor, insira um CEP válido (ex: 12345-678).');
             return;
         }
 
@@ -504,29 +549,26 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
              <div className="border-t pt-4">
                 <h3 className="text-md font-medium text-gray-800 mb-2">Endereço de Entrega</h3>
                 <div className="space-y-3">
-                    <div>
-                        <label htmlFor="zipCode" className="block text-sm font-medium text-gray-700">CEP</label>
-                        <div className="relative">
-                             <input id="zipCode" name="zipCode" type="text" value={address.zipCode} onChange={handleAddressChange} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" aria-required="true"/>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3">
-                        <div className="col-span-2">
+                    {/* ZIP CODE REMOVED PER USER REQUEST - CITY IS FIXED */}
+                    <div className="grid grid-cols-4 gap-3">
+                        <div className="col-span-3">
                             <label htmlFor="street" className="block text-sm font-medium text-gray-700">Rua</label>
                             <input id="street" name="street" type="text" value={address.street} onChange={handleAddressChange} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" aria-required="true"/>
                         </div>
                         <div>
-                            <label htmlFor="number" className="block text-sm font-medium text-gray-700">Número</label>
+                            <label htmlFor="number" className="block text-sm font-medium text-gray-700">Nº</label>
                             <input id="number" name="number" type="text" value={address.number} onChange={handleAddressChange} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" aria-required="true"/>
                         </div>
                     </div>
-                    <div>
-                        <label htmlFor="neighborhood" className="block text-sm font-medium text-gray-700">Bairro</label>
-                        <input id="neighborhood" name="neighborhood" type="text" value={address.neighborhood} onChange={handleAddressChange} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" aria-required="true"/>
-                    </div>
-                    <div>
-                        <label htmlFor="complement" className="block text-sm font-medium text-gray-700">Complemento (Opcional)</label>
-                        <input id="complement" name="complement" type="text" value={address.complement} onChange={handleAddressChange} className="mt-1 w-full p-3 border rounded-lg bg-gray-50"/>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label htmlFor="neighborhood" className="block text-sm font-medium text-gray-700">Bairro</label>
+                            <input id="neighborhood" name="neighborhood" type="text" value={address.neighborhood} onChange={handleAddressChange} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" aria-required="true"/>
+                        </div>
+                        <div>
+                            <label htmlFor="complement" className="block text-sm font-medium text-gray-700">Complemento</label>
+                            <input id="complement" name="complement" type="text" value={address.complement} onChange={handleAddressChange} className="mt-1 w-full p-3 border rounded-lg bg-gray-50"/>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -653,9 +695,21 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const renderSuccess = () => (
         <div className="text-center flex flex-col items-center justify-center p-8" role="status" aria-live="assertive">
             <svg className="w-20 h-20 text-green-500 mb-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-            <h3 className="text-2xl font-bold text-gray-800">Pedido Enviado!</h3>
-            <p className="text-gray-600 mt-2">Seu pedido foi recebido pelo restaurante. Acompanhe o status na tela inicial.</p>
-             <p className="text-sm text-gray-500 mt-4">Redirecionando em 4 segundos...</p>
+            <h3 className="text-2xl font-bold text-gray-800">Pedido Confirmado!</h3>
+            
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6 mb-6 w-full shadow-sm">
+                <div className="flex flex-col items-center">
+                    <p className="text-lg font-bold text-blue-800 mb-1 flex items-center gap-2">
+                        <EyeIcon className="w-5 h-5"/>
+                        Acompanhe seu Pedido
+                    </p>
+                    <p className="text-sm text-blue-700">
+                        Uma barra de rastreamento aparecerá no <strong>rodapé da tela inicial</strong>. Fique de olho nela para saber quando seu pedido sair para entrega!
+                    </p>
+                </div>
+            </div>
+
+             <p className="text-sm text-gray-500">Redirecionando em 6 segundos...</p>
         </div>
     );
     
@@ -665,7 +719,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 <div className="p-4 border-b flex justify-between items-start gap-4">
                     <div className="flex-grow min-w-0">
                          <h2 id="checkout-modal-title" className="text-xl font-bold text-gray-800 truncate" title={restaurant.name}>
-                            {currentStep === 'SUCCESS' ? 'Pedido Confirmado!' : restaurant.name}
+                            {currentStep === 'SUCCESS' ? 'Sucesso!' : restaurant.name}
                         </h2>
                         {currentStep !== 'SUCCESS' && (
                             <p className="text-xs text-gray-500 truncate">{restaurant.address}</p>

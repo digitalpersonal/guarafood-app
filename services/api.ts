@@ -1,4 +1,5 @@
 
+
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config';
 
@@ -57,30 +58,39 @@ export const supabaseAnon = supabaseAnonInstance;
 
 export const getInitializationError = () => initializationError;
 
+/**
+ * Extrai uma mensagem de string compreensível de qualquer objeto de erro.
+ * @param error O objeto de erro a ser processado.
+ * @returns Uma string contendo a mensagem de erro.
+ */
+export const getErrorMessage = (error: any): string => {
+    if (typeof error === 'string') {
+        return error;
+    }
+    if (error instanceof Error) {
+        return error.message;
+    }
+    if (typeof error === 'object' && error !== null) {
+        // Priorize propriedades específicas conhecidas do Supabase/Fetch
+        return error.message || 
+               error.error_description || 
+               error.details || 
+               error.hint || 
+               (error.code ? `Erro SQL: ${error.code}` : null) ||
+               JSON.stringify(error);
+    }
+    return String(error);
+};
+
+
 // Centralized error handler
 export const handleSupabaseError = ({ error, customMessage, tableName }: { error: any, customMessage: string, tableName?: string }) => {
     if (error) {
         console.error(customMessage, error);
         
-        // Tenta extrair a mensagem de erro de várias propriedades possíveis
-        let errorMessage = '';
+        // Usa a nova função para obter a mensagem principal
+        let errorMessage = getErrorMessage(error);
         
-        if (typeof error === 'string') {
-            errorMessage = error;
-        } else if (error instanceof Error) {
-            errorMessage = error.message;
-        } else if (typeof error === 'object') {
-            // Tenta pegar message, error_description, ou details. Se não, stringify o objeto.
-            errorMessage = error.message || 
-                           error.error_description || 
-                           error.details || 
-                           error.hint || 
-                           (error.code ? `Erro SQL: ${error.code}` : null) ||
-                           JSON.stringify(error);
-        } else {
-            errorMessage = String(error);
-        }
-
         // Combine relevant parts of the error for a more robust search
         const fullErrorMessageLower = errorMessage.toLowerCase();
         let enhancedMessage = `${customMessage}: ${errorMessage}`;

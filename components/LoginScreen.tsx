@@ -1,7 +1,9 @@
+
+
 import React, { useState } from 'react';
-import { useAuth } from '../services/authService';
-import Spinner from './Spinner';
-import { Logo } from './Logo';
+import { useAuth } from '../services/authService.ts';
+import Spinner from './Spinner.tsx';
+import { Logo } from './Logo.tsx';
 
 const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>

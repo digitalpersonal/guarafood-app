@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import type { Promotion, MenuItem, Combo } from '../types';
 
@@ -29,7 +30,8 @@ const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOpen, onC
             setName(existingPromotion.name);
             setDescription(existingPromotion.description);
             setDiscountType(existingPromotion.discountType);
-            setDiscountValue(String(existingPromotion.discountValue));
+            // FIX: Use .toString() for converting number to string for input fields
+            setDiscountValue(existingPromotion.discountValue.toString());
             setTargetType(existingPromotion.targetType);
             setTargetIds(new Set(existingPromotion.targetIds));
             setStartDate(existingPromotion.startDate.split('T')[0]);

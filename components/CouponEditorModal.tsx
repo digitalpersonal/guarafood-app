@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import type { Coupon } from '../types';
 
@@ -28,8 +29,9 @@ const CouponEditorModal: React.FC<CouponEditorModalProps> = ({ isOpen, onClose, 
             setCode(existingCoupon.code);
             setDescription(existingCoupon.description);
             setDiscountType(existingCoupon.discountType);
-            setDiscountValue(String(existingCoupon.discountValue));
-            setMinOrderValue(String(existingCoupon.minOrderValue || ''));
+            // FIX: Use .toString() for converting number to string for input fields
+            setDiscountValue(existingCoupon.discountValue.toString());
+            setMinOrderValue(existingCoupon.minOrderValue?.toString() || '');
             setExpirationDate(existingCoupon.expirationDate.split('T')[0]);
             setIsActive(existingCoupon.isActive);
         } else {

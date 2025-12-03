@@ -78,7 +78,7 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
             case 'Preparando':
                 return (
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        <button onClick={(e) => { e.stopPropagation(); onNotify(order); }} className="bg-blue-600 text-white font-bold py-2 px-3 rounded-lg hover:bg-blue-700 text-sm">Notificar</button>
+                        <button onClick={(e) => { e.stopPropagation(); onNotify(order); }} className="bg-blue-600 text-white font-bold py-2 px-3 rounded-lg hover:bg-blue-700 text-sm">Notificar Cliente</button>
                         <button onClick={(e) => {
                             e.stopPropagation();
                              handleConfirmAndUpdate("Confirmar despacho do pedido? O status será alterado para 'A Caminho'.", 'A Caminho');
@@ -106,8 +106,8 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
 
     return (
         <div
-            className={`bg-white rounded-lg shadow-md p-4 flex flex-col space-y-4 cursor-pointer hover:shadow-lg transition-shadow duration-200 
-            ${isNew ? 'new-order-pulse border-2 border-blue-400' : 'border border-gray-100'}`}
+            className={`bg-white rounded-lg shadow-sm p-4 flex flex-col space-y-4 cursor-pointer hover:shadow-md transition-shadow duration-200 
+            ${isNew ? 'new-order-pulse border-2 border-blue-400' : 'border border-gray-200'}`}
             onClick={() => onViewDetails(order)}
             aria-label={`Detalhes do Pedido ${order.id.substring(0, 6)}`}
             role="listitem"
@@ -118,16 +118,18 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                     <h3 className="font-extrabold text-xl text-gray-800">Pedido <span className="text-orange-600">#{order.id.substring(0, 6)}</span></h3>
                     <p className="text-xs text-gray-500 mt-0.5">{new Date(order.timestamp).toLocaleString('pt-BR')}</p>
                 </div>
-                <span className={`px-3 py-1 text-xs font-semibold text-white rounded-full ${color}`}>{text}</span>
+                {/* Badge is hidden in Kanban columns since column title says status, but kept for History */}
+                {/* We can conditionally hide it via props if needed, but keeping it is fine for quick scanning */}
+                <span className={`px-2 py-0.5 text-[10px] font-semibold text-white rounded-full ${color}`}>{text}</span>
             </div>
 
             {/* Customer and Payment Info */}
             <div className="flex flex-col gap-2 pb-3 border-b border-gray-100">
                 <div>
                     <h4 className="font-semibold text-sm text-gray-500 mb-1">Cliente</h4>
-                    <p className="font-bold text-gray-800">{order.customerName}</p>
+                    <p className="font-bold text-gray-800 truncate">{order.customerName}</p>
                     {order.customerAddress && (
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-gray-600 line-clamp-2">
                             {order.customerAddress.street}, {order.customerAddress.number} - {order.customerAddress.neighborhood}
                             {order.customerAddress.complement && `, ${order.customerAddress.complement}`}
                         </p>
@@ -139,7 +141,7 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                         <CreditCardIcon className="w-4 h-4 mr-1.5 text-gray-600 flex-shrink-0" aria-hidden="true" />
                         <p className={`font-bold truncate ${order.paymentMethod === 'Marcar na minha conta' ? 'text-red-600' : 'text-gray-800'}`}>
                             {order.paymentMethod}
-                            {order.paymentMethod === 'Marcar na minha conta' && <span className="text-xs font-normal ml-1">(Verificar cadastro)</span>}
+                            {order.paymentMethod === 'Marcar na minha conta' && <span className="text-xs font-normal ml-1">(Verificar)</span>}
                         </p>
                     </div>
                 </div>
@@ -158,7 +160,7 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                         aria-expanded={isExpanded}
                         aria-controls={`order-items-${order.id}`}
                     >
-                        <span>{isExpanded ? 'Ocultar' : 'Ver Detalhes'}</span>
+                        <span>{isExpanded ? 'Ocultar' : 'Ver'}</span>
                         <ChevronDownIcon className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} aria-hidden="true" />
                     </button>
                 </div>
@@ -175,7 +177,6 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                                         </ul>
                                     )}
                                 </div>
-                                <span className="font-semibold whitespace-nowrap">R$ {(item.price * item.quantity).toFixed(2)}</span>
                             </li>
                         ))}
                     </ul>
@@ -183,7 +184,7 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
             </div>
 
             {/* Total Price */}
-            <div className="flex justify-between items-center font-bold text-xl py-2 bg-orange-50 rounded-md px-3 text-orange-800" aria-label={`Total do Pedido: R$ ${order.totalPrice.toFixed(2)}`}>
+            <div className="flex justify-between items-center font-bold text-lg py-1 text-orange-800" aria-label={`Total do Pedido: R$ ${order.totalPrice.toFixed(2)}`}>
                 <span>Total</span>
                 <span>R$ {order.totalPrice.toFixed(2)}</span>
             </div>
@@ -200,9 +201,10 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
 
 interface OrdersViewProps {
     orders: Order[];
+    printerWidth?: number;
 }
 
-const OrdersView: React.FC<OrdersViewProps> = ({ orders }) => {
+const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80 }) => {
     const { addToast } = useNotification();
     const [searchTerm, setSearchTerm] = useState('');
     const [viewMode, setViewMode] = useState<'active' | 'history'>('active');
@@ -220,18 +222,17 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders }) => {
 
     const handleNotify = (order: Order) => {
         const cleanRestaurantPhone = order.restaurantPhone.replace(/\D/g, '');
-        const restaurantWhatsAppLink = `https://wa.me/55${cleanRestaurantPhone}`;
         let message = '';
         
         if (order.status === 'Preparando') {
-            message = `Olá ${order.customerName}! Seu pedido no restaurante *${order.restaurantName}* foi confirmado e já estamos preparando tudo com muito carinho. O total é de R$ ${order.totalPrice.toFixed(2)}. Se precisar falar conosco, nosso WhatsApp é: ${restaurantWhatsAppLink}`;
+            message = `Olá *${order.customerName.split(' ')[0]}*! Recebemos seu pedido *#${order.id.substring(0, 6)}* no ${order.restaurantName}! 👨‍🍳\n\nJá estamos preparando tudo. O valor total é R$ ${order.totalPrice.toFixed(2)}.\n\nQualquer dúvida, é só responder aqui!`;
         } else if (order.status === 'A Caminho') {
-            message = `Olá ${order.customerName}! Boas notícias! Seu pedido do restaurante *${order.restaurantName}* já saiu para entrega e logo chegará até você!`;
+            message = `Olá *${order.customerName.split(' ')[0]}*! \n\n🏍️ Boas notícias: Seu pedido do *${order.restaurantName}* saiu para entrega!\n\nLogo chegará até você. Bom apetite! 😋`;
         } else {
-            return; // Don't send for other statuses
+            message = `Olá *${order.customerName.split(' ')[0]}*! Sobre seu pedido *#${order.id.substring(0, 6)}* no ${order.restaurantName}...`;
         }
 
-        const whatsappUrl = `https://wa.me/${order.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
+        const whatsappUrl = `https://wa.me/55${order.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
         window.open(whatsappUrl, '_blank');
     };
 
@@ -263,19 +264,22 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders }) => {
     }, [filteredOrders]);
 
     const activeSections = [
-        { title: 'Novos Pedidos', status: 'Novo Pedido' as OrderStatus },
-        { title: 'Em Preparo', status: 'Preparando' as OrderStatus },
-        { title: 'A Caminho', status: 'A Caminho' as OrderStatus },
+        { title: 'Novos Pedidos', status: 'Novo Pedido' as OrderStatus, bgColor: 'bg-blue-50' },
+        { title: 'Em Preparo', status: 'Preparando' as OrderStatus, bgColor: 'bg-yellow-50' },
+        { title: 'A Caminho', status: 'A Caminho' as OrderStatus, bgColor: 'bg-orange-50' },
     ];
+    
+    // History sections kept as simple list
     const historySections = [
         { title: 'Aguardando Pagamento', status: 'Aguardando Pagamento' as OrderStatus },
         { title: 'Entregues', status: 'Entregue' as OrderStatus },
         { title: 'Cancelados', status: 'Cancelado' as OrderStatus },
     ];
 
-    const RenderOrderList = ({ groupedOrders, sections }: { groupedOrders: any, sections: any[] }) => (
+    // Helper for History View
+    const RenderHistoryList = ({ groupedOrders }: { groupedOrders: any }) => (
         <>
-            {sections.map(section => (
+            {historySections.map(section => (
                 (groupedOrders[section.status] && groupedOrders[section.status]!.length > 0) ? (
                     <div key={section.status} role="region" aria-labelledby={`section-title-${section.status}`}>
                         <h2 id={`section-title-${section.status}`} className="text-xl font-bold mb-4">{section.title} ({groupedOrders[section.status]!.length})</h2>
@@ -315,7 +319,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders }) => {
                         id="tab-active-orders"
                         aria-controls="panel-active-orders"
                     >
-                        Pedidos Ativos
+                        Pedidos Ativos (Kanban)
                     </button>
                     <button 
                         onClick={() => setViewMode('history')} 
@@ -329,23 +333,52 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders }) => {
                     </button>
                 </div>
             </div>
-            <main className="p-4 space-y-8">
+            <main className="p-4 space-y-8 bg-gray-50 min-h-[calc(100vh-200px)]">
                 {viewMode === 'active' && (
-                    <div id="panel-active-orders" role="tabpanel" aria-labelledby="tab-active-orders">
-                        {activeOrders.length > 0 ? (
-                            <RenderOrderList groupedOrders={groupedActiveOrders} sections={activeSections} />
-                        ) : (
-                            <div className="text-center py-16 text-gray-500">
-                                <p className="font-semibold text-lg">{searchTerm ? "Nenhum pedido ativo corresponde à busca." : "Aguardando novos pedidos..."}</p>
-                                <p>{searchTerm ? "Tente buscar no histórico." : "Novos pedidos aparecerão aqui em tempo real."}</p>
-                            </div>
-                        )}
+                    <div id="panel-active-orders" role="tabpanel" aria-labelledby="tab-active-orders" className="h-full">
+                        {/* KANBAN LAYOUT - Always visible for active tab */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start h-full">
+                            {activeSections.map(section => {
+                                const ordersInSection = groupedActiveOrders[section.status] || [];
+                                return (
+                                    <div key={section.status} className={`p-4 rounded-xl h-full min-h-[300px] flex flex-col shadow-inner ${section.bgColor}`}>
+                                        {/* Header */}
+                                        <h2 className="text-lg font-bold mb-4 flex justify-between items-center text-gray-700 border-b border-gray-200 pb-2">
+                                            {section.title}
+                                            <span className="bg-white text-gray-600 px-3 py-1 rounded-full text-xs shadow-sm font-extrabold">
+                                                {ordersInSection.length}
+                                            </span>
+                                        </h2>
+                                        
+                                        {/* Cards Container */}
+                                        <div className="space-y-4 flex-grow">
+                                            {ordersInSection.length > 0 ? (
+                                                ordersInSection.map((order: Order) => (
+                                                    <OrderCard 
+                                                        key={order.id} 
+                                                        order={order} 
+                                                        onStatusUpdate={handleStatusUpdate} 
+                                                        onNotify={handleNotify} 
+                                                        onViewDetails={setSelectedOrder} 
+                                                    />
+                                                ))
+                                            ) : (
+                                                <div className="h-32 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg">
+                                                    <p className="text-gray-400 text-sm italic">Sem pedidos</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                 )}
+                
                 {viewMode === 'history' && (
                     <div id="panel-history-orders" role="tabpanel" aria-labelledby="tab-history-orders">
                         {historyOrders.length > 0 ? (
-                            <RenderOrderList groupedOrders={groupedHistoryOrders} sections={historySections} />
+                            <RenderHistoryList groupedOrders={groupedHistoryOrders} />
                         ) : (
                             <div className="text-center py-16 text-gray-500">
                                 <p className="font-semibold text-lg">{searchTerm ? "Nenhum registro corresponde à busca." : "O histórico de pedidos está vazio."}</p>
@@ -355,7 +388,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders }) => {
                     </div>
                 )}
             </main>
-            {selectedOrder && <OrderDetailsModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />}
+            {selectedOrder && <OrderDetailsModal order={selectedOrder} onClose={() => setSelectedOrder(null)} printerWidth={printerWidth} />}
         </>
     );
 };

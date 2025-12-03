@@ -1,12 +1,12 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import type { Restaurant } from '../types';
 // Import fetchRestaurantsSecure instead of fetchRestaurants
-import { fetchRestaurantsSecure, deleteRestaurant } from '../services/databaseService';
-import { useNotification } from '../hooks/useNotification';
-import Spinner from './Spinner';
-import RestaurantEditorModal from './RestaurantEditorModal';
-import { supabase } from '../services/api'; 
+import { fetchRestaurantsSecure, deleteRestaurant } from '../services/databaseService.ts';
+import { useNotification } from '../hooks/useNotification.tsx';
+import Spinner from './Spinner.tsx';
+import { supabase, getErrorMessage } from '../services/api.ts';
+// FIX: Add missing import for RestaurantEditorModal
+import RestaurantEditorModal from './RestaurantEditorModal.tsx';
 
 const MenuBookIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -19,11 +19,15 @@ const EditIcon: React.FC<{ className?: string }> = ({ className }) => (
 const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
 );
-const StarIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={className}>
-    <path fillRule="evenodd" d="M10.868 2.884c.321-.662 1.215-.662 1.536 0l1.82 3.745 4.13.602c.73.107 1.02.998.494 1.506l-2.988 2.91.705 4.114c.124.726-.635 1.28-1.288.943L10 15.158l-3.69 1.94c-.653.337-1.412-.217-1.288-.943l.705-4.114-2.988-2.91c-.525-.508-.236-1.399.494-1.506l4.13-.602 1.82-3.745z" clipRule="evenodd" />
-  </svg>
+const LinkIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+    </svg>
 );
+const ClipboardIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v3.043c0 .317-.135.619-.372.83h-9.312a1.125 1.125 0 01-1.125-1.125v-3.043c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" /></svg>
+);
+
 
 interface RestaurantManagementProps {
     onEditMenu: (restaurant: Restaurant) => void;
@@ -43,9 +47,10 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
             // Use the secure fetch to ensure admin can see credentials if needed for editing
             const data = await fetchRestaurantsSecure();
             setRestaurants(data);
+            setError(null); // Clear previous errors on successful load
         } catch (err) {
-            setError('Falha ao carregar restaurantes.');
-            console.error(err);
+            console.error("Failed to load restaurants:", err);
+            setError(`Falha ao carregar restaurantes: ${getErrorMessage(err)}`);
         } finally {
             setIsLoading(false);
         }
@@ -80,13 +85,19 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
                 await loadRestaurants();
             } catch (err: any) {
                 console.error("Failed to delete restaurant", err);
-                addToast({ message: `Erro ao excluir restaurante: ${err.message}`, type: 'error' });
+                addToast({ message: `Erro ao excluir restaurante: ${getErrorMessage(err)}`, type: 'error' });
             }
         }
     };
+    
+    const handleCopyLink = (restaurantId: number) => {
+        const url = `${window.location.origin}?r=${restaurantId}`; // Reverted to query param for restaurant link
+        navigator.clipboard.writeText(url);
+        addToast({ message: 'Link copiado para a área de transferência!', type: 'success' });
+    };
 
     if (isLoading) return <Spinner message="Carregando restaurantes..." />;
-    if (error) return <p className="text-center text-red-500">{error}</p>;
+    if (error) return <p className="text-center text-red-500 p-8 bg-red-50 rounded-lg">{error}</p>;
 
     return (
         <div className="bg-white p-4 rounded-lg shadow-md">
@@ -107,6 +118,7 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
                             <th scope="col" className="px-6 py-3">Categoria</th>
                             <th scope="col" className="px-6 py-3">Telefone</th>
                             <th scope="col" className="px-6 py-3">Endereço</th>
+                            <th scope="col" className="px-6 py-3 min-w-[250px]">Link da Loja</th> {/* New column header */}
                             <th scope="col" className="px-6 py-3">Ações</th>
                         </tr>
                     </thead>
@@ -117,8 +129,28 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
                                 <td className="px-6 py-4">{restaurant.category}</td>
                                 <td className="px-6 py-4">{restaurant.phone}</td>
                                 <td className="px-6 py-4">{restaurant.address}</td>
+                                <td className="px-6 py-4 min-w-[250px]"> {/* New column for the link */}
+                                    <div className="flex items-center gap-2">
+                                        <input 
+                                            type="text" 
+                                            readOnly 
+                                            value={`${window.location.origin}?r=${restaurant.id}`} 
+                                            className="flex-grow p-1 border rounded bg-gray-50 text-xs truncate"
+                                            onClick={(e) => (e.target as HTMLInputElement).select()} // Select on click
+                                            aria-label={`Link da loja ${restaurant.name}`}
+                                        />
+                                        <button 
+                                            onClick={() => handleCopyLink(restaurant.id)} 
+                                            className="p-1.5 text-gray-500 hover:text-orange-600" 
+                                            title="Copiar Link"
+                                        >
+                                            <ClipboardIcon className="w-4 h-4"/>
+                                        </button>
+                                    </div>
+                                </td>
                                 <td className="px-6 py-4">
                                     <div className="flex space-x-2">
+                                        {/* Removed LinkIcon as it's now in its own column */}
                                         <button onClick={() => onEditMenu(restaurant)} className="p-2 text-gray-500 hover:text-green-600" title="Gerenciar Cardápio">
                                             <MenuBookIcon className="w-5 h-5"/>
                                         </button>

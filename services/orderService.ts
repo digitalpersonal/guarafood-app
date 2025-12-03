@@ -1,6 +1,7 @@
 
-import type { Order, OrderStatus, CartItem } from '../types';
-import { supabase, handleSupabaseError } from './api';
+
+import type { Order, OrderStatus, CartItem } from '../types.ts';
+import { supabase, handleSupabaseError } from './api.ts';
 
 // Mapeia do Banco (snake_case) para o App (camelCase)
 const normalizeOrder = (data: any): Order => {
@@ -23,7 +24,8 @@ const normalizeOrder = (data: any): Order => {
         subtotal: data.subtotal,
         deliveryFee: data.delivery_fee,
         payment_id: data.payment_id,
-        payment_details: data.payment_details
+        payment_details: data.payment_details,
+        paymentStatus: data.payment_status || (data.payment_method === 'Marcar na minha conta' ? 'pending' : 'paid')
     };
 };
 
@@ -90,6 +92,8 @@ export interface NewOrderData {
 }
 
 export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
+    const isDebt = orderData.paymentMethod === 'Marcar na minha conta';
+    
     // CONVERSÃO IMPORTANTE: CamelCase (App) -> snake_case (Banco)
     const newOrderPayload = {
         customer_name: orderData.customerName,
@@ -107,6 +111,7 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
         subtotal: orderData.subtotal,
         delivery_fee: orderData.deliveryFee,
         status: orderData.paymentMethod === 'Pix' ? 'Aguardando Pagamento' : 'Novo Pedido',
+        payment_status: isDebt ? 'pending' : 'paid',
         timestamp: new Date().toISOString(),
     };
 
@@ -118,5 +123,32 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
 export const updateOrderStatus = async (orderId: string, status: OrderStatus): Promise<Order> => {
     const { data, error } = await supabase.from('orders').update({ status }).eq('id', orderId).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to update order status' });
+    return normalizeOrder(data);
+};
+
+export const updateOrderPaymentStatus = async (orderId: string, paymentStatus: 'paid' | 'pending'): Promise<void> => {
+    const { error } = await supabase.from('orders').update({ payment_status: paymentStatus }).eq('id', orderId);
+    handleSupabaseError({ error, customMessage: 'Failed to update payment status' });
+};
+
+export const updateOrderDetails = async (
+    orderId: string,
+    updatedDetails: {
+        items: CartItem[];
+        totalPrice: number;
+        subtotal: number;
+        discountAmount?: number;
+        paymentMethod?: string; // Allow changing payment method if it was "Marcar na minha conta" for example
+    }
+): Promise<Order> => {
+    const payload = {
+        items: updatedDetails.items,
+        total_price: updatedDetails.totalPrice,
+        subtotal: updatedDetails.subtotal,
+        discount_amount: updatedDetails.discountAmount,
+        payment_method: updatedDetails.paymentMethod,
+    };
+    const { data, error } = await supabase.from('orders').update(payload).eq('id', orderId).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to update order details' });
     return normalizeOrder(data);
 };

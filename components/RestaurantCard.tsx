@@ -1,11 +1,10 @@
-
 import React from 'react';
-import type { Restaurant } from '../types';
-import OptimizedImage from './OptimizedImage';
+import type { Restaurant } from '../types.ts';
+import OptimizedImage from './OptimizedImage.tsx';
 
 interface RestaurantCardProps {
   restaurant: Restaurant;
-  onClick: () => void;
+  onClick: (restaurant: Restaurant) => void; // Reverted: now takes full restaurant object
   isOpen: boolean;
 }
 
@@ -44,7 +43,7 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, is
   return (
     <div 
       className={`bg-white rounded-lg shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col relative ${!isOpen ? 'opacity-60' : ''}`}
-      onClick={onClick}
+      onClick={() => onClick(restaurant)} // Reverted: Pass full restaurant object to onClick
     >
       {!isOpen && (
         <div className="absolute top-0 right-0 bg-gray-700 text-white text-xs font-bold px-2 py-0.5 rounded-bl-lg z-20">
@@ -54,7 +53,7 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, is
       <div className="bg-orange-600 text-white text-sm font-bold px-4 py-1 text-center">
         {restaurant.category}
       </div>
-      <div className="flex items-start space-x-4 p-3 flex-grow">
+      <div className="flex items-start gap-x-3 sm:gap-x-4 p-2 sm:p-3 flex-grow">
         <OptimizedImage 
           src={restaurant.imageUrl} 
           alt={restaurant.name} 

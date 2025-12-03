@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from './types';
 import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant } from './services/databaseService';
 import { AuthProvider, useAuth } from './services/authService';
-import { getInitializationError } from './services/api';
+import { getInitializationError, getErrorMessage } from './services/api'; // Import getErrorMessage
 
 import RestaurantCard from './components/RestaurantCard';
 import Spinner from './components/Spinner';
@@ -16,10 +16,12 @@ import AdminDashboard from './components/AdminDashboard';
 import OrderManagement from './components/OrderManagement';
 import CouponDisplay from './components/CouponDisplay';
 import HomePromotionalBanner from './components/HomePromotionalBanner';
-import { CartProvider } from './hooks/useCart';
-import { AnimationProvider } from './hooks/useAnimation';
-import { NotificationProvider } from './hooks/useNotification';
+import { CartProvider } from '../hooks/useCart';
+import { AnimationProvider } from '../hooks/useAnimation';
+import { NotificationProvider, useNotification, type ToastOptions } from '../hooks/useNotification'; // Import useNotification
 import OptimizedImage from './components/OptimizedImage';
+import OrderTracker from './components/OrderTracker';
+import CustomerOrders from './components/CustomerOrders';
 
 
 const SearchIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -52,6 +54,12 @@ const UserCircleIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+const ClockIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+);
+
 
 // Helper to convert "HH:MM" string to minutes from midnight
 const timeToMinutes = (timeString: string): number => {
@@ -62,6 +70,18 @@ const timeToMinutes = (timeString: string): number => {
 // Helper to create valid HTML IDs from category names
 const slugify = (text: string) => `category-${text.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '')}`;
 
+const checkTimeRange = (currentTime: number, openStr: string, closeStr: string): boolean => {
+    if (!openStr || !closeStr) return false;
+    const openTime = timeToMinutes(openStr);
+    const closeTime = timeToMinutes(closeStr);
+
+    if (closeTime < openTime) {
+        // Overnight shift (e.g. 18:00 to 02:00)
+        return currentTime >= openTime || currentTime < closeTime;
+    }
+    return currentTime >= openTime && currentTime < closeTime;
+};
+
 const isRestaurantOpen = (restaurant: Restaurant): boolean => {
     const { operatingHours, openingHours, closingHours } = restaurant;
     const now = new Date();
@@ -70,21 +90,47 @@ const isRestaurantOpen = (restaurant: Restaurant): boolean => {
 
     // New logic using detailed operating hours
     if (operatingHours && operatingHours.length === 7) {
+        
+        // 1. Check Previous Day for Overnight shifts that extend into today
+        const prevDayIndex = currentDay === 0 ? 6 : currentDay - 1;
+        const prevDayHours = operatingHours[prevDayIndex];
+        
+        if (prevDayHours && prevDayHours.isOpen) {
+             // Check Shift 1 overflow
+             if (prevDayHours.closes && prevDayHours.opens) {
+                 const openMins = timeToMinutes(prevDayHours.opens);
+                 const closeMins = timeToMinutes(prevDayHours.closes);
+                 if (closeMins < openMins && currentTimeInMinutes < closeMins) {
+                     return true;
+                 }
+             }
+             // Check Shift 2 overflow
+             if (prevDayHours.closes2 && prevDayHours.opens2) {
+                 const openMins = timeToMinutes(prevDayHours.opens2);
+                 const closeMins = timeToMinutes(prevDayHours.closes2);
+                 if (closeMins < openMins && currentTimeInMinutes < closeMins) {
+                     return true;
+                 }
+             }
+        }
+
+        // 2. Check Today's Hours
         const todayHours = operatingHours[currentDay];
         if (!todayHours || !todayHours.isOpen) {
             return false;
         }
         
         try {
-            const openTimeInMinutes = timeToMinutes(todayHours.opens);
-            const closeTimeInMinutes = timeToMinutes(todayHours.closes);
+            // Check Shift 1
+            const isOpenShift1 = checkTimeRange(currentTimeInMinutes, todayHours.opens, todayHours.closes);
             
-            // Handle overnight case (e.g., opens 18:00, closes 02:00)
-            if (closeTimeInMinutes < openTimeInMinutes) {
-                return currentTimeInMinutes >= openTimeInMinutes || currentTimeInMinutes < closeTimeInMinutes;
-            }
+            // Check Shift 2 (if exists)
+            const isOpenShift2 = todayHours.opens2 && todayHours.closes2 
+                ? checkTimeRange(currentTimeInMinutes, todayHours.opens2, todayHours.closes2)
+                : false;
 
-            return currentTimeInMinutes >= openTimeInMinutes && currentTimeInMinutes < closeTimeInMinutes;
+            return isOpenShift1 || isOpenShift2;
+
         } catch (e) {
             console.error("Error parsing detailed restaurant hours:", restaurant.name, e);
             return true; // Fallback to open
@@ -96,12 +142,7 @@ const isRestaurantOpen = (restaurant: Restaurant): boolean => {
         return true; // Assume open if data is missing
     }
     try {
-        const openTimeInMinutes = timeToMinutes(openingHours);
-        const closeTimeInMinutes = timeToMinutes(closingHours);
-        if (closeTimeInMinutes < openTimeInMinutes) {
-            return currentTimeInMinutes >= openTimeInMinutes || currentTimeInMinutes < closeTimeInMinutes;
-        }
-        return currentTimeInMinutes >= openTimeInMinutes && currentTimeInMinutes < closeTimeInMinutes;
+       return checkTimeRange(currentTimeInMinutes, openingHours, closingHours);
     } catch (e) {
         console.error("Error parsing simple restaurant hours:", restaurant.name, e);
         return true;
@@ -120,6 +161,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     const [activeCategory, setActiveCategory] = useState<string | null>(null);
     const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
+    const { addToast } = useNotification(); // Use useNotification directly here
 
     useEffect(() => {
         const loadMenu = async () => {
@@ -156,15 +198,18 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                 if (menuWithoutSpecials.length > 0) {
                     setActiveCategory(slugify(menuWithoutSpecials[0].name));
                 }
-            } catch (err) {
-                setError('Falha ao carregar o cardápio. Por favor, tente recarregar a página.');
+            } catch (err: any) {
+                const errorMessage = `Falha ao carregar o cardápio: ${getErrorMessage(err)}`;
+                setError(errorMessage + '. Por favor, tente recarregar a página.');
+                addToast({ message: errorMessage, type: 'error' }); // Show toast
                 console.error(err);
             } finally {
                 setIsLoading(false);
             }
         };
         loadMenu();
-    }, [restaurant]);
+    }, [restaurant, addToast]); // Depend on addToast
+
 
     useEffect(() => {
         if (isLoading || menu.length === 0) return;
@@ -216,16 +261,36 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
 
     return (
         <div className="w-full">
-            <div className="relative h-48 bg-gray-200">
-                <OptimizedImage src={restaurant.imageUrl} alt={restaurant.name} className="w-full h-full" />
-                <div className="absolute inset-0 bg-black bg-opacity-30"></div>
-                 <button onClick={onBack} className="absolute top-4 left-4 bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition-colors z-20">
+            {/* HEADER: Gradiente Escuro + Logo Centralizada */}
+            <div className="relative h-40 sm:h-52 bg-gradient-to-br from-gray-800 to-gray-900 overflow-hidden">
+                {/* Abstract Pattern Overlay */}
+                <div className="absolute inset-0 opacity-10" style={{ 
+                    backgroundImage: 'radial-gradient(#ffffff 1px, transparent 1px)', 
+                    backgroundSize: '20px 20px' 
+                }}></div>
+                
+                {/* Centered Logo Container */}
+                <div className="absolute inset-0 flex items-center justify-center z-10 p-4">
+                    <div className="relative w-28 h-28 sm:w-32 sm:h-32 bg-white rounded-full shadow-2xl p-1 flex-shrink-0 border-4 border-white/20 overflow-hidden">
+                         <OptimizedImage 
+                            src={restaurant.imageUrl} 
+                            alt={restaurant.name} 
+                            priority={true}
+                            className="w-full h-full rounded-full"
+                            objectFit="contain" // Garante que a logo apareça INTEIRA dentro do círculo branco
+                        />
+                    </div>
+                </div>
+
+                <button onClick={onBack} className="absolute top-4 left-4 bg-white/90 backdrop-blur rounded-full p-2 shadow-md hover:bg-white transition-colors z-20">
                     <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
                 </button>
             </div>
-            <div className="p-4 bg-white rounded-t-2xl -mt-8 relative z-20">
-                <h1 className="text-3xl font-bold">{restaurant.name}</h1>
-                <p className="text-gray-600">{restaurant.category}</p>
+
+            <div className="p-4 bg-white rounded-t-2xl -mt-4 relative z-20 text-center border-b shadow-sm">
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{restaurant.name}</h1>
+                <p className="text-gray-600 mt-1 text-sm font-medium uppercase tracking-wide">{restaurant.category}</p>
+                {restaurant.description && <p className="text-gray-500 text-sm mt-2 max-w-lg mx-auto">{restaurant.description}</p>}
             </div>
             
             {!isLoading && restaurant.category === 'Supermercado' && weeklySpecials.length > 0 && (
@@ -301,6 +366,12 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
             <div className="p-4">
                  {isLoading ? <Spinner message="Carregando cardápio..." /> : error ? <p className="text-red-500 text-center p-8 bg-red-50 rounded-lg">{error}</p> : (
                     <div className="space-y-8">
+                        {menu.length === 0 && (
+                            <div className="text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                                <p className="text-gray-500 text-lg font-medium">O cardápio está sendo preparado!</p>
+                                <p className="text-gray-400 text-sm mt-1">Visite novamente em breve.</p>
+                            </div>
+                        )}
                         {menu.map((category) => {
                             const categoryId = slugify(category.name);
                             return (
@@ -330,18 +401,22 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
 
 const CustomerView: React.FC<{
     onGoToLogin: () => void;
-}> = ({ onGoToLogin }) => {
+    onGoToHistory: () => void;
+}> = ({ onGoToLogin, onGoToHistory }) => {
     const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     const [searchTerm, setSearchTerm] = useState('');
-    const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+    // Changed: Support multi-select categories. Default 'Todos' means no filter/all.
+    const [selectedCategories, setSelectedCategories] = useState<string[]>(['Todos']);
     const [showOpenOnly, setShowOpenOnly] = useState(false);
 
     // Use a fixed header image to avoid API quota issues.
     const [headerImage, setHeaderImage] = useState<string>('https://images.pexels.com/photos/376464/pexels-photo-376464.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2');
+
+    const { addToast } = useNotification(); // Use useNotification directly here
 
     useEffect(() => {
         const loadInitialData = async () => {
@@ -351,13 +426,30 @@ const CustomerView: React.FC<{
                 const restaurantsData = await fetchRestaurants();
                 setRestaurants(restaurantsData);
 
+                // Check URL for restaurant ID parameter (?r=15)
+                const urlParams = new URLSearchParams(window.location.search);
+                const restaurantIdParam = urlParams.get('r');
+                if (restaurantIdParam) {
+                    const id = parseInt(restaurantIdParam, 10);
+                    if (!isNaN(id)) {
+                        const targetRestaurant = restaurantsData.find(r => r.id === id);
+                        if (targetRestaurant) {
+                            setSelectedRestaurant(targetRestaurant);
+                        } else {
+                            addToast({ message: "Restaurante não encontrado. Verifique o link.", type: 'error' });
+                            window.history.replaceState({}, '', window.location.pathname); // Clear invalid param
+                        }
+                    }
+                }
+
             } catch (err: any) {
                 // Determine error message
-                let message = 'Falha ao buscar restaurantes.';
-                if (typeof err === 'string') message = err;
-                else if (err.message) message = err.message;
-                
+                let message = `Falha ao buscar restaurantes: ${getErrorMessage(err)}`;
+                if (message.includes('Failed to fetch') || message.includes('TypeError: Failed to fetch')) {
+                    message += '\n\nVerifique se as credenciais do Supabase estão corretas no arquivo `config.ts` (SUPABASE_URL e SUPABASE_ANON_KEY) ou nas variáveis de ambiente. Pode ser um problema de rede, firewall ou o seu projeto Supabase está inacessível.';
+                }
                 setError(message);
+                addToast({ message: message, type: 'error' }); // Show toast
                 console.error(err);
             } finally {
                 setIsLoading(false);
@@ -365,41 +457,84 @@ const CustomerView: React.FC<{
         };
 
         loadInitialData();
-    }, []); // Empty dependency array means it runs once on mount
+    }, [addToast]); // Depend on addToast
 
     const categories = useMemo(() => {
-        const allCategories = restaurants.map(r => r.category);
+        const allCategories = restaurants.flatMap(r => r.category ? r.category.split(',').map(c => c.trim()) : []);
         return ['Todos', ...Array.from(new Set(allCategories))];
     }, [restaurants]);
 
     const filteredRestaurants = useMemo(() => {
         return restaurants.filter(restaurant => {
-            const matchesCategory = selectedCategory === 'Todos' || !selectedCategory || restaurant.category === selectedCategory;
+            // Updated filtering logic for multi-select and comma-separated categories
+            const restaurantCategories = restaurant.category ? restaurant.category.split(',').map(c => c.trim()) : [];
+            const matchesCategory = selectedCategories.includes('Todos') || selectedCategories.length === 0 || selectedCategories.some(sel => restaurantCategories.includes(sel));
+            
             const matchesSearch = restaurant.name.toLowerCase().includes(searchTerm.toLowerCase());
             const matchesOpenFilter = !showOpenOnly || isRestaurantOpen(restaurant);
             return matchesCategory && matchesSearch && matchesOpenFilter;
         });
-    }, [restaurants, searchTerm, selectedCategory, showOpenOnly]);
+    }, [restaurants, searchTerm, selectedCategories, showOpenOnly]);
 
-    const handleBannerClick = (targetType: 'restaurant' | 'category', targetValue: string) => {
+    const handleBannerClick = useCallback((targetType: 'restaurant' | 'category', targetValue: string) => {
         if (targetType === 'restaurant') {
             const targetRestaurant = restaurants.find(r => r.name === targetValue);
             if (targetRestaurant) {
                 setSelectedRestaurant(targetRestaurant);
+                window.history.pushState({}, '', `?r=${targetRestaurant.id}`); // Update URL param
             } else {
                 console.warn(`Banner clicked for non-existent restaurant: ${targetValue}`);
+                addToast({message: `Restaurante "${targetValue}" não encontrado.`, type: "error"});
             }
         } else if (targetType === 'category') {
+            // Check if the category exists in the available list
             const targetCategory = categories.find(c => c === targetValue);
             if (targetCategory) {
-                setSelectedCategory(targetCategory);
+                // For banners, we just set the single category
+                setSelectedCategories([targetCategory]);
                 // Also clear search term to ensure category is visible
                 setSearchTerm('');
             } else {
                 console.warn(`Banner clicked for non-existent category: ${targetValue}`);
+                addToast({message: `Categoria "${targetValue}" não encontrada.`, type: "error"});
             }
         }
-    };
+    }, [restaurants, categories, addToast]);
+
+
+    const handleCategoryClick = useCallback((category: string) => {
+        if (category === 'Todos') {
+            setSelectedCategories(['Todos']);
+            return;
+        }
+
+        setSelectedCategories(prev => {
+            // If "Todos" was selected, clear it and start fresh with the clicked category
+            if (prev.includes('Todos')) {
+                return [category];
+            }
+
+            // Toggle logic
+            if (prev.includes(category)) {
+                const newSelection = prev.filter(c => c !== category);
+                // If we deselected everything, go back to "Todos"
+                return newSelection.length === 0 ? ['Todos'] : newSelection;
+            } else {
+                return [...prev, category];
+            }
+        });
+    }, []);
+
+    const handleSelectRestaurant = useCallback((restaurant: Restaurant) => {
+        setSelectedRestaurant(restaurant);
+        window.history.pushState({}, '', `?r=${restaurant.id}`); // Update URL param
+    }, []);
+    
+    const handleBackToHome = useCallback(() => {
+        setSelectedRestaurant(null);
+        // Clear URL param without refreshing
+        window.history.replaceState({}, '', window.location.pathname);
+    }, []);
 
 
     if (isLoading) {
@@ -430,7 +565,7 @@ const CustomerView: React.FC<{
     }
 
     if (selectedRestaurant) {
-        return <RestaurantMenu restaurant={selectedRestaurant} onBack={() => setSelectedRestaurant(null)} />;
+        return <RestaurantMenu restaurant={selectedRestaurant} onBack={handleBackToHome} />;
     }
 
     return (
@@ -438,28 +573,40 @@ const CustomerView: React.FC<{
             <header className="p-4 sticky top-0 bg-orange-600 shadow-md z-20">
                  <div className="flex justify-between items-center">
                   <Logo />
-                  <button onClick={onGoToLogin} className="flex items-center space-x-2 text-sm font-semibold text-white p-2 rounded-lg hover:bg-orange-700 transition-colors">
-                      <UserCircleIcon className="w-6 h-6"/>
-                      <span>Acessar Painel</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                      <button onClick={onGoToHistory} className="flex items-center space-x-1 text-sm font-semibold text-white p-2 rounded-lg hover:bg-orange-700 transition-colors" title="Meus Pedidos">
+                          <ClockIcon className="w-6 h-6"/>
+                      </button>
+                      <button onClick={onGoToLogin} className="flex items-center space-x-2 text-sm font-semibold text-white p-2 rounded-lg hover:bg-orange-700 transition-colors">
+                          <UserCircleIcon className="w-6 h-6"/>
+                          <span className="hidden sm:inline">Acessar Painel</span>
+                      </button>
+                  </div>
                 </div>
             </header>
 
-            <main>
+            <main className="pb-16"> {/* Add padding bottom for OrderTracker */}
                 <div
-                    className="relative p-6 sm:p-10 text-center border-b border-orange-100 min-h-[250px] flex flex-col justify-center"
-                    style={{
-                        backgroundImage: headerImage ? `url(${headerImage})` : undefined,
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
-                        backgroundRepeat: 'no-repeat',
-                        backgroundColor: '#fff7ed' // Fallback color: bg-orange-50
-                    }}
+                    className="relative p-6 sm:p-10 text-center border-b border-orange-100 min-h-[250px] flex flex-col justify-center overflow-hidden"
                     role="banner"
                 >
-                    <div className={`relative z-10 flex flex-col items-center ${headerImage ? 'bg-black bg-opacity-40 p-4 rounded-lg' : ''}`}>
-                        <h1 className={`text-3xl sm:text-4xl font-extrabold mb-2 ${headerImage ? 'text-white' : 'text-gray-800'}`}>Sua fome pede, GuaraFood entrega.</h1>
-                        <p className={`max-w-2xl mx-auto mb-6 ${headerImage ? 'text-gray-100' : 'text-gray-600'}`}>Uma praça de alimentação completa na palma da sua mão.</p>
+                    {/* Replaced backgroundImage with OptimizedImage for better performance and lazy loading control */}
+                    <div className="absolute inset-0 bg-[#fff7ed]">
+                        {headerImage && (
+                            <OptimizedImage 
+                                src={headerImage} 
+                                alt="Fundo GuaraFood" 
+                                priority={true} 
+                                className="w-full h-full"
+                                objectFit="cover"
+                            />
+                        )}
+                        <div className="absolute inset-0 bg-black bg-opacity-40"></div>
+                    </div>
+
+                    <div className="relative z-10 flex flex-col items-center">
+                        <h1 className="text-3xl sm:text-4xl font-extrabold mb-2 text-white">Sua fome pede, GuaraFood entrega.</h1>
+                        <p className="max-w-2xl mx-auto mb-6 text-gray-100">Uma praça de alimentação completa na palma da sua mão.</p>
                         <div className="relative max-w-xl mx-auto w-full">
                             <input
                                 type="text"
@@ -488,19 +635,22 @@ const CustomerView: React.FC<{
                         </label>
                     </div>
                     <div className="flex space-x-3 overflow-x-auto pb-3 -mx-4 px-4">
-                        {categories.map(category => (
-                            <button
-                                key={category}
-                                onClick={() => setSelectedCategory(category)}
-                                className={`px-4 py-2 rounded-full font-semibold text-sm whitespace-nowrap transform transition-all duration-200 ease-in-out hover:scale-105 ${
-                                    selectedCategory === category 
-                                        ? 'bg-orange-600 text-white shadow-lg' 
-                                        : 'bg-white text-gray-700 border hover:shadow-md'
-                                }`}
-                            >
-                                {category}
-                            </button>
-                        ))}
+                        {categories.map(category => {
+                            const isSelected = selectedCategories.includes(category);
+                            return (
+                                <button
+                                    key={category}
+                                    onClick={() => handleCategoryClick(category)}
+                                    className={`px-4 py-2 rounded-full font-semibold text-sm whitespace-nowrap transform transition-all duration-200 ease-in-out hover:scale-105 ${
+                                        isSelected
+                                            ? 'bg-orange-600 text-white shadow-lg' 
+                                            : 'bg-white text-gray-700 border hover:shadow-md'
+                                    }`}
+                                >
+                                    {category}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -509,11 +659,14 @@ const CustomerView: React.FC<{
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {filteredRestaurants.map(restaurant => {
                             const isOpen = isRestaurantOpen(restaurant);
-                            return <RestaurantCard key={restaurant.id} restaurant={restaurant} onClick={() => setSelectedRestaurant(restaurant)} isOpen={isOpen} />;
+                            return <RestaurantCard key={restaurant.id} restaurant={restaurant} onClick={handleSelectRestaurant} isOpen={isOpen} />;
                         })}
                     </div>
                     {filteredRestaurants.length === 0 && <p className="text-center text-gray-500 col-span-full py-8">Nenhum restaurante encontrado.</p>}
                 </div>
+                
+                {/* Tracker Overlay */}
+                <OrderTracker />
             </main>
              <Cart restaurant={selectedRestaurant} />
         </>
@@ -521,9 +674,14 @@ const CustomerView: React.FC<{
 };
 
 
+type ViewState = 'customer' | 'login' | 'history';
+
 const AppContent: React.FC = () => {
-    const [view, setView] = useState<'customer' | 'login'>('customer');
+    const [view, setView] = useState<ViewState>('customer');
     const { currentUser, loading, authError } = useAuth();
+    // Força atualização do arquivo App.tsx no ambiente de execução.
+    // Isso é um workaround para problemas de cache no Google AI Studio.
+    // REMOVED: console.log('authError state in AppContent:', authError); 
 
     const handleBackToCustomerView = () => setView('customer');
 
@@ -574,8 +732,12 @@ const AppContent: React.FC = () => {
                 setView('customer');
             }} onBack={handleBackToCustomerView} />;
         }
+
+        if (view === 'history') {
+            return <CustomerOrders onBack={handleBackToCustomerView} />;
+        }
         
-        return <CustomerView onGoToLogin={() => setView('login')} />;
+        return <CustomerView onGoToLogin={() => setView('login')} onGoToHistory={() => setView('history')} />;
     };
 
     return (

@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import type { Addon } from '../types';
 
@@ -17,7 +18,8 @@ const AddonEditorModal: React.FC<AddonEditorModalProps> = ({ isOpen, onClose, on
     useEffect(() => {
         if (existingAddon) {
             setName(existingAddon.name);
-            setPrice(String(existingAddon.price));
+            // FIX: Use .toString() for converting number to string for input fields
+            setPrice(existingAddon.price.toString());
         } else {
             setName('');
             setPrice('');

@@ -44,6 +44,12 @@ const ClipboardIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+const PlusIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+    </svg>
+);
+
 const getDefaultOperatingHours = (): OperatingHours[] =>
     daysOfWeek.map((_, index) => ({
         dayOfWeek: index,
@@ -86,6 +92,9 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
 
     const [categories, setCategories] = useState<RestaurantCategory[]>([]);
     const [loadingCategories, setLoadingCategories] = useState(false);
+    
+    // UI state to toggle second shift view per day
+    const [showSecondShift, setShowSecondShift] = useState<boolean[]>(Array(7).fill(false));
 
 
     useEffect(() => {
@@ -108,12 +117,18 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
 
     useEffect(() => {
         if (existingRestaurant) {
+            const opHours = existingRestaurant.operatingHours && existingRestaurant.operatingHours.length === 7 
+                ? existingRestaurant.operatingHours 
+                : getDefaultOperatingHours();
+            
+            // Determine which days have a second shift active to show UI
+            const hasShift2 = opHours.map(d => !!(d.opens2 || d.closes2));
+            setShowSecondShift(hasShift2);
+
             setFormData({
                 ...existingRestaurant,
                 mercado_pago_credentials: existingRestaurant.mercado_pago_credentials || { accessToken: '' },
-                operatingHours: existingRestaurant.operatingHours && existingRestaurant.operatingHours.length === 7 
-                    ? existingRestaurant.operatingHours 
-                    : getDefaultOperatingHours(),
+                operatingHours: opHours,
                 manualPixKey: existingRestaurant.manualPixKey || '',
             });
             setLogoPreview(existingRestaurant.imageUrl);
@@ -135,6 +150,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 operatingHours: getDefaultOperatingHours(),
                 manualPixKey: '',
             });
+            setShowSecondShift(Array(7).fill(false));
             setChangeCredentials(true); // Always true for new
             setLogoPreview(null);
         }
@@ -196,7 +212,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         }));
     };
 
-    const handleOperatingHoursChange = (dayIndex: number, field: 'isOpen' | 'opens' | 'closes', value: string | boolean) => {
+    const handleOperatingHoursChange = (dayIndex: number, field: 'isOpen' | 'opens' | 'closes' | 'opens2' | 'closes2', value: string | boolean) => {
         setFormData(prev => {
             const newHours = [...(prev.operatingHours || getDefaultOperatingHours())];
             const day = { ...newHours[dayIndex] };
@@ -205,6 +221,26 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             return { ...prev, operatingHours: newHours };
         });
     };
+    
+    const toggleSecondShift = (dayIndex: number) => {
+        setShowSecondShift(prev => {
+            const newState = [...prev];
+            newState[dayIndex] = !newState[dayIndex];
+            return newState;
+        });
+        
+        // If enabling, set default times if empty
+        if (!showSecondShift[dayIndex]) {
+             setFormData(prev => {
+                const newHours = [...(prev.operatingHours || getDefaultOperatingHours())];
+                const day = { ...newHours[dayIndex] };
+                if (!day.opens2) day.opens2 = '11:00';
+                if (!day.closes2) day.closes2 = '14:30';
+                newHours[dayIndex] = day;
+                return { ...prev, operatingHours: newHours };
+            });
+        }
+    }
 
     const handleAddGateway = () => {
         const trimmedGateway = newGateway.trim();
@@ -465,32 +501,62 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                     {/* Operating Hours */}
                     <div className="border-t pt-4">
                         <h3 className="text-lg font-semibold text-gray-700 mb-2">Horário de Funcionamento</h3>
-                        <div className="space-y-2">
+                        <p className="text-xs text-gray-500 mb-2">Use o botão "+" para adicionar um segundo turno (ex: Almoço e Jantar).</p>
+                        <div className="space-y-3">
                             {(formData.operatingHours || []).map((day, index) => {
                                 // Logic to detect overnight (next day) hours
-                                const isOpen = day.isOpen;
-                                let isOvernight = false;
-                                if (isOpen && day.opens && day.closes) {
-                                    const openParts = day.opens.split(':').map(Number);
-                                    const closeParts = day.closes.split(':').map(Number);
+                                const checkOvernight = (o: string, c: string) => {
+                                    if (!o || !c) return false;
+                                    const openParts = o.split(':').map(Number);
+                                    const closeParts = c.split(':').map(Number);
                                     const openMins = openParts[0] * 60 + openParts[1];
                                     const closeMins = closeParts[0] * 60 + closeParts[1];
-                                    if (closeMins < openMins) isOvernight = true;
-                                }
+                                    return closeMins < openMins;
+                                };
+                                const isOvernight1 = day.isOpen ? checkOvernight(day.opens, day.closes) : false;
+                                const isOvernight2 = day.isOpen && showSecondShift[index] ? checkOvernight(day.opens2 || '', day.closes2 || '') : false;
 
                                 return (
-                                <div key={index} className="grid grid-cols-12 gap-2 items-center p-2 rounded-lg bg-gray-50 border">
-                                    <div className="col-span-4 flex items-center">
-                                        <input type="checkbox" checked={day.isOpen} onChange={(e) => handleOperatingHoursChange(index, 'isOpen', e.target.checked)} className="h-4 w-4 mr-2 text-orange-600 rounded focus:ring-orange-500"/>
-                                        <span className="font-semibold text-sm text-gray-700">{daysOfWeek[index]}</span>
+                                <div key={index} className="p-2 rounded-lg bg-gray-50 border">
+                                    <div className="grid grid-cols-12 gap-2 items-center">
+                                        <div className="col-span-4 flex items-center">
+                                            <input type="checkbox" checked={day.isOpen} onChange={(e) => handleOperatingHoursChange(index, 'isOpen', e.target.checked)} className="h-4 w-4 mr-2 text-orange-600 rounded focus:ring-orange-500"/>
+                                            <span className="font-semibold text-sm text-gray-700">{daysOfWeek[index]}</span>
+                                        </div>
+                                        <div className="col-span-3">
+                                            <input type="time" value={day.opens} onChange={(e) => handleOperatingHoursChange(index, 'opens', e.target.value)} disabled={!day.isOpen} className="w-full p-1 border rounded text-sm disabled:bg-gray-200"/>
+                                        </div>
+                                        <div className="col-span-3 relative">
+                                            <input type="time" value={day.closes} onChange={(e) => handleOperatingHoursChange(index, 'closes', e.target.value)} disabled={!day.isOpen} className="w-full p-1 border rounded text-sm disabled:bg-gray-200"/>
+                                            {isOvernight1 && <span className="absolute -bottom-4 right-0 text-[10px] text-orange-600 font-bold bg-orange-100 px-1 rounded whitespace-nowrap">(+1 dia)</span>}
+                                        </div>
+                                        <div className="col-span-2 text-right">
+                                            <button 
+                                                type="button" 
+                                                onClick={() => toggleSecondShift(index)} 
+                                                className={`p-1 rounded hover:bg-gray-200 ${showSecondShift[index] ? 'text-orange-600' : 'text-gray-400'}`}
+                                                title={showSecondShift[index] ? "Remover 2º Turno" : "Adicionar 2º Turno (Almoço/Jantar)"}
+                                            >
+                                                <PlusIcon className="w-5 h-5"/>
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div className="col-span-4">
-                                        <input type="time" value={day.opens} onChange={(e) => handleOperatingHoursChange(index, 'opens', e.target.value)} disabled={!day.isOpen} className="w-full p-1 border rounded text-sm disabled:bg-gray-200"/>
-                                    </div>
-                                    <div className="col-span-4 relative">
-                                        <input type="time" value={day.closes} onChange={(e) => handleOperatingHoursChange(index, 'closes', e.target.value)} disabled={!day.isOpen} className="w-full p-1 border rounded text-sm disabled:bg-gray-200"/>
-                                        {isOvernight && <span className="absolute -bottom-4 right-0 text-[10px] text-orange-600 font-bold bg-orange-100 px-1 rounded whitespace-nowrap">(+1 dia)</span>}
-                                    </div>
+                                    
+                                    {/* Second Shift Row */}
+                                    {day.isOpen && showSecondShift[index] && (
+                                        <div className="grid grid-cols-12 gap-2 items-center mt-2 pt-2 border-t border-gray-200">
+                                            <div className="col-span-4 text-right">
+                                                <span className="text-xs text-gray-500 font-medium mr-2">2º Turno:</span>
+                                            </div>
+                                            <div className="col-span-3">
+                                                <input type="time" value={day.opens2 || ''} onChange={(e) => handleOperatingHoursChange(index, 'opens2', e.target.value)} className="w-full p-1 border rounded text-sm"/>
+                                            </div>
+                                            <div className="col-span-3 relative">
+                                                <input type="time" value={day.closes2 || ''} onChange={(e) => handleOperatingHoursChange(index, 'closes2', e.target.value)} className="w-full p-1 border rounded text-sm"/>
+                                                {isOvernight2 && <span className="absolute -bottom-4 right-0 text-[10px] text-orange-600 font-bold bg-orange-100 px-1 rounded whitespace-nowrap">(+1 dia)</span>}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )})}
                         </div>

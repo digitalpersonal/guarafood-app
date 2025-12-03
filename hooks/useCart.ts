@@ -1,13 +1,13 @@
 
-
 import React, { createContext, useState, useContext, useMemo, useCallback, useEffect } from 'react';
-import type { CartItem, MenuItem, Combo } from '../types';
+import type { CartItem, MenuItem, Combo } from '../types.ts';
 
 interface CartContextType {
   cartItems: CartItem[];
   addToCart: (item: MenuItem | Combo | CartItem) => void;
   removeFromCart: (itemId: string) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
+  updateItemNotes: (itemId: string, notes: string) => void; // New function
   clearCart: () => void;
   totalPrice: number;
   totalItems: number;
@@ -67,7 +67,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
           imageUrl: item.imageUrl,
           quantity: 1,
           description: item.description,
-          originalPrice: item.originalPrice,
+          originalPrice: item.activePromotion?.name ? item.price : item.originalPrice,
           promotionName: item.activePromotion?.name,
       };
       return [...prevItems, newCartItem];
@@ -90,6 +90,15 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [removeFromCart]);
 
+  // New function to update notes for a specific item
+  const updateItemNotes = useCallback((itemId: string, notes: string) => {
+    setCartItems(prevItems =>
+        prevItems.map(item =>
+            item.id === itemId ? { ...item, notes } : item
+        )
+    );
+  }, []);
+
   const clearCart = useCallback(() => {
     setCartItems([]);
   }, []);
@@ -107,6 +116,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     addToCart,
     removeFromCart,
     updateQuantity,
+    updateItemNotes,
     clearCart,
     totalPrice,
     totalItems,

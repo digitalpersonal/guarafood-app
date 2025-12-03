@@ -1,3 +1,4 @@
+
 export interface Banner {
   id: number;
   title: string;
@@ -19,6 +20,8 @@ export interface OperatingHours {
   dayOfWeek: number; // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
   opens: string;     // "HH:MM"
   closes: string;    // "HH:MM"
+  opens2?: string;   // Optional Second Shift Start (Lunch/Dinner split)
+  closes2?: string;  // Optional Second Shift End
   isOpen: boolean;
 }
 
@@ -40,6 +43,7 @@ export interface Restaurant {
   operatingHours?: OperatingHours[]; // The new detailed structure
   manualPixKey?: string;
   hasPixConfigured?: boolean;
+  printerWidth?: number; // 80 or 58 (mm)
 }
 
 export interface Addon {
@@ -127,6 +131,15 @@ export interface Coupon {
   restaurantId: number;
 }
 
+export interface Expense {
+  id: number;
+  restaurantId: number;
+  description: string;
+  amount: number;
+  category: 'Insumos' | 'Pessoal' | 'Aluguel' | 'Entregadores' | 'Outros';
+  date: string;
+}
+
 // Refactored CartItem to support custom pizzas and addons
 export interface CartItem {
   id: string; // Composite key like 'item-101' or 'pizza-201-202-addon-1'
@@ -141,6 +154,7 @@ export interface CartItem {
   halves?: { name: string; price: number }[]; // For half-and-half pizzas
   selectedAddons?: Addon[]; // For addons
   sizeName?: string; // To display selected size, e.g., "Grande"
+  notes?: string; // User observations (e.g., "Sem cebola")
 }
 
 export type OrderStatus = 'Aguardando Pagamento' | 'Novo Pedido' | 'Preparando' | 'A Caminho' | 'Entregue' | 'Cancelado';
@@ -171,6 +185,7 @@ export interface Order {
   deliveryFee?: number;
   payment_id?: string;
   payment_details?: any;
+  paymentStatus?: 'paid' | 'pending';
 }
 
 export type Role = 'admin' | 'merchant';

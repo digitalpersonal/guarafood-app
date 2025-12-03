@@ -1,7 +1,6 @@
-
 import { supabase, supabaseAnon, handleSupabaseError } from './api';
-import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory } from '../types';
-import { GoogleGenAI } from '@google/genai';
+import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory, Expense } from '../types';
+import { getGeminiClient } from './geminiService'; // Importa o cliente Gemini centralizado
 
 // ==============================================================================
 // 🔄 NORMALIZADORES (Banco de Dados -> App)
@@ -98,6 +97,11 @@ const normalizeBanner = (data: any): Banner => ({
     targetValue: data.target_value
 });
 
+const normalizeExpense = (data: any): Expense => ({
+    ...data,
+    restaurantId: data.restaurant_id
+});
+
 
 // ==============================================================================
 // 🛠️ FUNÇÕES DE SERVIÇO
@@ -110,7 +114,6 @@ export const fetchRestaurants = async (): Promise<Restaurant[]> => {
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants' });
     
     return (data || [])
-        .filter(r => r.name.toLowerCase() !== 'bella pizza') 
         .map(r => {
             const normalized = normalizeRestaurant(r);
             // Segurança: Remove credenciais no front público
@@ -126,7 +129,6 @@ export const fetchRestaurantsSecure = async (): Promise<Restaurant[]> => {
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants (secure)' });
     
     return (data || [])
-        .filter(r => r.name.toLowerCase() !== 'bella pizza') 
         .map(normalizeRestaurant);
 };
 
@@ -607,6 +609,33 @@ export const validateCouponByCode = async (code: string, restaurantId: number): 
     return data ? normalizeCoupon(data) : null;
 };
 
+// --- EXPENSES (FINANCIAL) ---
+
+export const fetchExpenses = async (restaurantId: number): Promise<Expense[]> => {
+    const { data, error } = await supabase.from('expenses').select('*').eq('restaurant_id', restaurantId).order('date', { ascending: false });
+    handleSupabaseError({ error, customMessage: 'Failed to fetch expenses' });
+    return (data || []).map(normalizeExpense);
+};
+
+export const createExpense = async (restaurantId: number, expenseData: Omit<Expense, 'id' | 'restaurantId'>): Promise<Expense> => {
+    const payload = {
+        restaurant_id: restaurantId,
+        description: expenseData.description,
+        amount: expenseData.amount,
+        category: expenseData.category,
+        date: expenseData.date
+    };
+    const { data, error } = await supabase.from('expenses').insert(payload).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to create expense' });
+    return normalizeExpense(data);
+};
+
+export const deleteExpense = async (restaurantId: number, expenseId: number): Promise<void> => {
+    const { error } = await supabase.from('expenses').delete().eq('id', expenseId).eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to delete expense' });
+};
+
+
 // --- BANNERS ---
 
 export const fetchBanners = async (): Promise<Banner[]> => {
@@ -706,12 +735,12 @@ const applyPromotionsToMenu = (menu: MenuCategory[], promotions: Promotion[]): M
 
 export const generateImage = async (
     prompt: string,
-    aspectRatio: '1:1' | '16:9' | '4:3' | '3:4' | '9:16' = '16:9'
+    aspectRatio: '1:1' | '16:9' | '4:3' | '3:4' | '9:16' = '1:1'
 ): Promise<string> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+    const ai = getGeminiClient(); // Usa a instância centralizada
     const response = await ai.models.generateImages({
         model: 'imagen-4.0-generate-001',
-        prompt: prompt,
+        prompt: prompt + ". Professional food photography, high resolution, delicious lighting.",
         config: {
             numberOfImages: 1,
             outputMimeType: 'image/jpeg',

@@ -1,9 +1,11 @@
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Coupon } from '../types';
 // Fix: The database functions are in databaseService, not geminiService.
 import { fetchCouponsForRestaurant } from '../services/databaseService';
 import { useNotification } from '../hooks/useNotification';
 import Spinner from './Spinner';
+import { getErrorMessage } from '../services/api';
 
 // Reusable Icons
 const CouponIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -34,8 +36,8 @@ const CouponDisplay: React.FC<CouponDisplayProps> = ({ restaurantId, className }
             const data = await fetchCouponsForRestaurant(restaurantId);
             setCoupons(data);
         } catch (err) {
-            setError('Falha ao carregar cupons.');
-            console.error(err);
+            console.error("Failed to load coupons:", err);
+            setError(`Falha ao carregar cupons: ${getErrorMessage(err)}`);
         } finally {
             setIsLoading(false);
         }

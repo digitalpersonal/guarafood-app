@@ -1,12 +1,12 @@
 
 import React, { useState } from 'react';
-import type { MenuItem, Addon, CartItem } from '../types';
-import { useCart } from '../hooks/useCart';
-import { useAnimation } from '../hooks/useAnimation';
-import PizzaCustomizationModal from './PizzaCustomizationModal';
-import AcaiCustomizationModal from './AcaiCustomizationModal';
-import GenericCustomizationModal from './GenericCustomizationModal';
-import OptimizedImage from './OptimizedImage';
+import type { MenuItem, Addon, CartItem } from '../types.ts';
+import { useCart } from '../hooks/useCart.ts';
+import { useAnimation } from '../hooks/useAnimation.ts';
+import PizzaCustomizationModal from './PizzaCustomizationModal.tsx';
+import AcaiCustomizationModal from './AcaiCustomizationModal.tsx';
+import GenericCustomizationModal from './GenericCustomizationModal.tsx';
+import OptimizedImage from './OptimizedImage.tsx';
 
 interface MenuItemCardProps {
   item: MenuItem;
@@ -15,8 +15,8 @@ interface MenuItemCardProps {
 }
 
 const StarIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={className}>
-    <path fillRule="evenodd" d="M10.868 2.884c.321-.662 1.215-.662 1.536 0l1.82 3.745 4.13.602c.73.107 1.02.998.494 1.506l-2.988 2.91.705 4.114c.124.726-.635 1.28-1.288.943L10 15.158l-3.69 1.94c-.653.337-1.412-.217-1.288-.943l.705-4.114-2.988-2.91c-.525-.508-.236-1.399.494-1.506l4.13-.602 1.82-3.745z" clipRule="evenodd" />
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <path fillRule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.007 5.404.433c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.433 2.082-5.006z" clipRule="evenodd" />
   </svg>
 );
 
@@ -61,46 +61,71 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons 
     setIsGenericModalOpen(false);
   };
 
+  // Define styles for special items
+  const containerClasses = item.isDailySpecial 
+    ? "bg-yellow-50 border border-yellow-200 shadow-md" 
+    : "bg-white shadow-sm hover:shadow-md";
+
   return (
     <>
-      <div className="bg-white rounded-lg overflow-hidden flex p-3 space-x-4 relative shadow-sm hover:shadow-md transition-shadow">
+      <div className={`${containerClasses} rounded-lg overflow-hidden flex p-3 space-x-4 relative transition-all duration-300 group`}>
+          
+          {/* Badge: Destaque do Dia */}
           {item.isDailySpecial && (
-            <div className="absolute top-0 left-0 bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded-br-lg z-10 flex items-center gap-1">
-                <StarIcon className="w-3 h-3" />
-                <span>DESTAQUE DO DIA</span>
+            <div className="absolute top-0 left-0 bg-yellow-500 text-white text-[10px] font-extrabold px-2 py-1 rounded-br-lg z-10 flex items-center gap-1 shadow-sm">
+                <StarIcon className="w-3 h-3 text-white" />
+                <span>DESTAQUE</span>
             </div>
           )}
+
+          {/* Badge: Promoção */}
           {item.activePromotion && !item.isDailySpecial && (
-            <div className="absolute top-0 left-0 bg-orange-600 text-white text-xs font-bold px-2 py-0.5 rounded-br-lg z-10">
+            <div className="absolute top-0 left-0 bg-orange-600 text-white text-[10px] font-bold px-2 py-1 rounded-br-lg z-10">
                 PROMO
             </div>
-        )}
-        <div className="flex-grow">
-          <h4 className="font-bold text-md text-gray-800">{item.name}</h4>
+          )}
+
+          {/* Badge: Menu do Dia (Disponibilidade Limitada) */}
           {item.availableDays && item.availableDays.length > 0 && !item.isDailySpecial && (
-              <div className="flex items-center gap-1 text-xs text-gray-600 bg-gray-100 rounded-full px-2 py-0.5 w-fit my-1" title="Disponível apenas em dias específicos da semana">
+             <div className="absolute top-0 left-0 bg-purple-600 text-white text-[10px] font-bold px-2 py-1 rounded-br-lg z-10 flex items-center gap-1">
+                <CalendarDaysIcon className="w-3 h-3" />
+                <span>HOJE</span>
+             </div>
+          )}
+
+        <div className="flex-grow pt-4"> {/* Added pt-4 to clear absolute badges */}
+          <h4 className="font-bold text-md text-gray-800 flex items-center gap-1">
+              {item.name}
+              {item.isDailySpecial && <StarIcon className="w-4 h-4 text-yellow-500 fill-yellow-500" />}
+          </h4>
+          
+          {item.availableDays && item.availableDays.length > 0 && !item.isDailySpecial && (
+              <div className="flex items-center gap-1 text-[10px] text-purple-700 font-semibold bg-purple-50 rounded-full px-2 py-0.5 w-fit my-1 border border-purple-100">
                   <CalendarDaysIcon className="w-3 h-3" />
                   <span>Menu do Dia</span>
               </div>
           )}
+
           <p className="text-sm text-gray-500 my-1 line-clamp-2">{item.description}</p>
+          
           {item.isMarmita && item.marmitaOptions && item.marmitaOptions.length > 0 && (
-              <div className="mt-2 p-2 bg-yellow-50 border border-yellow-300 rounded-lg">
+              <div className="mt-2 p-2 bg-yellow-100/50 border border-yellow-200 rounded-lg">
                 <p className="text-xs font-bold text-yellow-800">Composição de Hoje:</p>
-                <ul className="text-sm text-yellow-900 list-disc list-inside space-y-1 mt-1">
+                <ul className="text-xs text-yellow-900 list-disc list-inside mt-1">
                     {item.marmitaOptions.map((option, index) => (
                         <li key={index}>{option}</li>
                     ))}
                 </ul>
               </div>
             )}
+
            {item.originalPrice ? (
-               <div className="flex items-baseline gap-2">
+               <div className="flex items-baseline gap-2 mt-2">
                   <p className="font-bold text-orange-600 text-md">R$ {item.price.toFixed(2)}</p>
-                  <p className="text-sm text-gray-500 line-through">R$ {item.originalPrice.toFixed(2)}</p>
+                  <p className="text-xs text-gray-400 line-through">R$ {item.originalPrice.toFixed(2)}</p>
               </div>
           ) : (
-            <div>
+            <div className="mt-2">
                 {item.sizes && item.sizes.length > 0 ? (
                     <p className="font-bold text-orange-600 text-md">
                         A partir de R$ {item.price.toFixed(2)}
@@ -113,11 +138,12 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons 
             </div>
           )}
         </div>
-        <div className="flex-shrink-0 relative w-24 h-24">
-          <OptimizedImage src={item.imageUrl} alt={item.name} className="w-full h-full rounded-md" />
+
+        <div className="flex-shrink-0 relative w-24 h-24 self-center">
+          <OptimizedImage src={item.imageUrl} alt={item.name} className="w-full h-full rounded-md shadow-sm" />
           <button 
             onClick={handleAddToCartClick}
-            className="absolute -bottom-2 -right-2 bg-gray-800 text-white rounded-full w-9 h-9 flex items-center justify-center text-xl font-bold shadow-lg hover:bg-orange-600 transition-colors z-10"
+            className="absolute -bottom-2 -right-2 bg-gray-800 text-white rounded-full w-9 h-9 flex items-center justify-center text-xl font-bold shadow-lg hover:bg-orange-600 transition-colors z-10 transform group-hover:scale-110"
           >
             +
           </button>

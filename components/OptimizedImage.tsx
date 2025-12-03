@@ -6,11 +6,14 @@ interface OptimizedImageProps extends React.ImgHTMLAttributes<HTMLImageElement> 
   alt: string;
   className?: string;
   priority?: boolean;
+  objectFit?: 'cover' | 'contain' | 'fill';
 }
 
-const OptimizedImage: React.FC<OptimizedImageProps> = ({ src, alt, className = '', priority = false, ...props }) => {
+const OptimizedImage: React.FC<OptimizedImageProps> = ({ src, alt, className = '', priority = false, objectFit = 'cover', ...props }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
+
+  const objectFitClass = objectFit === 'contain' ? 'object-contain' : objectFit === 'fill' ? 'object-fill' : 'object-cover';
 
   return (
     <div className={`relative overflow-hidden bg-gray-200 ${className}`}>
@@ -39,7 +42,7 @@ const OptimizedImage: React.FC<OptimizedImageProps> = ({ src, alt, className = '
         decoding="async"
         onLoad={() => setIsLoaded(true)}
         onError={() => setHasError(true)}
-        className={`w-full h-full object-cover transition-opacity duration-500 ease-in-out ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+        className={`w-full h-full ${objectFitClass} transition-opacity duration-500 ease-in-out ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
         {...props}
       />
     </div>

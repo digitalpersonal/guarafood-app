@@ -1,13 +1,13 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../services/authService';
-import { useNotification } from '../hooks/useNotification';
+import { useAuth } from '../services/authService.ts';
+import { useNotification } from '../hooks/useNotification.tsx';
 // Use fetchRestaurantByIdSecure to get the token
-import { fetchRestaurantByIdSecure, updateRestaurant } from '../services/databaseService';
-import type { Restaurant, OperatingHours, Order } from '../types';
-import Spinner from './Spinner';
-import { SUPABASE_URL } from '../config';
-import PrintableOrder from './PrintableOrder';
+import { fetchRestaurantByIdSecure, updateRestaurant } from '../services/databaseService.ts';
+import type { Restaurant, OperatingHours, Order } from '../types.ts';
+import Spinner from './Spinner.tsx';
+import { SUPABASE_URL } from '../config.ts';
+import PrintableOrder from './PrintableOrder.tsx';
 
 const NotificationSettings: React.FC = () => {
     const { addToast } = useNotification();
@@ -89,6 +89,61 @@ const NotificationSettings: React.FC = () => {
     );
 };
 
+const PrinterSettings: React.FC<{ onTestPrint: (width: number) => void }> = ({ onTestPrint }) => {
+    const { addToast } = useNotification();
+    const [printerWidth, setPrinterWidth] = useState<number>(80);
+
+    useEffect(() => {
+        const savedWidth = localStorage.getItem('guarafood-printer-width');
+        if (savedWidth) {
+            setPrinterWidth(parseInt(savedWidth, 10));
+        }
+    }, []);
+
+    const handleWidthChange = (width: number) => {
+        setPrinterWidth(width);
+        localStorage.setItem('guarafood-printer-width', width.toString());
+        addToast({ message: `Largura de impressão definida para ${width}mm`, type: 'success' });
+    };
+
+    return (
+        <div className="mt-6 border-t pt-6">
+            <h3 className="text-lg font-semibold text-gray-700 mb-3">Configuração de Impressão</h3>
+            <p className="text-sm text-gray-500 mb-4">Ajuste o tamanho do cupom de acordo com sua impressora térmica.</p>
+            
+            <div className="flex flex-col sm:flex-row gap-4">
+                <div className={`flex-1 p-3 border rounded-lg cursor-pointer transition-all ${printerWidth === 80 ? 'bg-orange-50 border-orange-500 ring-1 ring-orange-500' : 'bg-white hover:bg-gray-50'}`} onClick={() => handleWidthChange(80)}>
+                    <div className="flex items-center justify-between">
+                        <span className="font-semibold text-gray-800">Padrão (80mm)</span>
+                        {printerWidth === 80 && <span className="text-orange-600 font-bold">✓</span>}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Para impressoras térmicas comuns (ex: Epson TM-T20).</p>
+                </div>
+
+                <div className={`flex-1 p-3 border rounded-lg cursor-pointer transition-all ${printerWidth === 58 ? 'bg-orange-50 border-orange-500 ring-1 ring-orange-500' : 'bg-white hover:bg-gray-50'}`} onClick={() => handleWidthChange(58)}>
+                    <div className="flex items-center justify-between">
+                        <span className="font-semibold text-gray-800">Mini (58mm)</span>
+                        {printerWidth === 58 && <span className="text-orange-600 font-bold">✓</span>}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Para impressoras portáteis ou compactas.</p>
+                </div>
+            </div>
+
+            <div className="mt-4 flex justify-end">
+                <button 
+                    onClick={() => onTestPrint(printerWidth)} 
+                    className="text-sm text-gray-700 font-semibold border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.356-1.07 2.448-2.384 2.448H6.384C5.07 24.948 4 23.856 4 22.5c0-1.44 1.152-3.036 2.405-4.5m11.318 0c.397-1.362.63-2.826.63-4.342 0-1.44-1.152-3.036-2.405-4.5l-1.050-1.242A3.375 3.375 0 0 0 14.25 6H9.75a3.375 3.375 0 00-2.345 1.05L6.34 8.292c-1.253 1.464-2.405 3.06-2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 001.5 0Z" />
+                    </svg>
+                    Testar Impressão ({printerWidth}mm)
+                </button>
+            </div>
+        </div>
+    );
+};
+
 const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
 const getDefaultOperatingHours = (): OperatingHours[] =>
@@ -111,6 +166,7 @@ const RestaurantSettings: React.FC = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [testOrder, setTestOrder] = useState<Order | null>(null);
+    const [testPrinterWidth, setTestPrinterWidth] = useState(80);
 
     const restaurantId = currentUser?.restaurantId;
 
@@ -186,8 +242,9 @@ const RestaurantSettings: React.FC = () => {
         }
     };
     
-    const handleTestPrint = () => {
+    const handleTestPrint = (width: number) => {
         if (!restaurant) return;
+        setTestPrinterWidth(width);
         
         // Create a dummy order object
         const dummyOrder: Order = {
@@ -243,8 +300,25 @@ const RestaurantSettings: React.FC = () => {
             // setTestOrder(null); 
         }, 500);
     };
+    
+    const handleCopyStoreLink = () => {
+        if (restaurantId) {
+            const url = `${window.location.origin}?r=${restaurantId}`; // Reverted to query param for restaurant link
+            navigator.clipboard.writeText(url);
+            addToast({ message: 'Link da loja copiado!', type: 'success' });
+        }
+    };
+    
+    const handleWhatsappShare = () => {
+        if (restaurantId && restaurant) {
+            const url = `${window.location.origin}?r=${restaurantId}`; // Reverted to query param for restaurant link
+            const text = `Peça agora no *${restaurant.name}* pelo nosso app: ${url}`;
+            const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+            window.open(whatsappUrl, '_blank');
+        }
+    };
 
-    const webhookUrl = restaurantId ? `${SUPABASE_URL}/functions/v1/payment-webhook?restaurantId=${restaurantId}` : 'Carregando...';
+    const webhookUrl = restaurantId ? `${SUPABASE_URL}/functions/v1/payment-webhook?restaurantId=${restaurantId}` : 'Carregando...'; // Updated to use ?restaurantId=
 
     if (isLoading) return <div className="p-4"><Spinner message="Carregando configurações..." /></div>;
     
@@ -264,23 +338,28 @@ const RestaurantSettings: React.FC = () => {
                 )}
 
                 <div className="space-y-6">
-                    <div className="flex justify-between items-start">
-                        <div className="flex-grow">
-                            <NotificationSettings />
-                        </div>
-                        <div className="ml-4 flex flex-col items-center">
-                            <button 
-                                onClick={handleTestPrint} 
-                                className="bg-gray-800 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-900 transition-colors shadow-md text-sm flex items-center gap-2"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.356-1.07 2.448-2.384 2.448H6.384C5.07 24.948 4 23.856 4 22.5c0-1.44 1.152-3.036 2.405-4.5m11.318 0c.397-1.362.63-2.826.63-4.342 0-1.44-1.152-3.036-2.405-4.5l-1.050-1.242A3.375 3.375 0 0 0 14.25 6H9.75a3.375 3.375 0 0 0-2.345 1.05L6.34 8.292c-1.253 1.464-2.405 3.06-2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z" />
-                                </svg>
-                                Testar Impressora
+                    {/* STORE LINK SECTION */}
+                    <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg">
+                        <h3 className="text-lg font-bold text-orange-800 mb-2">Link da Loja</h3>
+                        <p className="text-sm text-orange-700 mb-3">Compartilhe este link com seus clientes para que eles abram direto no seu cardápio.</p>
+                        <div className="flex gap-2">
+                            <input 
+                                type="text" 
+                                readOnly 
+                                value={`${window.location.origin}?r=${restaurant.id}`} // Updated to query param for store link
+                                className="flex-grow p-2 border rounded-lg bg-white text-gray-600 text-sm"
+                            />
+                            <button onClick={handleCopyStoreLink} className="bg-orange-600 text-white font-bold px-3 py-2 rounded-lg hover:bg-orange-700 text-sm">
+                                Copiar
                             </button>
-                            <span className="text-[10px] text-gray-500 mt-1">Imprime um cupom de teste</span>
+                            <button onClick={handleWhatsappShare} className="bg-green-600 text-white font-bold px-3 py-2 rounded-lg hover:bg-green-700 text-sm">
+                                WhatsApp
+                            </button>
                         </div>
                     </div>
+
+                    <NotificationSettings />
+                    <PrinterSettings onTestPrint={handleTestPrint} />
 
                      <div className="border-t pt-6">
                         <h3 className="text-lg font-semibold text-gray-700 mb-3">Horário de Funcionamento</h3>
@@ -387,7 +466,7 @@ const RestaurantSettings: React.FC = () => {
             {/* Hidden Print Area for Testing */}
             <div className="hidden">
                 <div id="printable-order">
-                    {testOrder && <PrintableOrder order={testOrder} />}
+                    {testOrder && <PrintableOrder order={testOrder} printerWidth={testPrinterWidth} />}
                 </div>
             </div>
         </main>

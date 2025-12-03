@@ -4,10 +4,27 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    
+    <!-- Controle de Cache (Cache Busting) - Garante atualizações automáticas -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    
+    <!-- Cor do navegador (Barra de endereços) -->
     <meta name="theme-color" content="#ea580c" />
-    <meta name="description" content="GuaraFood - Delivery de comida rápido e prático. Peça nos melhores restaurantes da região." />
-    <title>GuaraFood - Delivery</title>
+    
+    <!-- SEO Básico -->
+    <title>GuaraFood - Delivery da Cidade</title>
+    <meta name="description" content="Peça comida online nos melhores restaurantes da região. Lanches, Pizzas, Açaí e muito mais com entrega rápida." />
+    
+    <!-- Open Graph / WhatsApp / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="GuaraFood - Delivery" />
+    <meta property="og:description" content="Sua fome pede, GuaraFood entrega. Peça agora!" />
+    <meta property="og:image" content="https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=600" />
+    <meta property="og:site_name" content="GuaraFood" />
+
     <script src="https://cdn.tailwindcss.com"></script>
   <script type="importmap">
 {
@@ -83,6 +100,14 @@
       left: 0;
       top: 0;
       width: 100%;
+    }
+    /* Force background colors for thermal printing */
+    * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    @page {
+        margin: 0;
     }
   }
 </style>

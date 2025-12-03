@@ -1,9 +1,11 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { fetchRestaurantCategories, createRestaurantCategory, deleteRestaurantCategory } from '../services/databaseService';
 import { useNotification } from '../hooks/useNotification';
 import type { RestaurantCategory } from '../types';
 import Spinner from './Spinner';
+import { getErrorMessage } from '../services/api';
 
 const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -23,7 +25,7 @@ const CategoryManagement: React.FC = () => {
             setCategories(data);
         } catch (error) {
             console.error("Failed to load categories", error);
-            addToast({ message: 'Erro ao carregar categorias.', type: 'error' });
+            addToast({ message: `Erro ao carregar categorias: ${getErrorMessage(error)}`, type: 'error' });
         } finally {
             setIsLoading(false);
         }
@@ -46,7 +48,7 @@ const CategoryManagement: React.FC = () => {
                 addToast({ message: 'Categoria criada com sucesso!', type: 'success' });
                 loadCategories();
             } catch (error: any) {
-                addToast({ message: `Erro ao criar: ${error.message}`, type: 'error' });
+                addToast({ message: `Erro ao criar: ${getErrorMessage(error)}`, type: 'error' });
             }
         }
     };
@@ -65,7 +67,7 @@ const CategoryManagement: React.FC = () => {
                 addToast({ message: 'Categoria excluída.', type: 'info' });
                 loadCategories();
             } catch (error: any) {
-                addToast({ message: `Erro ao excluir: ${error.message}`, type: 'error' });
+                addToast({ message: `Erro ao excluir: ${getErrorMessage(error)}`, type: 'error' });
             }
         }
     };

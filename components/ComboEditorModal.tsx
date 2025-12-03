@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import type { Combo, MenuItem } from '../types';
+import type { Combo, MenuItem } from '../types.ts';
 
 interface ComboEditorModalProps {
     isOpen: boolean;
@@ -15,14 +15,16 @@ const ComboEditorModal: React.FC<ComboEditorModalProps> = ({ isOpen, onClose, on
     const [description, setDescription] = useState('');
     const [price, setPrice] = useState('');
     const [imageUrl, setImageUrl] = useState('');
-    const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set());
+    // FIX: Corrected useState initialization for Set
+    const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set<number>());
     const [error, setError] = useState('');
 
     useEffect(() => {
         if (existingCombo) {
             setName(existingCombo.name);
             setDescription(existingCombo.description);
-            setPrice(String(existingCombo.price));
+            // FIX: Use .toString() for converting number to string for input fields
+            setPrice(existingCombo.price.toString());
             setImageUrl(existingCombo.imageUrl);
             setSelectedItemIds(new Set(existingCombo.menuItemIds));
         } else {
@@ -128,12 +130,8 @@ const ComboEditorModal: React.FC<ComboEditorModalProps> = ({ isOpen, onClose, on
                 {error && <p className="text-red-500 text-sm mt-4">{error}</p>}
                 
                 <div className="mt-6 pt-4 border-t flex justify-end space-x-3">
-                    <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300">
-                        Cancelar
-                    </button>
-                    <button onClick={handleSubmit} className="px-6 py-2 rounded-lg bg-orange-600 text-white font-bold hover:bg-orange-700">
-                        Salvar Combo
-                    </button>
+                    <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300">Cancelar</button>
+                    <button onClick={handleSubmit} className="px-6 py-2 rounded-lg bg-orange-600 text-white font-bold hover:bg-orange-700">Salvar Combo</button>
                 </div>
             </div>
         </div>
