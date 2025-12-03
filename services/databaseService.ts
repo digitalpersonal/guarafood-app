@@ -321,25 +321,76 @@ export const deleteAddon = async (restaurantId: number, addonId: number): Promis
     handleSupabaseError({ error, customMessage: 'Failed to delete addon' });
 };
 
-// --- ITEMS & CATEGORIES INTERNAL ---
+// --- ITEMS & CATEGORIES INTERNAL (ROBUST) ---
 
-export const createMenuItem = async (restaurantId: number, itemData: any): Promise<MenuItem> => {
-    const { category, ...rest } = itemData;
-    
-    // Find or create category
-    let { data: catData } = await supabase.from('menu_categories')
-        .select('id')
+// Função interna robusta para criar categoria
+const createCategoryInternal = async (restaurantId: number, name: string) => {
+    // 1. Pega a ordem máxima
+    const { data: maxOrder } = await supabase.from('menu_categories')
+        .select('display_order')
         .eq('restaurant_id', restaurantId)
-        .eq('name', category)
+        .order('display_order', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+        
+    const newOrder = (maxOrder?.display_order ?? -1) + 1;
+    
+    // 2. Tenta inserir
+    const { data, error } = await supabase.from('menu_categories')
+        .insert({ name: name.trim(), restaurant_id: restaurantId, display_order: newOrder })
+        .select('id, name')
         .single();
         
-    if (!catData) {
-        catData = await createCategoryInternal(restaurantId, category);
+    if (error) throw error;
+    return data;
+};
+
+// Função "Blindada" para criar item (resolve Foreign Key Constraint)
+export const createMenuItem = async (restaurantId: number, itemData: any): Promise<MenuItem> => {
+    const { category, ...rest } = itemData;
+    const cleanCategoryName = category.trim();
+    
+    let categoryId: number | null = null;
+
+    // 1. Tenta encontrar categoria existente (Case Insensitive)
+    const { data: existingCat } = await supabase.from('menu_categories')
+        .select('id')
+        .eq('restaurant_id', restaurantId)
+        .ilike('name', cleanCategoryName)
+        .maybeSingle();
+
+    if (existingCat) {
+        categoryId = existingCat.id;
+    } else {
+        // 2. Se não existe, tenta criar
+        try {
+            const newCat = await createCategoryInternal(restaurantId, cleanCategoryName);
+            categoryId = newCat.id;
+        } catch (err: any) {
+            console.warn("Falha ao criar categoria na primeira tentativa, tentando buscar novamente...", err);
+            // 3. Fallback: Pode ter sido criada em paralelo ou erro de RLS momentâneo. Tenta buscar de novo.
+            const { data: retryCat } = await supabase.from('menu_categories')
+                .select('id')
+                .eq('restaurant_id', restaurantId)
+                .ilike('name', cleanCategoryName)
+                .maybeSingle();
+            
+            if (retryCat) {
+                categoryId = retryCat.id;
+            } else {
+                throw new Error(`Não foi possível criar ou encontrar a categoria '${cleanCategoryName}'. Erro: ${err.message}`);
+            }
+        }
     }
 
+    if (!categoryId) {
+        throw new Error("Erro Crítico: ID da categoria não pôde ser determinado.");
+    }
+
+    // 4. Insere o Item com ID garantido
     const payload = {
         restaurant_id: restaurantId,
-        category_id: catData.id,
+        category_id: categoryId,
         name: rest.name,
         description: rest.description,
         price: rest.price,
@@ -379,15 +430,37 @@ export const updateMenuItem = async (restaurantId: number, itemId: number, itemD
     if (itemData.sizes) payload.sizes = itemData.sizes;
     if (itemData.availableAddonIds) payload.available_addon_ids = itemData.availableAddonIds;
 
-    // Handle Category Change
+    // Handle Category Change (Robust)
     if (itemData.category) {
-        let { data: catData } = await supabase.from('menu_categories')
+        const cleanCategoryName = itemData.category.trim();
+        let catId: number | null = null;
+
+        const { data: existingCat } = await supabase.from('menu_categories')
             .select('id')
             .eq('restaurant_id', restaurantId)
-            .eq('name', itemData.category)
-            .single();
-        if (!catData) catData = await createCategoryInternal(restaurantId, itemData.category);
-        payload.category_id = catData.id;
+            .ilike('name', cleanCategoryName)
+            .maybeSingle();
+
+        if (existingCat) {
+            catId = existingCat.id;
+        } else {
+            try {
+                const newCat = await createCategoryInternal(restaurantId, cleanCategoryName);
+                catId = newCat.id;
+            } catch (err) {
+                 // Fallback fetch
+                 const { data: retryCat } = await supabase.from('menu_categories')
+                    .select('id')
+                    .eq('restaurant_id', restaurantId)
+                    .ilike('name', cleanCategoryName)
+                    .maybeSingle();
+                 if (retryCat) catId = retryCat.id;
+            }
+        }
+        
+        if (catId) {
+            payload.category_id = catId;
+        }
     }
 
     const { data, error } = await supabase.from('menu_items').update(payload).eq('id', itemId).select().single();
@@ -400,26 +473,7 @@ export const deleteMenuItem = async (restaurantId: number, itemId: number): Prom
     handleSupabaseError({ error, customMessage: 'Failed to delete menu item' });
 };
 
-// --- CATEGORIES (Internal) ---
-
-const createCategoryInternal = async (restaurantId: number, name: string) => {
-    const { data: maxOrder } = await supabase.from('menu_categories')
-        .select('display_order')
-        .eq('restaurant_id', restaurantId)
-        .order('display_order', { ascending: false })
-        .limit(1)
-        .single();
-        
-    const newOrder = (maxOrder?.display_order ?? -1) + 1;
-    
-    const { data, error } = await supabase.from('menu_categories')
-        .insert({ name, restaurant_id: restaurantId, display_order: newOrder })
-        .select('id, name')
-        .single();
-        
-    if (error) throw error;
-    return data;
-};
+// --- CATEGORIES (Public Methods) ---
 
 export const createCategory = async (restaurantId: number, name: string, iconUrl?: string | null): Promise<MenuCategory> => {
     const { data: maxOrder } = await supabase.from('menu_categories')
@@ -427,11 +481,12 @@ export const createCategory = async (restaurantId: number, name: string, iconUrl
         .eq('restaurant_id', restaurantId)
         .order('display_order', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle(); // Changed to maybeSingle for safety
+        
     const newOrder = (maxOrder?.display_order ?? -1) + 1;
 
     const payload = {
-        name,
+        name: name.trim(),
         restaurant_id: restaurantId,
         display_order: newOrder,
         icon_url: iconUrl
@@ -440,8 +495,12 @@ export const createCategory = async (restaurantId: number, name: string, iconUrl
     const { data, error } = await supabase.from('menu_categories').insert(payload).select().single();
     
     // Handle race condition (if created simultaneously)
-    if (error && error.code === '23505') {
-        const { data: existing } = await supabase.from('menu_categories').select('*').eq('restaurant_id', restaurantId).eq('name', name).single();
+    if (error && error.code === '23505') { // Unique constraint violation
+        const { data: existing } = await supabase.from('menu_categories')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .ilike('name', name.trim())
+            .maybeSingle();
         if (existing) return { ...normalizeCategory(existing), items: [], combos: [] };
     }
     
@@ -450,7 +509,7 @@ export const createCategory = async (restaurantId: number, name: string, iconUrl
 };
 
 export const updateCategory = async (restaurantId: number, categoryId: number, newName: string, newIconUrl?: string | null): Promise<void> => {
-    const payload: any = { name: newName };
+    const payload: any = { name: newName.trim() };
     if (newIconUrl !== undefined) payload.icon_url = newIconUrl;
     
     const { error } = await supabase.from('menu_categories').update(payload).eq('id', categoryId);
@@ -458,6 +517,8 @@ export const updateCategory = async (restaurantId: number, categoryId: number, n
 };
 
 export const deleteCategory = async (restaurantId: number, name: string): Promise<void> => {
+    // Delete by name is risky if duplicates exist (though UI handles ID), better use ID if possible, 
+    // but the current API uses name for delete. We stick to name for compatibility with existing UI calls.
     const { error } = await supabase.from('menu_categories').delete().eq('restaurant_id', restaurantId).eq('name', name);
     handleSupabaseError({ error, customMessage: 'Failed to delete category' });
 };
