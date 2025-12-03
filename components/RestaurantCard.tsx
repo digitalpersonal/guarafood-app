@@ -1,6 +1,6 @@
 import React from 'react';
-import type { Restaurant } from '../types.ts';
-import OptimizedImage from './OptimizedImage.tsx';
+import type { Restaurant } from '../types';
+import OptimizedImage from './OptimizedImage';
 
 interface RestaurantCardProps {
   restaurant: Restaurant;

@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import type { Combo, MenuItem } from '../types.ts';
+import type { Combo, MenuItem } from '../types';
 
 interface ComboEditorModalProps {
     isOpen: boolean;

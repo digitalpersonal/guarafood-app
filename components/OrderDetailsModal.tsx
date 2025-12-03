@@ -1,8 +1,7 @@
-
 import React, { useEffect, useRef, useState } from 'react';
-import type { Order, OrderStatus } from '../types.ts';
-import PrintableOrder from './PrintableOrder.tsx';
-import OrderEditorModal from './OrderEditorModal.tsx'; // Import the new modal
+import type { Order, OrderStatus } from '../types';
+import PrintableOrder from './PrintableOrder';
+import OrderEditorModal from './OrderEditorModal'; // Import the new modal
 
 const XIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>

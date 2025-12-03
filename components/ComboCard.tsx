@@ -1,10 +1,8 @@
-
-
 import React, { useMemo, useState } from 'react';
-import type { Combo, MenuItem } from '../types.ts';
-import { useCart } from '../hooks/useCart.ts';
-import { useAnimation } from '../hooks/useAnimation.ts';
-import OptimizedImage from './OptimizedImage.tsx';
+import type { Combo, MenuItem } from '../types';
+import { useCart } from '../hooks/useCart';
+import { useAnimation } from '../hooks/useAnimation';
+import OptimizedImage from './OptimizedImage';
 
 interface ComboCardProps {
   combo: Combo;

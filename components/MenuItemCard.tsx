@@ -1,12 +1,11 @@
-
 import React, { useState } from 'react';
-import type { MenuItem, Addon, CartItem } from '../types.ts';
-import { useCart } from '../hooks/useCart.ts';
-import { useAnimation } from '../hooks/useAnimation.ts';
-import PizzaCustomizationModal from './PizzaCustomizationModal.tsx';
-import AcaiCustomizationModal from './AcaiCustomizationModal.tsx';
-import GenericCustomizationModal from './GenericCustomizationModal.tsx';
-import OptimizedImage from './OptimizedImage.tsx';
+import type { MenuItem, Addon, CartItem } from '../types';
+import { useCart } from '../hooks/useCart';
+import { useAnimation } from '../hooks/useAnimation';
+import PizzaCustomizationModal from './PizzaCustomizationModal';
+import AcaiCustomizationModal from './AcaiCustomizationModal';
+import GenericCustomizationModal from './GenericCustomizationModal';
+import OptimizedImage from './OptimizedImage';
 
 interface MenuItemCardProps {
   item: MenuItem;

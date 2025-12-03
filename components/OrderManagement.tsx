@@ -1,13 +1,12 @@
-
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { subscribeToOrders } from '../services/orderService.ts';
-import { useAuth } from '../services/authService.ts'; 
-import type { Order } from '../types.ts';
-import OrdersView from './OrdersView.tsx';
-import MenuManagement from './MenuManagement.tsx';
-import RestaurantSettings from './RestaurantSettings.tsx';
-import PrintableOrder from './PrintableOrder.tsx';
-import { useSound } from '../hooks/useSound.ts'; // Import Hook
+import { subscribeToOrders } from '../services/orderService';
+import { useAuth } from '../services/authService'; 
+import type { Order } from '../types';
+import OrdersView from './OrdersView';
+import MenuManagement from './MenuManagement';
+import RestaurantSettings from './RestaurantSettings';
+import PrintableOrder from './PrintableOrder';
+import { useSound } from '../hooks/useSound'; // Import Hook
 
 // Reusable Icons
 const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -36,8 +35,8 @@ const BanknotesIcon: React.FC<{ className?: string }> = ({ className }) => (
 
 
 // Lazy load SalesDashboard to avoid heavy initial bundle
-const SalesDashboard = React.lazy(() => import('./SalesDashboard.tsx'));
-const CustomerList = React.lazy(() => import('./CustomerList.tsx'));
+const SalesDashboard = React.lazy(() => import('./SalesDashboard'));
+const CustomerList = React.lazy(() => import('./CustomerList'));
 
 const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { currentUser, logout } = useAuth();

@@ -1,13 +1,12 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../services/authService.ts';
-import { useNotification } from '../hooks/useNotification.tsx';
+import { useAuth } from '../services/authService';
+import { useNotification } from '../hooks/useNotification';
 // Use fetchRestaurantByIdSecure to get the token
-import { fetchRestaurantByIdSecure, updateRestaurant } from '../services/databaseService.ts';
-import type { Restaurant, OperatingHours, Order } from '../types.ts';
-import Spinner from './Spinner.tsx';
-import { SUPABASE_URL } from '../config.ts';
-import PrintableOrder from './PrintableOrder.tsx';
+import { fetchRestaurantByIdSecure, updateRestaurant } from '../services/databaseService';
+import type { Restaurant, OperatingHours, Order } from '../types';
+import Spinner from './Spinner';
+import { SUPABASE_URL } from '../config';
+import PrintableOrder from './PrintableOrder';
 
 const NotificationSettings: React.FC = () => {
     const { addToast } = useNotification();
@@ -135,7 +134,7 @@ const PrinterSettings: React.FC<{ onTestPrint: (width: number) => void }> = ({ o
                     className="text-sm text-gray-700 font-semibold border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2"
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.356-1.07 2.448-2.384 2.448H6.384C5.07 24.948 4 23.856 4 22.5c0-1.44 1.152-3.036 2.405-4.5m11.318 0c.397-1.362.63-2.826.63-4.342 0-1.44-1.152-3.036-2.405-4.5l-1.050-1.242A3.375 3.375 0 0 0 14.25 6H9.75a3.375 3.375 0 00-2.345 1.05L6.34 8.292c-1.253 1.464-2.405 3.06-2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 001.5 0Z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 001.5 0Z" />
                     </svg>
                     Testar Impressão ({printerWidth}mm)
                 </button>

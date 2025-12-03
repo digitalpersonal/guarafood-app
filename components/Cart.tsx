@@ -1,11 +1,10 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { useCart } from '../hooks/useCart.ts';
-import type { Restaurant } from '../types.ts';
-import { useAnimation } from '../hooks/useAnimation.ts';
-import { useNotification } from '../hooks/useNotification.ts';
-import CheckoutModal from './CheckoutModal.tsx';
-import OptimizedImage from './OptimizedImage.tsx';
+import { useCart } from '../hooks/useCart';
+import type { Restaurant } from '../types';
+import { useAnimation } from '../hooks/useAnimation';
+import { useNotification } from '../hooks/useNotification';
+import CheckoutModal from './CheckoutModal';
+import OptimizedImage from './OptimizedImage';
 
 
 const CartIcon: React.FC<{ className?: string }> = ({ className }) => (

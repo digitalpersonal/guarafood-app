@@ -1,7 +1,5 @@
-
-
-import type { Order, OrderStatus, CartItem } from '../types.ts';
-import { supabase, handleSupabaseError } from './api.ts';
+import type { Order, OrderStatus, CartItem } from '../types';
+import { supabase, handleSupabaseError } from './api';
 
 // Mapeia do Banco (snake_case) para o App (camelCase)
 const normalizeOrder = (data: any): Order => {

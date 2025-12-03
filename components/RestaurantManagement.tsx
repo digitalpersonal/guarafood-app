@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { Restaurant } from '../types';
 // Import fetchRestaurantsSecure instead of fetchRestaurants
-import { fetchRestaurantsSecure, deleteRestaurant } from '../services/databaseService.ts';
-import { useNotification } from '../hooks/useNotification.tsx';
-import Spinner from './Spinner.tsx';
-import { supabase, getErrorMessage } from '../services/api.ts';
+import { fetchRestaurantsSecure, deleteRestaurant } from '../services/databaseService';
+import { useNotification } from '../hooks/useNotification';
+import Spinner from './Spinner';
+import { supabase, getErrorMessage } from '../services/api';
 // FIX: Add missing import for RestaurantEditorModal
-import RestaurantEditorModal from './RestaurantEditorModal.tsx';
+import RestaurantEditorModal from './RestaurantEditorModal';
 
 const MenuBookIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>

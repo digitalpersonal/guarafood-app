@@ -1,23 +1,22 @@
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import type { Order, CartItem, MenuItem, Combo, Addon } from '../types.ts';
-import { useNotification } from '../hooks/useNotification.ts';
-import { updateOrderDetails } from '../services/orderService.ts';
-import { fetchMenuForRestaurant, fetchAddonsForRestaurant } from '../services/databaseService.ts';
-import Spinner from './Spinner.tsx';
-import OptimizedImage from './OptimizedImage.tsx';
-import AddItemToOrderModal from './AddItemToOrderModal.tsx'; // Import the new modal
-import PizzaCustomizationModal from './PizzaCustomizationModal.tsx';
-import AcaiCustomizationModal from './AcaiCustomizationModal.tsx';
-import GenericCustomizationModal from './GenericCustomizationModal.tsx';
+import type { Order, CartItem, MenuItem, Combo, Addon } from '../types';
+import { useNotification } from '../hooks/useNotification';
+import { updateOrderDetails } from '../services/orderService';
+import { fetchMenuForRestaurant, fetchAddonsForRestaurant } from '../services/databaseService';
+import Spinner from './Spinner';
+import OptimizedImage from './OptimizedImage';
+import AddItemToOrderModal from './AddItemToOrderModal';
+import PizzaCustomizationModal from './PizzaCustomizationModal';
+import AcaiCustomizationModal from './AcaiCustomizationModal';
+import GenericCustomizationModal from './GenericCustomizationModal';
 
 interface OrderEditorModalProps {
     isOpen: boolean;
     onClose: () => void;
     order: Order;
     onSave: (updatedOrder: Order) => void;
-    restaurantId: number; // New prop
-    restaurantName: string; // New prop for context
+    restaurantId: number;
+    restaurantName: string;
 }
 
 const XIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -33,7 +32,6 @@ const PlusIcon: React.FC<{ className?: string }> = ({ className }) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
     </svg>
 );
-
 
 const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, order, onSave, restaurantId, restaurantName }) => {
     const { addToast } = useNotification();
@@ -52,7 +50,6 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
     const [isAcaiModalOpen, setIsAcaiModalOpen] = useState(false);
     const [isGenericModalOpen, setIsGenericModalOpen] = useState(false);
     const [itemToCustomize, setItemToCustomize] = useState<MenuItem | null>(null);
-
 
     useEffect(() => {
         if (isOpen) {
@@ -82,7 +79,6 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
         };
         loadRestaurantData();
     }, [restaurantId, isOpen, addToast]);
-
 
     const handleQuantityChange = useCallback((itemId: string, newQuantity: number) => {
         setEditedItems(prevItems => {
@@ -242,64 +238,66 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                                                     ))}
                                                 </ul>
                                             )}
-                                            <p className="text-sm text-orange-600 font-bold mt-1">R$ {item.price.toFixed(2)}</p>
+                                            <p className="text-sm text-orange-600 font-bold mt-1">R$ {(item.price * item.quantity).toFixed(2)}</p>
                                         </div>
-                                        <div className="flex items-center space-x-2 flex-shrink-0">
-                                            <button onClick={() => handleQuantityChange(item.id, item.quantity - 1)} className="w-7 h-7 rounded-full border text-gray-600 flex items-center justify-center text-lg">-</button>
-                                            <span className="font-bold w-4 text-center">{item.quantity}</span>
-                                            <button onClick={() => handleQuantityChange(item.id, item.quantity + 1)} className="w-7 h-7 rounded-full border text-gray-600 flex items-center justify-center text-lg">+</button>
+                                        <div className="flex flex-col items-end space-y-2">
+                                            <button onClick={() => handleRemoveItem(item.id)} className="text-gray-400 hover:text-red-500 p-1">
+                                                <TrashIcon className="w-5 h-5"/>
+                                            </button>
+                                            <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
+                                                <button onClick={() => handleQuantityChange(item.id, item.quantity - 1)} className="w-6 h-6 flex items-center justify-center font-bold text-gray-600 hover:bg-white rounded">-</button>
+                                                <span className="font-bold w-4 text-center text-sm">{item.quantity}</span>
+                                                <button onClick={() => handleQuantityChange(item.id, item.quantity + 1)} className="w-6 h-6 flex items-center justify-center font-bold text-gray-600 hover:bg-white rounded">+</button>
+                                            </div>
                                         </div>
-                                        <button onClick={() => handleRemoveItem(item.id)} className="text-gray-400 hover:text-red-500" aria-label={`Remover ${item.name}`}>
-                                            <TrashIcon className="w-5 h-5"/>
-                                        </button>
                                     </div>
                                 ))}
                             </div>
                         )}
 
-                        <button 
-                            onClick={() => setIsAddItemModalOpen(true)} 
-                            className="w-full mt-4 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 transition-colors"
+                        <button
+                            onClick={() => setIsAddItemModalOpen(true)}
+                            className="w-full py-3 mt-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 font-semibold hover:bg-gray-50 flex items-center justify-center gap-2"
                         >
                             <PlusIcon className="w-5 h-5" />
                             Adicionar Novo Item
                         </button>
 
+                        <div className="border-t pt-4 space-y-2">
+                            <div className="flex justify-between text-gray-600 text-sm">
+                                <span>Subtotal (Itens)</span>
+                                <span>R$ {subtotal.toFixed(2)}</span>
+                            </div>
+                            {order.deliveryFee != null && (
+                                <div className="flex justify-between text-gray-600 text-sm">
+                                    <span>Taxa de Entrega</span>
+                                    <span>R$ {order.deliveryFee.toFixed(2)}</span>
+                                </div>
+                            )}
+                            {order.discountAmount && order.discountAmount > 0 && (
+                                <div className="flex justify-between text-green-600 text-sm">
+                                    <span>Desconto</span>
+                                    <span>- R$ {order.discountAmount.toFixed(2)}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between items-center font-bold text-lg text-gray-900 border-t pt-2 mt-1">
+                                <span>Total Atualizado</span>
+                                <span>R$ {finalTotalPrice.toFixed(2)}</span>
+                            </div>
+                        </div>
                     </div>
 
                     {error && <p className="text-red-500 text-sm mt-4 text-center">{error}</p>}
 
-                    <div className="mt-6 p-4 border-t bg-gray-50 rounded-b-lg space-y-2">
-                        <div className="flex justify-between text-gray-600 text-sm">
-                            <span>Subtotal Itens ({totalItems} itens)</span>
-                            <span>R$ {subtotal.toFixed(2)}</span>
-                        </div>
-                        {order.discountAmount && order.discountAmount > 0 && (
-                            <div className="flex justify-between text-green-600 text-sm font-semibold">
-                                <span>Desconto ({order.couponCode || 'aplicado'})</span>
-                                <span>- R$ {order.discountAmount.toFixed(2)}</span>
-                            </div>
-                        )}
-                        <div className="flex justify-between text-gray-600 text-sm">
-                            <span>Taxa de Entrega</span>
-                            <span>R$ {deliveryFee.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between items-center font-bold text-lg text-gray-900 border-t pt-2 mt-1">
-                            <span>Total do Pedido</span>
-                            <span>R$ {finalTotalPrice.toFixed(2)}</span>
-                        </div>
-
-                        <div className="flex justify-end space-x-3 mt-4">
-                            <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300" disabled={isSaving}>Cancelar</button>
-                            <button onClick={handleSave} className="px-6 py-2 rounded-lg bg-orange-600 text-white font-bold hover:bg-orange-700 disabled:bg-orange-300" disabled={isSaving}>
-                                {isSaving ? <Spinner message="Salvando..." /> : 'Salvar Alterações'}
-                            </button>
-                        </div>
+                    <div className="mt-6 pt-4 border-t flex justify-end space-x-3">
+                        <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300" disabled={isSaving}>Cancelar</button>
+                        <button onClick={handleSave} className="px-6 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 disabled:bg-blue-400" disabled={isSaving}>
+                            {isSaving ? <Spinner message="Salvando..." /> : 'Salvar Alterações'}
+                        </button>
                     </div>
                 </div>
             </div>
 
-            {/* Sub-modal for selecting items to add */}
             {isAddItemModalOpen && (
                 <AddItemToOrderModal
                     isOpen={isAddItemModalOpen}
@@ -312,14 +310,13 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                 />
             )}
 
-            {/* Customization Modals (opened from handleSelectMenuItemForCustomization) */}
             {isPizzaModalOpen && itemToCustomize && (
                 <PizzaCustomizationModal
                     isOpen={isPizzaModalOpen}
                     onClose={() => setIsPizzaModalOpen(false)}
-                    onAddToCart={handleAddItemToOrder} // This now adds to editedItems
+                    onAddToCart={handleAddItemToOrder}
                     initialPizza={itemToCustomize}
-                    allPizzas={allRestaurantMenuItems.filter(item => item.isPizza)}
+                    allPizzas={allRestaurantMenuItems.filter(i => i.isPizza)}
                     allAddons={allRestaurantAddons}
                 />
             )}
@@ -327,7 +324,7 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                 <AcaiCustomizationModal
                     isOpen={isAcaiModalOpen}
                     onClose={() => setIsAcaiModalOpen(false)}
-                    onAddToCart={handleAddItemToOrder} // This now adds to editedItems
+                    onAddToCart={handleAddItemToOrder}
                     initialItem={itemToCustomize}
                     allAddons={allRestaurantAddons}
                 />
@@ -336,7 +333,7 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                 <GenericCustomizationModal
                     isOpen={isGenericModalOpen}
                     onClose={() => setIsGenericModalOpen(false)}
-                    onAddToCart={handleAddItemToOrder} // This now adds to editedItems
+                    onAddToCart={handleAddItemToOrder}
                     initialItem={itemToCustomize}
                     allAddons={allRestaurantAddons}
                 />

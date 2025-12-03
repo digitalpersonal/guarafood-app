@@ -1,11 +1,9 @@
-
-
 import React, { useState } from 'react';
-import { useAuth } from '../services/authService.ts';
-import RestaurantManagement from './RestaurantManagement.tsx';
-import CategoryManagement from './CategoryManagement.tsx';
-import MarketingManagement from './MarketingManagement.tsx';
-import MenuManagement from './MenuManagement.tsx';
+import { useAuth } from '../services/authService';
+import RestaurantManagement from './RestaurantManagement';
+import CategoryManagement from './CategoryManagement';
+import MarketingManagement from './MarketingManagement';
+import MenuManagement from './MenuManagement';
 
 
 // Re-usable Icons
