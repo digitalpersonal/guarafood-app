@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useCart } from '../hooks/useCart';
 import type { Restaurant } from '../types';

@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useRef } from 'react';
-import type { ToastOptions, ConfirmOptions, PromptOptions } from '../hooks/useNotification';
+import type { ToastOptions, ConfirmOptions, PromptOptions } from '../types';
 
 // --- ICONS ---
 const SuccessIcon: React.FC<{ className?: string }> = ({ className }) => (

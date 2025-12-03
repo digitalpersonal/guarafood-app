@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
-import type { MenuItem, Combo } from '../types.ts';
-import OptimizedImage from './OptimizedImage.tsx';
+import type { MenuItem, Combo } from '../types';
+import OptimizedImage from './OptimizedImage';
 
 interface AddItemToOrderModalProps {
     isOpen: boolean;

@@ -1,34 +1,7 @@
 
 import React, { useState, useCallback, useContext, createContext, ReactNode, useMemo } from 'react';
 import Notifications from '../components/Notifications';
-
-export interface ToastOptions {
-    id?: number;
-    message: string;
-    type?: 'success' | 'error' | 'info';
-    duration?: number;
-}
-
-export interface ConfirmOptions {
-    title: string;
-    message: string;
-    confirmText?: string;
-    cancelText?: string;
-    isDestructive?: boolean;
-    onConfirm: () => void;
-    onCancel: () => void;
-}
-
-export interface PromptOptions {
-    title: string;
-    message: string;
-    placeholder?: string;
-    submitText?: string;
-    cancelText?: string;
-    onSubmit: (value: string) => void;
-    onCancel: () => void;
-}
-
+import type { ToastOptions, ConfirmOptions, PromptOptions } from '../types';
 
 interface NotificationContextType {
     addToast: (options: ToastOptions) => void;
