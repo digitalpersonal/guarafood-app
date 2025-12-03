@@ -121,12 +121,8 @@ CREATE POLICY "Admin/Merchant Update Restaurants" ON public.restaurants FOR UPDA
 CREATE POLICY "Admin Insert Restaurants" ON public.restaurants FOR INSERT WITH CHECK (auth.uid() IN (SELECT id FROM profiles WHERE role = 'admin'));
 CREATE POLICY "Admin Delete Restaurants" ON public.restaurants FOR DELETE USING (auth.uid() IN (SELECT id FROM profiles WHERE role = 'admin'));
 
-CREATE POLICY "Merchant Manage Categories" ON public.menu_categories FOR ALL USING (auth.uid() IN (SELECT id FROM profiles WHERE restaurant_id = menu_categories.restaurant_id OR role = 'admin'));
-CREATE POLICY "Merchant Manage Items" ON public.menu_items FOR ALL USING (auth.uid() IN (SELECT id FROM profiles WHERE restaurant_id = menu_items.restaurant_id OR role = 'admin'));
-CREATE POLICY "Merchant Manage Combos" ON public.combos FOR ALL USING (auth.uid() IN (SELECT id FROM profiles WHERE restaurant_id = combos.restaurant_id OR role = 'admin'));
-CREATE POLICY "Merchant Manage Addons" ON public.addons FOR ALL USING (auth.uid() IN (SELECT id FROM profiles WHERE restaurant_id = addons.restaurant_id OR role = 'admin'));
-CREATE POLICY "Merchant Manage Promotions" ON public.promotions FOR ALL USING (auth.uid() IN (SELECT id FROM profiles WHERE restaurant_id = promotions.restaurant_id OR role = 'admin'));
-CREATE POLICY "Merchant Manage Coupons" ON public.coupons FOR ALL USING (auth.uid() IN (SELECT id FROM profiles WHERE restaurant_id = coupons.restaurant_id OR role = 'admin'));
+-- Nota: Políticas de gerenciamento de itens agora são tratadas no Passo 8 (Check Permission)
+-- para evitar erros de RLS recursivos.
 
 CREATE POLICY "Admin Manage Banners" ON public.banners FOR ALL USING (auth.uid() IN (SELECT id FROM profiles WHERE role = 'admin'));
 
@@ -258,106 +254,93 @@ SELECT 'Brasileira' WHERE NOT EXISTS (SELECT 1 FROM public.restaurant_categories
 COMMIT;
 ```
 
-## 8. Correção de Permissões "Blindada" (Resolve erro de criação)
+## 8. Correção Definitiva de Permissões (Security Definer Function)
 
-Se você tiver problemas para criar itens (erro "new row violates row-level security policy"), rode este script. Ele libera a leitura do perfil e usa uma verificação mais robusta.
+**⚠️ IMPORTANTE:** Se você está recebendo erros como `Failed to create category: new row violates row-level security policy`, rode este script. Ele cria uma função de segurança especial que resolve definitivamente os problemas de verificação de propriedade.
 
 ```sql
 BEGIN;
 
--- 1. CORREÇÃO DE PERFIL (Essencial para as outras regras funcionarem)
-DROP POLICY IF EXISTS "Read Own Profile" ON public.profiles;
-CREATE POLICY "Read Own Profile" ON public.profiles FOR SELECT USING (auth.uid() = id);
+-- 1. CRIAÇÃO DA FUNÇÃO DE SEGURANÇA (A "Bala de Prata")
+-- Esta função verifica permissão ignorando as regras de leitura da tabela profiles
+CREATE OR REPLACE FUNCTION public.check_permission(target_restaurant_id bigint)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER 
+SET search_path = public
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid()
+    AND (restaurant_id = target_restaurant_id OR role = 'admin')
+  );
+END;
+$$;
 
--- 2. ADICIONAIS (Correção do erro atual)
-DROP POLICY IF EXISTS "Merchant Manage Addons" ON public.addons;
-DROP POLICY IF EXISTS "Merchant Insert Addons" ON public.addons;
-DROP POLICY IF EXISTS "Merchant Update Addons" ON public.addons;
-DROP POLICY IF EXISTS "Merchant Delete Addons" ON public.addons;
+-- ==============================================================================
+-- 2. REAPLICAR REGRAS USANDO A NOVA FUNÇÃO
+-- ==============================================================================
 
-CREATE POLICY "Merchant Insert Addons" ON public.addons FOR INSERT WITH CHECK (
-  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND (profiles.restaurant_id = addons.restaurant_id OR profiles.role = 'admin'))
-);
-CREATE POLICY "Merchant Update Addons" ON public.addons FOR UPDATE USING (
-  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND (profiles.restaurant_id = addons.restaurant_id OR profiles.role = 'admin'))
-);
-CREATE POLICY "Merchant Delete Addons" ON public.addons FOR DELETE USING (
-  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND (profiles.restaurant_id = addons.restaurant_id OR profiles.role = 'admin'))
-);
-
--- 3. REPLICAR PARA OUTRAS TABELAS (Prevenção)
-
--- Itens
-DROP POLICY IF EXISTS "Merchant Manage Items" ON public.menu_items;
-DROP POLICY IF EXISTS "Merchant Insert Items" ON public.menu_items;
-DROP POLICY IF EXISTS "Merchant Update Items" ON public.menu_items;
-DROP POLICY IF EXISTS "Merchant Delete Items" ON public.menu_items;
-
-CREATE POLICY "Merchant Insert Items" ON public.menu_items FOR INSERT WITH CHECK (
-  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND (profiles.restaurant_id = menu_items.restaurant_id OR profiles.role = 'admin'))
-);
-CREATE POLICY "Merchant Update Items" ON public.menu_items FOR UPDATE USING (
-  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND (profiles.restaurant_id = menu_items.restaurant_id OR profiles.role = 'admin'))
-);
-CREATE POLICY "Merchant Delete Items" ON public.menu_items FOR DELETE USING (
-  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND (profiles.restaurant_id = menu_items.restaurant_id OR profiles.role = 'admin'))
-);
-
--- Combos
-DROP POLICY IF EXISTS "Merchant Manage Combos" ON public.combos;
-DROP POLICY IF EXISTS "Merchant Insert Combos" ON public.combos;
-DROP POLICY IF EXISTS "Merchant Update Combos" ON public.combos;
-DROP POLICY IF EXISTS "Merchant Delete Combos" ON public.combos;
-
-CREATE POLICY "Merchant Insert Combos" ON public.combos FOR INSERT WITH CHECK (
-  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND (profiles.restaurant_id = combos.restaurant_id OR profiles.role = 'admin'))
-);
-CREATE POLICY "Merchant Update Combos" ON public.combos FOR UPDATE USING (
-  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND (profiles.restaurant_id = combos.restaurant_id OR profiles.role = 'admin'))
-);
-CREATE POLICY "Merchant Delete Combos" ON public.combos FOR DELETE USING (
-  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND (profiles.restaurant_id = combos.restaurant_id OR profiles.role = 'admin'))
-);
-
--- Categorias
+-- --- MENU CATEGORIES ---
 DROP POLICY IF EXISTS "Merchant Manage Categories" ON public.menu_categories;
 DROP POLICY IF EXISTS "Merchant Insert Categories" ON public.menu_categories;
 DROP POLICY IF EXISTS "Merchant Update Categories" ON public.menu_categories;
 DROP POLICY IF EXISTS "Merchant Delete Categories" ON public.menu_categories;
 
-CREATE POLICY "Merchant Insert Categories" ON public.menu_categories FOR INSERT WITH CHECK (
-  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND (profiles.restaurant_id = menu_categories.restaurant_id OR profiles.role = 'admin'))
-);
-CREATE POLICY "Merchant Update Categories" ON public.menu_categories FOR UPDATE USING (
-  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND (profiles.restaurant_id = menu_categories.restaurant_id OR profiles.role = 'admin'))
-);
-CREATE POLICY "Merchant Delete Categories" ON public.menu_categories FOR DELETE USING (
-  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND (profiles.restaurant_id = menu_categories.restaurant_id OR profiles.role = 'admin'))
-);
+CREATE POLICY "Merchant Insert Categories" ON public.menu_categories FOR INSERT WITH CHECK (public.check_permission(restaurant_id));
+CREATE POLICY "Merchant Update Categories" ON public.menu_categories FOR UPDATE USING (public.check_permission(restaurant_id));
+CREATE POLICY "Merchant Delete Categories" ON public.menu_categories FOR DELETE USING (public.check_permission(restaurant_id));
 
--- Promoções
+-- --- ADDONS ---
+DROP POLICY IF EXISTS "Merchant Manage Addons" ON public.addons;
+DROP POLICY IF EXISTS "Merchant Insert Addons" ON public.addons;
+DROP POLICY IF EXISTS "Merchant Update Addons" ON public.addons;
+DROP POLICY IF EXISTS "Merchant Delete Addons" ON public.addons;
+
+CREATE POLICY "Merchant Insert Addons" ON public.addons FOR INSERT WITH CHECK (public.check_permission(restaurant_id));
+CREATE POLICY "Merchant Update Addons" ON public.addons FOR UPDATE USING (public.check_permission(restaurant_id));
+CREATE POLICY "Merchant Delete Addons" ON public.addons FOR DELETE USING (public.check_permission(restaurant_id));
+
+-- --- MENU ITEMS ---
+DROP POLICY IF EXISTS "Merchant Manage Items" ON public.menu_items;
+DROP POLICY IF EXISTS "Merchant Insert Items" ON public.menu_items;
+DROP POLICY IF EXISTS "Merchant Update Items" ON public.menu_items;
+DROP POLICY IF EXISTS "Merchant Delete Items" ON public.menu_items;
+
+CREATE POLICY "Merchant Insert Items" ON public.menu_items FOR INSERT WITH CHECK (public.check_permission(restaurant_id));
+CREATE POLICY "Merchant Update Items" ON public.menu_items FOR UPDATE USING (public.check_permission(restaurant_id));
+CREATE POLICY "Merchant Delete Items" ON public.menu_items FOR DELETE USING (public.check_permission(restaurant_id));
+
+-- --- COMBOS ---
+DROP POLICY IF EXISTS "Merchant Manage Combos" ON public.combos;
+DROP POLICY IF EXISTS "Merchant Insert Combos" ON public.combos;
+DROP POLICY IF EXISTS "Merchant Update Combos" ON public.combos;
+DROP POLICY IF EXISTS "Merchant Delete Combos" ON public.combos;
+
+CREATE POLICY "Merchant Insert Combos" ON public.combos FOR INSERT WITH CHECK (public.check_permission(restaurant_id));
+CREATE POLICY "Merchant Update Combos" ON public.combos FOR UPDATE USING (public.check_permission(restaurant_id));
+CREATE POLICY "Merchant Delete Combos" ON public.combos FOR DELETE USING (public.check_permission(restaurant_id));
+
+-- --- PROMOTIONS ---
 DROP POLICY IF EXISTS "Merchant Manage Promotions" ON public.promotions;
-CREATE POLICY "Merchant Insert Promotions" ON public.promotions FOR INSERT WITH CHECK (
-  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND (profiles.restaurant_id = promotions.restaurant_id OR profiles.role = 'admin'))
-);
-CREATE POLICY "Merchant Update Promotions" ON public.promotions FOR UPDATE USING (
-  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND (profiles.restaurant_id = promotions.restaurant_id OR profiles.role = 'admin'))
-);
-CREATE POLICY "Merchant Delete Promotions" ON public.promotions FOR DELETE USING (
-  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND (profiles.restaurant_id = promotions.restaurant_id OR profiles.role = 'admin'))
-);
+DROP POLICY IF EXISTS "Merchant Insert Promotions" ON public.promotions;
+DROP POLICY IF EXISTS "Merchant Update Promotions" ON public.promotions;
+DROP POLICY IF EXISTS "Merchant Delete Promotions" ON public.promotions;
 
--- Cupons
+CREATE POLICY "Merchant Insert Promotions" ON public.promotions FOR INSERT WITH CHECK (public.check_permission(restaurant_id));
+CREATE POLICY "Merchant Update Promotions" ON public.promotions FOR UPDATE USING (public.check_permission(restaurant_id));
+CREATE POLICY "Merchant Delete Promotions" ON public.promotions FOR DELETE USING (public.check_permission(restaurant_id));
+
+-- --- COUPONS ---
 DROP POLICY IF EXISTS "Merchant Manage Coupons" ON public.coupons;
-CREATE POLICY "Merchant Insert Coupons" ON public.coupons FOR INSERT WITH CHECK (
-  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND (profiles.restaurant_id = coupons.restaurant_id OR profiles.role = 'admin'))
-);
-CREATE POLICY "Merchant Update Coupons" ON public.coupons FOR UPDATE USING (
-  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND (profiles.restaurant_id = coupons.restaurant_id OR profiles.role = 'admin'))
-);
-CREATE POLICY "Merchant Delete Coupons" ON public.coupons FOR DELETE USING (
-  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND (profiles.restaurant_id = coupons.restaurant_id OR profiles.role = 'admin'))
-);
+DROP POLICY IF EXISTS "Merchant Insert Coupons" ON public.coupons;
+DROP POLICY IF EXISTS "Merchant Update Coupons" ON public.coupons;
+DROP POLICY IF EXISTS "Merchant Delete Coupons" ON public.coupons;
+
+CREATE POLICY "Merchant Insert Coupons" ON public.coupons FOR INSERT WITH CHECK (public.check_permission(restaurant_id));
+CREATE POLICY "Merchant Update Coupons" ON public.coupons FOR UPDATE USING (public.check_permission(restaurant_id));
+CREATE POLICY "Merchant Delete Coupons" ON public.coupons FOR DELETE USING (public.check_permission(restaurant_id));
 
 COMMIT;
 ```
