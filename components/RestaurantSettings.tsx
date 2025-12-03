@@ -1,12 +1,13 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../services/authService';
-import { useNotification } from '../hooks/useNotification';
+import { useAuth } from '../services/authService.ts';
+import { useNotification } from '../hooks/useNotification.tsx';
 // Use fetchRestaurantByIdSecure to get the token
-import { fetchRestaurantByIdSecure, updateRestaurant } from '../services/databaseService';
-import type { Restaurant, OperatingHours, Order } from '../types';
-import Spinner from './Spinner';
-import { SUPABASE_URL } from '../config';
-import PrintableOrder from './PrintableOrder';
+import { fetchRestaurantByIdSecure, updateRestaurant } from '../services/databaseService.ts';
+import type { Restaurant, OperatingHours, Order } from '../types.ts';
+import Spinner from './Spinner.tsx';
+import { SUPABASE_URL } from '../config.ts';
+import PrintableOrder from './PrintableOrder.tsx';
 
 const NotificationSettings: React.FC = () => {
     const { addToast } = useNotification();

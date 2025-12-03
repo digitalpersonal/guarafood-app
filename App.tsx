@@ -16,9 +16,9 @@ import AdminDashboard from './components/AdminDashboard';
 import OrderManagement from './components/OrderManagement';
 import CouponDisplay from './components/CouponDisplay';
 import HomePromotionalBanner from './components/HomePromotionalBanner';
-import { CartProvider } from './hooks/useCart';
-import { AnimationProvider } from './hooks/useAnimation';
-import { NotificationProvider, useNotification, type ToastOptions } from './hooks/useNotification';
+import { CartProvider } from '../hooks/useCart';
+import { AnimationProvider } from '../hooks/useAnimation';
+import { NotificationProvider, useNotification, type ToastOptions } from '../hooks/useNotification'; // Import useNotification
 import OptimizedImage from './components/OptimizedImage';
 import OrderTracker from './components/OrderTracker';
 import CustomerOrders from './components/CustomerOrders';
@@ -161,6 +161,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     const [activeCategory, setActiveCategory] = useState<string | null>(null);
     const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
+    const { addToast } = useNotification(); // Use useNotification directly here
 
     useEffect(() => {
         const loadMenu = async () => {
@@ -197,15 +198,18 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                 if (menuWithoutSpecials.length > 0) {
                     setActiveCategory(slugify(menuWithoutSpecials[0].name));
                 }
-            } catch (err) {
-                setError('Falha ao carregar o cardápio. Por favor, tente recarregar a página.');
+            } catch (err: any) {
+                const errorMessage = `Falha ao carregar o cardápio: ${getErrorMessage(err)}`;
+                setError(errorMessage + '. Por favor, tente recarregar a página.');
+                addToast({ message: errorMessage, type: 'error' }); // Show toast
                 console.error(err);
             } finally {
                 setIsLoading(false);
             }
         };
         loadMenu();
-    }, [restaurant]);
+    }, [restaurant, addToast]); // Depend on addToast
+
 
     useEffect(() => {
         if (isLoading || menu.length === 0) return;
@@ -412,6 +416,8 @@ const CustomerView: React.FC<{
     // Use a fixed header image to avoid API quota issues.
     const [headerImage, setHeaderImage] = useState<string>('https://images.pexels.com/photos/376464/pexels-photo-376464.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2');
 
+    const { addToast } = useNotification(); // Use useNotification directly here
+
     useEffect(() => {
         const loadInitialData = async () => {
             setIsLoading(true);
@@ -429,17 +435,21 @@ const CustomerView: React.FC<{
                         const targetRestaurant = restaurantsData.find(r => r.id === id);
                         if (targetRestaurant) {
                             setSelectedRestaurant(targetRestaurant);
+                        } else {
+                            addToast({ message: "Restaurante não encontrado. Verifique o link.", type: 'error' });
+                            window.history.replaceState({}, '', window.location.pathname); // Clear invalid param
                         }
                     }
                 }
 
             } catch (err: any) {
                 // Determine error message
-                let message = 'Falha ao buscar restaurantes.';
-                if (typeof err === 'string') message = err;
-                else if (err.message) message = err.message;
-                
+                let message = `Falha ao buscar restaurantes: ${getErrorMessage(err)}`;
+                if (message.includes('Failed to fetch') || message.includes('TypeError: Failed to fetch')) {
+                    message += '\n\nVerifique se as credenciais do Supabase estão corretas no arquivo `config.ts` (SUPABASE_URL e SUPABASE_ANON_KEY) ou nas variáveis de ambiente. Pode ser um problema de rede, firewall ou o seu projeto Supabase está inacessível.';
+                }
                 setError(message);
+                addToast({ message: message, type: 'error' }); // Show toast
                 console.error(err);
             } finally {
                 setIsLoading(false);
@@ -447,7 +457,7 @@ const CustomerView: React.FC<{
         };
 
         loadInitialData();
-    }, []); // Empty dependency array means it runs once on mount
+    }, [addToast]); // Depend on addToast
 
     const categories = useMemo(() => {
         const allCategories = restaurants.flatMap(r => r.category ? r.category.split(',').map(c => c.trim()) : []);
@@ -466,13 +476,15 @@ const CustomerView: React.FC<{
         });
     }, [restaurants, searchTerm, selectedCategories, showOpenOnly]);
 
-    const handleBannerClick = (targetType: 'restaurant' | 'category', targetValue: string) => {
+    const handleBannerClick = useCallback((targetType: 'restaurant' | 'category', targetValue: string) => {
         if (targetType === 'restaurant') {
             const targetRestaurant = restaurants.find(r => r.name === targetValue);
             if (targetRestaurant) {
                 setSelectedRestaurant(targetRestaurant);
+                window.history.pushState({}, '', `?r=${targetRestaurant.id}`); // Update URL param
             } else {
                 console.warn(`Banner clicked for non-existent restaurant: ${targetValue}`);
+                addToast({message: `Restaurante "${targetValue}" não encontrado.`, type: "error"});
             }
         } else if (targetType === 'category') {
             // Check if the category exists in the available list
@@ -484,11 +496,13 @@ const CustomerView: React.FC<{
                 setSearchTerm('');
             } else {
                 console.warn(`Banner clicked for non-existent category: ${targetValue}`);
+                addToast({message: `Categoria "${targetValue}" não encontrada.`, type: "error"});
             }
         }
-    };
+    }, [restaurants, categories, addToast]);
 
-    const handleCategoryClick = (category: string) => {
+
+    const handleCategoryClick = useCallback((category: string) => {
         if (category === 'Todos') {
             setSelectedCategories(['Todos']);
             return;
@@ -509,13 +523,18 @@ const CustomerView: React.FC<{
                 return [...prev, category];
             }
         });
-    };
+    }, []);
 
-    const handleBackToHome = () => {
+    const handleSelectRestaurant = useCallback((restaurant: Restaurant) => {
+        setSelectedRestaurant(restaurant);
+        window.history.pushState({}, '', `?r=${restaurant.id}`); // Update URL param
+    }, []);
+    
+    const handleBackToHome = useCallback(() => {
         setSelectedRestaurant(null);
         // Clear URL param without refreshing
         window.history.replaceState({}, '', window.location.pathname);
-    };
+    }, []);
 
 
     if (isLoading) {
@@ -640,7 +659,7 @@ const CustomerView: React.FC<{
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {filteredRestaurants.map(restaurant => {
                             const isOpen = isRestaurantOpen(restaurant);
-                            return <RestaurantCard key={restaurant.id} restaurant={restaurant} onClick={() => setSelectedRestaurant(restaurant)} isOpen={isOpen} />;
+                            return <RestaurantCard key={restaurant.id} restaurant={restaurant} onClick={handleSelectRestaurant} isOpen={isOpen} />;
                         })}
                     </div>
                     {filteredRestaurants.length === 0 && <p className="text-center text-gray-500 col-span-full py-8">Nenhum restaurante encontrado.</p>}
@@ -660,6 +679,9 @@ type ViewState = 'customer' | 'login' | 'history';
 const AppContent: React.FC = () => {
     const [view, setView] = useState<ViewState>('customer');
     const { currentUser, loading, authError } = useAuth();
+    // Força atualização do arquivo App.tsx no ambiente de execução.
+    // Isso é um workaround para problemas de cache no Google AI Studio.
+    // REMOVED: console.log('authError state in AppContent:', authError); 
 
     const handleBackToCustomerView = () => setView('customer');
 
