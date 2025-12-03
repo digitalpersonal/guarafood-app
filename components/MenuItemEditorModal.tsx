@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { MenuItem, SizeOption, Addon } from '../types';
 import { supabase } from '../services/api';
-import { generateImage } from '../services/databaseService';
 
 // Icon for the Combobox dropdown
 const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -12,11 +11,6 @@ const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
-);
-const SparklesIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.898 20.562L16.25 21.75l-.648-1.188a2.25 2.25 0 01-1.4-1.4l-1.188-.648 1.188-.648a2.25 2.25 0 011.4-1.4l.648-1.188.648 1.188a2.25 2.25 0 01-1.4 1.4z" />
-    </svg>
 );
 
 const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -103,7 +97,7 @@ const Combobox: React.FC<ComboboxProps> = ({ options, value, onChange, placehold
 interface MenuItemEditorModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (itemData: Omit<MenuItem, 'id' | 'restaurantId'>, category: string) => void;
+    onSave: (itemData: Omit<MenuItem, 'id' | 'restaurantId'>, category: string) => Promise<void>;
     existingItem?: MenuItem;
     initialCategory?: string;
     restaurantCategories: string[];
@@ -131,7 +125,6 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [isGenerating, setIsGenerating] = useState(false);
 
 
     useEffect(() => {
@@ -171,7 +164,6 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
         setImageFile(null);
         setError('');
         setIsSaving(false);
-        setIsGenerating(false);
     }, [existingItem, initialCategory, isOpen]);
 
     // Cleanup for image preview object URL
@@ -262,75 +254,23 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
         }
     };
 
-    // Helper to convert Base64 string to File object
-    const base64ToFile = (base64String: string, filename: string): File => {
-        const arr = base64String.split(',');
-        const mime = arr[0].match(/:(.*?);/)![1];
-        const bstr = atob(arr[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) {
-            u8arr[n] = bstr.charCodeAt(n);
-        }
-        return new File([u8arr], filename, { type: mime });
+    const handlePriceChange = (value: string, setter: React.Dispatch<React.SetStateAction<string>>) => {
+        // Substitui vírgula por ponto para garantir formato numérico correto
+        setter(value.replace(',', '.'));
     };
-
-    const handleGenerateImage = async () => {
-        if (!name) {
-            setError("Por favor, digite o nome do item primeiro.");
-            return;
-        }
-        
-        // Safety check for production environment
-        if (typeof window !== 'undefined' && !(window as any).aistudio) {
-            setError("A geração de imagem por IA só está disponível no ambiente de desenvolvimento do Google AI Studio.");
-            return;
-        }
-
-        setIsGenerating(true);
-        setError('');
-        try {
-            // CRITICAL: Ensure `window.aistudio.hasSelectedApiKey()` is checked and `window.aistudio.openSelectKey()` is called
-            // before generating the image, as per Gemini API guidelines for premium models.
-            if (!await window.aistudio.hasSelectedApiKey()) {
-                await window.aistudio.openSelectKey();
-                // Assume success and proceed, as per race condition guideline.
-            }
-            
-            const prompt = `A delicious close-up photo of ${name}${description ? `, ${description}` : ''}. High quality food photography.`;
-            const base64Image = await generateImage(prompt, '1:1');
-            
-            // Convert to file
-            const rawFile = base64ToFile(base64Image, `ai-generated-${Date.now()}.jpg`);
-            
-            // Compress the AI generated image as well (they can be large PNGs sometimes)
-            const compressedFile = await compressImage(rawFile);
-            
-            setImageFile(compressedFile);
-            
-            if (imagePreview && imagePreview.startsWith('blob:')) {
-                URL.revokeObjectURL(imagePreview);
-            }
-            setImagePreview(URL.createObjectURL(compressedFile));
-            
-        } catch (err: any) {
-            // If the error message indicates a missing entity (e.g., API Key invalid/not selected), prompt again.
-            if (err.message && err.message.includes("Requested entity was not found")) {
-                setError("Chave API não selecionada ou inválida. Por favor, selecione uma chave API paga para gerar imagens (ai.google.dev/gemini-api/docs/billing).");
-                await window.aistudio.openSelectKey(); // Prompt again
-            } else {
-                setError(`Erro ao gerar imagem: ${err.message}`);
-            }
-        } finally {
-            setIsGenerating(false);
-        }
-    };
-
 
     const handleSizeChange = (index: number, field: keyof SizeOption, value: string) => {
         const newSizes = [...sizes];
-        const numValue = field === 'price' ? parseFloat(value) : parseInt(value, 10);
-        (newSizes[index] as any)[field] = isNaN(numValue) ? value : numValue;
+        let processedValue: string | number = value;
+        
+        if (field === 'price') {
+             // Sanitização de preço em tamanhos
+             processedValue = parseFloat(value.replace(',', '.'));
+        } else if (field === 'freeAddonCount') {
+             processedValue = parseInt(value, 10);
+        }
+
+        (newSizes[index] as any)[field] = isNaN(processedValue as number) && field !== 'name' ? value : processedValue;
         setSizes(newSizes);
     };
 
@@ -432,7 +372,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
 
             const numericOriginalPrice = parseFloat(originalPrice);
 
-            onSave({
+            await onSave({
                 name,
                 description,
                 price: basePrice,
@@ -482,31 +422,19 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                              <label htmlFor="imageUpload" className="block text-sm font-medium text-gray-700 mb-1">
                                 Imagem do Produto
                             </label>
-                            <div className="flex gap-2">
-                                <input
-                                    id="imageUpload"
-                                    type="file"
-                                    accept="image/png, image/jpeg, image/webp"
-                                    onChange={handleImageChange}
-                                    className="block w-full text-sm text-gray-500
-                                        file:mr-4 file:py-2 file:px-4
-                                        file:rounded-full file:border-0
-                                        file:text-sm file:font-semibold
-                                        file:bg-orange-50 file:text-orange-700
-                                        hover:file:bg-orange-100"
-                                />
-                                <button 
-                                    type="button"
-                                    onClick={handleGenerateImage}
-                                    disabled={isGenerating || !name}
-                                    className="bg-purple-600 text-white text-xs font-bold py-2 px-3 rounded-full hover:bg-purple-700 disabled:bg-purple-300 flex items-center gap-1 whitespace-nowrap shadow-md transition-all hover:scale-105"
-                                    title={!name ? "Digite o nome do prato primeiro" : "Gerar imagem com IA"}
-                                >
-                                    <SparklesIcon className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
-                                    {isGenerating ? 'Gerando...' : 'Gerar com IA'}
-                                </button>
-                            </div>
-                            <p className="text-xs text-gray-500 mt-1">Envie um arquivo ou use a IA. Imagens serão otimizadas automaticamente para celular.</p>
+                            <input
+                                id="imageUpload"
+                                type="file"
+                                accept="image/png, image/jpeg, image/webp"
+                                onChange={handleImageChange}
+                                className="block w-full text-sm text-gray-500
+                                    file:mr-4 file:py-2 file:px-4
+                                    file:rounded-full file:border-0
+                                    file:text-sm file:font-semibold
+                                    file:bg-orange-50 file:text-orange-700
+                                    hover:file:bg-orange-100"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">Envie uma imagem do seu dispositivo. Imagens serão otimizadas automaticamente para celular.</p>
                         </div>
                     </div>
 
@@ -516,18 +444,18 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <input
-                            type="number"
+                            type="text"
                             placeholder="Preço Original (Opcional)"
                             value={originalPrice}
-                            onChange={(e) => setOriginalPrice(e.target.value)}
+                            onChange={(e) => handlePriceChange(e.target.value, setOriginalPrice)}
                             className="w-full p-3 border rounded-lg bg-gray-50"
                             title="Preço 'de'. Deixe em branco se não for uma promoção."
                         />
                         <input
-                            type="number"
+                            type="text"
                             placeholder={hasSizes ? "Preço base nos tamanhos" : "Preço de Venda"}
                             value={price}
-                            onChange={(e) => setPrice(e.target.value)}
+                            onChange={(e) => handlePriceChange(e.target.value, setPrice)}
                             className="w-full p-3 border rounded-lg bg-gray-50 disabled:bg-gray-200"
                             disabled={hasSizes}
                             title="Preço 'por'. Este é o preço que o cliente paga."

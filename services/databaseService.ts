@@ -1,6 +1,5 @@
 import { supabase, supabaseAnon, handleSupabaseError } from './api';
 import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory, Expense } from '../types';
-import { getGeminiClient } from './geminiService'; // Importa o cliente Gemini centralizado
 
 // ==============================================================================
 // 🔄 NORMALIZADORES (Banco de Dados -> App)
@@ -731,26 +730,4 @@ const applyPromotionsToMenu = (menu: MenuCategory[], promotions: Promotion[]): M
             }),
         };
     });
-};
-
-export const generateImage = async (
-    prompt: string,
-    aspectRatio: '1:1' | '16:9' | '4:3' | '3:4' | '9:16' = '1:1'
-): Promise<string> => {
-    const ai = getGeminiClient(); // Usa a instância centralizada
-    const response = await ai.models.generateImages({
-        model: 'imagen-4.0-generate-001',
-        prompt: prompt + ". Professional food photography, high resolution, delicious lighting.",
-        config: {
-            numberOfImages: 1,
-            outputMimeType: 'image/jpeg',
-            aspectRatio: aspectRatio,
-        },
-    });
-
-    const base64ImageBytes: string | undefined = response.generatedImages?.[0]?.image.imageBytes;
-    if (!base64ImageBytes) {
-        throw new Error("Image generation failed to return an image.");
-    }
-    return `data:image/jpeg;base64,${base64ImageBytes}`;
 };

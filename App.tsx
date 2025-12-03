@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from './types';
 import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant } from './services/databaseService';
 import { AuthProvider, useAuth } from './services/authService';
-import { getInitializationError, getErrorMessage } from './services/api'; // Import getErrorMessage
+import { getInitializationError, getErrorMessage } from './services/api';
 
 import RestaurantCard from './components/RestaurantCard';
 import Spinner from './components/Spinner';
@@ -17,7 +17,7 @@ import CouponDisplay from './components/CouponDisplay';
 import HomePromotionalBanner from './components/HomePromotionalBanner';
 import { CartProvider } from './hooks/useCart';
 import { AnimationProvider } from './hooks/useAnimation';
-import { NotificationProvider, useNotification } from './hooks/useNotification'; // Import useNotification
+import { NotificationProvider, useNotification } from './hooks/useNotification';
 import OptimizedImage from './components/OptimizedImage';
 import OrderTracker from './components/OrderTracker';
 import CustomerOrders from './components/CustomerOrders';
