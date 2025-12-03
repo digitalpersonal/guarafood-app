@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
@@ -224,7 +225,10 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
     };
 
     const handleSaveAddon = async (addonData: Omit<Addon, 'id' | 'restaurantId'>) => {
-        if (!restaurantId) return;
+        if (!restaurantId) {
+            addToast({ message: 'Erro: ID do restaurante não encontrado. Recarregue a página.', type: 'error' });
+            return;
+        }
         try {
             if (editingAddon) {
                 await updateAddon(restaurantId, editingAddon.id, addonData);
