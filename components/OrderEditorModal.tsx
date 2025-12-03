@@ -1,15 +1,14 @@
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import type { Order, CartItem, MenuItem, Combo, Addon } from '../types.ts';
-import { useNotification } from '../hooks/useNotification.ts';
-import { updateOrderDetails } from '../services/orderService.ts';
-import { fetchMenuForRestaurant, fetchAddonsForRestaurant } from '../services/databaseService.ts';
-import Spinner from './Spinner.tsx';
-import OptimizedImage from './OptimizedImage.tsx';
-import AddItemToOrderModal from './AddItemToOrderModal.tsx'; // Import the new modal
-import PizzaCustomizationModal from './PizzaCustomizationModal.tsx';
-import AcaiCustomizationModal from './AcaiCustomizationModal.tsx';
-import GenericCustomizationModal from './GenericCustomizationModal.tsx';
+import type { Order, CartItem, MenuItem, Combo, Addon } from '../types';
+import { useNotification } from '../hooks/useNotification';
+import { updateOrderDetails } from '../services/orderService';
+import { fetchMenuForRestaurant, fetchAddonsForRestaurant } from '../services/databaseService';
+import Spinner from './Spinner';
+import OptimizedImage from './OptimizedImage';
+import AddItemToOrderModal from './AddItemToOrderModal';
+import PizzaCustomizationModal from './PizzaCustomizationModal';
+import AcaiCustomizationModal from './AcaiCustomizationModal';
+import GenericCustomizationModal from './GenericCustomizationModal';
 
 interface OrderEditorModalProps {
     isOpen: boolean;
