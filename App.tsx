@@ -17,7 +17,7 @@ import CouponDisplay from './components/CouponDisplay';
 import HomePromotionalBanner from './components/HomePromotionalBanner';
 import { CartProvider } from './hooks/useCart';
 import { AnimationProvider } from './hooks/useAnimation';
-import { NotificationProvider, useNotification } from './hooks/useNotification';
+import { NotificationProvider } from './hooks/useNotification';
 import OptimizedImage from './components/OptimizedImage';
 import OrderTracker from './components/OrderTracker';
 import CustomerOrders from './components/CustomerOrders';
@@ -545,7 +545,12 @@ const CustomerView: React.FC<{
     }
 
     if (selectedRestaurant) {
-        return <RestaurantMenu restaurant={selectedRestaurant} onBack={handleBackToHome} />;
+        return (
+            <>
+                <RestaurantMenu restaurant={selectedRestaurant} onBack={handleBackToHome} />
+                <Cart restaurant={selectedRestaurant} />
+            </>
+        );
     }
 
     return (
