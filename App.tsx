@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from './types';
 import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant } from './services/databaseService';
