@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState } from 'react';
 import type { Order, OrderStatus } from '../types';
 import PrintableOrder from './PrintableOrder';
@@ -10,11 +11,11 @@ const XIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 const PrintIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.356-1.07 2.448-2.384 2.448H6.384C5.07 24.948 4 23.856 4 22.5c0-1.44 1.152-3.036 2.405-4.5m11.318 0c.397-1.362.63-2.826.63-4.342 0-1.44-1.152-3.036-2.405-4.5l-1.050-1.242A3.375 3.375 0 0 0 14.25 6H9.75a3.375 3.375 0 00-2.345 1.05L6.34 8.292c-1.253 1.464-2.405 3.06-2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 001.5 0Z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.356-1.07 2.448-2.384 2.448H6.384C5.07 24.948 4 23.856 4 22.5c0-1.44 1.152-3.036 2.405-4.5m11.318 0c.397-1.362.63-2.826.63-4.342 0-1.44-1.152-3.036-2.405-4.5l-1.050-1.242A3.375 3.375 0 0 0 14.25 6H9.75a3.375 3.375 0 0 0-2.345 1.05L6.34 8.292c-1.253 1.464-2.405 3.06-2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z" />
     </svg>
 );
 const EditIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
 );
 
 
@@ -123,10 +124,35 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                             <h3 className="font-bold text-gray-700 border-b pb-1 mb-3">Itens do Pedido</h3>
                             <ul className="space-y-3 text-gray-800">
                                 {currentOrder.items.map(item => (
-                                    <li key={item.id} className="flex justify-between items-start">
+                                    <li key={item.id} className="flex justify-between items-start border-b border-gray-100 pb-2 last:border-0">
                                         <div className="flex-grow">
-                                            <p className="font-semibold">{item.quantity}x {item.name}</p>
-                                            <p className="text-xs text-gray-500 italic">{item.description}</p>
+                                            <p className="font-semibold">{item.quantity}x {item.name} {item.sizeName && `(${item.sizeName})`}</p>
+                                            
+                                            {/* NEW: Show Custom Options */}
+                                            {item.selectedOptions && item.selectedOptions.length > 0 && (
+                                                <ul className="text-xs text-blue-600 mt-1 pl-2 border-l-2 border-blue-200 space-y-0.5">
+                                                    {item.selectedOptions.map((opt, idx) => (
+                                                        <li key={idx} className="font-medium">
+                                                            • {opt.groupTitle}: {opt.optionName}
+                                                            {opt.price > 0 && ` (+ R$ ${opt.price.toFixed(2)})`}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+
+                                            {item.halves && item.halves.length > 1 && (
+                                                <p className="text-xs text-gray-500 pl-2">½ {item.halves[0].name} | ½ {item.halves[1].name}</p>
+                                            )}
+
+                                            {item.selectedAddons && item.selectedAddons.length > 0 && (
+                                                <ul className="text-xs text-gray-500 pl-2 mt-1">
+                                                    {item.selectedAddons.map(addon => (
+                                                        <li key={addon.id}>+ {addon.name}</li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                            
+                                            {item.notes && <p className="text-xs text-orange-600 font-bold mt-1">Nota: {item.notes}</p>}
                                         </div>
                                         <p className="font-semibold ml-4 whitespace-nowrap">R$ {(item.price * item.quantity).toFixed(2)}</p>
                                     </li>

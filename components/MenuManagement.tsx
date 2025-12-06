@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
@@ -103,7 +102,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
         try {
             setIsLoading(true);
             const [menuData, promoData, couponData, addonData] = await Promise.all([
-                fetchMenuForRestaurant(restaurantId),
+                fetchMenuForRestaurant(restaurantId, true), // Pass true to ignore day filter
                 fetchPromotionsForRestaurant(restaurantId),
                 fetchCouponsForRestaurant(restaurantId),
                 fetchAddonsForRestaurant(restaurantId)

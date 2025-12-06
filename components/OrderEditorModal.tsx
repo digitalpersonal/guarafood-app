@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Order, CartItem, MenuItem, Combo, Addon } from '../types';
 import { useNotification } from '../hooks/useNotification';
@@ -65,8 +66,9 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
 
         const loadRestaurantData = async () => {
             try {
+                // Pass true to ignore day filter, so admin can add ANY item to the order manually
                 const [menuData, addonsData] = await Promise.all([
-                    fetchMenuForRestaurant(restaurantId),
+                    fetchMenuForRestaurant(restaurantId, true), 
                     fetchAddonsForRestaurant(restaurantId),
                 ]);
                 setAllRestaurantMenuItems(menuData.flatMap(c => c.items));
@@ -224,6 +226,16 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                                             <p className="font-semibold text-gray-800">
                                                 {item.name} {item.sizeName && `(${item.sizeName})`}
                                             </p>
+                                            
+                                            {/* SHOW CUSTOM OPTIONS */}
+                                            {item.selectedOptions && item.selectedOptions.length > 0 && (
+                                                <ul className="text-xs text-blue-600 bg-blue-50 p-1 rounded mt-1">
+                                                    {item.selectedOptions.map((opt, idx) => (
+                                                        <li key={idx}>• {opt.groupTitle}: {opt.optionName} {opt.price > 0 && `(+ R$ ${opt.price.toFixed(2)})`}</li>
+                                                    ))}
+                                                </ul>
+                                            )}
+
                                             {item.halves && item.halves.length > 1 && (
                                                 <p className="text-xs text-gray-500 pl-1">
                                                     (Meia {item.halves.map(h => h.name).join(' / Meia ')})

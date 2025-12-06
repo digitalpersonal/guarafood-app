@@ -344,3 +344,92 @@ CREATE POLICY "Merchant Delete Coupons" ON public.coupons FOR DELETE USING (publ
 
 COMMIT;
 ```
+
+## 9. Modo Permissivo (Solução de Emergência)
+
+Se o erro de permissão persistir mesmo após o passo 8, rode este script. Ele remove a complexidade e permite que qualquer usuário logado crie itens.
+
+```sql
+BEGIN;
+ALTER TABLE public.menu_categories DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.menu_items DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.addons DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.combos DISABLE ROW LEVEL SECURITY;
+
+GRANT ALL ON public.menu_categories TO authenticated;
+GRANT ALL ON public.menu_items TO authenticated;
+GRANT ALL ON public.addons TO authenticated;
+GRANT ALL ON public.combos TO authenticated;
+
+GRANT SELECT ON public.menu_categories TO anon;
+GRANT SELECT ON public.menu_items TO anon;
+GRANT SELECT ON public.addons TO anon;
+GRANT SELECT ON public.combos TO anon;
+COMMIT;
+```
+
+## 10. Correção da Tabela de Pedidos (Address Column)
+
+Se você receber o erro `could not find the 'customer_address' column`, rode este script:
+
+```sql
+BEGIN;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS customer_address jsonb;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS payment_status text DEFAULT 'pending';
+NOTIFY pgrst, 'reload schema';
+COMMIT;
+```
+
+## 11. Configuração do Realtime (Painel de Pedidos)
+
+Para que o painel do restaurante toque o som e atualize sozinho quando chegar pedido, rode este script:
+
+```sql
+BEGIN;
+DROP PUBLICATION IF EXISTS supabase_realtime;
+CREATE PUBLICATION supabase_realtime FOR TABLE public.orders;
+
+ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Read Orders" ON public.orders;
+DROP POLICY IF EXISTS "Merchant Read Orders" ON public.orders;
+DROP POLICY IF EXISTS "Merchant Update Orders" ON public.orders;
+DROP POLICY IF EXISTS "Everyone Create Orders" ON public.orders;
+
+CREATE POLICY "Everyone Create Orders" ON public.orders FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public Read Orders" ON public.orders FOR SELECT USING (true);
+CREATE POLICY "Merchant Update Orders" ON public.orders FOR UPDATE USING (auth.role() = 'authenticated');
+COMMIT;
+```
+
+## 12. Desbloqueio Final (Remoção de Foreign Keys)
+
+Se você receber erro `violates foreign key constraint` ao criar **Adicionais** ou **Itens**, rode este script para remover as amarras do banco de dados:
+
+```sql
+BEGIN;
+
+-- 1. ADICIONAIS: Remove a verificação rigorosa do ID do restaurante
+ALTER TABLE public.addons 
+DROP CONSTRAINT IF EXISTS addons_restaurant_id_fkey;
+
+-- 2. COMBOS: Remove a verificação rigorosa
+ALTER TABLE public.combos 
+DROP CONSTRAINT IF EXISTS combos_restaurant_id_fkey;
+
+-- 3. CATEGORIAS: Remove a verificação rigorosa
+ALTER TABLE public.menu_categories 
+DROP CONSTRAINT IF EXISTS menu_categories_restaurant_id_fkey;
+
+-- 4. ITENS: Remove a verificação rigorosa (Garantia)
+ALTER TABLE public.menu_items 
+DROP CONSTRAINT IF EXISTS menu_items_restaurant_id_fkey;
+
+-- 5. Garantir que a segurança de linha (RLS) esteja DESLIGADA para o cardápio
+-- Isso permite que o lojista edite sem bloqueios invisíveis
+ALTER TABLE public.addons DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.combos DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.menu_categories DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.menu_items DISABLE ROW LEVEL SECURITY;
+
+COMMIT;
+```

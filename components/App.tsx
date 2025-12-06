@@ -166,8 +166,9 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
         const loadMenu = async () => {
             try {
                 setIsLoading(true);
+                // PASSING TRUE TO IGNORE DAY FILTER (Fixes empty menu issue)
                 const [menuData, addonsData] = await Promise.all([
-                    fetchMenuForRestaurant(restaurant),
+                    fetchMenuForRestaurant(restaurant, true), 
                     fetchAddonsForRestaurant(restaurant),
                 ]);
 
@@ -546,7 +547,12 @@ const CustomerView: React.FC<{
     }
 
     if (selectedRestaurant) {
-        return <RestaurantMenu restaurant={selectedRestaurant} onBack={handleBackToHome} />;
+        return (
+            <>
+                <RestaurantMenu restaurant={selectedRestaurant} onBack={handleBackToHome} />
+                <Cart restaurant={selectedRestaurant} />
+            </>
+        );
     }
 
     return (
