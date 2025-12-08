@@ -72,7 +72,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [changeFor, setChangeFor] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     
-    // Address State - ZIP CODE FIXED TO 37810-000
+    // Address State
     const [address, setAddress] = useState({
         zipCode: '37810-000', 
         street: '',
@@ -203,11 +203,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             // Check duplicates
             const exists = orders.some((o: Order) => o.id === order.id);
             if (!exists) {
-                // Keep only essential info to save space if needed, or full object
                 orders.push(order);
-                // Optional: Limit history size
+                // Limit history size
                 if (orders.length > 50) orders.shift();
-                
                 localStorage.setItem('guarafood-order-history', JSON.stringify(orders));
             }
         } catch (e) {
@@ -235,11 +233,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             });
             
             if (response.error) {
-                // If Edge Function invocation fails (e.g., deployment issue), treat as trigger for fallback
                 throw new Error(response.error.message || "Falha na conexão com o servidor de pagamento");
             }
 
-            // Also check for error in response body if function executed but failed logically
             if (response.data && response.data.error) {
                  throw new Error(response.data.error);
             }
@@ -274,13 +270,13 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
                         
                         saveOrderToHistory(orderId);
-                        saveOrderDetailsToHistory(updatedOrder); // Save full object for history
+                        saveOrderDetailsToHistory(updatedOrder);
                         setCurrentStep('SUCCESS');
                         localStorage.setItem(`customerData-${customerName.toLowerCase()}`, JSON.stringify({ phone: customerPhone, address }));
                         setTimeout(() => {
                             clearCart();
                             onClose();
-                        }, 6000); // Give user time to read the tracking message
+                        }, 6000); 
                     }
                 }
             ).subscribe();
@@ -305,12 +301,12 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         try {
             const order = await createOrder(orderData);
             saveOrderToHistory(order.id);
-            saveOrderDetailsToHistory(order); // Save full object for history
+            saveOrderDetailsToHistory(order);
             localStorage.setItem(`customerData-${customerName.toLowerCase()}`, JSON.stringify({ phone: customerPhone, address }));
             addToast({ message: 'Pedido enviado com sucesso!', type: 'success' });
             clearCart();
             setCurrentStep('SUCCESS');
-            setTimeout(() => onClose(), 6000); // Close after 6 seconds to read message
+            setTimeout(() => onClose(), 6000);
         } catch (err) {
             console.error('Failed to create order:', err);
             addToast({ message: `Erro ao enviar pedido: ${err}`, type: 'error' });
@@ -339,7 +335,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const handleSubmitDetails = async (e: React.FormEvent) => {
         e.preventDefault();
-        // Validation without ZIP code requirement (it's hidden/default)
         if (!customerName || !customerPhone || !paymentMethod || !address.street || !address.number || !address.neighborhood) {
             setFormError('Preencha todos os campos obrigatórios, incluindo o endereço completo.');
             return;
@@ -377,7 +372,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             },
         };
 
-        // Only use automatic Mercado Pago Pix if string matches exactly "Pix"
         if (paymentMethod === 'Pix') {
             await handlePixPayment(orderData);
         } else {
@@ -402,20 +396,18 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     };
 
     const handleNextStep = () => {
-        setFormError(null); // Clear errors when moving forward
+        setFormError(null);
         if (currentStep === 'SUMMARY') {
             if (cartItems.length === 0) {
                 addToast({ message: "Seu carrinho está vazio. Adicione itens antes de prosseguir.", type: 'error' });
                 return;
             }
             setCurrentStep('DETAILS');
-        } else if (currentStep === 'DETAILS') {
-            // Validation will happen on form submit
         }
     };
 
     const handlePrevStep = () => {
-        setFormError(null); // Clear errors when moving back
+        setFormError(null);
         if (currentStep === 'DETAILS') {
             setCurrentStep('SUMMARY');
         } else if (currentStep === 'PIX_PAYMENT') {
@@ -444,7 +436,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const renderStepper = () => (
         <div className="flex justify-between items-center px-4 py-3 bg-gray-50 border-b" role="navigation" aria-label="Progresso do Checkout">
             {steps.map((step, index) => {
-                // Don't show PIX_PAYMENT in stepper for non-Pix methods, or SUCCESS if not reached
                 if (step.id === 'PIX_PAYMENT' && paymentMethod !== 'Pix' && index > currentStepIndex) return null;
                 if (step.id === 'SUCCESS' && currentStep !== 'SUCCESS' && index > currentStepIndex) return null;
                 
@@ -549,7 +540,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
              <div className="border-t pt-4">
                 <h3 className="text-md font-medium text-gray-800 mb-2">Endereço de Entrega</h3>
                 <div className="space-y-3">
-                    {/* ZIP CODE REMOVED PER USER REQUEST - CITY IS FIXED */}
                     <div className="grid grid-cols-4 gap-3">
                         <div className="col-span-3">
                             <label htmlFor="street" className="block text-sm font-medium text-gray-700">Rua</label>
@@ -634,12 +624,12 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                     </p>
                     
                     <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg w-full max-w-sm mb-4">
-                        <p className="text-xs text-orange-700 font-bold uppercase mb-1">Chave Pix</p>
-                        <div className="flex items-center justify-between gap-2">
-                            <span className="text-lg font-mono font-bold text-gray-800 break-all">{restaurant.manualPixKey}</span>
+                        <p className="text-xs text-orange-700 font-bold uppercase mb-1">Chave Pix do Restaurante</p>
+                        <div className="flex items-center justify-between gap-2 bg-white p-2 rounded border border-orange-100">
+                            <span className="text-lg font-mono font-bold text-gray-800 break-all select-all">{restaurant.manualPixKey}</span>
                             <button 
                                 onClick={handleCopyManualKey} 
-                                className="bg-orange-200 text-orange-800 p-2 rounded hover:bg-orange-300 flex-shrink-0"
+                                className="bg-orange-600 text-white p-2 rounded hover:bg-orange-700 flex-shrink-0 shadow-md"
                                 aria-label="Copiar chave"
                             >
                                 <ClipboardIcon className="w-5 h-5"/>
@@ -669,18 +659,21 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="PIX QR Code" className="w-48 h-48 mx-auto my-2 border-4 border-gray-700 p-1 rounded-lg" />
                         <button 
                             onClick={handleCopyPixCode} 
-                            className="flex items-center justify-center gap-2 bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors my-2 w-full max-w-xs" 
+                            className="flex items-center justify-center gap-2 bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors my-2 w-full max-w-xs shadow-lg" 
                             aria-label="Copiar código Pix"
                         >
                             <ClipboardIcon className="w-5 h-5"/>
                             <span>Copiar Código Pix</span>
                         </button>
-                        <textarea 
-                            readOnly 
-                            value={pixData.qrCode} 
-                            className="font-mono bg-gray-100 p-2 rounded-lg text-xs w-full max-w-xs h-20 resize-none text-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400"
-                            aria-label="Código Pix Copia e Cola"
-                        />
+                        <div className="w-full max-w-xs mt-2 relative">
+                             <textarea 
+                                readOnly 
+                                value={pixData.qrCode} 
+                                className="font-mono bg-gray-100 p-2 rounded-lg text-xs w-full h-16 resize-none text-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                                aria-label="Código Pix Copia e Cola"
+                            />
+                        </div>
+                       
                         <p className="text-2xl font-bold text-orange-600 mt-2">R$ {finalPriceWithFee.toFixed(2)}</p>
                         <div className="mt-4 text-sm font-semibold text-gray-700" aria-live="polite">Tempo restante: {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}</div>
                     </>
@@ -781,7 +774,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                             {currentStep === 'DETAILS' && (
                                 <button
                                     type="submit"
-                                    form="checkout-form" // Link to the form element
+                                    form="checkout-form"
                                     disabled={isSubmitting}
                                     className="mt-2 w-full bg-orange-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-orange-700 transition-colors disabled:bg-orange-300"
                                 >

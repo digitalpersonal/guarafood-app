@@ -10,7 +10,6 @@ import Spinner from './components/Spinner';
 import MenuItemCard from './components/MenuItemCard';
 import ComboCard from './components/ComboCard';
 import Cart from './components/Cart';
-import { Logo } from './components/Logo';
 import LoginScreen from './components/LoginScreen';
 import AdminDashboard from './components/AdminDashboard';
 import OrderManagement from './components/OrderManagement';
@@ -22,6 +21,8 @@ import { NotificationProvider } from './hooks/useNotification';
 import OptimizedImage from './components/OptimizedImage';
 import OrderTracker from './components/OrderTracker';
 import CustomerOrders from './components/CustomerOrders';
+import HeaderGlobal from './components/HeaderGlobal';
+import Footer from './components/Footer';
 
 
 const SearchIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -47,19 +48,6 @@ const ShoppingCartIcon: React.FC<{ className?: string }> = ({ className }) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c.51 0 .962-.343 1.087-.835l1.838-5.514a1.875 1.875 0 00-1.096-2.296l-5.61-1.87A1.875 1.875 0 009.218 6H5.25a.75.75 0 00-.75.75v11.25a.75.75 0 00.75.75h1.5a.75.75 0 00.75-.75V14.25z" />
     </svg>
 );
-
-const UserCircleIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M17.982 18.725A7.488 7.488 0 0012 15.75a7.488 7.488 0 00-5.982 2.975m11.963 0a9 9 0 10-11.963 0m11.963 0A8.966 8.966 0 0112 21a8.966 8.966 0 01-5.982-2.275M15 9.75a3 3 0 11-6 0 3 3 0 016 0z" />
-    </svg>
-);
-
-const ClockIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-);
-
 
 // Helper to convert "HH:MM" string to minutes from midnight
 const timeToMinutes = (timeString: string): number => {
@@ -396,10 +384,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     );
 };
 
-const CustomerView: React.FC<{
-    onGoToLogin: () => void;
-    onGoToHistory: () => void;
-}> = ({ onGoToLogin, onGoToHistory }) => {
+const CustomerView: React.FC = () => {
     const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -557,21 +542,6 @@ const CustomerView: React.FC<{
 
     return (
         <>
-            <header className="p-4 sticky top-0 bg-orange-600 shadow-md z-20">
-                 <div className="flex justify-between items-center">
-                  <Logo />
-                  <div className="flex items-center gap-2">
-                      <button onClick={onGoToHistory} className="flex items-center space-x-1 text-sm font-semibold text-white p-2 rounded-lg hover:bg-orange-700 transition-colors" title="Meus Pedidos">
-                          <ClockIcon className="w-6 h-6"/>
-                      </button>
-                      <button onClick={onGoToLogin} className="flex items-center space-x-2 text-sm font-semibold text-white p-2 rounded-lg hover:bg-orange-700 transition-colors">
-                          <UserCircleIcon className="w-6 h-6"/>
-                          <span className="hidden sm:inline">Acessar Painel</span>
-                      </button>
-                  </div>
-                </div>
-            </header>
-
             <main className="pb-16"> {/* Add padding bottom for OrderTracker */}
                 <div
                     className="relative p-6 sm:p-10 text-center border-b border-orange-100 min-h-[250px] flex flex-col justify-center overflow-hidden"
@@ -721,12 +691,19 @@ const AppContent: React.FC = () => {
             return <CustomerOrders onBack={handleBackToCustomerView} />;
         }
         
-        return <CustomerView onGoToLogin={() => setView('login')} onGoToHistory={() => setView('history')} />;
+        return <CustomerView />;
     };
 
+    // Determine if we should show the "Meus Pedidos" button in the header
+    const showOrdersButton = view === 'customer' || view === 'history';
+
     return (
-        <div className="container mx-auto max-w-7xl bg-white md:bg-gray-50 min-h-screen">
-            {renderContent()}
+        <div className="container mx-auto max-w-7xl bg-white md:bg-gray-50 min-h-screen flex flex-col shadow-xl">
+            <HeaderGlobal onOrdersClick={showOrdersButton ? () => setView('history') : undefined} />
+            <div className="flex-grow relative">
+                {renderContent()}
+            </div>
+            <Footer onLoginClick={() => setView('login')} />
         </div>
     );
 };

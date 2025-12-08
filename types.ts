@@ -80,6 +80,7 @@ export interface MenuItem {
   isDailySpecial?: boolean; // For "Destaque do Dia"
   isWeeklySpecial?: boolean; // For supermarket "Promoções da Semana"
   availableDays?: number[]; // For "Prato do Dia". 0=Sun, 1=Mon, etc.
+  displayOrder?: number; // Added for item reordering
 }
 
 export interface Combo {
@@ -155,6 +156,7 @@ export interface CartItem {
   selectedAddons?: Addon[]; // For addons
   sizeName?: string; // To display selected size, e.g., "Grande"
   notes?: string; // User observations (e.g., "Sem cebola")
+  selectedOptions?: { groupTitle: string; optionName: string; price: number }[]; // Generic customization options
 }
 
 export type OrderStatus = 'Aguardando Pagamento' | 'Novo Pedido' | 'Preparando' | 'A Caminho' | 'Entregue' | 'Cancelado';

@@ -62,6 +62,23 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
 
     const ActionButtons: React.FC = () => {
         switch (order.status) {
+            case 'Aguardando Pagamento':
+                return (
+                    <div className="grid grid-cols-2 gap-2">
+                        <button onClick={(e) => {
+                            e.stopPropagation();
+                            handleConfirmAndUpdate("Confirmar o recebimento do pagamento? O pedido irá para 'Novos Pedidos'.", 'Novo Pedido');
+                        }} className="bg-green-600 text-white font-bold py-2 px-3 rounded-lg hover:bg-green-700 text-sm">
+                            Confirmar Pagamento
+                        </button>
+                        <button onClick={(e) => {
+                            e.stopPropagation();
+                             handleConfirmAndUpdate("Tem certeza que deseja cancelar este pedido pendente?", 'Cancelado');
+                        }} className="bg-red-600 text-white font-bold py-2 px-3 rounded-lg hover:bg-red-700 text-sm">
+                            Cancelar
+                        </button>
+                    </div>
+                );
             case 'Novo Pedido':
                  return (
                     <div className="grid grid-cols-2 gap-2">
@@ -190,7 +207,7 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
             </div>
 
             {/* Action Buttons */}
-            {order.status !== 'Entregue' && order.status !== 'Cancelado' && order.status !== 'Aguardando Pagamento' && (
+            {order.status !== 'Entregue' && order.status !== 'Cancelado' && (
                 <div className="pt-3 border-t border-gray-100">
                     <ActionButtons />
                 </div>
@@ -246,8 +263,8 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80 }) =>
     }, [orders, searchTerm]);
 
     const { activeOrders, historyOrders, groupedActiveOrders, groupedHistoryOrders } = useMemo(() => {
-        const active = filteredOrders.filter(o => ['Novo Pedido', 'Preparando', 'A Caminho'].includes(o.status));
-        const history = filteredOrders.filter(o => ['Entregue', 'Cancelado', 'Aguardando Pagamento'].includes(o.status));
+        const active = filteredOrders.filter(o => ['Novo Pedido', 'Preparando', 'A Caminho', 'Aguardando Pagamento'].includes(o.status));
+        const history = filteredOrders.filter(o => ['Entregue', 'Cancelado'].includes(o.status));
         const group = (orderList: Order[]) => orderList.reduce((acc, order) => {
             const status = order.status;
             if (!acc[status]) acc[status] = [];
@@ -263,15 +280,16 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80 }) =>
         };
     }, [filteredOrders]);
 
+    // Added 'Aguardando Pagamento' to the main view (activeSections)
     const activeSections = [
+        { title: 'Aguardando Pagamento', status: 'Aguardando Pagamento' as OrderStatus, bgColor: 'bg-gray-100 border-gray-200' },
         { title: 'Novos Pedidos', status: 'Novo Pedido' as OrderStatus, bgColor: 'bg-blue-50' },
         { title: 'Em Preparo', status: 'Preparando' as OrderStatus, bgColor: 'bg-yellow-50' },
         { title: 'A Caminho', status: 'A Caminho' as OrderStatus, bgColor: 'bg-orange-50' },
     ];
     
-    // History sections kept as simple list
+    // Removed 'Aguardando Pagamento' from history sections
     const historySections = [
-        { title: 'Aguardando Pagamento', status: 'Aguardando Pagamento' as OrderStatus },
         { title: 'Entregues', status: 'Entregue' as OrderStatus },
         { title: 'Cancelados', status: 'Cancelado' as OrderStatus },
     ];
@@ -337,7 +355,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80 }) =>
                 {viewMode === 'active' && (
                     <div id="panel-active-orders" role="tabpanel" aria-labelledby="tab-active-orders" className="h-full">
                         {/* KANBAN LAYOUT - Always visible for active tab */}
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start h-full">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start h-full">
                             {activeSections.map(section => {
                                 const ordersInSection = groupedActiveOrders[section.status] || [];
                                 return (

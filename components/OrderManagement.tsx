@@ -6,6 +6,7 @@ import OrdersView from './OrdersView';
 import MenuManagement from './MenuManagement';
 import RestaurantSettings from './RestaurantSettings';
 import PrintableOrder from './PrintableOrder';
+import DebtManager from './DebtManager';
 import { useSound } from '../hooks/useSound'; // Import Hook
 
 // Reusable Icons
@@ -33,6 +34,12 @@ const BanknotesIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+const BookOpenIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+    </svg>
+);
+
 
 // Lazy load SalesDashboard to avoid heavy initial bundle
 const SalesDashboard = React.lazy(() => import('./SalesDashboard'));
@@ -40,7 +47,7 @@ const CustomerList = React.lazy(() => import('./CustomerList'));
 
 const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { currentUser, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState<'orders' | 'menu' | 'settings' | 'financial' | 'customers'>('orders');
+    const [activeTab, setActiveTab] = useState<'orders' | 'menu' | 'settings' | 'financial' | 'customers' | 'debt'>('orders');
     const [orders, setOrders] = useState<Order[]>([]);
     
     // State for Automatic Printing
@@ -155,6 +162,8 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         <CustomerList orders={orders} />
                     </React.Suspense>
                 );
+            case 'debt':
+                return <DebtManager orders={orders} />;
             case 'settings':
                 return <RestaurantSettings />;
             default:
@@ -200,6 +209,13 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                          className={`px-4 py-2 text-center font-semibold rounded-md transition-colors ${activeTab === 'menu' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}
                     >
                         Cardápio
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('debt')}
+                         className={`px-4 py-2 text-center font-semibold rounded-md transition-colors flex items-center gap-2 ${activeTab === 'debt' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}
+                    >
+                        <BookOpenIcon className="w-4 h-4" />
+                        Fiados
                     </button>
                     <button 
                         onClick={() => setActiveTab('financial')}
