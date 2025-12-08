@@ -134,7 +134,7 @@ const PrinterSettings: React.FC<{ onTestPrint: (width: number) => void }> = ({ o
                     className="text-sm text-gray-700 font-semibold border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2"
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 001.5 0Z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z" />
                     </svg>
                     Testar Impressão ({printerWidth}mm)
                 </button>
@@ -302,7 +302,7 @@ const RestaurantSettings: React.FC = () => {
     
     const handleCopyStoreLink = () => {
         if (restaurantId) {
-            const url = `${window.location.origin}?r=${restaurantId}`; // Reverted to query param for restaurant link
+            const url = `${window.location.origin}?r=${restaurantId}`; 
             navigator.clipboard.writeText(url);
             addToast({ message: 'Link da loja copiado!', type: 'success' });
         }
@@ -310,19 +310,43 @@ const RestaurantSettings: React.FC = () => {
     
     const handleWhatsappShare = () => {
         if (restaurantId && restaurant) {
-            const url = `${window.location.origin}?r=${restaurantId}`; // Reverted to query param for restaurant link
+            const url = `${window.location.origin}?r=${restaurantId}`;
             const text = `Peça agora no *${restaurant.name}* pelo nosso app: ${url}`;
             const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
             window.open(whatsappUrl, '_blank');
         }
     };
 
-    const webhookUrl = restaurantId ? `${SUPABASE_URL}/functions/v1/payment-webhook?restaurantId=${restaurantId}` : 'Carregando...'; // Updated to use ?restaurantId=
+    const handleDownloadIcons = () => {
+        // Logic to draw SVG to canvas and download PNGs
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        img.src = '/vite.svg'; // Use current SVG as source
+        img.onload = () => {
+            const sizes = [192, 512];
+            sizes.forEach(size => {
+                canvas.width = size;
+                canvas.height = size;
+                if (ctx) {
+                    ctx.drawImage(img, 0, 0, size, size);
+                    const link = document.createElement('a');
+                    link.download = `icon-${size}.png`;
+                    link.href = canvas.toDataURL('image/png');
+                    link.click();
+                }
+            });
+            addToast({ message: 'Ícones baixados! Adicione-os à pasta "public" do seu projeto Git.', type: 'success' });
+        };
+        img.onerror = () => {
+             addToast({ message: 'Erro ao gerar ícones. Verifique se o arquivo vite.svg existe.', type: 'error' });
+        };
+    };
+
+    const webhookUrl = restaurantId ? `${SUPABASE_URL}/functions/v1/payment-webhook?restaurantId=${restaurantId}` : 'Carregando...';
 
     if (isLoading) return <div className="p-4"><Spinner message="Carregando configurações..." /></div>;
     
-    // We show error inside the component if it exists, but also keep rendering form
-    // if !restaurant return null
     if (!restaurant) return null;
 
     return (
@@ -345,7 +369,7 @@ const RestaurantSettings: React.FC = () => {
                             <input 
                                 type="text" 
                                 readOnly 
-                                value={`${window.location.origin}?r=${restaurant.id}`} // Updated to query param for store link
+                                value={`${window.location.origin}?r=${restaurant.id}`} 
                                 className="flex-grow p-2 border rounded-lg bg-white text-gray-600 text-sm"
                             />
                             <button onClick={handleCopyStoreLink} className="bg-orange-600 text-white font-bold px-3 py-2 rounded-lg hover:bg-orange-700 text-sm">
@@ -355,6 +379,17 @@ const RestaurantSettings: React.FC = () => {
                                 WhatsApp
                             </button>
                         </div>
+                    </div>
+
+                    <div className="border-t pt-6">
+                        <h3 className="text-lg font-semibold text-gray-700 mb-3">Ícones do App (PWA)</h3>
+                        <p className="text-sm text-gray-500 mb-3">Se o app não está instalando no Android, baixe os ícones abaixo e coloque na pasta <code>public</code> do seu projeto no GitHub.</p>
+                        <button onClick={handleDownloadIcons} className="bg-blue-600 text-white font-bold px-4 py-2 rounded-lg hover:bg-blue-700 text-sm flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                            </svg>
+                            Baixar Ícones (PNG)
+                        </button>
                     </div>
 
                     <NotificationSettings />

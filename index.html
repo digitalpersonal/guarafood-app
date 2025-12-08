@@ -134,7 +134,7 @@
   <body class="bg-gray-50">
     <div id="root">
         <!-- Splash Screen Content (Será substituído pelo React assim que carregar) -->
-        <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: #ea580c; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; color: white; font-family: sans-serif;">
+        <div id="splash-screen" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: #ea580c; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; color: white; font-family: sans-serif; transition: opacity 0.5s ease-out;">
             <div class="splash-logo" style="display: flex; flex-direction: column; align-items: center;">
                 <svg width="80" height="80" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="white">
                     <path d="M21 13H3c-1.103 0-2 .897-2 2v2c0 1.103.897 2 2 2h18c1.103 0 2-.897 2-2v-2c0-1.103-.897-2-2-2zM1 9V7c0-1.103.897-2 2-2h2v4H3c-1.103 0-2 .897-2 2v2h4V9H1zM19 5h2c1.103 0 2 .897 2 2v2h-4V5zM11 5h2v4h-2V5zm-4 0h2v4H7V5z"/>
@@ -148,9 +148,33 @@
                     <path d="M12 2c-4.963 0-9 4.037-9 9 0 4.148 3.037 7.6 7 8.722V21h4v-1.278c3.963-1.122 7-4.574 7-8.722 0-4.963-4.037-9-9-9zm0 16a7 7 0 1 1 0-14 7 7 0 0 1 0 14z"/>
                 </svg>
                 <h1 style="font-size: 2rem; font-weight: 800; margin-top: 1rem; letter-spacing: 0.05em;">GuaraFood</h1>
+                <p id="loading-text" style="margin-top: 1rem; font-size: 0.8rem; opacity: 0.8;">Carregando...</p>
             </div>
         </div>
     </div>
     <script type="module" src="/index.tsx"></script>
+    <script>
+      // Segurança: Remove a tela de splash se demorar muito (ex: erro de script)
+      setTimeout(() => {
+        const splash = document.getElementById('splash-screen');
+        if (splash) {
+            console.warn("Splash screen removed by timeout safety.");
+            splash.style.opacity = '0';
+            setTimeout(() => splash.remove(), 500);
+        }
+      }, 7000); // 7 segundos de timeout
+
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((registration) => {
+              console.log('ServiceWorker registration successful with scope: ', registration.scope);
+            })
+            .catch((err) => {
+              console.log('ServiceWorker registration failed: ', err);
+            });
+        });
+      }
+    </script>
   </body>
 </html>
