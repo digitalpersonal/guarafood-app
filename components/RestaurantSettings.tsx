@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
@@ -317,32 +318,6 @@ const RestaurantSettings: React.FC = () => {
         }
     };
 
-    const handleDownloadIcons = () => {
-        // Logic to draw SVG to canvas and download PNGs
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        const img = new Image();
-        img.src = '/vite.svg'; // Use current SVG as source
-        img.onload = () => {
-            const sizes = [192, 512];
-            sizes.forEach(size => {
-                canvas.width = size;
-                canvas.height = size;
-                if (ctx) {
-                    ctx.drawImage(img, 0, 0, size, size);
-                    const link = document.createElement('a');
-                    link.download = `icon-${size}.png`;
-                    link.href = canvas.toDataURL('image/png');
-                    link.click();
-                }
-            });
-            addToast({ message: 'Ícones baixados! Adicione-os à pasta "public" do seu projeto Git.', type: 'success' });
-        };
-        img.onerror = () => {
-             addToast({ message: 'Erro ao gerar ícones. Verifique se o arquivo vite.svg existe.', type: 'error' });
-        };
-    };
-
     const webhookUrl = restaurantId ? `${SUPABASE_URL}/functions/v1/payment-webhook?restaurantId=${restaurantId}` : 'Carregando...';
 
     if (isLoading) return <div className="p-4"><Spinner message="Carregando configurações..." /></div>;
@@ -379,17 +354,6 @@ const RestaurantSettings: React.FC = () => {
                                 WhatsApp
                             </button>
                         </div>
-                    </div>
-
-                    <div className="border-t pt-6">
-                        <h3 className="text-lg font-semibold text-gray-700 mb-3">Ícones do App (PWA)</h3>
-                        <p className="text-sm text-gray-500 mb-3">Se o app não está instalando no Android, baixe os ícones abaixo e coloque na pasta <code>public</code> do seu projeto no GitHub.</p>
-                        <button onClick={handleDownloadIcons} className="bg-blue-600 text-white font-bold px-4 py-2 rounded-lg hover:bg-blue-700 text-sm flex items-center gap-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                            </svg>
-                            Baixar Ícones (PNG)
-                        </button>
                     </div>
 
                     <NotificationSettings />

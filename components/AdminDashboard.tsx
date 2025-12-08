@@ -1,5 +1,7 @@
+
 import React, { useState } from 'react';
 import { useAuth } from '../services/authService';
+import { useNotification } from '../hooks/useNotification';
 import RestaurantManagement from './RestaurantManagement';
 import CategoryManagement from './CategoryManagement';
 import MarketingManagement from './MarketingManagement';
@@ -17,10 +19,14 @@ const LogoutIcon: React.FC<{ className?: string }> = ({ className }) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
     </svg>
 );
+const ArrowDownTrayIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+);
 
 const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { logout } = useAuth();
-    const [activeTab, setActiveTab] = useState<'restaurants' | 'categories' | 'marketing'>('restaurants');
+    const { addToast } = useNotification();
+    const [activeTab, setActiveTab] = useState<'restaurants' | 'categories' | 'marketing' | 'settings'>('restaurants');
     const [editingMenuRestaurantId, setEditingMenuRestaurantId] = useState<number | null>(null);
 
     // Se estiver editando um cardápio específico, mostra o componente de Menu
@@ -33,6 +39,60 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         );
     }
 
+    const handleDownloadIcons = () => {
+        // Logic to draw SVG to canvas and download PNGs
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        // Force reload to avoid cache issues and add origin for robustness
+        img.src = `${window.location.origin}/vite.svg?t=${new Date().getTime()}`; 
+        img.crossOrigin = "Anonymous";
+        
+        img.onload = () => {
+            const sizes = [192, 512];
+            sizes.forEach(size => {
+                canvas.width = size;
+                canvas.height = size;
+                if (ctx) {
+                    ctx.drawImage(img, 0, 0, size, size);
+                    const link = document.createElement('a');
+                    link.download = `icon-${size}.png`;
+                    link.href = canvas.toDataURL('image/png');
+                    link.click();
+                }
+            });
+            addToast({ message: 'Ícones baixados! Adicione-os à pasta "public" do seu projeto Git.', type: 'success' });
+        };
+        img.onerror = (e) => {
+             console.error("Image load error:", e);
+             addToast({ message: 'Erro ao gerar ícones. Verifique se o arquivo vite.svg existe na raiz do site.', type: 'error' });
+        };
+    };
+
+    const renderSettings = () => (
+        <div className="bg-white p-6 rounded-lg shadow-md max-w-2xl mx-auto">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Configurações do Sistema</h2>
+            
+            <div className="border rounded-lg bg-gray-50 p-4">
+                <h3 className="text-lg font-semibold text-gray-700 mb-3">Ícones do App (PWA)</h3>
+                <p className="text-sm text-gray-500 mb-3">
+                    Se o aplicativo não estiver apresentando a opção de instalar no Android/iOS corretamente, 
+                    você pode precisar gerar os ícones PNG a partir do logo SVG e adicioná-los manualmente ao código fonte.
+                </p>
+                <button 
+                    onClick={handleDownloadIcons} 
+                    className="bg-blue-600 text-white font-bold px-4 py-2 rounded-lg hover:bg-blue-700 text-sm flex items-center gap-2"
+                >
+                    <ArrowDownTrayIcon className="w-5 h-5" />
+                    Gerar e Baixar Ícones (PNG)
+                </button>
+                <p className="text-xs text-gray-400 mt-2">
+                    Gera arquivos icon-192.png e icon-512.png baseados no arquivo /vite.svg atual.
+                </p>
+            </div>
+        </div>
+    );
+
     const renderContent = () => {
         switch (activeTab) {
             case 'restaurants':
@@ -41,6 +101,8 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 return <CategoryManagement />;
             case 'marketing':
                 return <MarketingManagement />;
+            case 'settings':
+                return renderSettings();
             default:
                 return null;
         }
@@ -82,6 +144,12 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         className={`flex-1 min-w-[100px] text-center font-semibold p-2 rounded-md transition-colors ${activeTab === 'marketing' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}
                     >
                         Marketing
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('settings')}
+                        className={`flex-1 min-w-[100px] text-center font-semibold p-2 rounded-md transition-colors ${activeTab === 'settings' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}
+                    >
+                        Configurações
                     </button>
                 </div>
             </nav>
