@@ -359,7 +359,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             if (!restaurantId) return;
             await updateMenuItemOrder(restaurantId, newItems);
         } catch (error) {
-            addToast({ message: 'Erro ao reordenar item. Recarregue a página.', type: 'error' });
+            addToast({ message: `Erro ao reordenar: ${getErrorMessage(error)}`, type: 'error' });
             loadData(); // Revert on failure
         }
     };
@@ -442,7 +442,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             if (!restaurantId) return;
             await updateCategoryOrder(restaurantId, newOrder);
         } catch (error) {
-            addToast({ message: 'Erro ao reordenar. A lista será atualizada.', type: 'error' });
+            addToast({ message: `Erro ao reordenar: ${getErrorMessage(error)}`, type: 'error' });
             loadData(); // Revert on failure
         }
     };

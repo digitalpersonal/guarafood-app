@@ -12,6 +12,11 @@ const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
 const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
 );
+const PlusIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+    </svg>
+);
 
 const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const dayAbbreviations = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
@@ -537,27 +542,51 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                                 <label htmlFor="is-marmita-toggle" className="font-semibold text-gray-700">É uma marmita / Prato do Dia?</label>
                             </div>
                              {isMarmita && (
-                                <div className="mt-2 p-3 bg-white border rounded-lg">
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Composição / Opções do Prato de Hoje</label>
-                                    <div className="space-y-2">
+                                <div className="mt-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg animate-fadeIn">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <label className="block text-sm font-bold text-yellow-800">
+                                            Composição do Prato (Opções)
+                                        </label>
+                                        <span className="text-xs text-yellow-600 bg-yellow-100 px-2 py-1 rounded-full">
+                                            {marmitaOptions.length} opções
+                                        </span>
+                                    </div>
+                                    
+                                    <div className="space-y-2 mb-3">
                                         {marmitaOptions.map((option, index) => (
-                                            <div key={index} className="flex items-center gap-2">
+                                            <div key={index} className="flex items-center gap-2 group">
+                                                <span className="text-xs font-bold text-yellow-700 w-6 text-center">{index + 1}.</span>
                                                 <input
                                                     type="text"
-                                                    placeholder={`Opção ${index + 1}`}
+                                                    placeholder={`Ex: Arroz, Feijão e Bife (Opção ${index + 1})`}
                                                     value={option}
                                                     onChange={(e) => handleMarmitaOptionChange(index, e.target.value)}
-                                                    className="w-full p-2 border rounded-md"
+                                                    className="flex-grow p-2 text-sm border border-yellow-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 outline-none transition-all"
+                                                    autoFocus={option === '' && index === marmitaOptions.length - 1} // Auto-focus new empty items
                                                 />
-                                                <button type="button" onClick={() => removeMarmitaOption(index)} className="p-2 text-red-500 hover:text-red-700 disabled:opacity-50" disabled={marmitaOptions.length <= 1}>
-                                                    <TrashIcon className="w-5 h-5"/>
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => removeMarmitaOption(index)} 
+                                                    className="p-2 text-yellow-600 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors opacity-70 group-hover:opacity-100"
+                                                    title="Remover opção"
+                                                >
+                                                    <TrashIcon className="w-4 h-4"/>
                                                 </button>
                                             </div>
                                         ))}
                                     </div>
-                                    <button type="button" onClick={addMarmitaOption} className="w-full text-sm font-semibold text-blue-600 p-2 rounded-md hover:bg-blue-100 border-dashed border-2 mt-3">
-                                        + Adicionar Opção
+
+                                    <button 
+                                        type="button" 
+                                        onClick={addMarmitaOption} 
+                                        className="w-full py-2 flex items-center justify-center gap-2 text-sm font-bold text-yellow-700 bg-yellow-100 hover:bg-yellow-200 border border-yellow-300 rounded-md transition-colors"
+                                    >
+                                        <PlusIcon className="w-4 h-4" />
+                                        Adicionar Nova Opção
                                     </button>
+                                    <p className="text-[10px] text-yellow-600 mt-2 text-center">
+                                        Estas opções aparecerão listadas no card do item para o cliente saber o que vem hoje.
+                                    </p>
                                 </div>
                             )}
                         </div>

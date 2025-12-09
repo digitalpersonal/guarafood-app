@@ -349,20 +349,32 @@ export const deleteMenuItem = async (restaurantId: number, itemId: number): Prom
 export const createCategory = async (restaurantId: number, name: string, iconUrl?: string | null): Promise<MenuCategory> => { const { data: maxOrder } = await supabase.from('menu_categories').select('display_order').eq('restaurant_id', restaurantId).order('display_order', { ascending: false }).limit(1).maybeSingle(); const newOrder = (maxOrder?.display_order ?? -1) + 1; const payload = { name: name.trim(), restaurant_id: restaurantId, display_order: newOrder, icon_url: iconUrl }; const { data, error } = await supabase.from('menu_categories').insert(payload).select().single(); if (error && error.code === '23505') { const { data: existing } = await supabase.from('menu_categories').select('*').eq('restaurant_id', restaurantId).ilike('name', name.trim()).maybeSingle(); if (existing) return { ...normalizeCategory(existing), items: [], combos: [] }; } handleSupabaseError({ error, customMessage: 'Failed to create category' }); return { ...normalizeCategory(data), items: [], combos: [] }; };
 export const updateCategory = async (restaurantId: number, categoryId: number, newName: string, newIconUrl?: string | null): Promise<void> => { const payload: any = { name: newName.trim() }; if (newIconUrl !== undefined) payload.icon_url = newIconUrl; const { error } = await supabase.from('menu_categories').update(payload).eq('id', categoryId); handleSupabaseError({ error, customMessage: 'Failed to update category' }); };
 export const deleteCategory = async (restaurantId: number, name: string): Promise<void> => { const { error } = await supabase.from('menu_categories').delete().eq('restaurant_id', restaurantId).eq('name', name); handleSupabaseError({ error, customMessage: 'Failed to delete category' }); };
-export const updateCategoryOrder = async (restaurantId: number, categories: MenuCategory[]): Promise<void> => { const updates = categories.map((category, index) => ({ id: category.id, display_order: index, restaurant_id: restaurantId })); const { error } = await supabase.from('menu_categories').upsert(updates); handleSupabaseError({ error, customMessage: 'Failed to update category order' }); };
+
+// Reordering Functions
+export const updateCategoryOrder = async (restaurantId: number, categories: MenuCategory[]): Promise<void> => { 
+    const updates = categories.map((category, index) => ({ 
+        id: category.id, 
+        display_order: index, 
+        restaurant_id: restaurantId,
+        name: category.name // Included to satisfy potential constraints, though not updated
+    })); 
+    // Uses upsert with onConflict on 'id' to act as an update
+    const { error } = await supabase.from('menu_categories').upsert(updates, { onConflict: 'id' }); 
+    handleSupabaseError({ error, customMessage: 'Failed to update category order' }); 
+};
 
 export const updateMenuItemOrder = async (restaurantId: number, items: MenuItem[]): Promise<void> => {
     const updates = items.map((item, index) => ({
         id: item.id,
         display_order: index,
         restaurant_id: restaurantId,
-        // We need to keep required fields for upsert or rely on ID match
-        // Supabase upsert works with minimal fields if ID matches
+        // Include required fields to ensure upsert works smoothly even if logic tries to validate inputs
         name: item.name, 
         price: item.price,
         category_id: item.categoryId
     }));
-    const { error } = await supabase.from('menu_items').upsert(updates);
+    // Uses upsert with onConflict on 'id' to act as an update
+    const { error } = await supabase.from('menu_items').upsert(updates, { onConflict: 'id' });
     handleSupabaseError({ error, customMessage: 'Failed to update item order' });
 };
 

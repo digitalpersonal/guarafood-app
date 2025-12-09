@@ -44,7 +44,9 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         const img = new Image();
-        // Force reload to avoid cache issues and add origin for robustness
+        
+        // CORREÇÃO CRÍTICA: Usa o caminho absoluto da origem para garantir que o vite.svg seja encontrado
+        // Adiciona um timestamp para evitar cache do navegador que possa corromper o load
         img.src = `${window.location.origin}/vite.svg?t=${new Date().getTime()}`; 
         img.crossOrigin = "Anonymous";
         
@@ -54,18 +56,29 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 canvas.width = size;
                 canvas.height = size;
                 if (ctx) {
+                    // Limpa o canvas antes de desenhar
+                    ctx.clearRect(0, 0, size, size);
                     ctx.drawImage(img, 0, 0, size, size);
-                    const link = document.createElement('a');
-                    link.download = `icon-${size}.png`;
-                    link.href = canvas.toDataURL('image/png');
-                    link.click();
+                    
+                    try {
+                        const link = document.createElement('a');
+                        link.download = `icon-${size}.png`;
+                        link.href = canvas.toDataURL('image/png');
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    } catch (e) {
+                        console.error("Canvas Security Error:", e);
+                        addToast({ message: 'Erro de segurança do navegador ao salvar imagem.', type: 'error' });
+                    }
                 }
             });
-            addToast({ message: 'Ícones baixados! Adicione-os à pasta "public" do seu projeto Git.', type: 'success' });
+            addToast({ message: 'Ícones baixados! Verifique sua pasta de downloads.', type: 'success' });
         };
+        
         img.onerror = (e) => {
              console.error("Image load error:", e);
-             addToast({ message: 'Erro ao gerar ícones. Verifique se o arquivo vite.svg existe na raiz do site.', type: 'error' });
+             addToast({ message: 'Erro ao encontrar o arquivo vite.svg na raiz do site.', type: 'error' });
         };
     };
 
@@ -73,22 +86,25 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         <div className="bg-white p-6 rounded-lg shadow-md max-w-2xl mx-auto">
             <h2 className="text-xl font-bold text-gray-800 mb-4">Configurações do Sistema</h2>
             
-            <div className="border rounded-lg bg-gray-50 p-4">
-                <h3 className="text-lg font-semibold text-gray-700 mb-3">Ícones do App (PWA)</h3>
-                <p className="text-sm text-gray-500 mb-3">
-                    Se o aplicativo não estiver apresentando a opção de instalar no Android/iOS corretamente, 
-                    você pode precisar gerar os ícones PNG a partir do logo SVG e adicioná-los manualmente ao código fonte.
+            <div className="border rounded-lg bg-gray-50 p-4 border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <img src="/vite.svg" alt="Icon" className="w-6 h-6" />
+                    Ícones do App (PWA)
+                </h3>
+                <p className="text-sm text-gray-600 mb-4">
+                    Para que o aplicativo possa ser instalado no Android e iOS, é necessário ter os ícones PNG (192px e 512px).
+                    Clique abaixo para gerar esses ícones automaticamente a partir do logo atual do sistema (<code>/vite.svg</code>).
                 </p>
                 <button 
                     onClick={handleDownloadIcons} 
-                    className="bg-blue-600 text-white font-bold px-4 py-2 rounded-lg hover:bg-blue-700 text-sm flex items-center gap-2"
+                    className="bg-blue-600 text-white font-bold px-4 py-2.5 rounded-lg hover:bg-blue-700 text-sm flex items-center gap-2 shadow-sm transition-colors"
                 >
                     <ArrowDownTrayIcon className="w-5 h-5" />
                     Gerar e Baixar Ícones (PNG)
                 </button>
-                <p className="text-xs text-gray-400 mt-2">
-                    Gera arquivos icon-192.png e icon-512.png baseados no arquivo /vite.svg atual.
-                </p>
+                <div className="mt-4 p-3 bg-blue-50 border border-blue-100 rounded text-xs text-blue-800">
+                    <strong>Instrução:</strong> Após baixar os arquivos (<code>icon-192.png</code> e <code>icon-512.png</code>), mova-os para a pasta <code>public</code> do seu código fonte e faça o deploy novamente.
+                </div>
             </div>
         </div>
     );

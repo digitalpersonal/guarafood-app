@@ -384,9 +384,13 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     );
 };
 
-const CustomerView: React.FC = () => {
+interface CustomerViewProps {
+    selectedRestaurant: Restaurant | null;
+    onSelectRestaurant: (restaurant: Restaurant | null) => void;
+}
+
+const CustomerView: React.FC<CustomerViewProps> = ({ selectedRestaurant, onSelectRestaurant }) => {
     const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
-    const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -414,7 +418,7 @@ const CustomerView: React.FC = () => {
                     if (!isNaN(id)) {
                         const targetRestaurant = restaurantsData.find(r => r.id === id);
                         if (targetRestaurant) {
-                            setSelectedRestaurant(targetRestaurant);
+                            onSelectRestaurant(targetRestaurant);
                         }
                     }
                 }
@@ -456,7 +460,7 @@ const CustomerView: React.FC = () => {
         if (targetType === 'restaurant') {
             const targetRestaurant = restaurants.find(r => r.name === targetValue);
             if (targetRestaurant) {
-                setSelectedRestaurant(targetRestaurant);
+                onSelectRestaurant(targetRestaurant);
             } else {
                 console.warn(`Banner clicked for non-existent restaurant: ${targetValue}`);
             }
@@ -498,7 +502,7 @@ const CustomerView: React.FC = () => {
     };
 
     const handleBackToHome = () => {
-        setSelectedRestaurant(null);
+        onSelectRestaurant(null);
         // Clear URL param without refreshing
         window.history.replaceState({}, '', window.location.pathname);
     };
@@ -616,7 +620,7 @@ const CustomerView: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {filteredRestaurants.map(restaurant => {
                             const isOpen = isRestaurantOpen(restaurant);
-                            return <RestaurantCard key={restaurant.id} restaurant={restaurant} onClick={() => setSelectedRestaurant(restaurant)} isOpen={isOpen} />;
+                            return <RestaurantCard key={restaurant.id} restaurant={restaurant} onClick={() => onSelectRestaurant(restaurant)} isOpen={isOpen} />;
                         })}
                     </div>
                     {filteredRestaurants.length === 0 && <p className="text-center text-gray-500 col-span-full py-8">Nenhum restaurante encontrado.</p>}
@@ -636,8 +640,16 @@ type ViewState = 'customer' | 'login' | 'history';
 const AppContent: React.FC = () => {
     const [view, setView] = useState<ViewState>('customer');
     const { currentUser, loading, authError } = useAuth();
+    // Lifted state to manage restaurant selection at App level
+    const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
 
     const handleBackToCustomerView = () => setView('customer');
+
+    const handleHomeClick = () => {
+        setView('customer');
+        setSelectedRestaurant(null);
+        window.history.replaceState({}, '', window.location.pathname);
+    };
 
     const renderContent = () => {
         if (authError) {
@@ -691,7 +703,7 @@ const AppContent: React.FC = () => {
             return <CustomerOrders onBack={handleBackToCustomerView} />;
         }
         
-        return <CustomerView />;
+        return <CustomerView selectedRestaurant={selectedRestaurant} onSelectRestaurant={setSelectedRestaurant} />;
     };
 
     // Determine if we should show the "Meus Pedidos" button in the header
@@ -699,7 +711,10 @@ const AppContent: React.FC = () => {
 
     return (
         <div className="container mx-auto max-w-7xl bg-white md:bg-gray-50 min-h-screen flex flex-col shadow-xl">
-            <HeaderGlobal onOrdersClick={showOrdersButton ? () => setView('history') : undefined} />
+            <HeaderGlobal 
+                onOrdersClick={showOrdersButton ? () => setView('history') : undefined} 
+                onHomeClick={handleHomeClick}
+            />
             <div className="flex-grow relative">
                 {renderContent()}
             </div>
