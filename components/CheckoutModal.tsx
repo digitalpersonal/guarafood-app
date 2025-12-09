@@ -6,6 +6,7 @@ import { useNotification } from '../hooks/useNotification';
 import { createOrder, type NewOrderData } from '../services/orderService';
 import { validateCouponByCode } from '../services/databaseService';
 import { supabase } from '../services/api';
+import { isRestaurantOpen } from '../utils/restaurantUtils';
 import Spinner from './Spinner';
 
 interface CheckoutModalProps {
@@ -53,6 +54,11 @@ const EyeIcon: React.FC<{ className?: string }> = ({ className }) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
     </svg>
 );
+const ClockIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+);
 
 
 const steps: { id: CheckoutStep; title: string; icon: React.FC<{ className?: string }> }[] = [
@@ -95,6 +101,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
     const [formError, setFormError] = useState<string | null>(null);
     const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
+
+    // Check restaurant status
+    const isOpenNow = isRestaurantOpen(restaurant);
 
     const paymentOptions = useMemo(() => {
         return restaurant.paymentGateways && restaurant.paymentGateways.length > 0 
@@ -271,6 +280,10 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         
                         saveOrderToHistory(orderId);
                         saveOrderDetailsToHistory(updatedOrder);
+                        
+                        // Force tracker update
+                        window.dispatchEvent(new Event('guarafood:update-orders'));
+
                         setCurrentStep('SUCCESS');
                         localStorage.setItem(`customerData-${customerName.toLowerCase()}`, JSON.stringify({ phone: customerPhone, address }));
                         setTimeout(() => {
@@ -302,6 +315,10 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             const order = await createOrder(orderData);
             saveOrderToHistory(order.id);
             saveOrderDetailsToHistory(order);
+            
+            // Force tracker update
+            window.dispatchEvent(new Event('guarafood:update-orders'));
+
             localStorage.setItem(`customerData-${customerName.toLowerCase()}`, JSON.stringify({ phone: customerPhone, address }));
             addToast({ message: 'Pedido enviado com sucesso!', type: 'success' });
             clearCart();
@@ -335,6 +352,10 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const handleSubmitDetails = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!isOpenNow) {
+            addToast({ message: "Restaurante Fechado. Não é possível enviar o pedido.", type: 'error' });
+            return;
+        }
         if (!customerName || !customerPhone || !paymentMethod || !address.street || !address.number || !address.neighborhood) {
             setFormError('Preencha todos os campos obrigatórios, incluindo o endereço completo.');
             return;
@@ -400,6 +421,10 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         if (currentStep === 'SUMMARY') {
             if (cartItems.length === 0) {
                 addToast({ message: "Seu carrinho está vazio. Adicione itens antes de prosseguir.", type: 'error' });
+                return;
+            }
+            if (!isOpenNow) {
+                addToast({ message: "Restaurante Fechado. Não é possível prosseguir.", type: 'error' });
                 return;
             }
             setCurrentStep('DETAILS');
@@ -468,6 +493,18 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const renderSummary = () => (
         <div className="overflow-y-auto p-4 space-y-4 pr-2 -mr-2" role="region" aria-labelledby="order-summary-heading">
             <h3 id="order-summary-heading" className="text-xl font-bold text-gray-800 mb-4">Seu Pedido</h3>
+            
+            {/* ALERT IF CLOSED */}
+            {!isOpenNow && (
+                <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded-r" role="alert">
+                    <p className="font-bold flex items-center gap-2">
+                        <ClockIcon className="w-5 h-5" />
+                        Restaurante Fechado
+                    </p>
+                    <p className="text-sm">No momento não estamos recebendo pedidos. Por favor, verifique o horário de funcionamento.</p>
+                </div>
+            )}
+
             {cartItems.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                     <ShoppingBagIcon className="w-16 h-16 mx-auto text-gray-300 mb-4" aria-hidden="true"/>
@@ -765,8 +802,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                             {currentStep === 'SUMMARY' && (
                                 <button
                                     onClick={handleNextStep}
-                                    disabled={cartItems.length === 0}
-                                    className="mt-2 bg-orange-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-orange-700 transition-colors disabled:bg-orange-300"
+                                    disabled={cartItems.length === 0 || !isOpenNow} // Disable if closed
+                                    className="mt-2 bg-orange-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-orange-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
                                 >
                                     Continuar
                                 </button>
