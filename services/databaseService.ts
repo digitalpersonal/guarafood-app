@@ -159,7 +159,7 @@ export const fetchRestaurantByIdSecure = async (id: number): Promise<Restaurant>
 export const updateRestaurant = async (id: number, restaurantData: Partial<Restaurant> & any): Promise<Restaurant> => {
     const payload: any = {};
     
-    // Standard Fields
+    // Explicitly map keys to avoid any ambiguity
     if (restaurantData.name !== undefined) payload.name = restaurantData.name;
     if (restaurantData.category !== undefined) payload.category = restaurantData.category;
     if (restaurantData.deliveryTime !== undefined) payload.delivery_time = restaurantData.deliveryTime;
@@ -172,23 +172,30 @@ export const updateRestaurant = async (id: number, restaurantData: Partial<Resta
     if (restaurantData.closingHours !== undefined) payload.closing_hours = restaurantData.closingHours;
     if (restaurantData.deliveryFee !== undefined) payload.delivery_fee = restaurantData.deliveryFee;
     
-    // Critical Fields - Handle both camelCase (from App) and snake_case (from DB/Admin) input
+    // Critical Fields - Manual Pix
+    if (restaurantData.manualPixKey !== undefined) payload.manual_pix_key = restaurantData.manualPixKey;
+    else if (restaurantData.manual_pix_key !== undefined) payload.manual_pix_key = restaurantData.manual_pix_key;
+
+    // Critical Fields - Operating Hours
     if (restaurantData.operatingHours !== undefined) payload.operating_hours = restaurantData.operatingHours;
     else if (restaurantData.operating_hours !== undefined) payload.operating_hours = restaurantData.operating_hours;
 
-    if (restaurantData.mercado_pago_credentials !== undefined) payload.mercado_pago_credentials = restaurantData.mercado_pago_credentials;
-    else if (restaurantData.mercadoPagoCredentials !== undefined) payload.mercado_pago_credentials = restaurantData.mercadoPagoCredentials;
-
-    if (restaurantData.manualPixKey !== undefined) payload.manual_pix_key = restaurantData.manualPixKey;
-    else if (restaurantData.manual_pix_key !== undefined) payload.manual_pix_key = restaurantData.manual_pix_key;
+    // Critical Fields - Mercado Pago
+    // Handle specific nested structure or direct object
+    if (restaurantData.mercado_pago_credentials !== undefined) {
+        payload.mercado_pago_credentials = restaurantData.mercado_pago_credentials;
+    } else if (restaurantData.mercadoPagoCredentials !== undefined) {
+        payload.mercado_pago_credentials = restaurantData.mercadoPagoCredentials;
+    }
 
     const { data, error } = await supabase.from('restaurants')
         .update(payload)
         .eq('id', id)
-        .select(FULL_RESTAURANT_QUERY) // Explicit select on return
+        .select(FULL_RESTAURANT_QUERY) // Explicitly return the updated row
         .single();
         
     handleSupabaseError({ error, customMessage: 'Failed to update restaurant' });
+    
     return normalizeRestaurant(data);
 };
 

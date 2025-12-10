@@ -227,6 +227,8 @@ const RestaurantSettings: React.FC = () => {
     const handleSaveChanges = async () => {
         if (!restaurantId) return;
         setIsSaving(true);
+        setError(null);
+        
         try {
             const openDays = operatingHours.filter(d => d.isOpen);
             const openingHoursSummary = openDays.length > 0 ? openDays[0].opens : '';
@@ -243,16 +245,52 @@ const RestaurantSettings: React.FC = () => {
                 manualPixKey: manualPixKey
             };
             
-            console.log("Saving restaurant settings:", updatePayload);
-            await updateRestaurant(restaurantId, updatePayload);
+            // Call update
+            const updatedRestaurant = await updateRestaurant(restaurantId, updatePayload);
             
-            addToast({ message: 'Configurações salvas com sucesso!', type: 'success' });
-            setError(null);
+            // --- VALIDATION: Check if updates actually persisted ---
+            const serverToken = updatedRestaurant.mercado_pago_credentials?.accessToken || '';
+            const serverHours = updatedRestaurant.operatingHours || [];
             
-            // WAIT A MOMENT to ensure DB write propogates before fetching again
-            setTimeout(async () => {
-                await loadData();
-            }, 800);
+            let warningMessage = '';
+            
+            // 1. Check Mercado Pago Token
+            if (mercadoPagoToken && !serverToken) {
+                warningMessage += "O Token do Mercado Pago não foi salvo. ";
+            }
+            // 2. Check Operating Hours (if at least one day is open locally, but server returns empty/none)
+            const isAnyDayOpen = operatingHours.some(d => d.isOpen);
+            if (isAnyDayOpen && (!serverHours || serverHours.length === 0)) {
+                warningMessage += "Os horários detalhados não foram salvos. ";
+            }
+            
+            if (warningMessage) {
+                // PARTIAL FAILURE SCENARIO
+                warningMessage += "\nProvavelmente as colunas 'mercado_pago_credentials' ou 'operating_hours' não existem no banco de dados.";
+                setError(warningMessage);
+                addToast({ message: "Aviso: Alguns dados não foram persistidos.", type: 'warning' });
+                
+                // IMPORTANT: In this case, we DO NOT update the specific local states from the server
+                // to avoid wiping the user's input. We keep the dirty state visible so they can copy it or retry.
+                // We only sync the base fields.
+                setRestaurant({
+                    ...updatedRestaurant,
+                    // Preserve local state for problematic fields
+                    operatingHours: operatingHours,
+                    mercado_pago_credentials: mpCreds, 
+                    manualPixKey: manualPixKey 
+                });
+            } else {
+                // SUCCESS SCENARIO
+                addToast({ message: 'Configurações salvas com sucesso!', type: 'success' });
+                // Update local state completely to be in sync with server
+                setRestaurant(updatedRestaurant);
+                setMercadoPagoToken(serverToken);
+                setManualPixKey(updatedRestaurant.manualPixKey || '');
+                if (updatedRestaurant.operatingHours && updatedRestaurant.operatingHours.length === 7) {
+                    setOperatingHours(updatedRestaurant.operatingHours);
+                }
+            }
             
         } catch (err: any) {
             console.error(err);
