@@ -478,7 +478,7 @@ const applyPromotionsToMenu = (menu: MenuCategory[], promotions: Promotion[]): M
 };
 
 export const reloadSchemaCache = async (): Promise<void> => {
-    // Attempt to force a schema reload if columns are missing
+    // Attempt to force a schema reload via RPC if columns are missing
     try {
         await supabase.rpc('reload_schema'); 
     } catch (e) {

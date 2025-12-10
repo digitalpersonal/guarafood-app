@@ -262,8 +262,8 @@ const RestaurantSettings: React.FC = () => {
                 manualPixKey: manualPixKey 
             });
             
-            // We do NOT reset state variables (operatingHours, etc.) from the server response
-            // to ensure what the user sees matches what they just typed.
+            // We do NOT call loadData() here to prevent fetching potentially stale data
+            // This ensures the UI reflects what the user just saved.
             
         } catch (err: any) {
             console.error(err);
