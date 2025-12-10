@@ -228,15 +228,30 @@ const RestaurantSettings: React.FC = () => {
         setIsSaving(true);
         setError(null);
         
+        // 🔒 SAFETY LOCK: Capture the ID to prevent undefined links
+        const currentId = restaurant.id;
+        
+        // Prepare the optimistic object (what we expect the server to have)
+        const openDays = operatingHours.filter(d => d.isOpen);
+        const openingHoursSummary = openDays.length > 0 ? openDays[0].opens : '';
+        const closingHoursSummary = openDays.length > 0 ? openDays[0].closes : '';
+        const mpCreds = mercadoPagoToken ? { accessToken: mercadoPagoToken } : { accessToken: '' };
+
+        const optimisticRestaurant: Restaurant = {
+            ...restaurant,
+            mercado_pago_credentials: mpCreds,
+            operatingHours: operatingHours,
+            openingHours: openingHoursSummary,
+            closingHours: closingHoursSummary,
+            manualPixKey: manualPixKey,
+            id: currentId // 🔒 FORCE ID PRESERVATION
+        };
+
+        // 1. Update UI Immediately (Optimistic Update)
+        setRestaurant(optimisticRestaurant);
+
         try {
-            const currentId = restaurant.id; // PRESERVE ID CRITICALLY
-            const openDays = operatingHours.filter(d => d.isOpen);
-            const openingHoursSummary = openDays.length > 0 ? openDays[0].opens : '';
-            const closingHoursSummary = openDays.length > 0 ? openDays[0].closes : '';
-
-            // Ensure mercadoPagoToken is a string and handle empty string
-            const mpCreds = mercadoPagoToken ? { accessToken: mercadoPagoToken } : { accessToken: '' };
-
+            // 2. Send to Backend
             const updatePayload: Partial<Restaurant> = {
                 mercado_pago_credentials: mpCreds,
                 operatingHours: operatingHours,
@@ -245,41 +260,23 @@ const RestaurantSettings: React.FC = () => {
                 manualPixKey: manualPixKey
             };
             
-            // Call update
-            let updatedRestaurant = await updateRestaurant(restaurantId, updatePayload);
+            // We ignore the returned object here to preserve our optimistic state
+            // preventing stale DB cache from reverting the UI
+            await updateRestaurant(currentId, updatePayload);
             
-            // FIX: If API response is missing ID or malformed due to cache issues, recover gracefully
-            if (!updatedRestaurant || !updatedRestaurant.id) {
-                console.warn("API returned incomplete object, using local overrides.");
-                updatedRestaurant = { ...restaurant, ...updatePayload } as Restaurant;
-            }
-
-            addToast({ message: 'Configurações salvas com sucesso!', type: 'success' });
-            
-            // OPTIMISTIC UPDATE:
-            // Force local state to reflect what we just typed/selected.
-            // DO NOT rely solely on the DB response if columns might be missing in the API view.
-            setRestaurant(prev => {
-                if (!prev) return updatedRestaurant;
-                return {
-                    ...prev, // Keep existing fields (safe)
-                    ...updatedRestaurant, // Update with DB response (risky if columns missing)
-                    // Force overwrite with our known good local values
-                    operatingHours: operatingHours, 
-                    mercado_pago_credentials: mpCreds, 
-                    manualPixKey: manualPixKey,
-                    id: currentId // CRITICAL: Ensure ID never becomes undefined
-                };
-            });
+            addToast({ message: 'Configurações salvas!', type: 'success' });
             
         } catch (err: any) {
             console.error(err);
+            // 3. Rollback (Reload data from server) only on error
+            await loadData();
+            
             let msg = `Erro ao salvar: ${err.message}`;
             if (msg.includes('mercado_pago_credentials') || msg.includes('operating_hours')) {
-                 msg = "ERRO CRÍTICO NO BANCO DE DADOS: As colunas necessárias para salvar horários ou credenciais não existem.\n\nSOLUÇÃO OBRIGATÓRIA: Vá ao SQL Editor do Supabase e rode o comando: \nALTER TABLE restaurants ADD COLUMN IF NOT EXISTS operating_hours jsonb, ADD COLUMN IF NOT EXISTS mercado_pago_credentials jsonb DEFAULT '{}';";
+                 msg = "ERRO CRÍTICO: Colunas faltando no banco. Rode o SQL de correção no Supabase.";
             }
             setError(msg);
-            addToast({ message: "Erro ao salvar. Verifique o alerta vermelho na tela.", type: 'error', duration: 10000 });
+            addToast({ message: "Erro ao salvar alterações.", type: 'error' });
         } finally {
             setIsSaving(false);
         }

@@ -172,18 +172,15 @@ export const updateRestaurant = async (id: number, restaurantData: Partial<Resta
     if (restaurantData.closingHours !== undefined) payload.closing_hours = restaurantData.closingHours;
     if (restaurantData.deliveryFee !== undefined) payload.delivery_fee = restaurantData.deliveryFee;
     
-    // Critical Fields - Manual Pix
-    // We check both camelCase (from app) and snake_case (legacy/direct) keys to be safe
+    // Critical Fields - Manual Pix & Operating Hours & Credentials
+    // Ensure strict mapping from App (camelCase) to DB (snake_case)
     if (restaurantData.manualPixKey !== undefined) payload.manual_pix_key = restaurantData.manualPixKey;
     else if (restaurantData.manual_pix_key !== undefined) payload.manual_pix_key = restaurantData.manual_pix_key;
 
-    // Critical Fields - Operating Hours
-    // Ensure we map 'operatingHours' (app) to 'operating_hours' (db)
     if (restaurantData.operatingHours !== undefined) payload.operating_hours = restaurantData.operatingHours;
     else if (restaurantData.operating_hours !== undefined) payload.operating_hours = restaurantData.operating_hours;
 
-    // Critical Fields - Mercado Pago
-    // Handle specific nested structure or direct object
+    // Handle credentials mapping safely
     if (restaurantData.mercado_pago_credentials !== undefined) {
         payload.mercado_pago_credentials = restaurantData.mercado_pago_credentials;
     } else if (restaurantData.mercadoPagoCredentials !== undefined) {
