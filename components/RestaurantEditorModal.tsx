@@ -28,7 +28,7 @@ const PREDEFINED_PAYMENT_METHODS = [
 const EyeIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
     </svg>
 );
 
@@ -357,27 +357,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             ? parseFloat(String(formData.deliveryFee)) 
             : 0;
 
-        // FIXED: Using CamelCase keys to match the `Restaurant` interface, 
-        // so databaseService.ts can correctly map them to snake_case.
-        const dbPayload: any = {
-            name: formData.name,
-            category: formData.category,
-            deliveryTime: formData.deliveryTime, 
-            rating: formData.rating,
-            imageUrl: finalImageUrl,           
-            paymentGateways: formData.paymentGateways, 
-            address: formData.address,
-            phone: formData.phone,
-            openingHours: openingHoursSummary, 
-            closingHours: closingHoursSummary, 
-            deliveryFee: isNaN(deliveryFeeValue) ? 0 : deliveryFeeValue,
-            mercado_pago_credentials: formData.mercado_pago_credentials, 
-            operatingHours: formData.operatingHours,
-            manualPixKey: formData.manualPixKey,
-        };
-        
-        // For edge function, we need explicit snake_case because it inserts directly
-        const dbPayloadForEdge = {
+        const dbPayload = {
             name: formData.name,
             category: formData.category,
             delivery_time: formData.deliveryTime, 
@@ -399,7 +379,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             if (!existingRestaurant || changeCredentials) {
                  const { data, error: functionError } = await supabase.functions.invoke('create-restaurant-with-user', {
                     body: {
-                        restaurantData: dbPayloadForEdge, 
+                        restaurantData: dbPayload, // Se existente, backend deve verificar pelo nome ou eu deveria passar ID? A função que criei usa o Nome para encontrar.
                         userData: { email: merchantEmail, password: merchantPassword }
                     },
                 });
@@ -416,7 +396,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
 
             } else {
                 // Apenas atualização simples de dados do restaurante, sem mexer no usuário
-                const { error: updateError } = await supabase.from('restaurants').update(dbPayloadForEdge).eq('id', existingRestaurant.id);
+                const { error: updateError } = await supabase.from('restaurants').update(dbPayload).eq('id', existingRestaurant.id);
                 if (updateError) throw updateError;
                 addToast({ message: 'Restaurante atualizado com sucesso!', type: 'success' });
             }
@@ -431,12 +411,10 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 msg = "ERRO DE BANCO: Coluna 'delivery_fee' ausente. Rode o script de correção.";
             } else if (msg.includes('manual_pix_key')) {
                  msg = "ERRO DE BANCO: Coluna 'manual_pix_key' ausente. Rode o script de correção.";
-            } else if (msg.includes('operating_hours')) {
-                 msg = "ERRO DE BANCO: Coluna 'operating_hours' ausente. Vá ao SQL Editor.";
             }
             
             setError(msg);
-            addToast({ message: "Erro ao salvar. Verifique o alerta vermelho na tela.", type: 'error', duration: 10000 });
+            addToast({ message: "Erro ao salvar. Veja detalhes.", type: 'error', duration: 5000 });
         } finally {
             setIsSaving(false);
         }

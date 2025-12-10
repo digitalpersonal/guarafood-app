@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
-import { fetchRestaurantByIdSecure, updateRestaurant, reloadSchemaCache } from '../services/databaseService';
+// Use fetchRestaurantByIdSecure to get the token
+import { fetchRestaurantByIdSecure, updateRestaurant } from '../services/databaseService';
 import type { Restaurant, OperatingHours, Order } from '../types';
 import Spinner from './Spinner';
 import { SUPABASE_URL } from '../config';
@@ -134,7 +135,7 @@ const PrinterSettings: React.FC<{ onTestPrint: (width: number) => void }> = ({ o
                     className="text-sm text-gray-700 font-semibold border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2"
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.356-1.07 2.448-2.384 2.448H6.384C5.07 24.948 4 23.856 4 22.5c0-1.44 1.152-3.036 2.405-4.5m11.318 0c.397-1.362.63-2.826.63-4.342 0-1.44-1.152-3.036-2.405-4.5l-1.050-1.242A3.375 3.375 0 0 0 14.25 6H9.75a3.375 3.375 0 0 0-2.345 1.05L6.34 8.292c-1.253 1.464-2.405 3.06-2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z" />
                     </svg>
                     Testar Impressão ({printerWidth}mm)
                 </button>
@@ -200,19 +201,6 @@ const RestaurantSettings: React.FC = () => {
         loadData();
     }, [loadData]);
     
-    const handleReloadSchema = async () => {
-        try {
-            setIsLoading(true);
-            await reloadSchemaCache();
-            await loadData();
-            addToast({ message: "Conexão recarregada!", type: "success" });
-        } catch (e) {
-            addToast({ message: "Erro ao recarregar.", type: "error" });
-        } finally {
-            setIsLoading(false);
-        }
-    }
-    
     const handleOperatingHoursChange = (dayIndex: number, field: 'isOpen' | 'opens' | 'closes', value: string | boolean) => {
         setOperatingHours(prev => {
             const newHours = [...prev];
@@ -227,56 +215,51 @@ const RestaurantSettings: React.FC = () => {
         if (!restaurantId || !restaurant) return;
         setIsSaving(true);
         setError(null);
-        
-        // 🔒 SAFETY LOCK: Capture the ID to prevent undefined links
-        const currentId = restaurant.id;
-        
-        // Prepare the optimistic object (what we expect the server to have)
+
+        // 1. Prepare data
         const openDays = operatingHours.filter(d => d.isOpen);
         const openingHoursSummary = openDays.length > 0 ? openDays[0].opens : '';
         const closingHoursSummary = openDays.length > 0 ? openDays[0].closes : '';
-        const mpCreds = mercadoPagoToken ? { accessToken: mercadoPagoToken } : { accessToken: '' };
 
-        const optimisticRestaurant: Restaurant = {
-            ...restaurant,
-            mercado_pago_credentials: mpCreds,
+        const updatePayload: Partial<Restaurant> = {
+            mercado_pago_credentials: { accessToken: mercadoPagoToken },
             operatingHours: operatingHours,
             openingHours: openingHoursSummary,
             closingHours: closingHoursSummary,
-            manualPixKey: manualPixKey,
-            id: currentId // 🔒 FORCE ID PRESERVATION
+            manualPixKey: manualPixKey
         };
 
-        // 1. Update UI Immediately (Optimistic Update)
-        setRestaurant(optimisticRestaurant);
+        // 2. OPTIMISTIC UPDATE: Update UI immediately
+        // We trust the user input. We merge with existing restaurant data but FORCE the ID to remain.
+        setRestaurant(prev => {
+            if (!prev) return null;
+            return {
+                ...prev,
+                ...updatePayload,
+                id: prev.id // CRITICAL: Never lose the ID
+            };
+        });
 
         try {
-            // 2. Send to Backend
-            const updatePayload: Partial<Restaurant> = {
-                mercado_pago_credentials: mpCreds,
-                operatingHours: operatingHours,
-                openingHours: openingHoursSummary,
-                closingHours: closingHoursSummary,
-                manualPixKey: manualPixKey
-            };
+            // 3. Send to Database
+            await updateRestaurant(restaurantId, updatePayload);
+            addToast({ message: 'Configurações salvas com sucesso!', type: 'success' });
             
-            // We ignore the returned object here to preserve our optimistic state
-            // preventing stale DB cache from reverting the UI
-            await updateRestaurant(currentId, updatePayload);
-            
-            addToast({ message: 'Configurações salvas!', type: 'success' });
+            // Note: We deliberately do NOT re-fetch data here. 
+            // The optimistic update is sufficient and prevents the UI from reverting 
+            // if the API cache is stale or returns an incomplete object.
             
         } catch (err: any) {
             console.error(err);
-            // 3. Rollback (Reload data from server) only on error
-            await loadData();
-            
             let msg = `Erro ao salvar: ${err.message}`;
-            if (msg.includes('mercado_pago_credentials') || msg.includes('operating_hours')) {
-                 msg = "ERRO CRÍTICO: Colunas faltando no banco. Rode o SQL de correção no Supabase.";
+            if (msg.includes('mercado_pago_credentials')) {
+                 msg = "ERRO DE BANCO DE DADOS: A coluna 'mercado_pago_credentials' não existe.\nSOLUÇÃO: Rode no SQL Editor:\nALTER TABLE restaurants ADD COLUMN IF NOT EXISTS mercado_pago_credentials jsonb default '{}';";
             }
             setError(msg);
-            addToast({ message: "Erro ao salvar alterações.", type: 'error' });
+            addToast({ message: "Erro ao salvar. Veja detalhes acima.", type: 'error' });
+            
+            // Revert state only on error (optional, but good practice)
+            // For now, we leave the optimistic state so user doesn't lose their typing.
         } finally {
             setIsSaving(false);
         }
@@ -367,16 +350,7 @@ const RestaurantSettings: React.FC = () => {
     return (
         <main className="p-4 space-y-8">
             <div className="bg-white rounded-lg shadow-md p-6 max-w-2xl mx-auto">
-                <div className="flex justify-between items-center border-b pb-3 mb-4">
-                    <h2 className="text-2xl font-bold text-gray-800">Configurações do Restaurante</h2>
-                    <button 
-                        onClick={handleReloadSchema} 
-                        className="text-xs text-blue-600 hover:text-blue-800 underline"
-                        title="Tente isso se as configurações não estiverem salvando"
-                    >
-                        Recarregar Conexão
-                    </button>
-                </div>
+                <h2 className="text-2xl font-bold text-gray-800 border-b pb-3 mb-4">Configurações do Restaurante</h2>
                 
                 {error && (
                     <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700 whitespace-pre-wrap">
@@ -393,7 +367,7 @@ const RestaurantSettings: React.FC = () => {
                             <input 
                                 type="text" 
                                 readOnly 
-                                value={restaurant.id ? `${window.location.origin}?r=${restaurant.id}` : 'Carregando...'} 
+                                value={`${window.location.origin}?r=${restaurant.id}`} 
                                 className="flex-grow p-2 border rounded-lg bg-white text-gray-600 text-sm"
                             />
                             <button onClick={handleCopyStoreLink} className="bg-orange-600 text-white font-bold px-3 py-2 rounded-lg hover:bg-orange-700 text-sm">
