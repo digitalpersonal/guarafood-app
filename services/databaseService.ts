@@ -173,10 +173,12 @@ export const updateRestaurant = async (id: number, restaurantData: Partial<Resta
     if (restaurantData.deliveryFee !== undefined) payload.delivery_fee = restaurantData.deliveryFee;
     
     // Critical Fields - Manual Pix
+    // We check both camelCase (from app) and snake_case (legacy/direct) keys to be safe
     if (restaurantData.manualPixKey !== undefined) payload.manual_pix_key = restaurantData.manualPixKey;
     else if (restaurantData.manual_pix_key !== undefined) payload.manual_pix_key = restaurantData.manual_pix_key;
 
     // Critical Fields - Operating Hours
+    // Ensure we map 'operatingHours' (app) to 'operating_hours' (db)
     if (restaurantData.operatingHours !== undefined) payload.operating_hours = restaurantData.operatingHours;
     else if (restaurantData.operating_hours !== undefined) payload.operating_hours = restaurantData.operating_hours;
 
