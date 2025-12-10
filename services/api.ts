@@ -1,5 +1,3 @@
-
-
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config';
 
@@ -36,7 +34,7 @@ try {
   
 
 } catch (error: any) {
-  initializationError = error;
+  initializationError = error instanceof Error ? error : new Error(String(error));
   // This dummy client is a fallback to prevent the app from crashing entirely
   // if initialization fails. It will not be functional.
   if (!supabaseInstance) {
@@ -127,6 +125,7 @@ export const handleSupabaseError = ({ error, customMessage, tableName }: { error
             return;
         }
         
+        // Ensure we strictly throw an Error object
         throw new Error(enhancedMessage);
     }
 };

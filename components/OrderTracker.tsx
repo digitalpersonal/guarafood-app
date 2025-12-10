@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/api';
 import { useSound } from '../hooks/useSound';
@@ -42,30 +41,36 @@ const OrderTracker: React.FC = () => {
     useEffect(() => {
         // Load orders from local storage
         const loadOrders = async () => {
-            const storedOrderIds = JSON.parse(localStorage.getItem('guarafood-active-orders') || '[]');
-            if (storedOrderIds.length === 0) return;
+            try {
+                const storedOrderIds = JSON.parse(localStorage.getItem('guarafood-active-orders') || '[]');
+                if (storedOrderIds.length === 0) return;
 
-            const { data } = await supabase
-                .from('orders')
-                .select('id, status, restaurant_name, total_price, timestamp')
-                .in('id', storedOrderIds)
-                .order('timestamp', { ascending: false });
+                const { data, error } = await supabase
+                    .from('orders')
+                    .select('id, status, restaurant_name, total_price, timestamp')
+                    .in('id', storedOrderIds)
+                    .order('timestamp', { ascending: false });
 
-            if (data) {
-                const ongoing = data.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado');
-                setActiveOrders(ongoing);
-                
-                if (ongoing.length > 0) {
-                    setShowTooltip(true);
-                    setTimeout(() => setShowTooltip(false), 8000); 
+                if (error) throw error;
+
+                if (data) {
+                    const ongoing = data.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado');
+                    setActiveOrders(ongoing);
+                    
+                    if (ongoing.length > 0) {
+                        setShowTooltip(true);
+                        setTimeout(() => setShowTooltip(false), 8000); 
+                    }
+                    
+                    // Cleanup
+                    const completedIds = data.filter(o => o.status === 'Entregue' || o.status === 'Cancelado').map(o => o.id);
+                    if (completedIds.length > 0) {
+                        const updatedStorage = storedOrderIds.filter((id: string) => !completedIds.includes(id));
+                        localStorage.setItem('guarafood-active-orders', JSON.stringify(updatedStorage));
+                    }
                 }
-                
-                // Cleanup
-                const completedIds = data.filter(o => o.status === 'Entregue' || o.status === 'Cancelado').map(o => o.id);
-                if (completedIds.length > 0) {
-                    const updatedStorage = storedOrderIds.filter((id: string) => !completedIds.includes(id));
-                    localStorage.setItem('guarafood-active-orders', JSON.stringify(updatedStorage));
-                }
+            } catch (err) {
+                console.error("Failed to load active orders:", err);
             }
         };
 

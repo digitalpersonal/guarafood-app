@@ -8,35 +8,45 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   hasError: boolean;
-  error: Error | null;
+  error: any;
 }
 
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   public state: ErrorBoundaryState = { hasError: false, error: null };
   // FIX: Explicitly define `props` as a class property as a workaround for an atypical TypeScript error
-  // where `props` is not recognized on `this` despite extending `React.Component`.
-  // This is usually implicitly handled by React types but can be required in specific environments.
   public readonly props: ErrorBoundaryProps;
 
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    // Assign props explicitly to the instance for environments with strict type inference issues.
     this.props = props; 
   }
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+  static getDerivedStateFromError(error: any): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+  componentDidCatch(error: any, errorInfo: React.ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
   }
 
   render() {
-    // FIX: Reintroduced destructuring for 'children' now that 'this.props' is explicitly defined, 
-    // addressing the potential TypeScript inference issue.
     const { children } = this.props;
     if (this.state.hasError) {
+      let errorMessage = 'Erro desconhecido.';
+      if (this.state.error) {
+          if (this.state.error instanceof Error) {
+              errorMessage = this.state.error.message;
+          } else if (typeof this.state.error === 'string') {
+              errorMessage = this.state.error;
+          } else {
+              try {
+                  errorMessage = JSON.stringify(this.state.error, null, 2);
+              } catch (e) {
+                  errorMessage = String(this.state.error);
+              }
+          }
+      }
+
       return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-red-50 p-6 text-center">
           <div className="bg-white p-8 rounded-xl shadow-2xl max-w-md w-full">
@@ -44,10 +54,8 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
             <p className="text-gray-700 mb-6">
               Ocorreu um erro inesperado na aplicação.
             </p>
-            <div className="bg-gray-100 p-4 rounded text-left text-xs font-mono text-gray-800 overflow-auto mb-6 max-h-40 border border-gray-300">
-                {this.state.error 
-                    ? (this.state.error.message || JSON.stringify(this.state.error, null, 2)) 
-                    : 'Erro desconhecido. Por favor, recarregue a página.'}
+            <div className="bg-gray-100 p-4 rounded text-left text-xs font-mono text-gray-800 overflow-auto mb-6 max-h-40 border border-gray-300 whitespace-pre-wrap">
+                {errorMessage}
             </div>
             <button
               onClick={() => window.location.reload()}

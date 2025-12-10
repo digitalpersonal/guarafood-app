@@ -16,6 +16,7 @@ interface CheckoutModalProps {
 }
 
 type CheckoutStep = 'SUMMARY' | 'DETAILS' | 'PIX_PAYMENT' | 'SUCCESS';
+type DeliveryMethod = 'DELIVERY' | 'PICKUP';
 
 // Icons for the stepper
 const CheckCircleIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -59,6 +60,16 @@ const ClockIcon: React.FC<{ className?: string }> = ({ className }) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
 );
+const TruckIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 0 1-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 0 0-3.213-9.193 2.056 2.056 0 0 0-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 0 0-10.026 0 1.106 1.106 0 0 0-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" />
+    </svg>
+);
+const StoreIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 .75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 0 0 3.75-.615A2.993 2.993 0 0 0 9.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 0 0 2.25 1.016c.896 0 1.7-.393 2.25-1.016a3.001 3.001 0 0 0 3.75.614m-16.5 0a3.004 3.004 0 0 1-.621-4.72l1.189-1.19A1.5 1.5 0 0 1 5.378 3h13.243a1.5 1.5 0 0 1 1.06.44l1.19 1.189a3 3 0 0 1-.621 4.72m-13.5 8.65h3.75a.75.75 0 0 0 .75-.75V13.5a.75.75 0 0 0-.75-.75H6.75a.75.75 0 0 0-.75.75v3.75c0 .415.336.75.75.75Z" />
+    </svg>
+);
 
 
 const steps: { id: CheckoutStep; title: string; icon: React.FC<{ className?: string }> }[] = [
@@ -78,6 +89,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [changeFor, setChangeFor] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     
+    // Delivery Method State
+    const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('DELIVERY');
+
     // Address State
     const [address, setAddress] = useState({
         zipCode: '37810-000', 
@@ -125,6 +139,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setPixError(null);
         setIsManualPix(false);
         setCountdown(300);
+        setDeliveryMethod('DELIVERY');
         setAddress({ zipCode: '37810-000', street: '', number: '', neighborhood: '', complement: '' });
         if (countdownIntervalRef.current) {
             clearInterval(countdownIntervalRef.current);
@@ -148,8 +163,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         return { finalPrice: Math.max(0, totalPrice - discount), discountAmount: discount };
     }, [totalPrice, appliedCoupon]);
 
-    const deliveryFee = restaurant.deliveryFee || 0;
-    const finalPriceWithFee = finalPrice + deliveryFee;
+    // Calculate effective delivery fee based on method
+    const effectiveDeliveryFee = deliveryMethod === 'PICKUP' ? 0 : (restaurant.deliveryFee || 0);
+    const finalPriceWithFee = finalPrice + effectiveDeliveryFee;
     
     const handleAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -289,7 +305,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         setTimeout(() => {
                             clearCart();
                             onClose();
-                        }, 6000); 
+                        }, 15000); 
                     }
                 }
             ).subscribe();
@@ -323,7 +339,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             addToast({ message: 'Pedido enviado com sucesso!', type: 'success' });
             clearCart();
             setCurrentStep('SUCCESS');
-            setTimeout(() => onClose(), 6000);
+            setTimeout(() => onClose(), 15000);
         } catch (err) {
             console.error('Failed to create order:', err);
             addToast({ message: `Erro ao enviar pedido: ${err}`, type: 'error' });
@@ -333,19 +349,30 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     };
 
     const handleConfirmManualPix = async () => {
-        // Re-construct order data for submission
-        const orderData: NewOrderData = {
-            customerName, customerPhone, items: cartItems, totalPrice: finalPriceWithFee, subtotal: totalPrice,
-            discountAmount, couponCode: appliedCoupon?.code, deliveryFee, restaurantId: restaurant.id,
-            restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
-            paymentMethod: "Pix (Comprovante via WhatsApp)", // Adjusted for manual
-            customerAddress: {
+        // Construct correct address object based on method
+        const customerAddress = deliveryMethod === 'PICKUP' 
+            ? {
+                zipCode: '00000-000',
+                street: 'Retirada no Local',
+                number: 'S/N',
+                neighborhood: restaurant.name, // Indicate pickup location
+                complement: 'Cliente irá buscar'
+            }
+            : {
                 zipCode: address.zipCode,
                 street: address.street,
                 number: address.number,
                 neighborhood: address.neighborhood,
                 complement: address.complement,
-            },
+            };
+
+        // Re-construct order data for submission
+        const orderData: NewOrderData = {
+            customerName, customerPhone, items: cartItems, totalPrice: finalPriceWithFee, subtotal: totalPrice,
+            discountAmount, couponCode: appliedCoupon?.code, deliveryFee: effectiveDeliveryFee, restaurantId: restaurant.id,
+            restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
+            paymentMethod: "Pix (Comprovante via WhatsApp)", 
+            customerAddress: customerAddress,
         };
         await handlePayOnDelivery(orderData);
     };
@@ -356,9 +383,19 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             addToast({ message: "Restaurante Fechado. Não é possível enviar o pedido.", type: 'error' });
             return;
         }
-        if (!customerName || !customerPhone || !paymentMethod || !address.street || !address.number || !address.neighborhood) {
-            setFormError('Preencha todos os campos obrigatórios, incluindo o endereço completo.');
+        
+        // Basic Validation
+        if (!customerName || !customerPhone || !paymentMethod) {
+            setFormError('Preencha nome, telefone e forma de pagamento.');
             return;
+        }
+
+        // Address Validation only if Delivery
+        if (deliveryMethod === 'DELIVERY') {
+            if (!address.street || !address.number || !address.neighborhood) {
+                setFormError('Preencha o endereço completo para entrega.');
+                return;
+            }
         }
         
         const phoneDigits = customerPhone.replace(/\D/g, '');
@@ -379,18 +416,29 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             }
         }
 
-        const orderData: NewOrderData = {
-            customerName, customerPhone, items: cartItems, totalPrice: finalPriceWithFee, subtotal: totalPrice,
-            discountAmount, couponCode: appliedCoupon?.code, deliveryFee, restaurantId: restaurant.id,
-            restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
-            paymentMethod: finalPaymentMethod,
-            customerAddress: {
+        // Construct correct address object based on method
+        const customerAddress = deliveryMethod === 'PICKUP' 
+            ? {
+                zipCode: '00000-000',
+                street: 'Retirada no Local',
+                number: 'S/N',
+                neighborhood: restaurant.name, 
+                complement: 'Cliente irá buscar'
+            }
+            : {
                 zipCode: address.zipCode,
                 street: address.street,
                 number: address.number,
                 neighborhood: address.neighborhood,
                 complement: address.complement,
-            },
+            };
+
+        const orderData: NewOrderData = {
+            customerName, customerPhone, items: cartItems, totalPrice: finalPriceWithFee, subtotal: totalPrice,
+            discountAmount, couponCode: appliedCoupon?.code, deliveryFee: effectiveDeliveryFee, restaurantId: restaurant.id,
+            restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
+            paymentMethod: finalPaymentMethod,
+            customerAddress: customerAddress,
         };
 
         if (paymentMethod === 'Pix') {
@@ -551,9 +599,10 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         <span>- R$ {discountAmount.toFixed(2)}</span>
                     </div>
                 )}
+                {/* Dynamically show delivery fee based on method selection default is Delivery */}
                 <div className="flex justify-between text-gray-600">
                     <span>Taxa de Entrega</span>
-                    <span>R$ {deliveryFee.toFixed(2)}</span>
+                    <span>{deliveryMethod === 'PICKUP' ? 'Grátis (Retirada)' : `R$ ${(restaurant.deliveryFee || 0).toFixed(2)}`}</span>
                 </div>
                 <div className="flex justify-between font-bold text-lg text-gray-800 border-t pt-2 mt-1">
                     <span>Total</span>
@@ -566,6 +615,37 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const renderDetails = () => (
         <form onSubmit={handleSubmitDetails} id="checkout-form" className="overflow-y-auto space-y-4 p-4 pr-2 -mr-2" role="form" aria-labelledby="details-payment-heading">
             <h3 id="details-payment-heading" className="text-xl font-bold text-gray-800 mb-4">Seus Dados e Pagamento</h3>
+            
+            {/* DELIVERY METHOD TOGGLE */}
+            <div className="flex justify-center mb-6">
+                <div className="bg-gray-100 p-1 rounded-lg flex w-full max-w-sm">
+                    <button
+                        type="button"
+                        onClick={() => setDeliveryMethod('DELIVERY')}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md font-bold text-sm transition-all ${
+                            deliveryMethod === 'DELIVERY'
+                                ? 'bg-white text-orange-600 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                    >
+                        <TruckIcon className="w-5 h-5" />
+                        Entrega
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setDeliveryMethod('PICKUP')}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md font-bold text-sm transition-all ${
+                            deliveryMethod === 'PICKUP'
+                                ? 'bg-white text-orange-600 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                    >
+                        <StoreIcon className="w-5 h-5" />
+                        Retirada
+                    </button>
+                </div>
+            </div>
+
             <div>
                 <label htmlFor="customerName" className="block text-sm font-medium text-gray-700">Nome Completo</label>
                 <input id="customerName" type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} onBlur={handleNameBlur} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" aria-required="true"/>
@@ -574,31 +654,36 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 <label htmlFor="customerPhone" className="block text-sm font-medium text-gray-700">Telefone (WhatsApp)</label>
                 <input id="customerPhone" type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" aria-required="true"/>
             </div>
-             <div className="border-t pt-4">
-                <h3 className="text-md font-medium text-gray-800 mb-2">Endereço de Entrega</h3>
-                <div className="space-y-3">
-                    <div className="grid grid-cols-4 gap-3">
-                        <div className="col-span-3">
-                            <label htmlFor="street" className="block text-sm font-medium text-gray-700">Rua</label>
-                            <input id="street" name="street" type="text" value={address.street} onChange={handleAddressChange} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" aria-required="true"/>
+            
+            {/* ADDRESS FIELDS - CONDITIONAL */}
+            {deliveryMethod === 'DELIVERY' && (
+                <div className="border-t pt-4">
+                    <h3 className="text-md font-medium text-gray-800 mb-2">Endereço de Entrega</h3>
+                    <div className="space-y-3">
+                        <div className="grid grid-cols-4 gap-3">
+                            <div className="col-span-3">
+                                <label htmlFor="street" className="block text-sm font-medium text-gray-700">Rua</label>
+                                <input id="street" name="street" type="text" value={address.street} onChange={handleAddressChange} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" aria-required="true"/>
+                            </div>
+                            <div>
+                                <label htmlFor="number" className="block text-sm font-medium text-gray-700">Nº</label>
+                                <input id="number" name="number" type="text" value={address.number} onChange={handleAddressChange} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" aria-required="true"/>
+                            </div>
                         </div>
-                        <div>
-                            <label htmlFor="number" className="block text-sm font-medium text-gray-700">Nº</label>
-                            <input id="number" name="number" type="text" value={address.number} onChange={handleAddressChange} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" aria-required="true"/>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label htmlFor="neighborhood" className="block text-sm font-medium text-gray-700">Bairro</label>
-                            <input id="neighborhood" name="neighborhood" type="text" value={address.neighborhood} onChange={handleAddressChange} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" aria-required="true"/>
-                        </div>
-                        <div>
-                            <label htmlFor="complement" className="block text-sm font-medium text-gray-700">Complemento</label>
-                            <input id="complement" name="complement" type="text" value={address.complement} onChange={handleAddressChange} className="mt-1 w-full p-3 border rounded-lg bg-gray-50"/>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label htmlFor="neighborhood" className="block text-sm font-medium text-gray-700">Bairro</label>
+                                <input id="neighborhood" name="neighborhood" type="text" value={address.neighborhood} onChange={handleAddressChange} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" aria-required="true"/>
+                            </div>
+                            <div>
+                                <label htmlFor="complement" className="block text-sm font-medium text-gray-700">Complemento</label>
+                                <input id="complement" name="complement" type="text" value={address.complement} onChange={handleAddressChange} className="mt-1 w-full p-3 border rounded-lg bg-gray-50"/>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            )}
+
             <div className="border-t pt-4">
                 <span className="block text-sm font-medium text-gray-700">Forma de Pagamento</span>
                 <div className="mt-2 space-y-2" role="radiogroup" aria-label="Selecione a forma de pagamento">
@@ -739,7 +824,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 </div>
             </div>
 
-             <p className="text-sm text-gray-500">Redirecionando em 6 segundos...</p>
+             <p className="text-sm text-gray-500">Redirecionando em 15 segundos...</p>
         </div>
     );
     
