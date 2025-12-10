@@ -109,13 +109,21 @@ const normalizeExpense = (data: any): Expense => ({
 
 // --- RESTAURANTS ---
 
+// IMPORTANT: Explicitly select ALL columns to ensure new schema changes are picked up immediately
+const FULL_RESTAURANT_QUERY = `
+  id, name, category, description, delivery_time, rating, image_url, 
+  payment_gateways, address, phone, opening_hours, closing_hours, delivery_fee,
+  operating_hours, mercado_pago_credentials, manual_pix_key
+`;
+
 export const fetchRestaurants = async (): Promise<Restaurant[]> => {
-    const { data, error } = await supabaseAnon.from('restaurants').select('*');
+    const { data, error } = await supabaseAnon.from('restaurants').select(FULL_RESTAURANT_QUERY);
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants' });
     
     return (data || [])
         .map(r => {
             const normalized = normalizeRestaurant(r);
+            // Hide sensitive data in public fetch
             if (normalized.mercado_pago_credentials) {
                 delete normalized.mercado_pago_credentials;
             }
@@ -124,13 +132,13 @@ export const fetchRestaurants = async (): Promise<Restaurant[]> => {
 };
 
 export const fetchRestaurantsSecure = async (): Promise<Restaurant[]> => {
-    const { data, error } = await supabase.from('restaurants').select('*');
+    const { data, error } = await supabase.from('restaurants').select(FULL_RESTAURANT_QUERY);
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants (secure)' });
     return (data || []).map(normalizeRestaurant);
 };
 
 export const fetchRestaurantById = async (id: number): Promise<Restaurant> => {
-    const { data, error } = await supabaseAnon.from('restaurants').select('*').eq('id', id).single();
+    const { data, error } = await supabaseAnon.from('restaurants').select(FULL_RESTAURANT_QUERY).eq('id', id).single();
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurant' });
     if (!data) throw new Error('Restaurant not found');
     
@@ -142,14 +150,16 @@ export const fetchRestaurantById = async (id: number): Promise<Restaurant> => {
 };
 
 export const fetchRestaurantByIdSecure = async (id: number): Promise<Restaurant> => {
-    const { data, error } = await supabase.from('restaurants').select('*').eq('id', id).single();
+    const { data, error } = await supabase.from('restaurants').select(FULL_RESTAURANT_QUERY).eq('id', id).single();
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurant details' });
     if (!data) throw new Error('Restaurant not found');
     return normalizeRestaurant(data);
 };
 
-export const updateRestaurant = async (id: number, restaurantData: Partial<Restaurant>): Promise<Restaurant> => {
+export const updateRestaurant = async (id: number, restaurantData: Partial<Restaurant> & any): Promise<Restaurant> => {
     const payload: any = {};
+    
+    // Standard Fields
     if (restaurantData.name !== undefined) payload.name = restaurantData.name;
     if (restaurantData.category !== undefined) payload.category = restaurantData.category;
     if (restaurantData.deliveryTime !== undefined) payload.delivery_time = restaurantData.deliveryTime;
@@ -161,11 +171,23 @@ export const updateRestaurant = async (id: number, restaurantData: Partial<Resta
     if (restaurantData.openingHours !== undefined) payload.opening_hours = restaurantData.openingHours;
     if (restaurantData.closingHours !== undefined) payload.closing_hours = restaurantData.closingHours;
     if (restaurantData.deliveryFee !== undefined) payload.delivery_fee = restaurantData.deliveryFee;
+    
+    // Critical Fields - Handle both camelCase (from App) and snake_case (from DB/Admin) input
     if (restaurantData.operatingHours !== undefined) payload.operating_hours = restaurantData.operatingHours;
-    if (restaurantData.mercado_pago_credentials !== undefined) payload.mercado_pago_credentials = restaurantData.mercado_pago_credentials;
-    if (restaurantData.manualPixKey !== undefined) payload.manual_pix_key = restaurantData.manualPixKey;
+    else if (restaurantData.operating_hours !== undefined) payload.operating_hours = restaurantData.operating_hours;
 
-    const { data, error } = await supabase.from('restaurants').update(payload).eq('id', id).select().single();
+    if (restaurantData.mercado_pago_credentials !== undefined) payload.mercado_pago_credentials = restaurantData.mercado_pago_credentials;
+    else if (restaurantData.mercadoPagoCredentials !== undefined) payload.mercado_pago_credentials = restaurantData.mercadoPagoCredentials;
+
+    if (restaurantData.manualPixKey !== undefined) payload.manual_pix_key = restaurantData.manualPixKey;
+    else if (restaurantData.manual_pix_key !== undefined) payload.manual_pix_key = restaurantData.manual_pix_key;
+
+    const { data, error } = await supabase.from('restaurants')
+        .update(payload)
+        .eq('id', id)
+        .select(FULL_RESTAURANT_QUERY) // Explicit select on return
+        .single();
+        
     handleSupabaseError({ error, customMessage: 'Failed to update restaurant' });
     return normalizeRestaurant(data);
 };
@@ -442,4 +464,15 @@ const applyPromotionsToMenu = (menu: MenuCategory[], promotions: Promotion[]): M
             }),
         };
     });
+};
+
+export const reloadSchemaCache = async (): Promise<void> => {
+    // Attempt to force a schema reload if columns are missing
+    try {
+        await supabase.rpc('reload_schema'); 
+    } catch (e) {
+        console.warn("reload_schema RPC not found, skipping");
+    }
+    // Simple query to wake up connection
+    await supabase.from('restaurants').select('id').limit(1);
 };

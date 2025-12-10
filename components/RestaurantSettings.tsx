@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
 // Use fetchRestaurantByIdSecure to get the token
-import { fetchRestaurantByIdSecure, updateRestaurant } from '../services/databaseService';
+import { fetchRestaurantByIdSecure, updateRestaurant, reloadSchemaCache } from '../services/databaseService';
 import type { Restaurant, OperatingHours, Order } from '../types';
 import Spinner from './Spinner';
 import { SUPABASE_URL } from '../config';
@@ -201,6 +201,19 @@ const RestaurantSettings: React.FC = () => {
         loadData();
     }, [loadData]);
     
+    const handleReloadSchema = async () => {
+        try {
+            setIsLoading(true);
+            await reloadSchemaCache();
+            await loadData();
+            addToast({ message: "Conexão recarregada!", type: "success" });
+        } catch (e) {
+            addToast({ message: "Erro ao recarregar.", type: "error" });
+        } finally {
+            setIsLoading(false);
+        }
+    }
+    
     const handleOperatingHoursChange = (dayIndex: number, field: 'isOpen' | 'opens' | 'closes', value: string | boolean) => {
         setOperatingHours(prev => {
             const newHours = [...prev];
@@ -219,24 +232,36 @@ const RestaurantSettings: React.FC = () => {
             const openingHoursSummary = openDays.length > 0 ? openDays[0].opens : '';
             const closingHoursSummary = openDays.length > 0 ? openDays[0].closes : '';
 
+            // Ensure mercadoPagoToken is a string and handle empty string
+            const mpCreds = mercadoPagoToken ? { accessToken: mercadoPagoToken } : { accessToken: '' };
+
             const updatePayload: Partial<Restaurant> = {
-                mercado_pago_credentials: { accessToken: mercadoPagoToken },
+                mercado_pago_credentials: mpCreds,
                 operatingHours: operatingHours,
                 openingHours: openingHoursSummary,
                 closingHours: closingHoursSummary,
                 manualPixKey: manualPixKey
             };
+            
+            console.log("Saving restaurant settings:", updatePayload);
             await updateRestaurant(restaurantId, updatePayload);
+            
             addToast({ message: 'Configurações salvas com sucesso!', type: 'success' });
             setError(null);
+            
+            // WAIT A MOMENT to ensure DB write propogates before fetching again
+            setTimeout(async () => {
+                await loadData();
+            }, 800);
+            
         } catch (err: any) {
             console.error(err);
             let msg = `Erro ao salvar: ${err.message}`;
-            if (msg.includes('mercado_pago_credentials')) {
-                 msg = "ERRO DE BANCO DE DADOS: A coluna 'mercado_pago_credentials' não existe.\nSOLUÇÃO: Rode no SQL Editor:\nALTER TABLE restaurants ADD COLUMN IF NOT EXISTS mercado_pago_credentials jsonb default '{}';";
+            if (msg.includes('mercado_pago_credentials') || msg.includes('operating_hours')) {
+                 msg = "ERRO CRÍTICO NO BANCO DE DADOS: As colunas necessárias para salvar horários ou credenciais não existem.\n\nSOLUÇÃO OBRIGATÓRIA: Vá ao SQL Editor do Supabase e rode o comando: \nALTER TABLE restaurants ADD COLUMN IF NOT EXISTS operating_hours jsonb, ADD COLUMN IF NOT EXISTS mercado_pago_credentials jsonb DEFAULT '{}';";
             }
             setError(msg);
-            addToast({ message: "Erro ao salvar. Veja detalhes acima.", type: 'error' });
+            addToast({ message: "Erro ao salvar. Verifique o alerta vermelho na tela.", type: 'error', duration: 10000 });
         } finally {
             setIsSaving(false);
         }
@@ -327,7 +352,16 @@ const RestaurantSettings: React.FC = () => {
     return (
         <main className="p-4 space-y-8">
             <div className="bg-white rounded-lg shadow-md p-6 max-w-2xl mx-auto">
-                <h2 className="text-2xl font-bold text-gray-800 border-b pb-3 mb-4">Configurações do Restaurante</h2>
+                <div className="flex justify-between items-center border-b pb-3 mb-4">
+                    <h2 className="text-2xl font-bold text-gray-800">Configurações do Restaurante</h2>
+                    <button 
+                        onClick={handleReloadSchema} 
+                        className="text-xs text-blue-600 hover:text-blue-800 underline"
+                        title="Tente isso se as configurações não estiverem salvando"
+                    >
+                        Recarregar Conexão
+                    </button>
+                </div>
                 
                 {error && (
                     <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700 whitespace-pre-wrap">
