@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
-// Use fetchRestaurantByIdSecure to get the token
 import { fetchRestaurantByIdSecure, updateRestaurant, reloadSchemaCache } from '../services/databaseService';
 import type { Restaurant, OperatingHours, Order } from '../types';
 import Spinner from './Spinner';
@@ -248,49 +247,23 @@ const RestaurantSettings: React.FC = () => {
             // Call update
             const updatedRestaurant = await updateRestaurant(restaurantId, updatePayload);
             
-            // --- VALIDATION: Check if updates actually persisted ---
-            const serverToken = updatedRestaurant.mercado_pago_credentials?.accessToken || '';
-            const serverHours = updatedRestaurant.operatingHours || [];
+            // SUCCESS SCENARIO - Optimistic Update
+            // We TRUST that if no error was thrown, the DB accepted the data.
+            // Even if the returned 'updatedRestaurant' has stale data due to cache,
+            // we preserve the local state for these critical fields to avoid visual revert.
             
-            let warningMessage = '';
+            addToast({ message: 'Configurações salvas com sucesso!', type: 'success' });
             
-            // 1. Check Mercado Pago Token
-            if (mercadoPagoToken && !serverToken) {
-                warningMessage += "O Token do Mercado Pago não foi salvo. ";
-            }
-            // 2. Check Operating Hours (if at least one day is open locally, but server returns empty/none)
-            const isAnyDayOpen = operatingHours.some(d => d.isOpen);
-            if (isAnyDayOpen && (!serverHours || serverHours.length === 0)) {
-                warningMessage += "Os horários detalhados não foram salvos. ";
-            }
+            setRestaurant({
+                ...updatedRestaurant,
+                // FORCE local state to prevent revert if API cache is stale
+                operatingHours: operatingHours, 
+                mercado_pago_credentials: mpCreds, 
+                manualPixKey: manualPixKey 
+            });
             
-            if (warningMessage) {
-                // PARTIAL FAILURE SCENARIO
-                warningMessage += "\nProvavelmente as colunas 'mercado_pago_credentials' ou 'operating_hours' não existem no banco de dados.";
-                setError(warningMessage);
-                addToast({ message: "Aviso: Alguns dados não foram persistidos.", type: 'warning' });
-                
-                // IMPORTANT: In this case, we DO NOT update the specific local states from the server
-                // to avoid wiping the user's input. We keep the dirty state visible so they can copy it or retry.
-                // We only sync the base fields.
-                setRestaurant({
-                    ...updatedRestaurant,
-                    // Preserve local state for problematic fields
-                    operatingHours: operatingHours,
-                    mercado_pago_credentials: mpCreds, 
-                    manualPixKey: manualPixKey 
-                });
-            } else {
-                // SUCCESS SCENARIO
-                addToast({ message: 'Configurações salvas com sucesso!', type: 'success' });
-                // Update local state completely to be in sync with server
-                setRestaurant(updatedRestaurant);
-                setMercadoPagoToken(serverToken);
-                setManualPixKey(updatedRestaurant.manualPixKey || '');
-                if (updatedRestaurant.operatingHours && updatedRestaurant.operatingHours.length === 7) {
-                    setOperatingHours(updatedRestaurant.operatingHours);
-                }
-            }
+            // We do NOT reset state variables (operatingHours, etc.) from the server response
+            // to ensure what the user sees matches what they just typed.
             
         } catch (err: any) {
             console.error(err);

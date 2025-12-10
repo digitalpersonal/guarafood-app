@@ -190,6 +190,8 @@ export const updateRestaurant = async (id: number, restaurantData: Partial<Resta
         payload.mercado_pago_credentials = restaurantData.mercadoPagoCredentials;
     }
 
+    console.log("[DEBUG] Payload Update Restaurant:", payload);
+
     const { data, error } = await supabase.from('restaurants')
         .update(payload)
         .eq('id', id)
