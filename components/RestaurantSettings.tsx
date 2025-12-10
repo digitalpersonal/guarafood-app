@@ -224,11 +224,12 @@ const RestaurantSettings: React.FC = () => {
     };
 
     const handleSaveChanges = async () => {
-        if (!restaurantId) return;
+        if (!restaurantId || !restaurant) return;
         setIsSaving(true);
         setError(null);
         
         try {
+            const currentId = restaurant.id; // PRESERVE ID CRITICALLY
             const openDays = operatingHours.filter(d => d.isOpen);
             const openingHoursSummary = openDays.length > 0 ? openDays[0].opens : '';
             const closingHoursSummary = openDays.length > 0 ? openDays[0].closes : '';
@@ -245,25 +246,31 @@ const RestaurantSettings: React.FC = () => {
             };
             
             // Call update
-            const updatedRestaurant = await updateRestaurant(restaurantId, updatePayload);
+            let updatedRestaurant = await updateRestaurant(restaurantId, updatePayload);
             
-            // SUCCESS SCENARIO - Optimistic Update
-            // We TRUST that if no error was thrown, the DB accepted the data.
-            // Even if the returned 'updatedRestaurant' has stale data due to cache,
-            // we preserve the local state for these critical fields to avoid visual revert.
-            
+            // FIX: If API response is missing ID or malformed due to cache issues, recover gracefully
+            if (!updatedRestaurant || !updatedRestaurant.id) {
+                console.warn("API returned incomplete object, using local overrides.");
+                updatedRestaurant = { ...restaurant, ...updatePayload } as Restaurant;
+            }
+
             addToast({ message: 'Configurações salvas com sucesso!', type: 'success' });
             
-            setRestaurant({
-                ...updatedRestaurant,
-                // FORCE local state to prevent revert if API cache is stale
-                operatingHours: operatingHours, 
-                mercado_pago_credentials: mpCreds, 
-                manualPixKey: manualPixKey 
+            // OPTIMISTIC UPDATE:
+            // Force local state to reflect what we just typed/selected.
+            // DO NOT rely solely on the DB response if columns might be missing in the API view.
+            setRestaurant(prev => {
+                if (!prev) return updatedRestaurant;
+                return {
+                    ...prev, // Keep existing fields (safe)
+                    ...updatedRestaurant, // Update with DB response (risky if columns missing)
+                    // Force overwrite with our known good local values
+                    operatingHours: operatingHours, 
+                    mercado_pago_credentials: mpCreds, 
+                    manualPixKey: manualPixKey,
+                    id: currentId // CRITICAL: Ensure ID never becomes undefined
+                };
             });
-            
-            // We do NOT call loadData() here to prevent fetching potentially stale data
-            // This ensures the UI reflects what the user just saved.
             
         } catch (err: any) {
             console.error(err);
@@ -389,7 +396,7 @@ const RestaurantSettings: React.FC = () => {
                             <input 
                                 type="text" 
                                 readOnly 
-                                value={`${window.location.origin}?r=${restaurant.id}`} 
+                                value={restaurant.id ? `${window.location.origin}?r=${restaurant.id}` : 'Carregando...'} 
                                 className="flex-grow p-2 border rounded-lg bg-white text-gray-600 text-sm"
                             />
                             <button onClick={handleCopyStoreLink} className="bg-orange-600 text-white font-bold px-3 py-2 rounded-lg hover:bg-orange-700 text-sm">
