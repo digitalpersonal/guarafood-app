@@ -50,6 +50,12 @@ const ShoppingCartIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+const HeartIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+        <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
+    </svg>
+);
+
 // Helper to create valid HTML IDs from category names
 const slugify = (text: string) => `category-${text.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '')}`;
 
@@ -71,7 +77,6 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
             try {
                 setIsLoading(true);
                 // PASSING TRUE TO IGNORE DAY FILTER (Fixes empty menu issue)
-                // FIX: Pass restaurant.id instead of restaurant object
                 const [menuData, addonsData] = await Promise.all([
                     fetchMenuForRestaurant(restaurant.id, true), 
                     fetchAddonsForRestaurant(restaurant.id),
@@ -179,7 +184,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                             alt={restaurant.name} 
                             priority={true}
                             className="w-full h-full rounded-full"
-                            objectFit="contain" // Garante que a logo apareça INTEIRA dentro do círculo branco
+                            objectFit="contain" 
                         />
                     </div>
                 </div>
@@ -238,7 +243,6 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                 </div>
             )}
             
-            {/* NEW: CouponDisplay component */}
             {!isLoading && restaurant.id && <CouponDisplay restaurantId={restaurant.id} />}
 
             {!isLoading && !error && menu.length > 0 && (
@@ -312,22 +316,29 @@ const CustomerView: React.FC<CustomerViewProps> = ({ selectedRestaurant, onSelec
     const [error, setError] = useState<string | null>(null);
 
     const [searchTerm, setSearchTerm] = useState('');
-    // Changed: Support multi-select categories. Default 'Todos' means no filter/all.
     const [selectedCategories, setSelectedCategories] = useState<string[]>(['Todos']);
     const [showOpenOnly, setShowOpenOnly] = useState(false);
+    const [favorites, setFavorites] = useState<number[]>([]);
 
-    // Use a fixed header image to avoid API quota issues.
     const [headerImage, setHeaderImage] = useState<string>('https://images.pexels.com/photos/376464/pexels-photo-376464.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2');
 
     useEffect(() => {
+        // Load Favorites from LocalStorage
+        const savedFavorites = localStorage.getItem('guarafood-favorites');
+        if (savedFavorites) {
+            try {
+                setFavorites(JSON.parse(savedFavorites));
+            } catch (e) {
+                console.error("Failed to parse favorites", e);
+            }
+        }
+
         const loadInitialData = async () => {
             setIsLoading(true);
             try {
-                // Fetch restaurants
                 const restaurantsData = await fetchRestaurants();
                 setRestaurants(restaurantsData);
 
-                // Check URL for restaurant ID parameter (?r=15)
                 const urlParams = new URLSearchParams(window.location.search);
                 const restaurantIdParam = urlParams.get('r');
                 if (restaurantIdParam) {
@@ -341,7 +352,6 @@ const CustomerView: React.FC<CustomerViewProps> = ({ selectedRestaurant, onSelec
                 }
 
             } catch (err: any) {
-                // Determine error message
                 let message = 'Falha ao buscar restaurantes.';
                 if (typeof err === 'string') message = err;
                 else if (err.message) message = err.message;
@@ -354,24 +364,58 @@ const CustomerView: React.FC<CustomerViewProps> = ({ selectedRestaurant, onSelec
         };
 
         loadInitialData();
-    }, []); // Empty dependency array means it runs once on mount
+    }, []);
+
+    const toggleFavorite = (e: React.MouseEvent, restaurantId: number) => {
+        e.stopPropagation();
+        setFavorites(prev => {
+            let newFavorites;
+            if (prev.includes(restaurantId)) {
+                newFavorites = prev.filter(id => id !== restaurantId);
+            } else {
+                newFavorites = [...prev, restaurantId];
+            }
+            localStorage.setItem('guarafood-favorites', JSON.stringify(newFavorites));
+            return newFavorites;
+        });
+    };
 
     const categories = useMemo(() => {
         const allCategories = restaurants.flatMap(r => r.category ? r.category.split(',').map(c => c.trim()) : []);
-        return ['Todos', ...Array.from(new Set(allCategories))];
+        // Added 'Favoritos' at the start
+        return ['Todos', 'Favoritos', ...Array.from(new Set(allCategories))];
     }, [restaurants]);
 
     const filteredRestaurants = useMemo(() => {
         return restaurants.filter(restaurant => {
-            // Updated filtering logic for multi-select and comma-separated categories
             const restaurantCategories = restaurant.category ? restaurant.category.split(',').map(c => c.trim()) : [];
-            const matchesCategory = selectedCategories.includes('Todos') || selectedCategories.length === 0 || selectedCategories.some(sel => restaurantCategories.includes(sel));
+            
+            // Logic:
+            // 1. Is 'Todos' selected? (Ignore other filters)
+            // 2. Is 'Favoritos' selected? (Must be in favorites list)
+            // 3. Are other categories selected? (Must match at least one)
+            
+            const isTodos = selectedCategories.includes('Todos') || selectedCategories.length === 0;
+            const wantsFavorites = selectedCategories.includes('Favoritos');
+            
+            // Filter out special categories for standard matching
+            const standardCategories = selectedCategories.filter(c => c !== 'Todos' && c !== 'Favoritos');
+            const hasStandardSelection = standardCategories.length > 0;
+
+            const matchesStandard = !hasStandardSelection || standardCategories.some(sel => restaurantCategories.includes(sel));
+            const matchesFavorites = !wantsFavorites || favorites.includes(restaurant.id);
+            
+            // If 'Todos' is explicitly selected, we usually just show everything, unless Favorites is ALSO selected.
+            // But usually 'Todos' acts as a reset.
+            // Here: Matches if (Todos OR Standard Match) AND (Matches Favorites requirement)
+            const matchesCategory = (isTodos || matchesStandard) && matchesFavorites;
             
             const matchesSearch = restaurant.name.toLowerCase().includes(searchTerm.toLowerCase());
             const matchesOpenFilter = !showOpenOnly || isRestaurantOpen(restaurant);
+            
             return matchesCategory && matchesSearch && matchesOpenFilter;
         });
-    }, [restaurants, searchTerm, selectedCategories, showOpenOnly]);
+    }, [restaurants, searchTerm, selectedCategories, showOpenOnly, favorites]);
 
     const handleBannerClick = (targetType: 'restaurant' | 'category', targetValue: string) => {
         if (targetType === 'restaurant') {
@@ -382,12 +426,9 @@ const CustomerView: React.FC<CustomerViewProps> = ({ selectedRestaurant, onSelec
                 console.warn(`Banner clicked for non-existent restaurant: ${targetValue}`);
             }
         } else if (targetType === 'category') {
-            // Check if the category exists in the available list
             const targetCategory = categories.find(c => c === targetValue);
             if (targetCategory) {
-                // For banners, we just set the single category
                 setSelectedCategories([targetCategory]);
-                // Also clear search term to ensure category is visible
                 setSearchTerm('');
             } else {
                 console.warn(`Banner clicked for non-existent category: ${targetValue}`);
@@ -402,25 +443,22 @@ const CustomerView: React.FC<CustomerViewProps> = ({ selectedRestaurant, onSelec
         }
 
         setSelectedCategories(prev => {
-            // If "Todos" was selected, clear it and start fresh with the clicked category
-            if (prev.includes('Todos')) {
-                return [category];
-            }
+            // Remove 'Todos' if selecting something else
+            let newSelection = prev.filter(c => c !== 'Todos');
 
-            // Toggle logic
-            if (prev.includes(category)) {
-                const newSelection = prev.filter(c => c !== category);
-                // If we deselected everything, go back to "Todos"
-                return newSelection.length === 0 ? ['Todos'] : newSelection;
+            if (newSelection.includes(category)) {
+                newSelection = newSelection.filter(c => c !== category);
             } else {
-                return [...prev, category];
+                newSelection = [...newSelection, category];
             }
+            
+            // If empty, go back to 'Todos'
+            return newSelection.length === 0 ? ['Todos'] : newSelection;
         });
     };
 
     const handleBackToHome = () => {
         onSelectRestaurant(null);
-        // Clear URL param without refreshing
         window.history.replaceState({}, '', window.location.pathname);
     };
 
@@ -429,7 +467,6 @@ const CustomerView: React.FC<CustomerViewProps> = ({ selectedRestaurant, onSelec
         return <div className="h-screen flex items-center justify-center"><Spinner message="Buscando os melhores restaurantes..." /></div>;
     }
     
-    // Display global error (e.g., failed to fetch restaurants)
     if (error) {
         return (
             <div className="min-h-screen flex items-center justify-center p-4 bg-red-50">
@@ -463,12 +500,11 @@ const CustomerView: React.FC<CustomerViewProps> = ({ selectedRestaurant, onSelec
 
     return (
         <>
-            <main className="pb-16"> {/* Add padding bottom for OrderTracker */}
+            <main className="pb-16">
                 <div
                     className="relative p-6 sm:p-10 text-center border-b border-orange-100 min-h-[250px] flex flex-col justify-center overflow-hidden"
                     role="banner"
                 >
-                    {/* Replaced backgroundImage with OptimizedImage for better performance and lazy loading control */}
                     <div className="absolute inset-0 bg-[#fff7ed]">
                         {headerImage && (
                             <OptimizedImage 
@@ -512,19 +548,21 @@ const CustomerView: React.FC<CustomerViewProps> = ({ selectedRestaurant, onSelec
                             </div>
                         </label>
                     </div>
-                    <div className="flex space-x-3 overflow-x-auto pb-3 -mx-4 px-4">
+                    <div className="flex space-x-3 overflow-x-auto pb-3 -mx-4 px-4 scrollbar-hide">
                         {categories.map(category => {
                             const isSelected = selectedCategories.includes(category);
+                            const isFavorites = category === 'Favoritos';
                             return (
                                 <button
                                     key={category}
                                     onClick={() => handleCategoryClick(category)}
-                                    className={`px-4 py-2 rounded-full font-semibold text-sm whitespace-nowrap transform transition-all duration-200 ease-in-out hover:scale-105 ${
+                                    className={`px-4 py-2 rounded-full font-semibold text-sm whitespace-nowrap transform transition-all duration-200 ease-in-out hover:scale-105 flex items-center gap-2 ${
                                         isSelected
-                                            ? 'bg-orange-600 text-white shadow-lg' 
-                                            : 'bg-white text-gray-700 border hover:shadow-md'
+                                            ? isFavorites ? 'bg-red-500 text-white shadow-lg border-red-500' : 'bg-orange-600 text-white shadow-lg'
+                                            : isFavorites ? 'bg-white text-red-500 border border-red-200' : 'bg-white text-gray-700 border hover:shadow-md'
                                     }`}
                                 >
+                                    {isFavorites && <HeartIcon className={`w-4 h-4 ${isSelected ? 'fill-white' : 'fill-red-500'}`} filled={true} />}
                                     {category}
                                 </button>
                             );
@@ -533,11 +571,20 @@ const CustomerView: React.FC<CustomerViewProps> = ({ selectedRestaurant, onSelec
                 </div>
 
                 <div className="p-4">
-                    <h2 className="text-xl font-semibold mb-3">Restaurantes</h2>
+                    <h2 className="text-xl font-semibold mb-3">Restaurantes {selectedCategories.includes('Favoritos') && 'Favoritos'}</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {filteredRestaurants.map(restaurant => {
                             const isOpen = isRestaurantOpen(restaurant);
-                            return <RestaurantCard key={restaurant.id} restaurant={restaurant} onClick={() => onSelectRestaurant(restaurant)} isOpen={isOpen} />;
+                            return (
+                                <RestaurantCard 
+                                    key={restaurant.id} 
+                                    restaurant={restaurant} 
+                                    onClick={() => onSelectRestaurant(restaurant)} 
+                                    isOpen={isOpen}
+                                    isFavorite={favorites.includes(restaurant.id)}
+                                    onToggleFavorite={(e) => toggleFavorite(e, restaurant.id)}
+                                />
+                            );
                         })}
                     </div>
                     {filteredRestaurants.length === 0 && <p className="text-center text-gray-500 col-span-full py-8">Nenhum restaurante encontrado.</p>}

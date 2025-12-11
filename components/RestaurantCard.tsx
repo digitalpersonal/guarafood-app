@@ -4,20 +4,16 @@ import OptimizedImage from './OptimizedImage';
 
 interface RestaurantCardProps {
   restaurant: Restaurant;
-  onClick: (restaurant: Restaurant) => void; // Reverted: now takes full restaurant object
+  onClick: (restaurant: Restaurant) => void;
   isOpen: boolean;
+  isFavorite?: boolean;
+  onToggleFavorite?: (e: React.MouseEvent) => void;
 }
 
 const CreditCardIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15A2.25 2.25 0 002.25 6.75v10.5A2.25 2.25 0 004.5 19.5z" />
   </svg>
-);
-
-const ClockIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
 );
 
 const WhatsAppIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -32,8 +28,14 @@ const BookOpenIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+const HeartIcon: React.FC<{ className?: string; filled?: boolean }> = ({ className, filled }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill={filled ? "currentColor" : "none"} viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+    </svg>
+);
 
-const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, isOpen }) => {
+
+const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, isOpen, isFavorite, onToggleFavorite }) => {
 
   const cleanedPhone = restaurant.phone.replace(/\D/g, '');
   const whatsappUrl = `https://wa.me/55${cleanedPhone}`;
@@ -43,13 +45,23 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, is
   return (
     <div 
       className={`bg-white rounded-lg shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col relative ${!isOpen ? 'opacity-60' : ''}`}
-      onClick={() => onClick(restaurant)} // Reverted: Pass full restaurant object to onClick
+      onClick={() => onClick(restaurant)}
     >
       {!isOpen && (
         <div className="absolute top-0 right-0 bg-gray-700 text-white text-xs font-bold px-2 py-0.5 rounded-bl-lg z-20">
             FECHADO
         </div>
       )}
+      
+      {/* Botão de Favorito (Flutuante) */}
+      <button 
+        onClick={onToggleFavorite}
+        className="absolute top-2 right-2 z-30 p-2 rounded-full bg-white/80 backdrop-blur-sm shadow-sm hover:bg-white transition-all hover:scale-110 active:scale-90"
+        title={isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+      >
+        <HeartIcon className={`w-5 h-5 ${isFavorite ? 'text-red-500 fill-red-500' : 'text-gray-400'}`} filled={isFavorite} />
+      </button>
+
       <div className="bg-orange-600 text-white text-sm font-bold px-4 py-1 text-center">
         {restaurant.category}
       </div>
@@ -61,7 +73,7 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, is
         />
         <div className="flex-grow min-w-0">
           <div className="flex justify-between items-start">
-              <h3 className="text-lg font-bold text-gray-800 truncate">{restaurant.name}</h3>
+              <h3 className="text-lg font-bold text-gray-800 truncate pr-6">{restaurant.name}</h3>
           </div>
           
           {restaurant.description && (

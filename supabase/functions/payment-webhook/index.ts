@@ -45,9 +45,10 @@ serve(async (req: Request) => {
         }
 
         // CRITICAL FIX: Use Service Role Key
+        // Changed from SUPABASE_SERVICE_ROLE_KEY to SERVICE_ROLE_KEY
         const supabaseAdmin = createClient(
             Deno.env.get('SUPABASE_URL') ?? '',
-            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+            Deno.env.get('SERVICE_ROLE_KEY') ?? ''
         );
 
         // 3. Buscar Access Token do Restaurante

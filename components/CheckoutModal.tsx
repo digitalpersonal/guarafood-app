@@ -299,9 +299,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             // Automatic Fallback to Manual Pix on Error
             if (restaurant.manualPixKey) {
                 addToast({ 
-                    message: "Pix Automático indisponível. Mudando para Pix Manual.", 
+                    message: `Pix Auto indisponível: ${err.message}. Usando Manual.`, 
                     type: 'warning', 
-                    duration: 5000 
+                    duration: 6000 
                 });
                 setIsManualPix(true);
                 setCurrentStep('PIX_PAYMENT');

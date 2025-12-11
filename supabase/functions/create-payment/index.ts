@@ -17,9 +17,10 @@ serve(async (req: Request) => {
 
   try {
     // CRITICAL FIX: Use SERVICE_ROLE_KEY to bypass RLS and ensure we can read the secure token
+    // Changed from SUPABASE_SERVICE_ROLE_KEY to SERVICE_ROLE_KEY to avoid CLI restrictions
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SERVICE_ROLE_KEY') ?? ''
     )
 
     const { restaurantId, orderData } = await req.json()
