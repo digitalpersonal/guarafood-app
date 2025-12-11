@@ -2,12 +2,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
-// Use fetchRestaurantByIdSecure to get the token
 import { fetchRestaurantByIdSecure, updateRestaurant } from '../services/databaseService';
 import type { Restaurant, OperatingHours, Order } from '../types';
 import Spinner from './Spinner';
 import { SUPABASE_URL } from '../config';
 import PrintableOrder from './PrintableOrder';
+
+// --- COMPONENTS AUXILIARES ---
 
 const NotificationSettings: React.FC = () => {
     const { addToast } = useNotification();
@@ -165,6 +166,7 @@ const RestaurantSettings: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [showFixModal, setShowFixModal] = useState(false); // Modal para fix de colunas
     const [testOrder, setTestOrder] = useState<Order | null>(null);
     const [testPrinterWidth, setTestPrinterWidth] = useState(80);
 
@@ -178,16 +180,18 @@ const RestaurantSettings: React.FC = () => {
         }
         try {
             setIsLoading(true);
-            // Use the secure fetch to retrieve existing credentials
             const data = await fetchRestaurantByIdSecure(restaurantId);
+            
+            // Garantir que operatingHours venha preenchido, senão default
+            let loadedHours = data.operatingHours;
+            if (!loadedHours || loadedHours.length !== 7) {
+                loadedHours = getDefaultOperatingHours();
+            }
+
             setRestaurant(data);
             setMercadoPagoToken(data.mercado_pago_credentials?.accessToken || '');
             setManualPixKey(data.manualPixKey || '');
-            if (data.operatingHours && data.operatingHours.length === 7) {
-                setOperatingHours(data.operatingHours);
-            } else {
-                setOperatingHours(getDefaultOperatingHours());
-            }
+            setOperatingHours(loadedHours);
             setError(null);
         } catch (err) {
             setError('Falha ao carregar as configurações do restaurante.');
@@ -216,7 +220,7 @@ const RestaurantSettings: React.FC = () => {
         setIsSaving(true);
         setError(null);
 
-        // 1. Prepare data
+        // 1. Prepare Data
         const openDays = operatingHours.filter(d => d.isOpen);
         const openingHoursSummary = openDays.length > 0 ? openDays[0].opens : '';
         const closingHoursSummary = openDays.length > 0 ? openDays[0].closes : '';
@@ -229,37 +233,47 @@ const RestaurantSettings: React.FC = () => {
             manualPixKey: manualPixKey
         };
 
-        // 2. OPTIMISTIC UPDATE: Update UI immediately
-        // We trust the user input. We merge with existing restaurant data but FORCE the ID to remain.
-        setRestaurant(prev => {
-            if (!prev) return null;
-            return {
-                ...prev,
-                ...updatePayload,
-                id: prev.id // CRITICAL: Never lose the ID
-            };
-        });
-
         try {
-            // 3. Send to Database
-            await updateRestaurant(restaurantId, updatePayload);
-            addToast({ message: 'Configurações salvas com sucesso!', type: 'success' });
+            // 2. Send to Database and WAIT for response
+            const savedData = await updateRestaurant(restaurantId, updatePayload);
             
-            // Note: We deliberately do NOT re-fetch data here. 
-            // The optimistic update is sufficient and prevents the UI from reverting 
-            // if the API cache is stale or returns an incomplete object.
+            // 3. STRICT VERIFICATION
+            // Check if what we got back from the DB matches what we sent.
+            // If the DB ignored the new columns, these values will match the OLD data (or be null), not `updatePayload`.
+            
+            const savedToken = savedData.mercado_pago_credentials?.accessToken || '';
+            const isTokenSaved = savedToken === mercadoPagoToken;
+            
+            // For complex objects like arrays, stringify comparison is safer
+            const savedHoursStr = JSON.stringify(savedData.operatingHours);
+            const sentHoursStr = JSON.stringify(operatingHours);
+            const isHoursSaved = savedHoursStr === sentHoursStr;
+
+            if (!isTokenSaved || !isHoursSaved) {
+                console.error("Verification Failed:", {
+                    sent: { token: mercadoPagoToken, hours: sentHoursStr },
+                    received: { token: savedToken, hours: savedHoursStr }
+                });
+                // Revert UI to show what is actually in DB to avoid confusion? 
+                // Or better: Show error and keep UI so user doesn't lose work.
+                
+                throw new Error("DIVERGÊNCIA: O banco de dados confirmou o recebimento, mas os dados não foram persistidos. Isso indica que as colunas 'operating_hours' ou 'mercado_pago_credentials' estão ausentes ou invisíveis para a API.");
+            }
+
+            // 4. Update Local State with Verified Data
+            setRestaurant(savedData);
+            addToast({ message: 'Configurações salvas e verificadas com sucesso!', type: 'success' });
             
         } catch (err: any) {
             console.error(err);
-            let msg = `Erro ao salvar: ${err.message}`;
-            if (msg.includes('mercado_pago_credentials')) {
-                 msg = "ERRO DE BANCO DE DADOS: A coluna 'mercado_pago_credentials' não existe.\nSOLUÇÃO: Rode no SQL Editor:\nALTER TABLE restaurants ADD COLUMN IF NOT EXISTS mercado_pago_credentials jsonb default '{}';";
-            }
-            setError(msg);
-            addToast({ message: "Erro ao salvar. Veja detalhes acima.", type: 'error' });
+            const msg = err.message || JSON.stringify(err);
+            setError(`FALHA AO SALVAR: ${msg}`);
             
-            // Revert state only on error (optional, but good practice)
-            // For now, we leave the optimistic state so user doesn't lose their typing.
+            if (msg.includes('DIVERGÊNCIA') || msg.includes('operating_hours') || msg.includes('mercado_pago_credentials')) {
+                setShowFixModal(true); // Show the fix modal immediately
+            }
+            
+            addToast({ message: "Erro crítico ao salvar. Verifique o alerta vermelho.", type: 'error', duration: 8000 });
         } finally {
             setIsSaving(false);
         }
@@ -269,7 +283,6 @@ const RestaurantSettings: React.FC = () => {
         if (!restaurant) return;
         setTestPrinterWidth(width);
         
-        // Create a dummy order object
         const dummyOrder: Order = {
             id: 'TESTE-123456',
             timestamp: new Date().toISOString(),
@@ -278,7 +291,7 @@ const RestaurantSettings: React.FC = () => {
             customerPhone: '(11) 99999-9999',
             customerAddress: {
                 zipCode: '00000-000',
-                street: 'Rua de Teste da Impressora',
+                street: 'Rua de Teste',
                 number: '100',
                 neighborhood: 'Centro',
                 complement: 'Apto 10'
@@ -286,27 +299,16 @@ const RestaurantSettings: React.FC = () => {
             items: [
                 {
                     id: '1',
-                    name: 'X-Burger Especial',
-                    price: 25.50,
-                    basePrice: 20.00,
+                    name: 'Item de Teste',
+                    price: 15.00,
+                    basePrice: 15.00,
                     quantity: 1,
                     imageUrl: '',
-                    description: 'Sem cebola',
-                    sizeName: 'Grande',
-                    selectedAddons: [{ id: 1, name: 'Bacon', price: 3.00, restaurantId: restaurant.id }, { id: 2, name: 'Ovo', price: 2.50, restaurantId: restaurant.id }]
-                },
-                {
-                    id: '2',
-                    name: 'Coca-Cola Lata',
-                    price: 6.00,
-                    basePrice: 6.00,
-                    quantity: 2,
-                    imageUrl: '',
-                    description: 'Gelada'
+                    description: 'Teste de impressão',
                 }
             ],
-            totalPrice: 37.50,
-            subtotal: 37.50,
+            totalPrice: 20.00,
+            subtotal: 15.00,
             deliveryFee: 5.00,
             restaurantId: restaurant.id,
             restaurantName: restaurant.name,
@@ -316,11 +318,8 @@ const RestaurantSettings: React.FC = () => {
         };
         
         setTestOrder(dummyOrder);
-        // Delay print to allow render
         setTimeout(() => {
             window.print();
-            // Clear test order after print dialog opens to keep DOM clean, or keep it.
-            // setTestOrder(null); 
         }, 500);
     };
     
@@ -328,7 +327,7 @@ const RestaurantSettings: React.FC = () => {
         if (restaurantId) {
             const url = `${window.location.origin}?r=${restaurantId}`; 
             navigator.clipboard.writeText(url);
-            addToast({ message: 'Link da loja copiado!', type: 'success' });
+            addToast({ message: 'Link copiado!', type: 'success' });
         }
     };
     
@@ -353,8 +352,15 @@ const RestaurantSettings: React.FC = () => {
                 <h2 className="text-2xl font-bold text-gray-800 border-b pb-3 mb-4">Configurações do Restaurante</h2>
                 
                 {error && (
-                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700 whitespace-pre-wrap">
-                        {error}
+                    <div className="mb-4 p-4 bg-red-100 border-l-4 border-red-500 rounded text-red-900 shadow-md">
+                        <p className="font-bold text-lg mb-1">⚠️ Erro de Salvamento</p>
+                        <p className="text-sm whitespace-pre-wrap">{error}</p>
+                        <button 
+                            onClick={() => setShowFixModal(true)}
+                            className="mt-3 bg-red-600 text-white font-bold py-2 px-4 rounded hover:bg-red-700 transition-colors"
+                        >
+                            Ver Solução / Corrigir Banco de Dados
+                        </button>
                     </div>
                 )}
 
@@ -362,7 +368,7 @@ const RestaurantSettings: React.FC = () => {
                     {/* STORE LINK SECTION */}
                     <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg">
                         <h3 className="text-lg font-bold text-orange-800 mb-2">Link da Loja</h3>
-                        <p className="text-sm text-orange-700 mb-3">Compartilhe este link com seus clientes para que eles abram direto no seu cardápio.</p>
+                        <p className="text-sm text-orange-700 mb-3">Compartilhe este link com seus clientes.</p>
                         <div className="flex gap-2">
                             <input 
                                 type="text" 
@@ -384,7 +390,7 @@ const RestaurantSettings: React.FC = () => {
 
                      <div className="border-t pt-6">
                         <h3 className="text-lg font-semibold text-gray-700 mb-3">Horário de Funcionamento</h3>
-                        <p className="text-sm text-gray-500 mb-4">Defina os dias e horários em que seu restaurante estará aberto para receber pedidos. Isso será exibido para os clientes.</p>
+                        <p className="text-sm text-gray-500 mb-4">Defina os dias em que seu restaurante abre. Isso controla se o cliente pode fazer pedidos.</p>
                         <div className="space-y-3">
                             {operatingHours.map((day, index) => (
                                 <div key={index} className="grid grid-cols-12 gap-2 items-center p-2 rounded-lg bg-gray-50 border">
@@ -399,9 +405,7 @@ const RestaurantSettings: React.FC = () => {
                                         <label htmlFor={`isopen-merchant-${index}`} className="font-semibold text-gray-700">{daysOfWeek[index]}</label>
                                     </div>
                                     <div className="col-span-4">
-                                        <label htmlFor={`opens-merchant-${index}`} className="text-xs text-gray-500">Abre às</label>
                                         <input 
-                                            id={`opens-merchant-${index}`}
                                             type="time" 
                                             value={day.opens}
                                             onChange={(e) => handleOperatingHoursChange(index, 'opens', e.target.value)}
@@ -410,9 +414,7 @@ const RestaurantSettings: React.FC = () => {
                                         />
                                     </div>
                                     <div className="col-span-4">
-                                        <label htmlFor={`closes-merchant-${index}`} className="text-xs text-gray-500">Fecha às</label>
                                         <input 
-                                            id={`closes-merchant-${index}`}
                                             type="time" 
                                             value={day.closes}
                                             onChange={(e) => handleOperatingHoursChange(index, 'closes', e.target.value)}
@@ -426,16 +428,12 @@ const RestaurantSettings: React.FC = () => {
                     </div>
 
                     <div className="border-t pt-6">
-                         <h3 className="text-lg font-semibold text-gray-700 mb-2">Chave Pix Manual (Modo Simplificado)</h3>
+                         <h3 className="text-lg font-semibold text-gray-700 mb-2">Chave Pix Manual</h3>
                          <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                             <p className="text-sm text-gray-600 mb-3">
-                                 <strong>Não conseguiu configurar o terminal?</strong> Use esta opção! <br/>
-                                 Insira sua chave Pix abaixo. O cliente verá essa chave, fará o pagamento no banco dele e o pedido chegará para você aprovar.
-                             </p>
-                             <label className="block text-xs font-bold text-gray-700 mb-1">Sua Chave Pix (CPF, CNPJ, Email ou Celular)</label>
+                             <label className="block text-xs font-bold text-gray-700 mb-1">Chave Pix (CPF, Email, Celular)</label>
                              <input 
                                 type="text" 
-                                placeholder="Ex: 123.456.789-00 ou seu@email.com" 
+                                placeholder="Ex: 123.456.789-00" 
                                 value={manualPixKey} 
                                 onChange={(e) => setManualPixKey(e.target.value)} 
                                 className="w-full p-3 border rounded-lg bg-white"
@@ -444,14 +442,13 @@ const RestaurantSettings: React.FC = () => {
                     </div>
 
                      <div className="border-t pt-6">
-                        <h3 className="text-lg font-semibold text-gray-700 mb-3">Gateway de Pagamento (Pix Automático)</h3>
-                        <p className="text-sm text-gray-500 mb-4">Opção avançada: Conecte sua conta do Mercado Pago para receber confirmação automática.</p>
+                        <h3 className="text-lg font-semibold text-gray-700 mb-3">Gateway de Pagamento (Opcional)</h3>
                         
                         <div className="space-y-6">
                             <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                                <h4 className="font-bold text-blue-800 mb-2">Configuração Mercado Pago</h4>
+                                <h4 className="font-bold text-blue-800 mb-2">Mercado Pago (Pix Automático)</h4>
                                 <label htmlFor="mercadoPagoToken" className="block text-sm font-medium text-gray-600 mb-1 mt-3">
-                                    Access Token de Produção:
+                                    Access Token:
                                 </label>
                                 <input
                                     id="mercadoPagoToken"
@@ -463,7 +460,7 @@ const RestaurantSettings: React.FC = () => {
                                 />
                                 
                                 <div className="mt-4">
-                                    <label className="block text-xs font-bold text-blue-600 mb-1">URL de Webhook (Copie e cole no Mercado Pago):</label>
+                                    <label className="block text-xs font-bold text-blue-600 mb-1">URL de Webhook:</label>
                                     <code className="block bg-white p-3 rounded border border-blue-200 text-xs text-gray-600 break-all select-all cursor-text font-mono">
                                         {webhookUrl}
                                     </code>
@@ -476,15 +473,59 @@ const RestaurantSettings: React.FC = () => {
                         <button
                             onClick={handleSaveChanges}
                             disabled={isSaving}
-                            className="bg-orange-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-orange-700 transition-colors disabled:bg-orange-300"
+                            className="bg-orange-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-orange-700 transition-colors disabled:bg-orange-300 shadow-lg text-lg"
                         >
-                            {isSaving ? 'Salvando...' : 'Salvar Alterações'}
+                            {isSaving ? 'Verificando...' : 'Salvar Alterações'}
                         </button>
                     </div>
                 </div>
             </div>
             
-            {/* Hidden Print Area for Testing */}
+            {/* Modal de Correção de Banco de Dados */}
+            {showFixModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center p-4">
+                    <div className="bg-white rounded-xl shadow-2xl p-6 max-w-lg w-full">
+                        <h3 className="text-xl font-bold text-red-600 mb-4 border-b pb-2">🚨 Correção Obrigatória de Banco de Dados</h3>
+                        
+                        <p className="text-gray-700 mb-4 text-sm">
+                            As alterações <strong>não estão sendo salvas</strong> porque o Banco de Dados (Supabase) não atualizou seu "mapa interno" (cache) para reconhecer as novas colunas <code>operating_hours</code> e <code>mercado_pago_credentials</code>.
+                        </p>
+                        
+                        <div className="bg-gray-100 p-4 rounded-lg mb-4 border border-gray-300">
+                            <p className="font-bold text-gray-800 mb-2">PASSO 1: Copie o comando abaixo:</p>
+                            <code className="block bg-black text-green-400 p-3 rounded text-xs overflow-x-auto font-mono select-all">
+                                NOTIFY pgrst, 'reload schema';
+                            </code>
+                        </div>
+
+                        <div className="space-y-4">
+                            <p className="text-gray-700 text-sm">
+                                <strong>PASSO 2:</strong> Vá ao <strong>Supabase Dashboard</strong> &gt; <strong>SQL Editor</strong> &gt; <strong>New Query</strong>.
+                            </p>
+                            <p className="text-gray-700 text-sm">
+                                <strong>PASSO 3:</strong> Cole o código e clique em <strong>RUN</strong>.
+                            </p>
+                        </div>
+
+                        <div className="mt-6 flex justify-end gap-3">
+                            <button 
+                                onClick={() => setShowFixModal(false)}
+                                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-semibold"
+                            >
+                                Fechar
+                            </button>
+                            <button 
+                                onClick={() => window.open('https://supabase.com/dashboard/project/_/sql/new', '_blank')}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold"
+                            >
+                                Abrir Supabase SQL Editor
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Hidden Print Area */}
             <div className="hidden">
                 <div id="printable-order">
                     {testOrder && <PrintableOrder order={testOrder} printerWidth={testPrinterWidth} />}
