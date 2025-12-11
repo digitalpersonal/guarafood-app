@@ -136,7 +136,7 @@ const PrinterSettings: React.FC<{ onTestPrint: (width: number) => void }> = ({ o
                     className="text-sm text-gray-700 font-semibold border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2"
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.356-1.07 2.448-2.384 2.448H6.384C5.07 24.948 4 23.856 4 22.5c0-1.44 1.152-3.036 2.405-4.5m11.318 0c.397-1.362.63-2.826.63-4.342 0-1.44-1.152-3.036-2.405-4.5l-1.050-1.242A3.375 3.375 0 0 0 14.25 6H9.75a3.375 3.375 0 0 0-2.345 1.05L6.34 8.292c-1.253 1.464-2.405 3.06-2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z" />
                     </svg>
                     Testar Impressão ({printerWidth}mm)
                 </button>
@@ -238,9 +238,15 @@ const RestaurantSettings: React.FC = () => {
             const savedData = await updateRestaurant(restaurantId, updatePayload);
             
             // 3. STRICT VERIFICATION
+            // First, ensure we actually got data back.
+            if (!savedData) {
+                throw new Error("O banco de dados não retornou confirmação do salvamento.");
+            }
+
             // Check if what we got back from the DB matches what we sent.
-            // If the DB ignored the new columns, these values will match the OLD data (or be null), not `updatePayload`.
+            // If the DB ignored the new columns, these values will match the OLD data (or be null/undefined).
             
+            // Safe access using optional chaining
             const savedToken = savedData.mercado_pago_credentials?.accessToken || '';
             const isTokenSaved = savedToken === mercadoPagoToken;
             
@@ -254,10 +260,8 @@ const RestaurantSettings: React.FC = () => {
                     sent: { token: mercadoPagoToken, hours: sentHoursStr },
                     received: { token: savedToken, hours: savedHoursStr }
                 });
-                // Revert UI to show what is actually in DB to avoid confusion? 
-                // Or better: Show error and keep UI so user doesn't lose work.
                 
-                throw new Error("DIVERGÊNCIA: O banco de dados confirmou o recebimento, mas os dados não foram persistidos. Isso indica que as colunas 'operating_hours' ou 'mercado_pago_credentials' estão ausentes ou invisíveis para a API.");
+                throw new Error("DIVERGÊNCIA: O banco de dados confirmou o recebimento, mas os dados não foram persistidos. As colunas 'operating_hours' ou 'mercado_pago_credentials' parecem estar travadas ou ausentes no cache da API.");
             }
 
             // 4. Update Local State with Verified Data
@@ -269,11 +273,13 @@ const RestaurantSettings: React.FC = () => {
             const msg = err.message || JSON.stringify(err);
             setError(`FALHA AO SALVAR: ${msg}`);
             
+            // If it's a divergence or specific column error, show the fix modal
             if (msg.includes('DIVERGÊNCIA') || msg.includes('operating_hours') || msg.includes('mercado_pago_credentials')) {
-                setShowFixModal(true); // Show the fix modal immediately
+                setShowFixModal(true);
             }
             
-            addToast({ message: "Erro crítico ao salvar. Verifique o alerta vermelho.", type: 'error', duration: 8000 });
+            addToast({ message: "Erro crítico ao salvar. Veja detalhes no alerta vermelho.", type: 'error', duration: 8000 });
+            // IMPORTANT: We do NOT update local state here, so the user's changes remain on screen
         } finally {
             setIsSaving(false);
         }
@@ -488,7 +494,7 @@ const RestaurantSettings: React.FC = () => {
                         <h3 className="text-xl font-bold text-red-600 mb-4 border-b pb-2">🚨 Correção Obrigatória de Banco de Dados</h3>
                         
                         <p className="text-gray-700 mb-4 text-sm">
-                            As alterações <strong>não estão sendo salvas</strong> porque o Banco de Dados (Supabase) não atualizou seu "mapa interno" (cache) para reconhecer as novas colunas <code>operating_hours</code> e <code>mercado_pago_credentials</code>.
+                            O sistema detectou que o Banco de Dados não está salvando os horários ou o token. Isso ocorre por <strong>Cache de Esquema</strong> (API desatualizada).
                         </p>
                         
                         <div className="bg-gray-100 p-4 rounded-lg mb-4 border border-gray-300">
@@ -503,7 +509,7 @@ const RestaurantSettings: React.FC = () => {
                                 <strong>PASSO 2:</strong> Vá ao <strong>Supabase Dashboard</strong> &gt; <strong>SQL Editor</strong> &gt; <strong>New Query</strong>.
                             </p>
                             <p className="text-gray-700 text-sm">
-                                <strong>PASSO 3:</strong> Cole o código e clique em <strong>RUN</strong>.
+                                <strong>PASSO 3:</strong> Cole o comando e clique em <strong>RUN</strong>. Tente salvar novamente após isso.
                             </p>
                         </div>
 

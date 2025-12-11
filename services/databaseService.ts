@@ -164,13 +164,24 @@ export const updateRestaurant = async (id: number, restaurantData: Partial<Resta
     if (restaurantData.closingHours !== undefined) payload.closing_hours = restaurantData.closingHours;
     if (restaurantData.deliveryFee !== undefined) payload.delivery_fee = restaurantData.deliveryFee;
     
-    // IMPORTANT: JSON/Text fields that often cause issues
-    if (restaurantData.operatingHours !== undefined) payload.operating_hours = restaurantData.operatingHours;
-    if (restaurantData.mercado_pago_credentials !== undefined) payload.mercado_pago_credentials = restaurantData.mercado_pago_credentials;
-    if (restaurantData.manualPixKey !== undefined) payload.manual_pix_key = restaurantData.manualPixKey;
+    // IMPORTANT: JSON/Text fields mapping. 
+    // We map these explicitly to ensure 'snake_case' is sent to DB regardless of what TS thinks.
+    if (restaurantData.operatingHours !== undefined) {
+        payload.operating_hours = restaurantData.operatingHours; 
+    }
+    if (restaurantData.mercado_pago_credentials !== undefined) {
+        payload.mercado_pago_credentials = restaurantData.mercado_pago_credentials;
+    }
+    if (restaurantData.manualPixKey !== undefined) {
+        payload.manual_pix_key = restaurantData.manualPixKey;
+    }
 
     const { data, error } = await supabase.from('restaurants').update(payload).eq('id', id).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to update restaurant' });
+    
+    // Ensure we handle case where update returns null (rare but possible with RLS)
+    if (!data) return null as any; 
+    
     return normalizeRestaurant(data);
 };
 
