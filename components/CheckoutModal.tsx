@@ -227,7 +227,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const handlePixPayment = async (orderData: NewOrderData) => {
         // Fallback Logic Check: Check hasPixConfigured which handles masked tokens
-        const hasAutoPix = restaurant.hasPixConfigured && !!restaurant.mercado_pago_credentials?.accessToken && restaurant.mercado_pago_credentials.accessToken !== '';
+        const hasAutoPix = restaurant.hasPixConfigured;
         const hasManualPix = !!restaurant.manualPixKey;
 
         // If no auto credentials, go straight to manual

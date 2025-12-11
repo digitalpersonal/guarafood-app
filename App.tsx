@@ -71,9 +71,10 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
             try {
                 setIsLoading(true);
                 // PASSING TRUE TO IGNORE DAY FILTER (Fixes empty menu issue)
+                // FIX: Pass restaurant.id instead of restaurant object
                 const [menuData, addonsData] = await Promise.all([
-                    fetchMenuForRestaurant(restaurant, true), 
-                    fetchAddonsForRestaurant(restaurant),
+                    fetchMenuForRestaurant(restaurant.id, true), 
+                    fetchAddonsForRestaurant(restaurant.id),
                 ]);
 
                 setAllPizzas(menuData.flatMap(c => c.items).filter(item => item.isPizza));

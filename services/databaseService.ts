@@ -10,6 +10,8 @@ import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupo
 const normalizeRestaurant = (data: any): Restaurant => {
     if (!data) return data;
     const hasMpToken = !!data.mercado_pago_credentials?.accessToken;
+    const hasManualPix = !!data.manual_pix_key;
+    
     return {
         id: data.id,
         name: data.name,
@@ -28,7 +30,7 @@ const normalizeRestaurant = (data: any): Restaurant => {
         // Mask the token for public view, but indicate it exists
         mercado_pago_credentials: { accessToken: hasMpToken ? "PROTECTED" : "" },
         manualPixKey: data.manual_pix_key,
-        hasPixConfigured: hasMpToken || (!!data.manual_pix_key)
+        hasPixConfigured: hasMpToken || hasManualPix // Flag to tell frontend Pix is available
     };
 };
 
@@ -202,7 +204,6 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
 };
 
 export const deleteRestaurant = async (id: number): Promise<void> => {
-    // Note: We use the Edge Function for this usually to cleanup users, but direct DB delete works if Cascade is set
     const { error } = await supabase.functions.invoke('delete-restaurant-and-user', {
         body: { restaurantId: id }
     });
@@ -292,7 +293,6 @@ export const deleteBanner = async (id: number): Promise<void> => {
 // ==============================================================================
 
 export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilter = false): Promise<MenuCategory[]> => {
-    // 1. Fetch Categories
     const { data: categoriesData, error: catError } = await supabase
         .from('menu_categories')
         .select('*')
@@ -301,7 +301,6 @@ export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilt
     
     handleSupabaseError({ error: catError, customMessage: 'Failed to fetch menu categories' });
 
-    // 2. Fetch Items
     const { data: itemsData, error: itemError } = await supabase
         .from('menu_items')
         .select('*')
@@ -310,7 +309,6 @@ export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilt
 
     handleSupabaseError({ error: itemError, customMessage: 'Failed to fetch menu items' });
 
-    // 3. Fetch Combos
     const { data: combosData, error: comboError } = await supabase
         .from('combos')
         .select('*')
@@ -318,7 +316,6 @@ export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilt
 
     handleSupabaseError({ error: comboError, customMessage: 'Failed to fetch combos' });
 
-    // 4. Fetch Active Promotions
     const today = new Date().toISOString();
     const { data: promosData, error: promoError } = await supabase
         .from('promotions')
@@ -327,20 +324,16 @@ export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilt
         .lte('start_date', today)
         .gte('end_date', today);
 
-    // Don't throw on promo error, just log (table might not exist yet)
     if (promoError) console.warn("Could not fetch promotions:", promoError);
 
     const promotions = (promosData || []).map(normalizePromotion);
     const todayIndex = new Date().getDay();
 
-    // 5. Structure Data
     const categories: MenuCategory[] = (categoriesData || []).map(normalizeCategory).map(category => {
-        // Filter items for this category
         let items = (itemsData || [])
             .map(normalizeItem)
             .filter(item => item.categoryId === category.id);
 
-        // Filter by availability (unless ignoring, e.g. for admin editor)
         if (!ignoreDayFilter) {
             items = items.filter(item => 
                 !item.availableDays || 
@@ -349,7 +342,6 @@ export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilt
             );
         }
 
-        // Apply Promotions to Items
         items = items.map(item => {
             const activePromo = promotions.find(p => p.targetType === 'ITEM' && p.targetIds.includes(item.id));
             if (activePromo) {
@@ -364,12 +356,10 @@ export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilt
             return item;
         });
 
-        // Filter combos for this category
         let categoryCombos = (combosData || [])
             .map(normalizeCombo)
             .filter(combo => combo.categoryId === category.id);
 
-        // Apply Promotions to Combos
         categoryCombos = categoryCombos.map(combo => {
              const activePromo = promotions.find(p => p.targetType === 'COMBO' && p.targetIds.includes(combo.id));
              if (activePromo) {
@@ -394,7 +384,7 @@ export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilt
     return categories;
 };
 
-// --- CRUD OPERATIONS (Simplified for brevity, following same patterns) ---
+// --- CRUD OPERATIONS ---
 
 export const createCategory = async (restaurantId: number, name: string): Promise<void> => {
     const { error } = await supabase.from('menu_categories').insert({ restaurant_id: restaurantId, name });
@@ -426,7 +416,6 @@ export const updateCategoryOrder = async (restaurantId: number, categories: Menu
 };
 
 export const createMenuItem = async (restaurantId: number, item: any): Promise<void> => {
-    // First find category ID
     const { data: catData } = await supabase.from('menu_categories').select('id').eq('restaurant_id', restaurantId).eq('name', item.category).single();
     if (!catData) throw new Error(`Categoria ${item.category} não encontrada.`);
 
@@ -488,9 +477,6 @@ export const updateMenuItemOrder = async (restaurantId: number, items: MenuItem[
         restaurant_id: restaurantId,
         display_order: index
     }));
-    // Note: Upsert needs all required fields, but partial update might work if conflict resolution is set. 
-    // Safer to just update individual fields if upsert fails on missing constraints.
-    // For now assuming upsert works with ID.
     const { error } = await supabase.from('menu_items').upsert(updates, { onConflict: 'id' });
     handleSupabaseError({ error, customMessage: 'Failed to reorder items' });
 };
