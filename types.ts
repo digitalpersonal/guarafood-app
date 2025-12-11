@@ -1,4 +1,5 @@
 
+
 export interface Banner {
   id: number;
   title: string;
@@ -204,7 +205,7 @@ export interface User {
 export interface ToastOptions {
     id?: number;
     message: string;
-    type?: 'success' | 'error' | 'info';
+    type?: 'success' | 'error' | 'info' | 'warning';
     duration?: number;
 }
 

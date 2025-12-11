@@ -377,21 +377,47 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         try {
             // Se estamos criando NOVO ou ALTERANDO CREDENCIAIS de um existente
             if (!existingRestaurant || changeCredentials) {
-                 const { data, error: functionError } = await supabase.functions.invoke('create-restaurant-with-user', {
-                    body: {
-                        restaurantData: dbPayload, // Se existente, backend deve verificar pelo nome ou eu deveria passar ID? A função que criei usa o Nome para encontrar.
-                        userData: { email: merchantEmail, password: merchantPassword }
-                    },
-                });
+                try {
+                    const { data, error: functionError } = await supabase.functions.invoke('create-restaurant-with-user', {
+                        body: {
+                            restaurantData: dbPayload, 
+                            userData: { email: merchantEmail, password: merchantPassword }
+                        },
+                    });
 
-                if (functionError) throw functionError;
-                
-                if (data?.warning) {
-                    addToast({ message: data.warning, type: 'info', duration: 8000 });
-                } else if (data?.success) {
-                    addToast({ message: 'Restaurante e acesso salvos com sucesso!', type: 'success' });
-                } else {
-                     addToast({ message: 'Operação concluída.', type: 'info' });
+                    if (functionError) throw functionError;
+                    
+                    if (data?.warning) {
+                        addToast({ message: data.warning, type: 'info', duration: 8000 });
+                    } else if (data?.success) {
+                        addToast({ message: 'Restaurante e acesso salvos com sucesso!', type: 'success' });
+                    }
+                } catch (invokeError: any) {
+                    console.warn("Edge Function failed or missing, attempting direct SQL fallback...", invokeError);
+                    
+                    if (existingRestaurant) {
+                        // If updating credentials failed but we have a restaurant, just update the restaurant part
+                        // and warn about user
+                        const { error: updateError } = await supabase.from('restaurants').update(dbPayload).eq('id', existingRestaurant.id);
+                        if (updateError) throw updateError;
+                        
+                        addToast({ 
+                            message: 'Dados do restaurante atualizados! (Erro ao atualizar senha do lojista: Função não disponível)', 
+                            type: 'warning', 
+                            duration: 8000 
+                        });
+                    } else {
+                        // CREATE NEW - Fallback to Direct SQL Insert
+                        const { data: restData, error: restError } = await supabase.from('restaurants').insert(dbPayload).select().single();
+                        
+                        if (restError) throw restError;
+                        
+                        addToast({ 
+                            message: 'Restaurante criado via Modo de Segurança! (Atenção: O login do lojista NÃO foi criado. Crie manualmente no Supabase Auth)', 
+                            type: 'warning', 
+                            duration: 12000 
+                        });
+                    }
                 }
 
             } else {

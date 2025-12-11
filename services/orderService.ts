@@ -1,3 +1,4 @@
+
 import type { Order, OrderStatus, CartItem } from '../types';
 import { supabase, handleSupabaseError } from './api';
 
@@ -27,7 +28,11 @@ const normalizeOrder = (data: any): Order => {
     };
 };
 
-export const subscribeToOrders = (callback: (orders: Order[]) => void, restaurantId?: number): (() => void) => {
+export const subscribeToOrders = (
+    callback: (orders: Order[]) => void, 
+    restaurantId?: number,
+    onStatusChange?: (status: 'SUBSCRIBED' | 'CLOSED' | 'CHANNEL_ERROR' | 'TIMED_OUT') => void
+): (() => void) => {
     // Busca inicial
     fetchOrders(restaurantId).then(callback).catch(console.error);
 
@@ -48,7 +53,11 @@ export const subscribeToOrders = (callback: (orders: Order[]) => void, restauran
                 fetchOrders(restaurantId).then(callback).catch(console.error);
             }
         )
-        .subscribe();
+        .subscribe((status) => {
+            if (onStatusChange) {
+                onStatusChange(status);
+            }
+        });
 
     return () => {
         supabase.removeChannel(channel);

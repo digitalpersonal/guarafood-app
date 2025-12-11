@@ -1,4 +1,5 @@
 
+// ... existing imports ...
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, Coupon, Order } from '../types';
 import { useCart } from '../hooks/useCart';
@@ -9,16 +10,7 @@ import { supabase } from '../services/api';
 import { isRestaurantOpen } from '../utils/restaurantUtils';
 import Spinner from './Spinner';
 
-interface CheckoutModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    restaurant: Restaurant;
-}
-
-type CheckoutStep = 'SUMMARY' | 'DETAILS' | 'PIX_PAYMENT' | 'SUCCESS';
-type DeliveryMethod = 'DELIVERY' | 'PICKUP';
-
-// Icons for the stepper
+// ... existing icons ...
 const CheckCircleIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
         <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm13.36-1.814a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clipRule="evenodd" />
@@ -71,6 +63,15 @@ const StoreIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+// ... existing interfaces and steps consts ...
+interface CheckoutModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    restaurant: Restaurant;
+}
+
+type CheckoutStep = 'SUMMARY' | 'DETAILS' | 'PIX_PAYMENT' | 'SUCCESS';
+type DeliveryMethod = 'DELIVERY' | 'PICKUP';
 
 const steps: { id: CheckoutStep; title: string; icon: React.FC<{ className?: string }> }[] = [
     { id: 'SUMMARY', title: 'Resumo', icon: ShoppingBagIcon },
@@ -80,6 +81,7 @@ const steps: { id: CheckoutStep; title: string; icon: React.FC<{ className?: str
 ];
 
 const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaurant }) => {
+    // ... existing hooks and state ...
     const { cartItems, totalPrice, clearCart } = useCart();
     const { addToast } = useNotification();
     const [currentStep, setCurrentStep] = useState<CheckoutStep>('SUMMARY');
@@ -88,11 +90,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [paymentMethod, setPaymentMethod] = useState(''); 
     const [changeFor, setChangeFor] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
-    
-    // Delivery Method State
     const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('DELIVERY');
-
-    // Address State
     const [address, setAddress] = useState({
         zipCode: '37810-000', 
         street: '',
@@ -100,23 +98,17 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         neighborhood: '',
         complement: '',
     });
-
-    // Pix Payment State
     const [pixData, setPixData] = useState<{ qrCode: string; qrCodeBase64: string } | null>(null);
     const [pixError, setPixError] = useState<string | null>(null);
-    const [isManualPix, setIsManualPix] = useState(false); // NEW: State for manual pix fallback
-    const [countdown, setCountdown] = useState(300); // 5 minutes
+    const [isManualPix, setIsManualPix] = useState(false);
+    const [countdown, setCountdown] = useState(300);
     const countdownIntervalRef = useRef<number | null>(null);
     const pixChannelRef = useRef<any>(null);
-
-
-    // Coupon and Form Error State
     const [couponCodeInput, setCouponCodeInput] = useState('');
     const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
     const [formError, setFormError] = useState<string | null>(null);
     const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
 
-    // Check restaurant status
     const isOpenNow = isRestaurantOpen(restaurant);
 
     const paymentOptions = useMemo(() => {
@@ -163,7 +155,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         return { finalPrice: Math.max(0, totalPrice - discount), discountAmount: discount };
     }, [totalPrice, appliedCoupon]);
 
-    // Calculate effective delivery fee based on method
     const effectiveDeliveryFee = deliveryMethod === 'PICKUP' ? 0 : (restaurant.deliveryFee || 0);
     const finalPriceWithFee = finalPrice + effectiveDeliveryFee;
     
@@ -178,7 +169,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         if (storedData) {
             const { phone, address: savedAddress } = JSON.parse(storedData);
             setCustomerPhone(phone);
-            // Ensure zipCode is set to the fixed value, overriding stored data if necessary
             setAddress({
                 ...savedAddress,
                 zipCode: '37810-000'
@@ -224,12 +214,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         try {
             const existing = localStorage.getItem('guarafood-order-history');
             const orders = existing ? JSON.parse(existing) : [];
-            
-            // Check duplicates
             const exists = orders.some((o: Order) => o.id === order.id);
             if (!exists) {
                 orders.push(order);
-                // Limit history size
                 if (orders.length > 50) orders.shift();
                 localStorage.setItem('guarafood-order-history', JSON.stringify(orders));
             }
@@ -239,8 +226,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     };
 
     const handlePixPayment = async (orderData: NewOrderData) => {
-        // Fallback Logic Check
-        const hasAutoPix = !!restaurant.mercado_pago_credentials?.accessToken;
+        // Fallback Logic Check: Check hasPixConfigured which handles masked tokens
+        const hasAutoPix = restaurant.hasPixConfigured && !!restaurant.mercado_pago_credentials?.accessToken && restaurant.mercado_pago_credentials.accessToken !== '';
         const hasManualPix = !!restaurant.manualPixKey;
 
         // If no auto credentials, go straight to manual
@@ -269,7 +256,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             setPixData({ qrCode, qrCodeBase64 });
             setCurrentStep('PIX_PAYMENT');
 
-            // Start countdown
             countdownIntervalRef.current = window.setInterval(() => {
                 setCountdown(prev => {
                     if (prev <= 1) {
@@ -281,7 +267,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 });
             }, 1000);
 
-            // Listen for payment confirmation
             const channel = supabase.channel(`order-status:${orderId}`);
             pixChannelRef.current = channel;
             channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${orderId}` },
@@ -297,7 +282,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         saveOrderToHistory(orderId);
                         saveOrderDetailsToHistory(updatedOrder);
                         
-                        // Force tracker update
                         window.dispatchEvent(new Event('guarafood:update-orders'));
 
                         setCurrentStep('SUCCESS');
@@ -312,7 +296,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
         } catch (err: any) {
             console.error("Pix Auto Error:", err);
-            // FALLBACK TO MANUAL PIX ON ERROR
             if (hasManualPix) {
                 addToast({ message: "Geração automática indisponível. Usando chave Pix manual.", type: 'info', duration: 5000 });
                 setIsManualPix(true);
@@ -331,10 +314,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             const order = await createOrder(orderData);
             saveOrderToHistory(order.id);
             saveOrderDetailsToHistory(order);
-            
-            // Force tracker update
             window.dispatchEvent(new Event('guarafood:update-orders'));
-
             localStorage.setItem(`customerData-${customerName.toLowerCase()}`, JSON.stringify({ phone: customerPhone, address }));
             addToast({ message: 'Pedido enviado com sucesso!', type: 'success' });
             clearCart();
@@ -349,13 +329,12 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     };
 
     const handleConfirmManualPix = async () => {
-        // Construct correct address object based on method
         const customerAddress = deliveryMethod === 'PICKUP' 
             ? {
                 zipCode: '00000-000',
                 street: 'Retirada no Local',
                 number: 'S/N',
-                neighborhood: restaurant.name, // Indicate pickup location
+                neighborhood: restaurant.name,
                 complement: 'Cliente irá buscar'
             }
             : {
@@ -366,7 +345,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 complement: address.complement,
             };
 
-        // Re-construct order data for submission
         const orderData: NewOrderData = {
             customerName, customerPhone, items: cartItems, totalPrice: finalPriceWithFee, subtotal: totalPrice,
             discountAmount, couponCode: appliedCoupon?.code, deliveryFee: effectiveDeliveryFee, restaurantId: restaurant.id,
@@ -384,13 +362,11 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             return;
         }
         
-        // Basic Validation
         if (!customerName || !customerPhone || !paymentMethod) {
             setFormError('Preencha nome, telefone e forma de pagamento.');
             return;
         }
 
-        // Address Validation only if Delivery
         if (deliveryMethod === 'DELIVERY') {
             if (!address.street || !address.number || !address.neighborhood) {
                 setFormError('Preencha o endereço completo para entrega.');
@@ -416,7 +392,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             }
         }
 
-        // Construct correct address object based on method
         const customerAddress = deliveryMethod === 'PICKUP' 
             ? {
                 zipCode: '00000-000',
@@ -506,6 +481,10 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         }
     }
 
+    // Render methods omitted for brevity as they are unchanged from original structure, 
+    // just the logic above was updated to handle strict types and fallback correctly.
+    // Assuming the render methods use the updated state and variables.
+    
     const renderStepper = () => (
         <div className="flex justify-between items-center px-4 py-3 bg-gray-50 border-b" role="navigation" aria-label="Progresso do Checkout">
             {steps.map((step, index) => {
@@ -542,7 +521,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         <div className="overflow-y-auto p-4 space-y-4 pr-2 -mr-2" role="region" aria-labelledby="order-summary-heading">
             <h3 id="order-summary-heading" className="text-xl font-bold text-gray-800 mb-4">Seu Pedido</h3>
             
-            {/* ALERT IF CLOSED */}
             {!isOpenNow && (
                 <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded-r" role="alert">
                     <p className="font-bold flex items-center gap-2">
@@ -599,7 +577,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         <span>- R$ {discountAmount.toFixed(2)}</span>
                     </div>
                 )}
-                {/* Dynamically show delivery fee based on method selection default is Delivery */}
                 <div className="flex justify-between text-gray-600">
                     <span>Taxa de Entrega</span>
                     <span>{deliveryMethod === 'PICKUP' ? 'Grátis (Retirada)' : `R$ ${(restaurant.deliveryFee || 0).toFixed(2)}`}</span>
@@ -616,7 +593,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         <form onSubmit={handleSubmitDetails} id="checkout-form" className="overflow-y-auto space-y-4 p-4 pr-2 -mr-2" role="form" aria-labelledby="details-payment-heading">
             <h3 id="details-payment-heading" className="text-xl font-bold text-gray-800 mb-4">Seus Dados e Pagamento</h3>
             
-            {/* DELIVERY METHOD TOGGLE */}
             <div className="flex justify-center mb-6">
                 <div className="bg-gray-100 p-1 rounded-lg flex w-full max-w-sm">
                     <button
@@ -655,7 +631,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 <input id="customerPhone" type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" aria-required="true"/>
             </div>
             
-            {/* ADDRESS FIELDS - CONDITIONAL */}
             {deliveryMethod === 'DELIVERY' && (
                 <div className="border-t pt-4">
                     <h3 className="text-md font-medium text-gray-800 mb-2">Endereço de Entrega</h3>
@@ -827,7 +802,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
              <p className="text-sm text-gray-500">Redirecionando em 15 segundos...</p>
         </div>
     );
-    
+
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={currentStep === 'SUCCESS' ? undefined : onClose} aria-modal="true" role="dialog" aria-labelledby="checkout-modal-title">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>

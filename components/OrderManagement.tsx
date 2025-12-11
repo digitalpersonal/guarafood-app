@@ -41,6 +41,12 @@ const BookOpenIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+const SignalIcon: React.FC<{ className?: string; color?: string }> = ({ className, color }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={color || "currentColor"} className={className}>
+      <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm13.36-1.814a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clipRule="evenodd" />
+    </svg>
+);
+
 
 // Lazy load SalesDashboard to avoid heavy initial bundle
 const SalesDashboard = React.lazy(() => import('./SalesDashboard'));
@@ -54,6 +60,9 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     // State for Automatic Printing
     const [orderToPrint, setOrderToPrint] = useState<Order | null>(null);
     
+    // Connection Status
+    const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'DISCONNECTED'>('DISCONNECTED');
+    
     // Hook de som
     const { playNotification, initAudioContext } = useSound();
     
@@ -61,6 +70,41 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const previousOrdersStatusRef = useRef<Map<string, string>>(new Map());
     const isFirstLoadRef = useRef(true);
     const [printerWidth, setPrinterWidth] = useState<number>(80);
+
+    // Wake Lock Logic
+    useEffect(() => {
+        let wakeLock: any = null;
+
+        const requestWakeLock = async () => {
+            if ('wakeLock' in navigator) {
+                try {
+                    wakeLock = await (navigator as any).wakeLock.request('screen');
+                    console.log('Wake Lock is active!');
+                } catch (err: any) {
+                    console.error(`${err.name}, ${err.message}`);
+                }
+            }
+        };
+
+        requestWakeLock();
+
+        const handleVisibilityChange = () => {
+            if (wakeLock !== null && document.visibilityState === 'visible') {
+                requestWakeLock();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            if (wakeLock !== null) {
+                wakeLock.release().then(() => {
+                    console.log('Wake Lock released');
+                });
+            }
+        };
+    }, []);
 
     // Load printer width preference
     useEffect(() => {
@@ -142,7 +186,14 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             setOrders(allOrders);
             isFirstLoadRef.current = false;
 
-        }, currentUser.restaurantId);
+        }, currentUser.restaurantId, (status) => {
+            // Callback for connection status
+            if (status === 'SUBSCRIBED') {
+                setConnectionStatus('CONNECTED');
+            } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                setConnectionStatus('DISCONNECTED');
+            }
+        });
         
         return () => unsubscribe();
     }, [currentUser, playNotification]);
@@ -177,12 +228,20 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     
     return (
         <div className="w-full min-h-screen bg-gray-50" onClick={enableAudio} onTouchStart={enableAudio}>
-            <div className="bg-orange-600 text-white text-center text-xs font-bold p-1 cursor-pointer" onClick={enableAudio}>
-                <div className="flex items-center justify-center gap-2">
-                    <SpeakerIcon className="w-4 h-4" />
-                    Toque em qualquer lugar para ativar o som
-                </div>
+            <div 
+                className={`text-white text-center text-xs font-bold p-1 cursor-pointer flex items-center justify-center gap-2 transition-colors duration-500 ${connectionStatus === 'CONNECTED' ? 'bg-green-600' : 'bg-red-600'}`} 
+                onClick={enableAudio}
+                title={connectionStatus === 'CONNECTED' ? "Sistema online e recebendo pedidos" : "Desconectado. Verifique sua internet."}
+            >
+                <div className={`w-2 h-2 rounded-full ${connectionStatus === 'CONNECTED' ? 'bg-white animate-pulse' : 'bg-white'}`}></div>
+                {connectionStatus === 'CONNECTED' ? (
+                    <span>Sistema Online - Tela Ativa</span>
+                ) : (
+                    <span>Desconectado - Reconectando...</span>
+                )}
+                {connectionStatus === 'CONNECTED' && <SpeakerIcon className="w-3 h-3 ml-2 opacity-70" />}
             </div>
+
             <header className="p-4 sticky top-0 bg-gray-50 z-20 border-b">
                 <div className="flex justify-between items-center gap-4">
                     <div className="flex items-center space-x-4 flex-grow min-w-0">

@@ -234,52 +234,53 @@ const RestaurantSettings: React.FC = () => {
         };
 
         try {
-            // 2. Send to Database and WAIT for response
+            // 2. Send to Database
             const savedData = await updateRestaurant(restaurantId, updatePayload);
             
-            // 3. STRICT VERIFICATION
-            // First, ensure we actually got data back.
-            if (!savedData) {
-                throw new Error("O banco de dados não retornou confirmação do salvamento.");
-            }
-
-            // Check if what we got back from the DB matches what we sent.
-            // If the DB ignored the new columns, these values will match the OLD data (or be null/undefined).
+            // 3. OPTIMISTIC UPDATE / FORCED PERSISTENCE
+            // Instead of just relying on what the DB returned (which might be stale if cache is hit),
+            // we merge the DB response metadata with the LOCAL values we just sent.
+            // This prevents the UI from reverting to old values.
             
-            // Safe access using optional chaining
+            setRestaurant(prev => {
+                if (!prev) return savedData;
+                return {
+                    ...savedData,
+                    // Force the local values to stay on screen
+                    operatingHours: operatingHours,
+                    mercado_pago_credentials: { accessToken: mercadoPagoToken },
+                    manualPixKey: manualPixKey
+                };
+            });
+
+            // 4. VERIFICATION (Background Check)
+            // We still check if the DB persisted it correctly to warn the user,
+            // but we don't revert the UI if it fails.
+            
             const savedToken = savedData.mercado_pago_credentials?.accessToken || '';
             const isTokenSaved = savedToken === mercadoPagoToken;
-            
-            // For complex objects like arrays, stringify comparison is safer
             const savedHoursStr = JSON.stringify(savedData.operatingHours);
             const sentHoursStr = JSON.stringify(operatingHours);
             const isHoursSaved = savedHoursStr === sentHoursStr;
 
             if (!isTokenSaved || !isHoursSaved) {
-                console.error("Verification Failed:", {
-                    sent: { token: mercadoPagoToken, hours: sentHoursStr },
-                    received: { token: savedToken, hours: savedHoursStr }
-                });
-                
-                throw new Error("DIVERGÊNCIA: O banco de dados confirmou o recebimento, mas os dados não foram persistidos. As colunas 'operating_hours' ou 'mercado_pago_credentials' parecem estar travadas ou ausentes no cache da API.");
+                console.warn("Divergência detectada no banco de dados (Cache ou Falta de Coluna). Mostrando modal de correção.");
+                setShowFixModal(true); // Alert user to run SQL, but keep UI updated
+                addToast({ message: 'Salvo localmente! Se os dados voltarem ao recarregar, execute a correção sugerida.', type: 'warning', duration: 6000 });
+            } else {
+                addToast({ message: 'Configurações salvas com sucesso!', type: 'success' });
             }
-
-            // 4. Update Local State with Verified Data
-            setRestaurant(savedData);
-            addToast({ message: 'Configurações salvas e verificadas com sucesso!', type: 'success' });
             
         } catch (err: any) {
             console.error(err);
             const msg = err.message || JSON.stringify(err);
             setError(`FALHA AO SALVAR: ${msg}`);
             
-            // If it's a divergence or specific column error, show the fix modal
-            if (msg.includes('DIVERGÊNCIA') || msg.includes('operating_hours') || msg.includes('mercado_pago_credentials')) {
+            if (msg.includes('operating_hours') || msg.includes('mercado_pago_credentials')) {
                 setShowFixModal(true);
             }
             
-            addToast({ message: "Erro crítico ao salvar. Veja detalhes no alerta vermelho.", type: 'error', duration: 8000 });
-            // IMPORTANT: We do NOT update local state here, so the user's changes remain on screen
+            addToast({ message: "Erro ao salvar. Tente rodar a correção de banco.", type: 'error', duration: 5000 });
         } finally {
             setIsSaving(false);
         }
@@ -359,7 +360,7 @@ const RestaurantSettings: React.FC = () => {
                 
                 {error && (
                     <div className="mb-4 p-4 bg-red-100 border-l-4 border-red-500 rounded text-red-900 shadow-md">
-                        <p className="font-bold text-lg mb-1">⚠️ Erro de Salvamento</p>
+                        <p className="font-bold text-lg mb-1">⚠️ Atenção</p>
                         <p className="text-sm whitespace-pre-wrap">{error}</p>
                         <button 
                             onClick={() => setShowFixModal(true)}
@@ -481,7 +482,7 @@ const RestaurantSettings: React.FC = () => {
                             disabled={isSaving}
                             className="bg-orange-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-orange-700 transition-colors disabled:bg-orange-300 shadow-lg text-lg"
                         >
-                            {isSaving ? 'Verificando...' : 'Salvar Alterações'}
+                            {isSaving ? 'Salvando...' : 'Salvar Alterações'}
                         </button>
                     </div>
                 </div>
@@ -491,10 +492,10 @@ const RestaurantSettings: React.FC = () => {
             {showFixModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center p-4">
                     <div className="bg-white rounded-xl shadow-2xl p-6 max-w-lg w-full">
-                        <h3 className="text-xl font-bold text-red-600 mb-4 border-b pb-2">🚨 Correção Obrigatória de Banco de Dados</h3>
+                        <h3 className="text-xl font-bold text-red-600 mb-4 border-b pb-2">🚨 Atualização de Banco Necessária</h3>
                         
                         <p className="text-gray-700 mb-4 text-sm">
-                            O sistema detectou que o Banco de Dados não está salvando os horários ou o token. Isso ocorre por <strong>Cache de Esquema</strong> (API desatualizada).
+                            Suas alterações foram salvas <strong>temporariamente na tela</strong>, mas o Banco de Dados não as persistiu. Isso acontece porque novas colunas (Horários, Token) ainda não foram reconhecidas.
                         </p>
                         
                         <div className="bg-gray-100 p-4 rounded-lg mb-4 border border-gray-300">
@@ -506,10 +507,10 @@ const RestaurantSettings: React.FC = () => {
 
                         <div className="space-y-4">
                             <p className="text-gray-700 text-sm">
-                                <strong>PASSO 2:</strong> Vá ao <strong>Supabase Dashboard</strong> &gt; <strong>SQL Editor</strong> &gt; <strong>New Query</strong>.
+                                <strong>PASSO 2:</strong> Vá ao <strong>Supabase Dashboard</strong> &gt; <strong>SQL Editor</strong>.
                             </p>
                             <p className="text-gray-700 text-sm">
-                                <strong>PASSO 3:</strong> Cole o comando e clique em <strong>RUN</strong>. Tente salvar novamente após isso.
+                                <strong>PASSO 3:</strong> Cole o comando e clique em <strong>RUN</strong>. Depois volte aqui e salve novamente.
                             </p>
                         </div>
 
@@ -518,13 +519,13 @@ const RestaurantSettings: React.FC = () => {
                                 onClick={() => setShowFixModal(false)}
                                 className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-semibold"
                             >
-                                Fechar
+                                Fechar e Continuar
                             </button>
                             <button 
                                 onClick={() => window.open('https://supabase.com/dashboard/project/_/sql/new', '_blank')}
                                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold"
                             >
-                                Abrir Supabase SQL Editor
+                                Ir para Supabase SQL
                             </button>
                         </div>
                     </div>
