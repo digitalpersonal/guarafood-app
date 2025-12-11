@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { subscribeToOrders } from '../services/orderService';
 import { useAuth } from '../services/authService'; 
@@ -77,11 +78,14 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     // Effect to trigger print when orderToPrint changes
     useEffect(() => {
         if (orderToPrint) {
-            // A small delay to ensure React has flushed the PrintableOrder component to the DOM
+            // Increased delay to 500ms to ensure the PrintableOrder component is fully rendered in the DOM
+            // before the browser print dialog captures the screen. This prevents "blank page" issues.
             const timer = setTimeout(() => {
                 window.print();
-                setOrderToPrint(null); // Reset the state after printing is triggered
-            }, 0); 
+                // We clear the order after printing is triggered.
+                // Note: window.print() is blocking in some browsers, but in Kiosk mode it fires and returns.
+                setOrderToPrint(null); 
+            }, 500); 
             return () => clearTimeout(timer);
         }
     }, [orderToPrint]);

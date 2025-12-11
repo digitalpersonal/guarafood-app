@@ -9,22 +9,24 @@ interface PrintableOrderProps {
 
 const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 80 }) => {
     const widthCss = `${printerWidth}mm`;
-    const fontSizeTitle = printerWidth === 58 ? '14px' : '16px';
-    const fontSizeText = printerWidth === 58 ? '11px' : '12px';
-    const fontSizeSmall = '10px';
+    const fontSizeTitle = printerWidth === 58 ? '12px' : '14px';
+    const fontSizeText = printerWidth === 58 ? '10px' : '12px';
+    const fontSizeSmall = '9px';
 
     return (
-        <div style={{ fontFamily: '"Courier New", Courier, monospace', padding: '0', color: '#000', width: widthCss, margin: '0', boxSizing: 'border-box' }}>
+        <div style={{ fontFamily: 'monospace', padding: '0', color: '#000', width: widthCss, margin: '0', boxSizing: 'border-box', backgroundColor: 'white' }}>
             <style>
                 {`
                     @media print {
                         @page {
                             margin: 0;
-                            size: ${widthCss} auto; 
+                            size: auto;
                         }
-                        body {
-                            margin: 0;
-                            padding: 0;
+                        html, body {
+                            margin: 0 !important;
+                            padding: 0 !important;
+                            background: white;
+                            color: black;
                         }
                         /* Esconde tudo que não é area de impressão */
                         body * {
@@ -32,19 +34,22 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                             height: 0; 
                             overflow: hidden;
                         }
-                        /* Mostra apenas o cupom */
+                        /* Mostra apenas o cupom e garante que ele ocupe o topo */
                         #printable-order, #printable-order * {
                             visibility: visible;
                             height: auto;
                             overflow: visible;
+                            color: black !important; /* Força preto puro para térmica */
                         }
                         #printable-order {
-                            position: absolute;
+                            position: fixed;
                             left: 0;
                             top: 0;
                             width: 100%; 
                             max-width: ${widthCss};
-                            padding: 2px 0;
+                            padding: 5px 2px;
+                            background-color: white;
+                            z-index: 9999;
                         }
                         .print-item {
                             page-break-inside: avoid;
@@ -56,7 +61,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         margin-bottom: 5px;
                     }
                     .print-title {
-                        font-size: ${printerWidth === 58 ? '12px' : '14px'};
+                        font-size: ${printerWidth === 58 ? '11px' : '13px'};
                         font-weight: bold;
                         margin-bottom: 2px;
                         text-transform: uppercase;
@@ -75,21 +80,24 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
             </style>
             
             <div style={{ textAlign: 'center', marginBottom: '10px', borderBottom: '2px solid #000', paddingBottom: '5px' }}>
-                <h1 style={{ fontSize: fontSizeTitle, fontWeight: 'bold', margin: '0', wordBreak: 'break-word' }}>{order.restaurantName}</h1>
+                <h1 style={{ fontSize: fontSizeTitle, fontWeight: 'bold', margin: '0', wordBreak: 'break-word', textTransform: 'uppercase' }}>{order.restaurantName}</h1>
                 <p style={{ fontSize: fontSizeSmall, margin: '2px 0' }}>{new Date().toLocaleDateString('pt-BR')} - {new Date().toLocaleTimeString('pt-BR')}</p>
             </div>
 
             <div className="print-section">
                 <p className="print-text" style={{ fontSize: fontSizeTitle, fontWeight: 'bold', textAlign: 'center' }}>PEDIDO #{order.id.substring(0, 6)}</p>
-                <p className="print-text" style={{ textAlign: 'center', marginTop: '2px' }}>Via: Cozinha/Entrega</p>
+                <p className="print-text" style={{ textAlign: 'center', marginTop: '2px', fontWeight: 'bold' }}>
+                    {order.customerAddress ? 'ENTREGA' : 'RETIRADA / BALCÃO'}
+                </p>
             </div>
             
             <div className="print-section">
                 <p className="print-title">CLIENTE</p>
                 <p className="print-text" style={{fontWeight: 'bold'}}>{order.customerName}</p>
                 <p className="print-text">{order.customerPhone}</p>
-                 {order.customerAddress && (
+                 {order.customerAddress ? (
                     <div style={{ marginTop: '2px' }}>
+                        <p className="print-text" style={{fontWeight: 'bold'}}>Endereço:</p>
                         <p className="print-text">
                             {order.customerAddress.street}, {order.customerAddress.number}
                             <br />
@@ -97,21 +105,35 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                             {order.customerAddress.complement && ` (${order.customerAddress.complement})`}
                         </p>
                     </div>
+                ) : (
+                    <p className="print-text" style={{ fontStyle: 'italic', marginTop: '2px' }}>Retirada no local</p>
                 )}
             </div>
 
             <div className="print-section">
                 <p className="print-title">ITENS</p>
                 {order.items.map(item => (
-                    <div key={item.id} className="print-item" style={{ marginBottom: '6px' }}>
+                    <div key={item.id} className="print-item" style={{ marginBottom: '8px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                            <span className="print-text" style={{ fontWeight: 'bold', width: '70%' }}>{item.quantity}x {item.name}</span>
-                            <span className="print-text" style={{ width: '30%', textAlign: 'right' }}>R$ {(item.price * item.quantity).toFixed(2)}</span>
+                            <span className="print-text" style={{ fontWeight: 'bold', width: '75%' }}>{item.quantity}x {item.name}</span>
+                            <span className="print-text" style={{ width: '25%', textAlign: 'right' }}>{(item.price * item.quantity).toFixed(2)}</span>
                         </div>
+                        
                         {item.sizeName && <p style={{ fontSize: fontSizeSmall, margin: '0 0 0 10px', fontStyle: 'italic' }}>Tam: {item.sizeName}</p>}
+                        
+                        {/* Custom Options */}
+                        {item.selectedOptions && item.selectedOptions.length > 0 && (
+                            <ul style={{ fontSize: fontSizeSmall, margin: '0 0 0 10px', paddingLeft: '0', listStyle: 'none' }}>
+                                {item.selectedOptions.map((opt, idx) => (
+                                    <li key={idx}>+ {opt.optionName}</li>
+                                ))}
+                            </ul>
+                        )}
+
                         {item.halves && item.halves.length > 1 && (
                             <p style={{ fontSize: fontSizeSmall, margin: '0 0 0 10px' }}>½ {item.halves[0].name} | ½ {item.halves[1].name}</p>
                         )}
+                        
                         {item.selectedAddons && item.selectedAddons.length > 0 && (
                             <ul style={{ fontSize: fontSizeSmall, margin: '0 0 0 10px', paddingLeft: '0', listStyle: 'none' }}>
                                 {item.selectedAddons.map(addon => (
@@ -119,15 +141,23 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                                 ))}
                             </ul>
                         )}
-                        {item.description && <p style={{ fontSize: fontSizeSmall, margin: '0 0 0 10px', fontWeight: 'bold' }}>Obs: {item.description}</p>}
-                        {item.notes && <p style={{ fontSize: fontSizeSmall, margin: '0 0 0 10px', fontWeight: 'bold' }}>Nota: {item.notes}</p>}
+                        
+                        {item.description && <p style={{ fontSize: fontSizeSmall, margin: '2px 0 0 10px', color: '#333' }}>{item.description}</p>}
+                        
+                        {item.notes && (
+                            <p style={{ fontSize: fontSizeSmall, margin: '2px 0 0 10px', fontWeight: 'bold', textTransform: 'uppercase', border: '1px solid #000', padding: '1px 3px', display: 'inline-block' }}>
+                                OBS: {item.notes}
+                            </p>
+                        )}
                     </div>
                 ))}
             </div>
 
              <div className="print-section">
                 <p className="print-title">PAGAMENTO</p>
-                <p className="print-text"><strong>{order.paymentMethod}</strong></p>
+                <p className="print-text" style={{ fontWeight: 'bold', fontSize: '14px' }}>{order.paymentMethod}</p>
+                {order.paymentStatus === 'paid' && <p className="print-text" style={{fontWeight: 'bold'}}>[PAGO ONLINE]</p>}
+                {order.paymentStatus === 'pending' && order.paymentMethod !== 'Dinheiro' && <p className="print-text">[COBRAR NA ENTREGA]</p>}
             </div>
             
             <div>
@@ -137,12 +167,12 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                 </div>
                  {order.discountAmount && order.discountAmount > 0 && (
                     <div className="print-row print-text">
-                        <span>Desconto ({order.couponCode})</span>
+                        <span>Desconto</span>
                         <span>- R$ {order.discountAmount.toFixed(2)}</span>
                     </div>
                 )}
                  <div className="print-row print-text">
-                    <span>Entrega</span>
+                    <span>Taxa Entrega</span>
                     <span>R$ {order.deliveryFee?.toFixed(2)}</span>
                 </div>
                 <div className="print-row" style={{ borderTop: '2px solid #000', paddingTop: '5px', marginTop: '5px' }}>
@@ -151,9 +181,10 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                 </div>
             </div>
             
-            <div style={{ marginTop: '20px', textAlign: 'center', fontSize: fontSizeSmall }}>
-                <p>www.guarafood.com.br</p>
-                <p>.</p> {/* Ponto final para garantir corte de papel */}
+            <div style={{ marginTop: '25px', textAlign: 'center', fontSize: fontSizeSmall, fontWeight: 'bold' }}>
+                <p>*** FIM DO PEDIDO ***</p>
+                <br />
+                <p>.</p> {/* Ponto final extra para garantir corte de papel em algumas impressoras */}
             </div>
         </div>
     );
