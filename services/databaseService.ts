@@ -9,7 +9,8 @@ import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupo
 // Normalizer for public views (Masks sensitive data)
 const normalizeRestaurant = (data: any): Restaurant => {
     if (!data) return data;
-    const hasMpToken = !!data.mercado_pago_credentials?.accessToken;
+    // Strict check: Token must exist AND not be empty string
+    const hasMpToken = !!data.mercado_pago_credentials?.accessToken && data.mercado_pago_credentials.accessToken.trim().length > 0;
     const hasManualPix = !!data.manual_pix_key;
     
     return {
@@ -30,13 +31,15 @@ const normalizeRestaurant = (data: any): Restaurant => {
         // Mask the token for public view, but indicate it exists
         mercado_pago_credentials: { accessToken: hasMpToken ? "PROTECTED" : "" },
         manualPixKey: data.manual_pix_key,
-        hasPixConfigured: hasMpToken || hasManualPix // Flag to tell frontend Pix is available
+        hasPixConfigured: hasMpToken // CHANGED: Only true if Auto Pix is actually configured
     };
 };
 
 // Normalizer for Admin/Settings (Keeps sensitive data)
 const normalizeRestaurantSecure = (data: any): Restaurant => {
     if (!data) return data;
+    const hasMpToken = !!data.mercado_pago_credentials?.accessToken && data.mercado_pago_credentials.accessToken.trim().length > 0;
+    
     return {
         id: data.id,
         name: data.name,
@@ -54,7 +57,7 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         operatingHours: data.operating_hours,
         mercado_pago_credentials: data.mercado_pago_credentials || { accessToken: '' },
         manualPixKey: data.manual_pix_key,
-        hasPixConfigured: (!!data.mercado_pago_credentials?.accessToken) || (!!data.manual_pix_key)
+        hasPixConfigured: hasMpToken // CHANGED: Same logic for secure view
     };
 };
 

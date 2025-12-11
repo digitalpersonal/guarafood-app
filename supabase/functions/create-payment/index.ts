@@ -16,22 +16,29 @@ serve(async (req: Request) => {
   }
 
   try {
-    const supabaseClient = createClient(
+    // CRITICAL FIX: Use SERVICE_ROLE_KEY to bypass RLS and ensure we can read the secure token
+    const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
     const { restaurantId, orderData } = await req.json()
 
-    // 1. Buscar credenciais
-    const { data: restaurant, error: restError } = await supabaseClient
+    // 1. Buscar credenciais (Usando Admin Client para garantir leitura)
+    const { data: restaurant, error: restError } = await supabaseAdmin
       .from('restaurants')
       .select('mercado_pago_credentials')
       .eq('id', restaurantId)
       .single()
 
-    if (restError || !restaurant?.mercado_pago_credentials?.accessToken) {
-      throw new Error("Restaurante não configurou credenciais de pagamento (Access Token).")
+    if (restError) {
+        console.error("Erro ao buscar restaurante:", restError);
+        throw new Error("Restaurante não encontrado no banco de dados.");
+    }
+
+    if (!restaurant?.mercado_pago_credentials?.accessToken) {
+        console.error("Token MP ausente para restaurante:", restaurantId);
+        throw new Error("O restaurante ainda não configurou o Token do Mercado Pago no Painel.")
     }
 
     const accessToken = restaurant.mercado_pago_credentials.accessToken
@@ -56,7 +63,7 @@ serve(async (req: Request) => {
       timestamp: new Date().toISOString()
     }
 
-    const { data: order, error: orderError } = await supabaseClient
+    const { data: order, error: orderError } = await supabaseAdmin
       .from('orders')
       .insert(dbOrderPayload)
       .select()
@@ -68,6 +75,8 @@ serve(async (req: Request) => {
     const notificationUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/payment-webhook?restaurantId=${restaurantId}`;
 
     // 4. Criar Pix no Mercado Pago
+    console.log(`Criando preferencia MP para pedido ${order.id} com token iniciando em ${accessToken.substring(0, 5)}...`);
+    
     const mpResponse = await fetch('https://api.mercadopago.com/v1/payments', {
       method: 'POST',
       headers: {
@@ -76,11 +85,11 @@ serve(async (req: Request) => {
         'X-Idempotency-Key': crypto.randomUUID()
       },
       body: JSON.stringify({
-        transaction_amount: orderData.totalPrice,
-        description: `Pedido #${order.id.substring(0,6)}`,
+        transaction_amount: Number(orderData.totalPrice.toFixed(2)), // Ensure number format
+        description: `Pedido #${order.id.substring(0,6)} - ${orderData.restaurantName}`,
         payment_method_id: 'pix',
         payer: {
-          email: 'cliente@email.com', 
+          email: 'cliente@guarafood.com', // Placeholder valid email required by MP
           first_name: orderData.customerName.split(' ')[0],
           last_name: 'Cliente'
         },
@@ -92,13 +101,23 @@ serve(async (req: Request) => {
     const paymentData = await mpResponse.json()
 
     if (!mpResponse.ok) {
-      await supabaseClient.from('orders').update({ status: 'Cancelado' }).eq('id', order.id);
-      throw new Error(`Erro Mercado Pago: ${paymentData.message || 'Verifique o token'}`)
+      console.error("Erro MP API:", paymentData);
+      // Cancelar pedido localmente se falhar no MP
+      await supabaseAdmin.from('orders').update({ status: 'Cancelado' }).eq('id', order.id);
+      
+      const errorMsg = paymentData.message || 'Erro desconhecido no Mercado Pago';
+      
+      // Tratamento de erros comuns
+      if (errorMsg.includes("Unauthorized")) {
+          throw new Error("Token do Mercado Pago inválido ou expirado. Verifique no painel.");
+      }
+      
+      throw new Error(`Erro Mercado Pago: ${errorMsg}`)
     }
     
     // Salva o ID do pagamento no pedido
     if (paymentData.id) {
-         await supabaseClient.from('orders').update({ payment_id: String(paymentData.id) }).eq('id', order.id);
+         await supabaseAdmin.from('orders').update({ payment_id: String(paymentData.id) }).eq('id', order.id);
     }
 
     const qrCode = paymentData.point_of_interaction?.transaction_data?.qr_code
@@ -110,6 +129,7 @@ serve(async (req: Request) => {
     )
 
   } catch (error: any) {
+    console.error("Create Payment Function Error:", error);
     return new Response(
       JSON.stringify({ error: error.message }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
