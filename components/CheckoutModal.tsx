@@ -296,8 +296,13 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
         } catch (err: any) {
             console.error("Pix Auto Error:", err);
-            if (hasManualPix) {
-                addToast({ message: "Geração automática indisponível. Usando chave Pix manual.", type: 'info', duration: 5000 });
+            // Automatic Fallback to Manual Pix on Error
+            if (restaurant.manualPixKey) {
+                addToast({ 
+                    message: "Pix Automático indisponível. Mudando para Pix Manual.", 
+                    type: 'warning', 
+                    duration: 5000 
+                });
                 setIsManualPix(true);
                 setCurrentStep('PIX_PAYMENT');
             } else {
@@ -481,9 +486,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         }
     }
 
-    // Render methods omitted for brevity as they are unchanged from original structure, 
-    // just the logic above was updated to handle strict types and fallback correctly.
-    // Assuming the render methods use the updated state and variables.
+    // Render methods...
     
     const renderStepper = () => (
         <div className="flex justify-between items-center px-4 py-3 bg-gray-50 border-b" role="navigation" aria-label="Progresso do Checkout">
