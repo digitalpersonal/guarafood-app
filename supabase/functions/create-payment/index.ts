@@ -16,16 +16,19 @@ serve(async (req: Request) => {
   }
 
   try {
-    // CRITICAL FIX: Use SERVICE_ROLE_KEY to bypass RLS and ensure we can read the secure token
-    // Changed from SUPABASE_SERVICE_ROLE_KEY to SERVICE_ROLE_KEY to avoid CLI restrictions
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SERVICE_ROLE_KEY') ?? ''
-    )
+    // 1. Configuração Robusta do Cliente Supabase
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? 'https://xfousvlrhinlvrpryscy.supabase.co';
+    const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!serviceRoleKey) {
+        throw new Error("Configuração de Servidor incompleta: SERVICE_ROLE_KEY não encontrada.");
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
     const { restaurantId, orderData } = await req.json()
 
-    // 1. Buscar credenciais (Usando Admin Client para garantir leitura)
+    // 2. Buscar credenciais
     const { data: restaurant, error: restError } = await supabaseAdmin
       .from('restaurants')
       .select('mercado_pago_credentials')
@@ -38,13 +41,12 @@ serve(async (req: Request) => {
     }
 
     if (!restaurant?.mercado_pago_credentials?.accessToken) {
-        console.error("Token MP ausente para restaurante:", restaurantId);
-        throw new Error("O restaurante ainda não configurou o Token do Mercado Pago no Painel.")
+        throw new Error("O Token do Mercado Pago não está configurado neste restaurante. Vá em Configurações > Automação.")
     }
 
     const accessToken = restaurant.mercado_pago_credentials.accessToken
 
-    // 2. SALVAR PEDIDO NO BANCO (Mapeando para snake_case)
+    // 3. SALVAR PEDIDO NO BANCO
     const dbOrderPayload = {
       restaurant_id: orderData.restaurantId,
       customer_name: orderData.customerName,
@@ -70,14 +72,16 @@ serve(async (req: Request) => {
       .select()
       .single()
 
-    if (orderError) throw new Error("Erro ao salvar pedido no banco: " + orderError.message)
+    if (orderError) throw new Error("Erro de Banco de Dados ao criar pedido: " + orderError.message)
     
-    // 3. Webhook URL
-    const notificationUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/payment-webhook?restaurantId=${restaurantId}`;
+    // 4. Webhook URL (Com Fallback Hardcoded para garantir que funcione)
+    // Se a variável de ambiente falhar, usa o link direto do projeto
+    const baseUrl = Deno.env.get('SUPABASE_URL') || 'https://xfousvlrhinlvrpryscy.supabase.co';
+    const notificationUrl = `${baseUrl}/functions/v1/payment-webhook?restaurantId=${restaurantId}`;
 
-    // 4. Criar Pix no Mercado Pago
-    console.log(`Criando preferencia MP para pedido ${order.id} com token iniciando em ${accessToken.substring(0, 5)}...`);
-    
+    console.log("Gerando Pix com Webhook:", notificationUrl);
+
+    // 5. Chamada ao Mercado Pago
     const mpResponse = await fetch('https://api.mercadopago.com/v1/payments', {
       method: 'POST',
       headers: {
@@ -86,11 +90,11 @@ serve(async (req: Request) => {
         'X-Idempotency-Key': crypto.randomUUID()
       },
       body: JSON.stringify({
-        transaction_amount: Number(orderData.totalPrice.toFixed(2)), // Ensure number format
+        transaction_amount: Number(orderData.totalPrice.toFixed(2)),
         description: `Pedido #${order.id.substring(0,6)} - ${orderData.restaurantName}`,
         payment_method_id: 'pix',
         payer: {
-          email: 'cliente@guarafood.com', // Placeholder valid email required by MP
+          email: 'cliente@guarafood.com',
           first_name: orderData.customerName.split(' ')[0],
           last_name: 'Cliente'
         },
@@ -103,17 +107,18 @@ serve(async (req: Request) => {
 
     if (!mpResponse.ok) {
       console.error("Erro MP API:", paymentData);
-      // Cancelar pedido localmente se falhar no MP
       await supabaseAdmin.from('orders').update({ status: 'Cancelado' }).eq('id', order.id);
       
       const errorMsg = paymentData.message || 'Erro desconhecido no Mercado Pago';
       
-      // Tratamento de erros comuns
-      if (errorMsg.includes("Unauthorized")) {
-          throw new Error("Token do Mercado Pago inválido ou expirado. Verifique no painel.");
+      if (errorMsg.includes("Unauthorized") || paymentData.status === 401) {
+          throw new Error("Token do Mercado Pago inválido. Verifique se o Access Token está correto nas configurações.");
+      }
+      if (errorMsg.includes("notification_url")) {
+          throw new Error("Erro na configuração do Webhook (URL inválida).");
       }
       
-      throw new Error(`Erro Mercado Pago: ${errorMsg}`)
+      throw new Error(`Mercado Pago recusou: ${errorMsg}`)
     }
     
     // Salva o ID do pagamento no pedido
@@ -130,7 +135,7 @@ serve(async (req: Request) => {
     )
 
   } catch (error: any) {
-    console.error("Create Payment Function Error:", error);
+    console.error("Critical Function Error:", error);
     return new Response(
       JSON.stringify({ error: error.message }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }

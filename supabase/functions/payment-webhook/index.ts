@@ -44,12 +44,16 @@ serve(async (req: Request) => {
             return new Response("Missing Data", { status: 200, headers: corsHeaders }); 
         }
 
-        // CRITICAL FIX: Use Service Role Key
-        // Changed from SUPABASE_SERVICE_ROLE_KEY to SERVICE_ROLE_KEY
-        const supabaseAdmin = createClient(
-            Deno.env.get('SUPABASE_URL') ?? '',
-            Deno.env.get('SERVICE_ROLE_KEY') ?? ''
-        );
+        // 1. Configuração de Segurança (Chave Mestra com Fallback)
+        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? 'https://xfousvlrhinlvrpryscy.supabase.co';
+        const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+        if (!serviceRoleKey) {
+            console.error("CRITICAL: Service Role Key missing in Webhook.");
+            return new Response("Server Config Error", { status: 500, headers: corsHeaders });
+        }
+
+        const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
         // 3. Buscar Access Token do Restaurante
         const { data: restaurant, error } = await supabaseAdmin

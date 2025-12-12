@@ -15,22 +15,22 @@ serve(async (req: Request) => {
   }
 
   try {
-    // Cria cliente com chave de serviço (Admin) para poder criar usuários
-    // Changed from SUPABASE_SERVICE_ROLE_KEY to SERVICE_ROLE_KEY
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SERVICE_ROLE_KEY') ?? ''
-    )
+    // 1. Configuração de Segurança (Chave Mestra com Fallback)
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? 'https://xfousvlrhinlvrpryscy.supabase.co';
+    const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!serviceRoleKey) {
+        throw new Error("Configuração de Servidor incompleta: SERVICE_ROLE_KEY não encontrada.");
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
     const { restaurantData, userData } = await req.json()
     const { email, password } = userData
 
     let restaurantId;
     
-    // 1. Verifica se o restaurante já existe (pelo ID se fornecido, ou nome)
-    // Se for edição/correção, o ID pode vir dentro de restaurantData ou separado.
-    // Vamos assumir criação nova ou correção por nome.
-    
+    // Verifica se o restaurante já existe
     const { data: existingRest } = await supabaseAdmin
         .from('restaurants')
         .select('id')
@@ -55,7 +55,6 @@ serve(async (req: Request) => {
 
     // 2. Criar ou Atualizar Usuário no Auth
     if (email && password) {
-        // Tenta criar o usuário
         const { data: user, error: userError } = await supabaseAdmin.auth.admin.createUser({
             email: email,
             password: password,
@@ -68,17 +67,11 @@ serve(async (req: Request) => {
         })
 
         if (userError) {
-            console.log("Usuário já existe ou erro ao criar. Tentando atualizar metadados...", userError.message);
-            // Se usuário já existe (erro 422? ou similar), tentamos achar pelo email e atualizar
-            // (Nota: createUser retorna erro se email duplicado)
-            
-            // Buscar ID do usuário pelo email não é direto na API Admin sem listUsers, 
-            // mas podemos tentar atualizar se soubermos o ID. Sem ID, é difícil.
-            // Retornamos aviso.
+            console.log("Aviso: Usuário já existe ou erro Auth:", userError.message);
             return new Response(
                 JSON.stringify({ 
                     restaurantId, 
-                    warning: "Restaurante salvo, mas usuário já existia ou deu erro. Verifique se o email já está em uso." 
+                    warning: "Restaurante salvo, mas usuário já existia. Verifique se o email já está em uso." 
                 }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
             )

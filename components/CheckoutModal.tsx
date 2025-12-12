@@ -232,6 +232,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
         // If no auto credentials, go straight to manual
         if (!hasAutoPix && hasManualPix) {
+            setPixError("Configuração Automática não detectada."); // Optional hint
             setIsManualPix(true);
             setCurrentStep('PIX_PAYMENT');
             return;
@@ -298,11 +299,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             console.error("Pix Auto Error:", err);
             // Automatic Fallback to Manual Pix on Error
             if (restaurant.manualPixKey) {
-                addToast({ 
-                    message: `Pix Auto indisponível: ${err.message}. Usando Manual.`, 
-                    type: 'warning', 
-                    duration: 6000 
-                });
+                // Ensure we capture the error message to show in the manual UI
+                setPixError(err.message || 'Erro desconhecido');
                 setIsManualPix(true);
                 setCurrentStep('PIX_PAYMENT');
             } else {
@@ -719,8 +717,15 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             return (
                 <div className="text-center flex flex-col items-center p-4" role="region" aria-labelledby="manual-pix-heading">
                     <h3 id="manual-pix-heading" className="text-xl font-bold text-gray-800 mb-2">Pagamento Pix Manual</h3>
+                    
+                    {pixError && (
+                        <div className="bg-red-50 text-red-700 p-3 rounded-lg border border-red-200 text-sm mb-4 w-full text-left">
+                            <strong>Atenção:</strong> {pixError}
+                        </div>
+                    )}
+
                     <p className="text-sm text-gray-600 mb-4 px-4">
-                        O sistema automático está indisponível. Por favor, faça o Pix manualmente usando a chave abaixo e envie o comprovante se solicitado.
+                        Por favor, faça o Pix manualmente usando a chave abaixo e envie o comprovante se solicitado.
                     </p>
                     
                     <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg w-full max-w-sm mb-4">

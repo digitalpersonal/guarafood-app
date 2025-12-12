@@ -15,11 +15,15 @@ serve(async (req: Request) => {
   }
 
   try {
-    // Changed from SUPABASE_SERVICE_ROLE_KEY to SERVICE_ROLE_KEY
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SERVICE_ROLE_KEY') ?? ''
-    )
+    // 1. Configuração de Segurança (Chave Mestra com Fallback)
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? 'https://xfousvlrhinlvrpryscy.supabase.co';
+    const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!serviceRoleKey) {
+        throw new Error("Configuração de Servidor incompleta: SERVICE_ROLE_KEY não encontrada.");
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
     const { restaurantId } = await req.json()
 
@@ -31,7 +35,7 @@ serve(async (req: Request) => {
 
     if (profileError) throw profileError;
 
-    // 2. Deletar Restaurante (Cascade deve limpar tabelas filhas como menu_items)
+    // 2. Deletar Restaurante (Cascade deve limpar tabelas filhas)
     const { error: deleteError } = await supabaseAdmin
         .from('restaurants')
         .delete()
@@ -39,7 +43,7 @@ serve(async (req: Request) => {
 
     if (deleteError) throw deleteError;
 
-    // 3. Deletar usuários do sistema de Autenticação
+    // 3. Deletar usuários do Auth
     const errors = []
     for (const profile of profiles || []) {
         const { error: deleteUserError } = await supabaseAdmin.auth.admin.deleteUser(profile.id)
