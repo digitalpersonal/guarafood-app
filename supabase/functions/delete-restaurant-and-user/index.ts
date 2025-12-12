@@ -15,33 +15,32 @@ serve(async (req: Request) => {
   }
 
   try {
-    // 1. Configuração de Segurança (Chave Mestra com Fallback)
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? 'https://xfousvlrhinlvrpryscy.supabase.co';
     const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!serviceRoleKey) {
-        throw new Error("Configuração de Servidor incompleta: SERVICE_ROLE_KEY não encontrada.");
+        throw new Error("SERVICE_ROLE_KEY ausente.");
     }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
     const { restaurantId } = await req.json()
 
-    // 1. Encontrar usuários associados a este restaurante
+    // 1. Encontrar usuários associados
     const { data: profiles, error: profileError } = await supabaseAdmin
         .from('profiles')
         .select('id')
         .eq('restaurantId', restaurantId)
 
-    if (profileError) throw profileError;
+    if (profileError) throw new Error("Erro ao buscar usuários: " + profileError.message);
 
-    // 2. Deletar Restaurante (Cascade deve limpar tabelas filhas)
+    // 2. Deletar Restaurante
     const { error: deleteError } = await supabaseAdmin
         .from('restaurants')
         .delete()
         .eq('id', restaurantId)
 
-    if (deleteError) throw deleteError;
+    if (deleteError) throw new Error("Erro ao deletar restaurante: " + deleteError.message);
 
     // 3. Deletar usuários do Auth
     const errors = []
@@ -58,7 +57,7 @@ serve(async (req: Request) => {
   } catch (error: any) {
     return new Response(
       JSON.stringify({ error: error.message }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
   }
 })

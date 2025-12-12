@@ -17,11 +17,14 @@ serve(async (req: Request) => {
 
   try {
     // 1. Configuração Robusta do Cliente Supabase
+    // Fallback agressivo para garantir que a URL sempre exista
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? 'https://xfousvlrhinlvrpryscy.supabase.co';
+    
+    // Tenta pegar a chave de serviço de várias variáveis possíveis
     const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!serviceRoleKey) {
-        throw new Error("Configuração de Servidor incompleta: SERVICE_ROLE_KEY não encontrada.");
+        throw new Error("ERRO DE CONFIGURAÇÃO: A chave 'SERVICE_ROLE_KEY' não foi encontrada no Supabase. Rode o comando 'npx supabase secrets set...' novamente.");
     }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
@@ -75,9 +78,7 @@ serve(async (req: Request) => {
     if (orderError) throw new Error("Erro de Banco de Dados ao criar pedido: " + orderError.message)
     
     // 4. Webhook URL (Com Fallback Hardcoded para garantir que funcione)
-    // Se a variável de ambiente falhar, usa o link direto do projeto
-    const baseUrl = Deno.env.get('SUPABASE_URL') || 'https://xfousvlrhinlvrpryscy.supabase.co';
-    const notificationUrl = `${baseUrl}/functions/v1/payment-webhook?restaurantId=${restaurantId}`;
+    const notificationUrl = `${supabaseUrl}/functions/v1/payment-webhook?restaurantId=${restaurantId}`;
 
     console.log("Gerando Pix com Webhook:", notificationUrl);
 
@@ -112,10 +113,10 @@ serve(async (req: Request) => {
       const errorMsg = paymentData.message || 'Erro desconhecido no Mercado Pago';
       
       if (errorMsg.includes("Unauthorized") || paymentData.status === 401) {
-          throw new Error("Token do Mercado Pago inválido. Verifique se o Access Token está correto nas configurações.");
+          throw new Error("Token do Mercado Pago inválido ou expirado.");
       }
       if (errorMsg.includes("notification_url")) {
-          throw new Error("Erro na configuração do Webhook (URL inválida).");
+          throw new Error("Erro na URL de notificação (Webhook).");
       }
       
       throw new Error(`Mercado Pago recusou: ${errorMsg}`)
@@ -136,9 +137,11 @@ serve(async (req: Request) => {
 
   } catch (error: any) {
     console.error("Critical Function Error:", error);
+    // IMPORTANTE: Retornamos status 200 aqui para que o cliente (Frontend)
+    // consiga ler o JSON com a mensagem de erro em vez de receber um erro genérico de rede.
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      JSON.stringify({ error: error.message || "Erro desconhecido no servidor." }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
   }
 })

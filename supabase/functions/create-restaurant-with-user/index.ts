@@ -15,12 +15,11 @@ serve(async (req: Request) => {
   }
 
   try {
-    // 1. Configuração de Segurança (Chave Mestra com Fallback)
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? 'https://xfousvlrhinlvrpryscy.supabase.co';
     const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!serviceRoleKey) {
-        throw new Error("Configuração de Servidor incompleta: SERVICE_ROLE_KEY não encontrada.");
+        throw new Error("Erro Crítico: SERVICE_ROLE_KEY não configurada no servidor.");
     }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
@@ -38,18 +37,16 @@ serve(async (req: Request) => {
         .single();
 
     if (existingRest) {
-        console.log(`Restaurante já existe: ${existingRest.id}. Atualizando...`);
         restaurantId = existingRest.id;
         await supabaseAdmin.from('restaurants').update(restaurantData).eq('id', restaurantId);
     } else {
-        console.log(`Criando novo restaurante: ${restaurantData.name}`);
         const { data: newRest, error: createError } = await supabaseAdmin
             .from('restaurants')
             .insert(restaurantData)
             .select()
             .single()
         
-        if (createError) throw createError;
+        if (createError) throw new Error("Erro ao criar restaurante: " + createError.message);
         restaurantId = newRest.id;
     }
 
@@ -67,11 +64,10 @@ serve(async (req: Request) => {
         })
 
         if (userError) {
-            console.log("Aviso: Usuário já existe ou erro Auth:", userError.message);
             return new Response(
                 JSON.stringify({ 
                     restaurantId, 
-                    warning: "Restaurante salvo, mas usuário já existia. Verifique se o email já está em uso." 
+                    warning: "Restaurante salvo, mas o usuário já existia ou houve erro no Auth: " + userError.message 
                 }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
             )
@@ -84,9 +80,10 @@ serve(async (req: Request) => {
     )
 
   } catch (error: any) {
+    // Retorna 200 com erro JSON para o frontend exibir
     return new Response(
       JSON.stringify({ error: error.message }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
   }
 })
