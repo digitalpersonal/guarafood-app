@@ -122,37 +122,41 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     // Effect to trigger print when orderToPrint changes
     useEffect(() => {
         if (orderToPrint) {
-            // STEP 1: Wait 500ms to ensure the DOM has fully rendered the PrintableOrder component
+            // STEP 1: Wait 750ms (increased from 500ms) to ensure the DOM has fully rendered
             const renderTimer = setTimeout(() => {
                 
+                // FORCE FOCUS: Try to bring window to front before printing
+                // This helps if the user is in another window (e.g., Spotify)
+                window.focus();
+
                 // STEP 2: Trigger the print dialog (or automatic print in Kiosk mode)
-                // This call blocks execution in normal mode, but returns immediately in Kiosk mode
                 window.print();
 
-                // STEP 3: Cleanup AFTER printing is initiated.
-                // We use another timeout to prevent the DOM node from being removed 
-                // while the OS print spooler is still capturing the page content.
-                // This prevents "Blank Page" issues.
+                // STEP 3: Cleanup AFTER printing.
+                // NOTE: In Kiosk mode, window.print() might return immediately.
+                // We add a delay to ensure the spooler caught the content.
                 const cleanupTimer = setTimeout(() => {
                     setOrderToPrint(null);
-                }, 1000); // Wait 1 second after print command before removing DOM
+                }, 2000); // 2 seconds safety buffer
 
-            }, 500); 
+                return () => clearTimeout(cleanupTimer);
+
+            }, 750); 
             
             return () => clearTimeout(renderTimer);
         }
     }, [orderToPrint]);
 
     const handleManualPrint = (order: Order) => {
-        setOrderToPrint(order);
+        // Clear first to force re-render if it was already the same order
+        setOrderToPrint(null);
+        setTimeout(() => setOrderToPrint(order), 100);
     };
 
     useEffect(() => {
         if (!currentUser?.restaurantId) return;
 
         // Subscribe to orders and handle notifications
-        // LIMITATION: Fetch only last 200 orders to prevent browser memory bloat after months of usage.
-        // History is available in "Financeiro"
         const unsubscribe = subscribeToOrders((allOrders) => {
             const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
 
@@ -173,9 +177,9 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
                 if (ordersToAlert.length > 0) {
                     const newestOrder = ordersToAlert[0];
-                    console.log("Novo pedido (ou confirmação de pagamento) detectado:", newestOrder.id);
+                    console.log("Novo pedido detectado:", newestOrder.id);
                     
-                    // 1. Notification API (Visual)
+                    // 1. Notification API
                     if (areNotificationsEnabled && Notification.permission === 'granted') {
                          try {
                              new Notification('Novo Pedido Confirmado!', {
@@ -188,7 +192,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                          }
                     }
                     
-                    // 2. Sound (Via Hook)
+                    // 2. Sound
                     playNotification();
 
                     // 3. Auto Print
@@ -196,7 +200,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 }
             }
 
-            // Update the Ref for next comparison
+            // Update the Ref
             previousOrdersStatusRef.current = currentStatusMap;
             setOrders(allOrders);
             isFirstLoadRef.current = false;
@@ -208,7 +212,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
                 setConnectionStatus('DISCONNECTED');
             }
-        }, 200); // LIMIT: 200 orders max in this view for performance
+        }, 200); 
         
         return () => unsubscribe();
     }, [currentUser, playNotification]);
@@ -319,7 +323,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
             {renderContent()}
 
-            {/* Hidden Area for Automatic Printing. IMPORTANT: Use "hidden print:block" to ensure it renders during print dialog */}
+            {/* Hidden Area for Automatic Printing. IMPORTANT: Use "hidden print:block" */}
             <div className="hidden print:block">
                 {orderToPrint && <PrintableOrder order={orderToPrint} printerWidth={printerWidth} />}
             </div>

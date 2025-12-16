@@ -152,7 +152,7 @@ const PrinterSettings: React.FC<{ onTestPrint: (width: number) => void }> = ({ o
                 
                 {showKioskHelp && (
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-2 text-sm text-gray-700 w-full animate-fadeIn">
-                        <h4 className="font-bold text-blue-800 mb-2">Impressão 100% Automática (Sem Janela de Confirmação)</h4>
+                        <h4 className="font-bold text-blue-800 mb-2">Impressão 100% Automática (Modo PDV)</h4>
                         <p className="mb-2">Para que o cupom saia direto na impressora, você precisa configurar o Google Chrome ou Edge em <strong>Modo Quiosque (Kiosk)</strong>.</p>
                         <ol className="list-decimal list-inside space-y-1 ml-2">
                             <li>Crie um atalho do Chrome na sua área de trabalho.</li>
@@ -162,9 +162,14 @@ const PrinterSettings: React.FC<{ onTestPrint: (width: number) => void }> = ({ o
                             </li>
                             <li>Use este atalho para abrir o GuaraFood.</li>
                         </ol>
-                        <p className="mt-2 text-xs text-blue-600">
-                            <strong>Nota:</strong> Certifique-se de que sua impressora térmica esteja definida como <strong>Padrão</strong> no Windows/Sistema.
-                        </p>
+                        <hr className="my-3 border-blue-200" />
+                        <h4 className="font-bold text-blue-800 mb-2">⚡ Dica de Ouro: Spotify + PDV (Modo Isolado)</h4>
+                        <p className="mb-2">Se você usa o mesmo PC para música ou YouTube, o Chrome pode se confundir e abrir a caixa de impressão. Para evitar isso, crie um "Chrome Dedicado":</p>
+                        <ol className="list-decimal list-inside space-y-1 ml-2">
+                            <li>No campo <strong>Destino</strong> do atalho, adicione também:</li>
+                            <li><code className="bg-white px-1 py-0.5 rounded border text-xs font-mono select-all">--user-data-dir="C:/GuaraFoodPDV"</code></li>
+                        </ol>
+                        <p className="mt-2 text-xs">Isso cria um navegador independente. O GuaraFood fica em um, e o Spotify no outro.</p>
                     </div>
                 )}
             </div>
