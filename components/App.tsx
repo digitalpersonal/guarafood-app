@@ -56,6 +56,12 @@ const HeartIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+const SunIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+    </svg>
+);
+
 // Helper to create valid HTML IDs from category names
 const slugify = (text: string) => `category-${text.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '')}`;
 
@@ -64,6 +70,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     const [dailyPromotions, setDailyPromotions] = useState<(MenuItem | Combo)[]>([]);
     const [dailySpecials, setDailySpecials] = useState<MenuItem[]>([]);
     const [weeklySpecials, setWeeklySpecials] = useState<MenuItem[]>([]);
+    const [marmitas, setMarmitas] = useState<MenuItem[]>([]);
     const [addons, setAddons] = useState<Addon[]>([]);
     const [allPizzas, setAllPizzas] = useState<MenuItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -82,31 +89,49 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                     fetchAddonsForRestaurant(restaurant.id),
                 ]);
 
-                setAllPizzas(menuData.flatMap(c => c.items).filter(item => item.isPizza));
+                // 1. Lógica de Marmita (Limite de Horário)
+                const now = new Date();
+                const currentHour = now.getHours();
+                const currentMinutes = now.getMinutes();
+                // Regra: Almoço disponível até 15:30
+                const isLunchTime = currentHour < 15 || (currentHour === 15 && currentMinutes <= 30);
+
+                const allItems = menuData.flatMap(c => c.items);
                 
-                const specials = menuData.flatMap(category => category.items).filter(item => item.isDailySpecial);
+                // Extrai Marmitas se for horário de almoço
+                const marmitaItems = isLunchTime ? allItems.filter(item => item.isMarmita) : [];
+                setMarmitas(marmitaItems);
+
+                setAllPizzas(allItems.filter(item => item.isPizza));
+                
+                const specials = allItems.filter(item => item.isDailySpecial && !item.isMarmita);
                 setDailySpecials(specials);
                 
-                const weeklyPromos = menuData.flatMap(category => category.items).filter(item => item.isWeeklySpecial);
+                const weeklyPromos = allItems.filter(item => item.isWeeklySpecial && !item.isMarmita);
                 setWeeklySpecials(weeklyPromos);
                 
-                const menuWithoutSpecials = menuData
+                // Filtra o menu principal para EXCLUIR Marmitas (elas vão para o banner especial)
+                const menuWithoutSpecialsAndMarmitas = menuData
                     .map(category => ({
                         ...category,
-                        items: category.items.filter(item => !item.isDailySpecial && !item.isWeeklySpecial),
+                        items: category.items.filter(item => 
+                            !item.isDailySpecial && 
+                            !item.isWeeklySpecial && 
+                            !item.isMarmita // Remove marmitas da lista normal
+                        ),
                     }))
                     .filter(category => category.items.length > 0 || (category.combos && category.combos.length > 0));
 
-                setMenu(menuWithoutSpecials);
+                setMenu(menuWithoutSpecialsAndMarmitas);
                 setAddons(addonsData);
 
                 const promotedItems = menuData
                     .flatMap(category => [...category.items, ...(category.combos || [])])
-                    .filter(item => !!item.activePromotion);
+                    .filter(item => !!item.activePromotion && !item.isMarmita);
                 setDailyPromotions(promotedItems);
 
-                if (menuWithoutSpecials.length > 0) {
-                    setActiveCategory(slugify(menuWithoutSpecials[0].name));
+                if (menuWithoutSpecialsAndMarmitas.length > 0) {
+                    setActiveCategory(slugify(menuWithoutSpecialsAndMarmitas[0].name));
                 }
             } catch (err) {
                 setError('Falha ao carregar o cardápio. Por favor, tente recarregar a página.');
@@ -202,6 +227,26 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                 {restaurant.description && <p className="text-gray-500 text-sm mt-2 max-w-lg mx-auto">{restaurant.description}</p>}
             </div>
             
+            {/* MARMITAS BANNER (SMART LUNCH) */}
+            {!isLoading && marmitas.length > 0 && (
+                 <div className="bg-gradient-to-r from-orange-100 to-yellow-50 p-4 border-b-4 border-orange-200">
+                    <div className="flex items-center gap-2 mb-4">
+                        <span className="bg-white p-2 rounded-full shadow text-orange-600 animate-pulse">
+                            <SunIcon className="w-6 h-6" />
+                        </span>
+                        <div>
+                            <h2 className="text-xl font-black text-orange-800 uppercase leading-none">Hora do Almoço</h2>
+                            <p className="text-xs text-orange-700 font-medium">Disponível até as 15:30</p>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {marmitas.map(item => (
+                            <MenuItemCard key={`marmita-${item.id}`} item={item} allPizzas={allPizzas} allAddons={addons} />
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {!isLoading && restaurant.category === 'Supermercado' && weeklySpecials.length > 0 && (
                 <div className="p-4 bg-green-50 border-b-2 border-t-2 border-green-200">
                     <h2 className="text-2xl font-bold mb-4 text-green-700 flex items-center gap-2">
@@ -274,7 +319,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
             <div className="p-4">
                  {isLoading ? <Spinner message="Carregando cardápio..." /> : error ? <p className="text-red-500 text-center p-8 bg-red-50 rounded-lg">{error}</p> : (
                     <div className="space-y-8">
-                        {menu.length === 0 && (
+                        {menu.length === 0 && marmitas.length === 0 && (
                             <div className="text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-300">
                                 <p className="text-gray-500 text-lg font-medium">O cardápio está sendo preparado!</p>
                                 <p className="text-gray-400 text-sm mt-1">Visite novamente em breve.</p>

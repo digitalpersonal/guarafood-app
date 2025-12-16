@@ -1,3 +1,4 @@
+
 import React from 'react';
 import type { Restaurant } from '../types';
 import OptimizedImage from './OptimizedImage';
@@ -34,6 +35,12 @@ const HeartIcon: React.FC<{ className?: string; filled?: boolean }> = ({ classNa
     </svg>
 );
 
+const ClockIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+);
+
 
 const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, isOpen, isFavorite, onToggleFavorite }) => {
 
@@ -41,6 +48,18 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, is
   const whatsappUrl = `https://wa.me/55${cleanedPhone}`;
   
   const acceptsFiado = restaurant.paymentGateways?.some(pg => pg.toLowerCase() === "marcar na minha conta");
+
+  // Determine Today's Hours Display
+  const todayIndex = new Date().getDay();
+  const todayHours = restaurant.operatingHours?.find(h => h.dayOfWeek === todayIndex);
+  
+  let hoursDisplay = "";
+  if (todayHours && todayHours.isOpen) {
+      hoursDisplay = `${todayHours.opens} - ${todayHours.closes}`;
+      if (todayHours.opens2 && todayHours.closes2) {
+          hoursDisplay += ` • ${todayHours.opens2} - ${todayHours.closes2}`;
+      }
+  }
 
   return (
     <div 
@@ -85,6 +104,13 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, is
             <span className="mx-2">&bull;</span>
             <span>{restaurant.deliveryFee > 0 ? `R$ ${restaurant.deliveryFee.toFixed(2)}` : 'Grátis'}</span>
           </div>
+          
+          {hoursDisplay && (
+              <div className="flex items-center text-[10px] text-gray-500 mt-1" title="Horário de hoje">
+                  <ClockIcon className="w-3 h-3 mr-1 flex-shrink-0" />
+                  <span>{hoursDisplay}</span>
+              </div>
+          )}
 
            {acceptsFiado && (
                <div className="mt-2 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">

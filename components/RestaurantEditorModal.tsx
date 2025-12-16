@@ -174,7 +174,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         setFormData(prev => ({ ...prev, [name]: (name === 'deliveryFee') ? parseFloat(value) : value }));
     };
     
-    // NEW: Handle Multi-select Category
+    // Handle Multi-select Category
     const toggleCategory = (categoryName: string) => {
         setFormData(prev => {
             const currentCategories = prev.category ? prev.category.split(',').map(c => c.trim()) : [];
@@ -302,8 +302,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 setError('Email e Senha para o lojista são obrigatórios ao criar um novo restaurante.');
                 return;
             }
-            // For existing, only error if they tried to change but left empty. 
-            // If they unchecked, changeCredentials would be false.
         }
         
         if ((!existingRestaurant || changeCredentials) && merchantPassword && merchantPassword.length < 6) {
@@ -396,8 +394,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                     console.warn("Edge Function failed or missing, attempting direct SQL fallback...", invokeError);
                     
                     if (existingRestaurant) {
-                        // If updating credentials failed but we have a restaurant, just update the restaurant part
-                        // and warn about user
                         const { error: updateError } = await supabase.from('restaurants').update(dbPayload).eq('id', existingRestaurant.id);
                         if (updateError) throw updateError;
                         
@@ -407,7 +403,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                             duration: 8000 
                         });
                     } else {
-                        // CREATE NEW - Fallback to Direct SQL Insert
                         const { data: restData, error: restError } = await supabase.from('restaurants').insert(dbPayload).select().single();
                         
                         if (restError) throw restError;
@@ -421,7 +416,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 }
 
             } else {
-                // Apenas atualização simples de dados do restaurante, sem mexer no usuário
                 const { error: updateError } = await supabase.from('restaurants').update(dbPayload).eq('id', existingRestaurant.id);
                 if (updateError) throw updateError;
                 addToast({ message: 'Restaurante atualizado com sucesso!', type: 'success' });
@@ -449,7 +443,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
 
     if (!isOpen) return null;
     
-    // Helper to see if a category is selected
     const isCategorySelected = (catName: string) => {
         if (!formData.category) return false;
         return formData.category.split(',').map(c => c.trim()).includes(catName);
@@ -507,7 +500,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                             {categories.length === 0 && !loadingCategories && (
                                 <p className="text-xs text-red-500 mt-1">Nenhuma categoria cadastrada. Vá em "Categorias" no painel para criar.</p>
                             )}
-                            {/* Hidden input to ensure validation works if needed, or visual feedback */}
                             <input type="hidden" name="category" value={formData.category} />
                             {formData.category && <p className="text-xs text-gray-500 mt-2">Selecionadas: {formData.category}</p>}
                         </div>
@@ -526,11 +518,12 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                     
                     {/* Operating Hours */}
                     <div className="border-t pt-4">
-                        <h3 className="text-lg font-semibold text-gray-700 mb-2">Horário de Funcionamento</h3>
-                        <p className="text-xs text-gray-500 mb-2">Use o botão "+" para adicionar um segundo turno (ex: Almoço e Jantar).</p>
+                        <h3 className="text-lg font-semibold text-gray-700 mb-2">Horário de Funcionamento (Turnos)</h3>
+                        <p className="text-xs text-gray-500 mb-2">
+                            Use o botão "+" para adicionar um segundo turno. Ideal para quem serve <strong>Almoço (Marmita)</strong> e <strong>Jantar (Lanches)</strong>.
+                        </p>
                         <div className="space-y-3">
                             {(formData.operatingHours || []).map((day, index) => {
-                                // Logic to detect overnight (next day) hours
                                 const checkOvernight = (o: string, c: string) => {
                                     if (!o || !c) return false;
                                     const openParts = o.split(':').map(Number);
@@ -572,7 +565,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                                     {day.isOpen && showSecondShift[index] && (
                                         <div className="grid grid-cols-12 gap-2 items-center mt-2 pt-2 border-t border-gray-200">
                                             <div className="col-span-4 text-right">
-                                                <span className="text-xs text-gray-500 font-medium mr-2">2º Turno:</span>
+                                                <span className="text-xs text-orange-600 font-bold mr-2">2º Turno (Almoço/Jantar):</span>
                                             </div>
                                             <div className="col-span-3">
                                                 <input type="time" value={day.opens2 || ''} onChange={(e) => handleOperatingHoursChange(index, 'opens2', e.target.value)} className="w-full p-1 border rounded text-sm"/>
@@ -660,9 +653,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                             onChange={(e) => setFormData(prev => ({ ...prev, manualPixKey: e.target.value }))} 
                             className="w-full p-3 border rounded-lg bg-gray-50"
                         />
-                         <p className="text-xs text-gray-500 mt-1">
-                             ⚠️ Use este campo se o deploy das funções falhou. O sistema usará essa chave.
-                         </p>
                     </div>
 
                     {/* Mercado Pago Automático */}

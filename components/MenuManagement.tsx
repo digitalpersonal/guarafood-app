@@ -458,6 +458,14 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
 
     // DRAG HANDLERS
     const handleDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+        // UX: Only allow drag if the specific handle area is targeted
+        // This prevents accidental drags when interacting with form inputs
+        const target = e.target as HTMLElement;
+        if (!target.closest('.drag-handle-area')) {
+            e.preventDefault();
+            return;
+        }
+
         setDraggedCategoryIndex(index);
         // Required for Firefox
         e.dataTransfer.effectAllowed = 'move';
@@ -705,21 +713,21 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                         {menuCategories.map((category, index) => (
                             <div 
                                 key={category.id} 
-                                className={`bg-white rounded-lg shadow-md transition-opacity duration-200 ${draggedCategoryIndex === index ? 'opacity-50 border-2 border-dashed border-gray-400' : ''}`}
+                                className={`bg-white rounded-lg shadow-md transition-all duration-200 ${draggedCategoryIndex === index ? 'opacity-40 scale-95 border-2 border-dashed border-orange-300' : ''}`}
                                 draggable
                                 onDragStart={(e) => handleDragStart(e, index)}
                                 onDragOver={(e) => handleDragOver(e, index)}
                                 onDrop={(e) => handleDrop(e, index)}
                             >
-                                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-t-lg border-b cursor-move group">
+                                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-t-lg border-b group">
                                     <div className="flex items-center gap-2 flex-grow">
                                         {/* Drag Handle & Buttons */}
-                                        <div className="flex items-center gap-1 mr-2 text-gray-400">
+                                        <div className="flex items-center gap-1 mr-2 text-gray-400 drag-handle-area cursor-grab active:cursor-grabbing hover:text-orange-500 p-1 rounded">
                                             <div className="flex flex-col mr-1">
                                                 <button onClick={() => handleReorderCategory(index, 'up')} disabled={index === 0} className="disabled:opacity-20 hover:text-black p-0.5"><ChevronUpIcon className="w-3 h-3"/></button>
                                                 <button onClick={() => handleReorderCategory(index, 'down')} disabled={index === menuCategories.length - 1} className="disabled:opacity-20 hover:text-black p-0.5"><ChevronDownIcon className="w-3 h-3"/></button>
                                             </div>
-                                            <DragHandleIcon className="w-5 h-5 cursor-grab active:cursor-grabbing text-gray-300 group-hover:text-gray-500" />
+                                            <DragHandleIcon className="w-6 h-6" />
                                         </div>
 
                                         {editingCategory?.id === category.id ? (

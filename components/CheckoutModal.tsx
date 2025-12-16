@@ -5,7 +5,7 @@ import type { Restaurant, Coupon, Order } from '../types';
 import { useCart } from '../hooks/useCart';
 import { useNotification } from '../hooks/useNotification';
 import { createOrder, type NewOrderData } from '../services/orderService';
-import { validateCouponByCode } from '../services/databaseService';
+import { validateCouponByCode, fetchCouponsForRestaurant } from '../services/databaseService';
 import { supabase } from '../services/api';
 import { isRestaurantOpen } from '../utils/restaurantUtils';
 import Spinner from './Spinner';
@@ -108,6 +108,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
     const [formError, setFormError] = useState<string | null>(null);
     const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
+    const [hasAvailableCoupons, setHasAvailableCoupons] = useState(false);
 
     const isOpenNow = isRestaurantOpen(restaurant);
 
@@ -146,8 +147,25 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     useEffect(() => {
         if (isOpen) {
             resetState();
+            // Check for available coupons when modal opens
+            const checkCoupons = async () => {
+                try {
+                    const coupons = await fetchCouponsForRestaurant(restaurant.id);
+                    const hasActive = coupons.some(c => {
+                        const now = new Date();
+                        const expirationDate = new Date(c.expirationDate);
+                        expirationDate.setHours(23, 59, 59, 999);
+                        return c.isActive && now <= expirationDate;
+                    });
+                    setHasAvailableCoupons(hasActive);
+                } catch (e) {
+                    console.error("Failed to check coupons", e);
+                    setHasAvailableCoupons(false);
+                }
+            };
+            checkCoupons();
         }
-    }, [isOpen]);
+    }, [isOpen, restaurant.id]);
 
     const { finalPrice, discountAmount } = useMemo(() => {
         if (!appliedCoupon) return { finalPrice: totalPrice, discountAmount: 0 };
@@ -688,23 +706,26 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                     ))}
                 </div>
             </div>
-            <div>
-                <label htmlFor="couponCode" className="block text-sm font-medium text-gray-700">Cupom de Desconto</label>
-                {appliedCoupon ? (
-                    <div className="mt-1 flex justify-between items-center p-3 border rounded-lg bg-green-50 border-green-300">
-                        <p className="text-green-800 font-semibold">Cupom "{appliedCoupon.code}" aplicado!</p>
-                        <button type="button" onClick={handleRemoveCoupon} className="text-red-600 font-bold text-lg" aria-label={`Remover cupom ${appliedCoupon.code}`}>&times;</button>
-                    </div>
-                ) : (
-                    <div className="mt-1 flex gap-2">
-                        <input id="couponCode" type="text" value={couponCodeInput} onChange={e => setCouponCodeInput(e.target.value.toUpperCase())} placeholder="Ex: BEMVINDO10" className="flex-grow p-3 border rounded-lg bg-gray-50 uppercase"/>
-                        <button type="button" onClick={handleApplyCoupon} disabled={isApplyingCoupon} className="bg-gray-800 text-white font-bold px-4 rounded-lg hover:bg-gray-700 disabled:bg-gray-400">
-                            {isApplyingCoupon ? 'Validando...' : 'Aplicar'}
-                        </button>
-                    </div>
-                )}
-                {formError && <p className="text-red-500 text-sm mt-1">{formError}</p>}
-            </div>
+            
+            {hasAvailableCoupons && (
+                <div>
+                    <label htmlFor="couponCode" className="block text-sm font-medium text-gray-700">Cupom de Desconto</label>
+                    {appliedCoupon ? (
+                        <div className="mt-1 flex justify-between items-center p-3 border rounded-lg bg-green-50 border-green-300">
+                            <p className="text-green-800 font-semibold">Cupom "{appliedCoupon.code}" aplicado!</p>
+                            <button type="button" onClick={handleRemoveCoupon} className="text-red-600 font-bold text-lg" aria-label={`Remover cupom ${appliedCoupon.code}`}>&times;</button>
+                        </div>
+                    ) : (
+                        <div className="mt-1 flex gap-2">
+                            <input id="couponCode" type="text" value={couponCodeInput} onChange={e => setCouponCodeInput(e.target.value.toUpperCase())} placeholder="Ex: BEMVINDO10" className="flex-grow p-3 border rounded-lg bg-gray-50 uppercase"/>
+                            <button type="button" onClick={handleApplyCoupon} disabled={isApplyingCoupon} className="bg-gray-800 text-white font-bold px-4 rounded-lg hover:bg-gray-700 disabled:bg-gray-400">
+                                {isApplyingCoupon ? 'Validando...' : 'Aplicar'}
+                            </button>
+                        </div>
+                    )}
+                    {formError && <p className="text-red-500 text-sm mt-1">{formError}</p>}
+                </div>
+            )}
         </form>
     );
 
@@ -787,48 +808,47 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     };
 
     const renderSuccess = () => (
-        <div className="text-center flex flex-col items-center justify-center p-8" role="status" aria-live="assertive">
+        <div className="text-center flex flex-col items-center justify-center p-8 bg-blue-50 h-full" role="status" aria-live="assertive">
             <svg className="w-20 h-20 text-green-500 mb-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             <h3 className="text-2xl font-bold text-gray-800">Pedido Confirmado!</h3>
             
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6 mb-6 w-full shadow-sm">
+            <div className="bg-white border border-blue-200 rounded-lg p-4 mt-6 mb-6 w-full shadow-sm">
                 <div className="flex flex-col items-center">
                     <p className="text-lg font-bold text-blue-800 mb-1 flex items-center gap-2">
                         <EyeIcon className="w-5 h-5"/>
                         Acompanhe seu Pedido
                     </p>
                     <p className="text-sm text-blue-700">
-                        Uma barra de rastreamento aparecerá no <strong>rodapé da tela inicial</strong>. Fique de olho nela para saber quando seu pedido sair para entrega!
+                        O rastreamento do pedido aparecerá no rodapé da tela inicial assim que você fechar esta janela.
                     </p>
                 </div>
             </div>
 
-             {/* MANUAL CLOSE BUTTON INSTEAD OF TIMEOUT */}
+             {/* MANUAL CLOSE BUTTON */}
              <button
                 onClick={onClose}
                 className="mt-6 bg-green-600 text-white font-bold py-3 px-12 rounded-full hover:bg-green-700 transition-all shadow-lg hover:scale-105 active:scale-95"
             >
-                Entendi, acompanhar pedido
+                Entendi
             </button>
         </div>
     );
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={currentStep === 'SUCCESS' ? undefined : onClose} aria-modal="true" role="dialog" aria-labelledby="checkout-modal-title">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                <div className="p-4 border-b flex justify-between items-start gap-4">
-                    <div className="flex-grow min-w-0">
-                         <h2 id="checkout-modal-title" className="text-xl font-bold text-gray-800 truncate" title={restaurant.name}>
-                            {currentStep === 'SUCCESS' ? 'Sucesso!' : restaurant.name}
-                        </h2>
-                        {currentStep !== 'SUCCESS' && (
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                {/* Header only if not success, to allow full screen effect for success */}
+                {currentStep !== 'SUCCESS' && (
+                    <div className="p-4 border-b flex justify-between items-start gap-4">
+                        <div className="flex-grow min-w-0">
+                             <h2 id="checkout-modal-title" className="text-xl font-bold text-gray-800 truncate" title={restaurant.name}>
+                                {restaurant.name}
+                            </h2>
                             <p className="text-xs text-gray-500 truncate">{restaurant.address}</p>
-                        )}
-                    </div>
-                    {currentStep !== 'SUCCESS' && (
+                        </div>
                         <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl font-bold" aria-label="Fechar">&times;</button>
-                    )}
-                </div>
+                    </div>
+                )}
 
                 {currentStep !== 'SUCCESS' && renderStepper()}
 

@@ -30,43 +30,59 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
         setSelectedAddonIds(new Set());
     }, [initialItem, isOpen]);
 
-    const freeAddonCount = selectedSize?.freeAddonCount || 0;
+    const freeAddonCountLimit = selectedSize?.freeAddonCount || 0;
 
+    // Filter available addons for this item
     const availableAddons = useMemo(() => {
         return allAddons.filter(addon => initialItem.availableAddonIds?.includes(addon.id));
     }, [allAddons, initialItem]);
-    
-    const { totalPrice, selectedFreeAddons, selectedPaidAddons } = useMemo(() => {
+
+    // Split into "Free Pool" (Items registered as R$ 0.00) and "Paid Pool" (Items > R$ 0.00)
+    const { freePool, paidPool } = useMemo(() => {
+        const free = availableAddons.filter(a => a.price === 0);
+        const paid = availableAddons.filter(a => a.price > 0);
+        return { freePool: free, paidPool: paid };
+    }, [availableAddons]);
+
+    // Calculate totals and limits
+    const { totalPrice, currentFreeCount, isLimitReached } = useMemo(() => {
         const basePrice = selectedSize?.price || initialItem.price;
-        const selectedAddons = availableAddons.filter(a => selectedAddonIds.has(a.id));
         
-        let free: Addon[] = [];
-        let paid: Addon[] = [];
+        let addonsTotal = 0;
+        let freeCount = 0;
 
-        if (freeAddonCount > 0) {
-            const sortedSelectedAddons = [...selectedAddons].sort((a, b) => b.price - a.price);
-            free = sortedSelectedAddons.slice(0, freeAddonCount);
-            paid = sortedSelectedAddons.slice(freeAddonCount);
-        } else {
-            paid = selectedAddons;
-        }
+        selectedAddonIds.forEach(id => {
+            const addon = availableAddons.find(a => a.id === id);
+            if (addon) {
+                addonsTotal += addon.price;
+                if (addon.price === 0) {
+                    freeCount++;
+                }
+            }
+        });
 
-        const addonsPrice = paid.reduce((total, addon) => total + addon.price, 0);
-        
         return {
-            totalPrice: basePrice + addonsPrice,
-            selectedFreeAddons: free,
-            selectedPaidAddons: paid,
+            totalPrice: basePrice + addonsTotal,
+            currentFreeCount: freeCount,
+            isLimitReached: freeCount >= freeAddonCountLimit
         };
-    }, [initialItem, selectedSize, selectedAddonIds, availableAddons, freeAddonCount]);
+    }, [initialItem, selectedSize, selectedAddonIds, availableAddons, freeAddonCountLimit]);
     
-    const handleAddonToggle = (addonId: number) => {
+    const handleAddonToggle = (addon: Addon) => {
         setSelectedAddonIds(prev => {
             const newSet = new Set(prev);
-            if (newSet.has(addonId)) {
-                newSet.delete(addonId);
+            const isSelected = newSet.has(addon.id);
+
+            if (isSelected) {
+                newSet.delete(addon.id);
             } else {
-                newSet.add(addonId);
+                // Logic check: If it's a free item, check limit
+                if (addon.price === 0) {
+                    if (currentFreeCount >= freeAddonCountLimit) {
+                        return prev; // Do nothing if limit reached
+                    }
+                }
+                newSet.add(addon.id);
             }
             return newSet;
         });
@@ -77,11 +93,19 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
             alert("Por favor, selecione um tamanho.");
             return;
         }
-        const selectedAddons = [...selectedFreeAddons, ...selectedPaidAddons];
         
-        const topAddons = selectedAddons.slice(0, 2).map(a => a.name).join(', ');
-        const remainingCount = selectedAddons.length - 2;
-        const name = `${initialItem.name}${selectedAddons.length > 0 ? ` com ${topAddons}` : ''}${remainingCount > 0 ? ` e mais ${remainingCount}` : ''}`;
+        // Reconstruct selected list based on ID set
+        const selectedAddons = availableAddons.filter(a => selectedAddonIds.has(a.id));
+        
+        // Format description
+        const freeSelectedNames = selectedAddons.filter(a => a.price === 0).map(a => a.name).join(', ');
+        const paidSelectedNames = selectedAddons.filter(a => a.price > 0).map(a => a.name).join(', ');
+        
+        const name = `${initialItem.name} ${selectedSize.name}`;
+        
+        const descriptionParts = [];
+        if (freeSelectedNames) descriptionParts.push(`Inclusos: ${freeSelectedNames}`);
+        if (paidSelectedNames) descriptionParts.push(`Extras: ${paidSelectedNames}`);
 
         const addonIds = Array.from(selectedAddonIds).sort().join('-');
         const cartId = `acai-${initialItem.id}_size-${selectedSize.name}_addons-${addonIds}`;
@@ -93,7 +117,7 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
             basePrice: selectedSize.price,
             imageUrl: initialItem.imageUrl,
             quantity: 1,
-            description: `${selectedAddons.length} adicionais selecionados`,
+            description: descriptionParts.join(' • '),
             selectedAddons: selectedAddons,
             sizeName: selectedSize.name,
         };
@@ -103,69 +127,147 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
 
     if (!isOpen) return null;
 
+    const remainingFree = Math.max(0, freeAddonCountLimit - currentFreeCount);
+    const progressPercent = freeAddonCountLimit > 0 ? Math.min(100, (currentFreeCount / freeAddonCountLimit) * 100) : 0;
+
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="acai-modal-title">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                <div className="p-4 border-b flex justify-between items-center">
-                    <h2 id="acai-modal-title" className="text-xl font-bold text-gray-800">Monte seu {initialItem.name}</h2>
-                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl font-bold" aria-label="Fechar">&times;</button>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                {/* Header */}
+                <div className="p-4 bg-purple-800 text-white flex justify-between items-center shadow-md z-10">
+                    <div>
+                        <h2 id="acai-modal-title" className="text-xl font-bold">Monte seu Açaí</h2>
+                        <p className="text-xs text-purple-200 opacity-90">{initialItem.name}</p>
+                    </div>
+                    <button onClick={onClose} className="text-white hover:text-purple-200 bg-purple-900 hover:bg-black/20 rounded-full p-1 transition-colors" aria-label="Fechar">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                        </svg>
+                    </button>
                 </div>
 
-                <div className="overflow-y-auto p-4 space-y-4">
-                     {/* --- SIZE SELECTOR --- */}
+                <div className="overflow-y-auto p-4 space-y-6 bg-gray-50 flex-grow">
+                     {/* --- 1. SIZE SELECTOR --- */}
                     {initialItem.sizes && initialItem.sizes.length > 0 && (
-                        <div>
-                            <h3 className="font-bold mb-2">1. Escolha o Tamanho</h3>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {initialItem.sizes.map(size => (
-                                    <label key={size.name} className="flex flex-col items-center p-3 border rounded-lg cursor-pointer has-[:checked]:bg-orange-50 has-[:checked]:border-orange-500">
-                                        <input
-                                            type="radio"
-                                            name="acai-size"
-                                            value={size.name}
-                                            checked={selectedSize?.name === size.name}
-                                            onChange={() => setSelectedSize(size)}
-                                            className="sr-only"
-                                        />
-                                        <span className="font-bold text-gray-800">{size.name}</span>
-                                        <span className="text-sm text-gray-600">R$ {size.price.toFixed(2)}</span>
-                                    </label>
-                                ))}
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                            <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                                <span className="bg-purple-100 text-purple-700 w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold">1</span>
+                                Escolha o Tamanho
+                            </h3>
+                            <div className="grid grid-cols-2 gap-3">
+                                {initialItem.sizes.map(size => {
+                                    const isSelected = selectedSize?.name === size.name;
+                                    return (
+                                        <label key={size.name} className={`flex flex-col p-3 border-2 rounded-xl cursor-pointer transition-all ${isSelected ? 'border-purple-600 bg-purple-50' : 'border-gray-200 hover:border-purple-200'}`}>
+                                            <input
+                                                type="radio"
+                                                name="acai-size"
+                                                value={size.name}
+                                                checked={isSelected}
+                                                onChange={() => setSelectedSize(size)}
+                                                className="sr-only"
+                                            />
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className={`font-bold ${isSelected ? 'text-purple-700' : 'text-gray-700'}`}>{size.name}</span>
+                                                {isSelected && <div className="w-2 h-2 bg-purple-600 rounded-full"></div>}
+                                            </div>
+                                            <div className="text-sm text-gray-600 font-semibold">R$ {size.price.toFixed(2)}</div>
+                                            {size.freeAddonCount && size.freeAddonCount > 0 ? (
+                                                <div className="text-[10px] text-green-700 font-bold mt-1 bg-green-100 px-2 py-0.5 rounded w-fit border border-green-200">
+                                                    Inclui {size.freeAddonCount} itens
+                                                </div>
+                                            ) : null}
+                                        </label>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
 
-                    {/* --- ADDONS --- */}
-                    {availableAddons.length > 0 && (
-                        <div>
-                            <div className="flex justify-between items-baseline mb-2">
-                                <h3 className="font-bold">2. Escolha os Adicionais</h3>
-                                {freeAddonCount > 0 && (
-                                    <p className={`font-semibold text-sm ${selectedFreeAddons.length > freeAddonCount ? 'text-red-500' : 'text-green-600'}`}>
-                                        ({selectedFreeAddons.length}/{freeAddonCount}) grátis
-                                    </p>
+                    {/* --- 2. FREE POOL (LIMITED) --- */}
+                    {freePool.length > 0 && (
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                            <div className="flex flex-col mb-4 sticky top-0 bg-white z-10 pb-2 border-b">
+                                <div className="flex justify-between items-baseline mb-1">
+                                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                                        <span className="bg-purple-100 text-purple-700 w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold">2</span>
+                                        Itens Inclusos
+                                    </h3>
+                                    {freeAddonCountLimit > 0 && (
+                                        <span className={`text-xs font-bold ${remainingFree > 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                                            {remainingFree > 0 ? `Escolha mais ${remainingFree}` : 'Limite atingido'}
+                                        </span>
+                                    )}
+                                </div>
+                                {/* Progress Bar */}
+                                {freeAddonCountLimit > 0 && (
+                                    <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                                        <div 
+                                            className={`h-full transition-all duration-300 ${isLimitReached ? 'bg-green-500' : 'bg-purple-500'}`} 
+                                            style={{ width: `${progressPercent}%` }}
+                                        ></div>
+                                    </div>
                                 )}
                             </div>
-                            <div className="space-y-2">
-                                {availableAddons.map(addon => {
+
+                            <div className="grid grid-cols-1 gap-2">
+                                {freePool.map(addon => {
                                     const isSelected = selectedAddonIds.has(addon.id);
-                                    const isFree = isSelected && selectedFreeAddons.some(a => a.id === addon.id);
+                                    const isDisabled = !isSelected && isLimitReached;
+                                    
                                     return (
-                                     <label key={addon.id} className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:bg-orange-50 has-[:checked]:border-orange-400`}>
-                                        <div className="flex items-center">
+                                     <label key={addon.id} className={`flex items-center justify-between p-3 border rounded-lg transition-all ${
+                                         isDisabled ? 'opacity-50 bg-gray-50 cursor-not-allowed border-gray-100' : 'cursor-pointer hover:bg-gray-50'
+                                     } ${isSelected ? 'bg-green-50 border-green-300 ring-1 ring-green-300' : 'border-gray-200'}`}>
+                                        <div className="flex items-center gap-3 w-full">
+                                            <div className={`w-5 h-5 rounded-full border flex-shrink-0 flex items-center justify-center transition-colors ${isSelected ? 'bg-green-600 border-green-600' : 'border-gray-400 bg-white'}`}>
+                                                {isSelected && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                                            </div>
                                             <input
                                                 type="checkbox"
                                                 checked={isSelected}
-                                                onChange={() => handleAddonToggle(addon.id)}
-                                                className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                                                onChange={() => handleAddonToggle(addon)}
+                                                disabled={isDisabled}
+                                                className="hidden"
                                             />
-                                            <span className="ml-3 font-semibold text-gray-700">{addon.name}</span>
+                                            <span className={`font-medium text-sm ${isSelected ? 'text-gray-900' : 'text-gray-600'}`}>{addon.name}</span>
                                         </div>
-                                        {isFree ? (
-                                            <span className="font-bold text-green-600">Grátis</span>
-                                        ) : (
-                                            <span className="font-semibold text-gray-600">+ R$ {addon.price.toFixed(2)}</span>
-                                        )}
+                                        <span className="text-xs font-bold text-green-700 bg-green-100 px-2 py-1 rounded">Grátis</span>
+                                    </label>
+                                )})}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* --- 3. PAID POOL (UNLIMITED) --- */}
+                    {paidPool.length > 0 && (
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                            <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                                <span className="bg-purple-100 text-purple-700 w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold">{freePool.length > 0 ? 3 : 2}</span>
+                                Turbinar (Extras)
+                            </h3>
+                            <div className="grid grid-cols-1 gap-2">
+                                {paidPool.map(addon => {
+                                    const isSelected = selectedAddonIds.has(addon.id);
+                                    
+                                    return (
+                                     <label key={addon.id} className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${isSelected ? 'bg-orange-50 border-orange-300 ring-1 ring-orange-300' : 'hover:bg-gray-50 border-gray-200'}`}>
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-orange-500 border-orange-500' : 'border-gray-400 bg-white'}`}>
+                                                {isSelected && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                                            </div>
+                                            <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={() => handleAddonToggle(addon)}
+                                                className="hidden"
+                                            />
+                                            <span className={`font-medium text-sm ${isSelected ? 'text-gray-900' : 'text-gray-600'}`}>{addon.name}</span>
+                                        </div>
+                                        
+                                        <span className={`text-sm font-bold ${isSelected ? 'text-orange-700' : 'text-gray-500'}`}>
+                                            + R$ {addon.price.toFixed(2)}
+                                        </span>
                                     </label>
                                 )})}
                             </div>
@@ -174,16 +276,21 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
                 </div>
 
                 {/* --- FOOTER --- */}
-                <div className="p-4 border-t bg-gray-50 flex justify-between items-center mt-auto">
-                    <div className="text-lg font-bold">
-                        <span>Total: </span>
-                        <span className="text-orange-600">R$ {totalPrice.toFixed(2)}</span>
+                <div className="p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+                    <div className="flex justify-between items-center mb-3">
+                        <span className="text-gray-500 text-sm">Total do Item</span>
+                        <div className="text-xl font-bold text-gray-900">
+                            R$ {totalPrice.toFixed(2)}
+                        </div>
                     </div>
                     <button 
                         onClick={handleAddToCartClick}
-                        className="bg-orange-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-orange-700 transition-colors"
+                        className="w-full bg-purple-600 text-white font-bold py-3.5 px-6 rounded-xl hover:bg-purple-700 transition-all active:scale-[0.98] shadow-lg shadow-purple-200 flex justify-center items-center gap-2"
                     >
-                        Adicionar ao Carrinho
+                        <span>Adicionar ao Carrinho</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                        </svg>
                     </button>
                 </div>
             </div>

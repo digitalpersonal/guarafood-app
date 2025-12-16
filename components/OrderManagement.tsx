@@ -122,14 +122,24 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     // Effect to trigger print when orderToPrint changes
     useEffect(() => {
         if (orderToPrint) {
-            // CRITICAL: Delay printing by 1000ms (1 second) to allow the DOM to fully render the PrintableOrder component.
-            // In Kiosk mode, the browser prints immediately. If the component isn't rendered yet, it prints a blank page.
-            const timer = setTimeout(() => {
+            // STEP 1: Wait 500ms to ensure the DOM has fully rendered the PrintableOrder component
+            const renderTimer = setTimeout(() => {
+                
+                // STEP 2: Trigger the print dialog (or automatic print in Kiosk mode)
+                // This call blocks execution in normal mode, but returns immediately in Kiosk mode
                 window.print();
-                // We clear the order after printing is triggered.
-                setOrderToPrint(null); 
-            }, 1000); 
-            return () => clearTimeout(timer);
+
+                // STEP 3: Cleanup AFTER printing is initiated.
+                // We use another timeout to prevent the DOM node from being removed 
+                // while the OS print spooler is still capturing the page content.
+                // This prevents "Blank Page" issues.
+                const cleanupTimer = setTimeout(() => {
+                    setOrderToPrint(null);
+                }, 1000); // Wait 1 second after print command before removing DOM
+
+            }, 500); 
+            
+            return () => clearTimeout(renderTimer);
         }
     }, [orderToPrint]);
 

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/api';
 import { useSound } from '../hooks/useSound';
@@ -43,7 +44,10 @@ const OrderTracker: React.FC = () => {
         const loadOrders = async () => {
             try {
                 const storedOrderIds = JSON.parse(localStorage.getItem('guarafood-active-orders') || '[]');
-                if (storedOrderIds.length === 0) return;
+                if (storedOrderIds.length === 0) {
+                    setActiveOrders([]); // Clear if empty
+                    return;
+                }
 
                 const { data, error } = await supabase
                     .from('orders')
@@ -76,6 +80,9 @@ const OrderTracker: React.FC = () => {
 
         loadOrders();
 
+        // Listen for internal event when a new order is placed
+        window.addEventListener('guarafood:update-orders', loadOrders);
+
         // Subscribe to changes
         const subscription = supabase
             .channel('public:orders')
@@ -104,6 +111,7 @@ const OrderTracker: React.FC = () => {
             .subscribe();
 
         return () => {
+            window.removeEventListener('guarafood:update-orders', loadOrders);
             supabase.removeChannel(subscription);
         };
     }, [playNotification]);

@@ -38,6 +38,11 @@ const PrinterIcon: React.FC<{ className?: string }> = ({ className }) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.356-1.07 2.448-2.384 2.448H6.384C5.07 24.948 4 23.856 4 22.5c0-1.44 1.152-3.036 2.405-4.5m11.318 0c.397-1.362.63-2.826.63-4.342 0-1.44-1.152-3.036-2.405-4.5l-1.050-1.242A3.375 3.375 0 0 0 14.25 6H9.75a3.375 3.375 0 0 0-2.345 1.05L6.34 8.292c-1.253 1.464-2.405 3.06-2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z" />
     </svg>
 );
+const StoreIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+        <path fillRule="evenodd" d="M7.5 6v.75H5.513c-.96 0-1.764.724-1.865 1.679l-1.263 12A1.875 1.875 0 004.25 22.5h15.5a1.875 1.875 0 001.865-2.071l-1.263-12a1.875 1.875 0 00-1.865-1.679H16.5V6a4.5 4.5 0 10-9 0zM12 3a3 3 0 00-3 3v.75h6V6a3 3 0 00-3-3zm-3 8.25a3 3 0 106 0v-.75a.75.75 0 011.5 0v.75a4.5 4.5 0 11-9 0v-.75a.75.75 0 011.5 0v.75z" clipRule="evenodd" />
+    </svg>
+);
 
 
 const statusConfig: { [key in OrderStatus]: { text: string; color: string; } } = {
@@ -62,8 +67,12 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
         return (now.getTime() - orderDate.getTime()) < 300000;
     }, [order.status, order.timestamp]);
 
-    // Check if Pix payment is pending
+    // Check if Pix payment
+    const isPixPaid = order.paymentMethod.toLowerCase().includes('pix');
     const isPendingPayment = order.paymentStatus === 'pending' && order.paymentMethod !== 'Dinheiro';
+    
+    // Check if Pickup (Retirada)
+    const isPickup = !order.customerAddress || order.customerAddress.street === 'Retirada no Local';
 
     const handleConfirmAndUpdate = async (message: string, newStatus: OrderStatus) => {
         const confirmed = await confirm({
@@ -108,8 +117,11 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
             case 'Preparando':
                 return (
                     <div className="flex gap-1 mt-2">
-                        <button onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate("Despachar para entrega?", 'A Caminho'); }} className={`${btnClass} bg-orange-600 flex-grow-[2]`}>
-                            Despachar
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate(isPickup ? "Pedido pronto para retirada?" : "Despachar para entrega?", 'A Caminho'); }} 
+                            className={`${btnClass} bg-orange-600 flex-grow-[2]`}
+                        >
+                            {isPickup ? "Pronto p/ Retirar" : "Despachar"}
                         </button>
                         <button onClick={(e) => { e.stopPropagation(); onNotify(order); }} className={`${btnClass} bg-blue-600`} title="Avisar Cliente">
                             Avisar
@@ -119,8 +131,8 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
             case 'A Caminho':
                 return (
                     <div className="flex gap-1 mt-2">
-                        <button onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate("Marcar como Entregue?", 'Entregue'); }} className={`${btnClass} bg-green-600 flex-grow-[2]`}>
-                            Entregue
+                        <button onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate("Marcar como Entregue/Retirado?", 'Entregue'); }} className={`${btnClass} bg-green-600 flex-grow-[2]`}>
+                            {isPickup ? "Retirado" : "Entregue"}
                         </button>
                          <button onClick={(e) => { e.stopPropagation(); onNotify(order); }} className={`${btnClass} bg-blue-600`} title="Avisar Cliente">
                             Avisar
@@ -155,18 +167,18 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                 </button>
             </div>
             
-            {/* Price Row (Moved here to make space for Print Button) */}
-            <div className="flex justify-end mb-1">
+            {/* Price Row */}
+            <div className="flex justify-end mb-1 items-center gap-2">
                  {isPendingPayment ? (
                      <span className="bg-red-100 text-red-700 text-[10px] font-bold px-1 rounded border border-red-200 animate-pulse">
                         Pgto Pendente
                      </span>
-                ) : (
-                    <span className="block font-bold text-sm text-orange-700">R$ {order.totalPrice.toFixed(2)}</span>
-                )}
-                {isPendingPayment && (
-                    <span className="block font-bold text-sm text-gray-400 ml-2">R$ {order.totalPrice.toFixed(2)}</span>
-                )}
+                ) : isPixPaid ? (
+                    <span className="bg-green-100 text-green-800 text-[10px] font-bold px-1.5 py-0.5 rounded border border-green-200 shadow-sm">
+                        PIX PAGO
+                    </span>
+                ) : null}
+                <span className="block font-bold text-sm text-orange-700">R$ {order.totalPrice.toFixed(2)}</span>
             </div>
 
             {/* Informações Resumidas */}
@@ -177,16 +189,21 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                     <span className="text-gray-400 font-normal truncate">{order.customerName.split(' ').slice(1).join(' ')}</span>
                 </div>
                 
-                {order.customerAddress && (
+                {isPickup ? (
+                    <div className="flex items-center gap-1 text-[10px] bg-purple-50 text-purple-700 font-bold px-1 py-0.5 rounded w-fit border border-purple-100">
+                        <StoreIcon className="w-3 h-3 flex-shrink-0" />
+                        <span>RETIRADA NO BALCÃO</span>
+                    </div>
+                ) : (
                     <div className="flex items-center gap-1 text-[10px] text-gray-500 truncate">
                         <MapPinIcon className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                        <span className="truncate">{order.customerAddress.street}, {order.customerAddress.number}</span>
+                        <span className="truncate">{order.customerAddress?.street}, {order.customerAddress?.number}</span>
                     </div>
                 )}
 
                 <div className="flex items-center gap-1 text-[10px] text-gray-600 truncate">
-                    <CreditCardIcon className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                    <span className={`truncate ${order.paymentMethod === 'Marcar na minha conta' ? 'text-red-600 font-bold' : ''}`}>
+                    <CreditCardIcon className={`w-3 h-3 flex-shrink-0 ${isPixPaid ? 'text-green-600' : 'text-gray-400'}`} />
+                    <span className={`truncate ${order.paymentMethod === 'Marcar na minha conta' ? 'text-red-600 font-bold' : isPixPaid ? 'text-green-700 font-bold' : ''}`}>
                         {order.paymentMethod === 'Marcar na minha conta' ? 'FIADO' : order.paymentMethod}
                     </span>
                 </div>
@@ -254,13 +271,17 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
     };
 
     const handleNotify = (order: Order) => {
-        const cleanRestaurantPhone = order.restaurantPhone.replace(/\D/g, '');
+        const isPickup = !order.customerAddress || order.customerAddress.street === 'Retirada no Local';
         let message = '';
         
         if (order.status === 'Preparando') {
             message = `Olá *${order.customerName.split(' ')[0]}*! Recebemos seu pedido *#${order.id.substring(0, 6)}*! 👨‍🍳\n\nJá estamos preparando. Total: R$ ${order.totalPrice.toFixed(2)}.`;
         } else if (order.status === 'A Caminho') {
-            message = `Olá *${order.customerName.split(' ')[0]}*! \n\n🏍️ Seu pedido saiu para entrega!\n\nLogo chega aí. Bom apetite! 😋`;
+            if (isPickup) {
+                message = `Olá *${order.customerName.split(' ')[0]}*! \n\n✅ Seu pedido está pronto para retirada no balcão!`;
+            } else {
+                message = `Olá *${order.customerName.split(' ')[0]}*! \n\n🏍️ Seu pedido saiu para entrega!\n\nLogo chega aí. Bom apetite! 😋`;
+            }
         } else {
             message = `Olá *${order.customerName.split(' ')[0]}*! Sobre seu pedido *#${order.id.substring(0, 6)}*...`;
         }
@@ -301,7 +322,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
         { title: 'Pendente', status: 'Aguardando Pagamento' as OrderStatus, bgColor: 'bg-gray-100 border-gray-200' },
         { title: 'Novos', status: 'Novo Pedido' as OrderStatus, bgColor: 'bg-blue-50' },
         { title: 'Cozinha', status: 'Preparando' as OrderStatus, bgColor: 'bg-yellow-50' },
-        { title: 'Entrega', status: 'A Caminho' as OrderStatus, bgColor: 'bg-orange-50' },
+        { title: 'Entrega/Retirada', status: 'A Caminho' as OrderStatus, bgColor: 'bg-orange-50' },
     ];
     
     const historySections = [

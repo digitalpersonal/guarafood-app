@@ -15,6 +15,9 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
     const headerFontSize = printerWidth === 58 ? '14px' : '16px';
     const smallFontSize = printerWidth === 58 ? '10px' : '11px';
 
+    const isPixPaid = order.paymentMethod.toLowerCase().includes('pix');
+    const isPickup = !order.customerAddress || order.customerAddress.street === 'Retirada no Local';
+
     return (
         <div id="thermal-receipt">
             <style>
@@ -25,42 +28,31 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                             size: auto;
                         }
                         
-                        /* Reset Global */
-                        html, body {
-                            margin: 0 !important;
-                            padding: 0 !important;
-                            background-color: #fff !important;
-                            height: auto;
-                            overflow: visible;
-                        }
-
                         /* 
-                           TÉCNICA DE VISIBILIDADE SEGURA:
-                           Oculta visualmente tudo no body, mas mantém a estrutura do DOM intacta.
-                           Isso previne que o React perca a referência do componente de impressão.
+                           RESET NUCLEAR:
+                           Esconde TUDO na página, exceto o recibo.
+                           Isso garante que o recibo seja a única coisa impressa.
                         */
-                        body * {
-                            visibility: hidden;
+                        body > *:not(.print\\:block) {
+                            display: none !important;
                         }
 
-                        /* Exibe apenas o cupom e seus filhos */
-                        #thermal-receipt, #thermal-receipt * {
-                            visibility: visible;
-                        }
-
-                        /* Posiciona o cupom no topo absoluto da página de impressão */
+                        /* Configuração do Recibo */
                         #thermal-receipt {
+                            display: block !important;
+                            visibility: visible !important;
                             position: absolute;
                             left: 0;
                             top: 0;
                             width: ${widthCss};
-                            background-color: #fff;
-                            color: #000;
+                            background-color: #fff !important;
+                            color: #000 !important;
                             padding: 0;
                             margin: 0;
+                            z-index: 9999;
+                            min-height: 100vh; /* Garante fundo branco total */
                         }
                         
-                        /* Esconde elementos específicos que podem vazar */
                         .no-print {
                             display: none !important;
                         }
@@ -163,6 +155,46 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         margin: 10px 0;
                         text-transform: uppercase;
                     }
+
+                    /* Destaque para PIX */
+                    .payment-box-pix {
+                        border: 4px solid #000;
+                        background-color: #000;
+                        color: #fff !important;
+                        padding: 8px;
+                        text-align: center;
+                        font-weight: 900;
+                        font-size: ${headerFontSize};
+                        margin: 10px 0;
+                        text-transform: uppercase;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
+
+                    /* Destaque para RETIRADA */
+                    .mode-pickup {
+                        background-color: #000;
+                        color: #fff !important;
+                        font-size: 18px;
+                        font-weight: 900;
+                        text-align: center;
+                        padding: 8px;
+                        margin-bottom: 8px;
+                        text-transform: uppercase;
+                        border: 4px solid #000;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
+
+                    .mode-delivery {
+                        font-size: 16px;
+                        font-weight: 900;
+                        text-align: center;
+                        padding: 5px;
+                        margin-bottom: 8px;
+                        text-transform: uppercase;
+                        border: 2px solid #000;
+                    }
                     
                     /* Utilitários */
                     .bold { font-weight: 900; }
@@ -180,9 +212,11 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                 <div className="receipt-info bold" style={{ fontSize: headerFontSize, marginTop: '5px' }}>
                     SENHA: #{order.id.substring(0, 4).toUpperCase()}
                 </div>
-                <div className="receipt-info uppercase">
-                    {order.customerAddress ? 'ENTREGA' : 'RETIRADA NO BALCÃO'}
-                </div>
+            </div>
+
+            {/* MODO DE ENTREGA (DESTAQUE) */}
+            <div className={isPickup ? "mode-pickup" : "mode-delivery"}>
+                {isPickup ? "RETIRADA NO BALCÃO" : "ENTREGA"}
             </div>
 
             {/* CLIENTE */}
@@ -190,7 +224,8 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
             <div style={{ fontSize: baseFontSize, marginBottom: '2px' }} className="bold">{order.customerName}</div>
             <div style={{ fontSize: baseFontSize }}>{order.customerPhone}</div>
             
-            {order.customerAddress && (
+            {/* Endereço só aparece se NÃO for retirada */}
+            {!isPickup && order.customerAddress && (
                 <div style={{ fontSize: baseFontSize, marginTop: '4px', padding: '4px', border: '1px solid #000' }}>
                     <span className="bold">Endereço:</span><br/>
                     {order.customerAddress.street}, {order.customerAddress.number}<br/>
@@ -265,10 +300,16 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
             </div>
 
             {/* FORMA DE PAGAMENTO */}
-            <div className="payment-box">
-                {order.paymentMethod === 'Marcar na minha conta' ? 'FIADO / CONTA' : order.paymentMethod}
-                {order.paymentStatus === 'paid' ? ' (PAGO)' : ' (A COBRAR)'}
-            </div>
+            {isPixPaid ? (
+                <div className="payment-box-pix">
+                    PIX - JÁ PAGO
+                </div>
+            ) : (
+                <div className="payment-box">
+                    {order.paymentMethod === 'Marcar na minha conta' ? 'FIADO / CONTA' : order.paymentMethod}
+                    {order.paymentStatus === 'paid' ? ' (PAGO)' : ' (A COBRAR)'}
+                </div>
+            )}
 
             <div className="center" style={{ fontSize: smallFontSize, marginTop: '15px' }}>
                 GuaraFood Delivery<br/>

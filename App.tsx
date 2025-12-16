@@ -130,7 +130,8 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                 });
             },
             {
-                rootMargin: "-80px 0px -40% 0px",
+                // Adjust rootMargin to account for the sticky header (approx 64px) + sticky categories (approx 56px)
+                rootMargin: "-128px 0px -40% 0px",
                 threshold: 0,
             }
         );
@@ -155,6 +156,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
         const id = slugify(categoryName);
         const element = document.getElementById(id);
         if (element) {
+            // Scroll adjustments are handled by CSS scroll-margin-top
             element.scrollIntoView({
                 behavior: 'smooth',
                 block: 'start',
@@ -246,8 +248,8 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
             {!isLoading && restaurant.id && <CouponDisplay restaurantId={restaurant.id} />}
 
             {!isLoading && !error && menu.length > 0 && (
-                <div className="sticky top-0 z-30 bg-white shadow-sm">
-                    <div className="flex space-x-3 overflow-x-auto p-3 border-b">
+                <div className="sticky top-[64px] z-40 bg-white shadow-md border-b border-gray-100 transition-all duration-300">
+                    <div className="flex space-x-3 overflow-x-auto p-3 no-scrollbar">
                         {menu.map((category) => {
                             const categoryId = slugify(category.name);
                             return (
@@ -285,7 +287,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                                     key={category.name}
                                     id={categoryId}
                                     ref={(el) => (categoryRefs.current[categoryId] = el)}
-                                    className="scroll-mt-20 rounded-lg"
+                                    className="scroll-mt-44 rounded-lg"
                                 >
                                     <h2 className="text-2xl font-bold mb-4 px-2 pt-2 flex items-center gap-3">
                                         {category.iconUrl && <img src={category.iconUrl} alt={category.name} className="w-8 h-8 object-contain" />}
@@ -679,7 +681,8 @@ const AppContent: React.FC = () => {
                 onOrdersClick={showOrdersButton ? () => setView('history') : undefined} 
                 onHomeClick={handleHomeClick}
             />
-            <div className="flex-grow relative">
+            {/* Added print-container class here. This ensures any print:block children inside renderContent (like PrintableOrder) are actually visible during printing */}
+            <div className="flex-grow relative print-container">
                 {renderContent()}
             </div>
             <Footer onLoginClick={() => setView('login')} />

@@ -469,13 +469,27 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                     
                     {/* --- SIZES MANAGEMENT --- */}
                     <div className="p-3 bg-gray-50 rounded-lg border">
-                        <h3 className="font-bold text-gray-700 mb-3">Tamanhos (Opcional)</h3>
+                        <h3 className="font-bold text-gray-700 mb-3">Tamanhos / Porções</h3>
                         {sizes.map((size, index) => (
                             <div key={index} className="grid grid-cols-12 gap-2 mb-2 items-center">
-                                <input type="text" placeholder="Nome (ex: Grande)" value={size.name} onChange={(e) => handleSizeChange(index, 'name', e.target.value)} className="col-span-5 p-2 border rounded-md"/>
+                                <input type="text" placeholder="Nome (ex: 500ml)" value={size.name} onChange={(e) => handleSizeChange(index, 'name', e.target.value)} className="col-span-5 p-2 border rounded-md"/>
                                 <input type="number" placeholder="Preço" value={size.price} onChange={(e) => handleSizeChange(index, 'price', e.target.value)} className="col-span-3 p-2 border rounded-md"/>
-                                {isAcai && <input type="number" placeholder="Grátis" title="Adicionais Grátis" value={size.freeAddonCount || ''} onChange={(e) => handleSizeChange(index, 'freeAddonCount', e.target.value)} className="col-span-3 p-2 border rounded-md"/>}
-                                <button onClick={() => removeSize(index)} className={`p-2 text-red-500 hover:text-red-700 ${isAcai ? 'col-span-1' : 'col-span-4'}`}><TrashIcon className="w-5 h-5"/></button>
+                                
+                                {/* New Logic: Conditional Input for Free Addons */}
+                                {isAcai ? (
+                                    <input 
+                                        type="number" 
+                                        placeholder="Grátis" 
+                                        title="Qtd. de adicionais grátis para este tamanho" 
+                                        value={size.freeAddonCount || ''} 
+                                        onChange={(e) => handleSizeChange(index, 'freeAddonCount', e.target.value)} 
+                                        className="col-span-3 p-2 border rounded-md bg-white border-purple-300 focus:ring-purple-500"
+                                    />
+                                ) : (
+                                    <div className="col-span-3"></div> 
+                                )}
+                                
+                                <button onClick={() => removeSize(index)} className="col-span-1 p-2 text-red-500 hover:text-red-700"><TrashIcon className="w-5 h-5"/></button>
                             </div>
                         ))}
                         <button onClick={addSize} className="w-full text-sm font-semibold text-blue-600 p-2 rounded-md hover:bg-blue-100 border-dashed border-2 mt-2">
@@ -590,9 +604,9 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                                 </div>
                             )}
                         </div>
-                         <div className="flex items-center space-x-3 p-3 bg-gray-100 rounded-lg">
-                            <input type="checkbox" id="is-acai-toggle" checked={isAcai} onChange={(e) => setIsAcai(e.target.checked)} className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500"/>
-                            <label htmlFor="is-acai-toggle" className="font-semibold text-gray-700">É um item de açaí customizável?</label>
+                         <div className="flex items-center space-x-3 p-3 bg-purple-100 rounded-lg">
+                            <input type="checkbox" id="is-acai-toggle" checked={isAcai} onChange={(e) => setIsAcai(e.target.checked)} className="h-5 w-5 rounded border-purple-300 text-purple-600 focus:ring-purple-500"/>
+                            <label htmlFor="is-acai-toggle" className="font-semibold text-purple-700">É um item de Açaí (Montar Copo)?</label>
                         </div>
                          <div className="flex items-center space-x-3 p-3 bg-gray-100 rounded-lg">
                             <input type="checkbox" id="is-daily-special-toggle" checked={isDailySpecial} onChange={(e) => setIsDailySpecial(e.target.checked)} className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500"/>
