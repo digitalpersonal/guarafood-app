@@ -33,6 +33,11 @@ const MapPinIcon: React.FC<{ className?: string }> = ({ className }) => (
         <path fillRule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
     </svg>
 );
+const PrinterIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.356-1.07 2.448-2.384 2.448H6.384C5.07 24.948 4 23.856 4 22.5c0-1.44 1.152-3.036 2.405-4.5m11.318 0c.397-1.362.63-2.826.63-4.342 0-1.44-1.152-3.036-2.405-4.5l-1.050-1.242A3.375 3.375 0 0 0 14.25 6H9.75a3.375 3.375 0 0 0-2.345 1.05L6.34 8.292c-1.253 1.464-2.405 3.06-2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z" />
+    </svg>
+);
 
 
 const statusConfig: { [key in OrderStatus]: { text: string; color: string; } } = {
@@ -44,7 +49,7 @@ const statusConfig: { [key in OrderStatus]: { text: string; color: string; } } =
     'Cancelado': { text: 'Cancelado', color: 'bg-red-500' },
 };
 
-const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: OrderStatus) => void; onNotify: (order: Order) => void; onViewDetails: (order: Order) => void; }> = ({ order, onStatusUpdate, onNotify, onViewDetails }) => {
+const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: OrderStatus) => void; onNotify: (order: Order) => void; onViewDetails: (order: Order) => void; onPrint: (order: Order) => void; }> = ({ order, onStatusUpdate, onNotify, onViewDetails, onPrint }) => {
     const { confirm } = useNotification();
     const { text, color } = statusConfig[order.status];
     const [isExpanded, setIsExpanded] = useState(false);
@@ -56,6 +61,12 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
         // Consider new if less than 5 minutes old
         return (now.getTime() - orderDate.getTime()) < 300000;
     }, [order.status, order.timestamp]);
+
+    // Check if Pix payment is pending
+    const isPendingPayment = order.paymentStatus === 'pending' && order.paymentMethod !== 'Dinheiro';
+    
+    // Check if it is a Pix payment (any type)
+    const isPix = order.paymentMethod.toLowerCase().includes('pix');
 
     const handleConfirmAndUpdate = async (message: string, newStatus: OrderStatus) => {
         const confirmed = await confirm({
@@ -137,9 +148,28 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                     <span className="font-mono font-bold text-gray-800 text-sm">#{order.id.substring(0, 4)}</span>
                     <span className="text-[10px] text-gray-500 bg-gray-100 px-1 rounded">{timeString}</span>
                 </div>
-                <div className="text-right">
+                {/* Print Button */}
+                <button 
+                    onClick={(e) => { e.stopPropagation(); onPrint(order); }} 
+                    className="p-1 -mt-1 -mr-1 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors" 
+                    title="Imprimir Via / Reimprimir"
+                >
+                    <PrinterIcon className="w-4 h-4" />
+                </button>
+            </div>
+            
+            {/* Price Row (Moved here to make space for Print Button) */}
+            <div className="flex justify-end mb-1">
+                 {isPendingPayment ? (
+                     <span className="bg-red-100 text-red-700 text-[10px] font-bold px-1 rounded border border-red-200 animate-pulse">
+                        Pgto Pendente
+                     </span>
+                ) : (
                     <span className="block font-bold text-sm text-orange-700">R$ {order.totalPrice.toFixed(2)}</span>
-                </div>
+                )}
+                {isPendingPayment && (
+                    <span className="block font-bold text-sm text-gray-400 ml-2">R$ {order.totalPrice.toFixed(2)}</span>
+                )}
             </div>
 
             {/* Informações Resumidas */}
@@ -159,7 +189,7 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
 
                 <div className="flex items-center gap-1 text-[10px] text-gray-600 truncate">
                     <CreditCardIcon className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                    <span className={`truncate ${order.paymentMethod === 'Marcar na minha conta' ? 'text-red-600 font-bold' : ''}`}>
+                    <span className={`truncate ${order.paymentMethod === 'Marcar na minha conta' ? 'text-red-600 font-bold' : isPix ? 'text-green-600 font-bold' : ''}`}>
                         {order.paymentMethod === 'Marcar na minha conta' ? 'FIADO' : order.paymentMethod}
                     </span>
                 </div>
@@ -207,9 +237,10 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
 interface OrdersViewProps {
     orders: Order[];
     printerWidth?: number;
+    onPrint: (order: Order) => void;
 }
 
-const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80 }) => {
+const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPrint }) => {
     const { addToast } = useNotification();
     const [searchTerm, setSearchTerm] = useState('');
     const [viewMode, setViewMode] = useState<'active' | 'history'>('active');
@@ -289,7 +320,14 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80 }) =>
                         <h2 id={`section-title-${section.status}`} className="text-xl font-bold mb-4">{section.title} ({groupedOrders[section.status]!.length})</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" role="list">
                             {groupedOrders[section.status]!.map((order: Order) => (
-                                <OrderCard key={order.id} order={order} onStatusUpdate={handleStatusUpdate} onNotify={handleNotify} onViewDetails={setSelectedOrder} />
+                                <OrderCard 
+                                    key={order.id} 
+                                    order={order} 
+                                    onStatusUpdate={handleStatusUpdate} 
+                                    onNotify={handleNotify} 
+                                    onViewDetails={setSelectedOrder}
+                                    onPrint={onPrint}
+                                />
                             ))}
                         </div>
                     </div>
@@ -356,7 +394,8 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80 }) =>
                                                         order={order} 
                                                         onStatusUpdate={handleStatusUpdate} 
                                                         onNotify={handleNotify} 
-                                                        onViewDetails={setSelectedOrder} 
+                                                        onViewDetails={setSelectedOrder}
+                                                        onPrint={onPrint}
                                                     />
                                                 ))
                                             ) : (

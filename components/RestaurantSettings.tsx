@@ -93,6 +93,7 @@ const NotificationSettings: React.FC = () => {
 const PrinterSettings: React.FC<{ onTestPrint: (width: number) => void }> = ({ onTestPrint }) => {
     const { addToast } = useNotification();
     const [printerWidth, setPrinterWidth] = useState<number>(80);
+    const [showKioskHelp, setShowKioskHelp] = useState(false);
 
     useEffect(() => {
         const savedWidth = localStorage.getItem('guarafood-printer-width');
@@ -130,16 +131,42 @@ const PrinterSettings: React.FC<{ onTestPrint: (width: number) => void }> = ({ o
                 </div>
             </div>
 
-            <div className="mt-4 flex justify-end">
-                <button 
-                    onClick={() => onTestPrint(printerWidth)} 
-                    className="text-sm text-gray-700 font-semibold border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.356-1.07 2.448-2.384 2.448H6.384C5.07 24.948 4 23.856 4 22.5c0-1.44 1.152-3.036 2.405-4.5m11.318 0c.397-1.362.63-2.826.63-4.342 0-1.44-1.152-3.036-2.405-4.5l-1.050-1.242A3.375 3.375 0 0 0 14.25 6H9.75a3.375 3.375 0 0 0-2.345 1.05L6.34 8.292c-1.253 1.464-2.405 3.06-2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z" />
-                    </svg>
-                    Testar Impressão ({printerWidth}mm)
-                </button>
+            <div className="mt-4 flex flex-col items-end gap-2">
+                <div className="flex gap-2">
+                    <button 
+                        onClick={() => setShowKioskHelp(!showKioskHelp)}
+                        className="text-sm text-blue-600 font-semibold px-4 py-2 hover:bg-blue-50 rounded-lg transition-colors underline"
+                    >
+                        {showKioskHelp ? 'Ocultar Ajuda' : 'Como ativar Impressão Automática?'}
+                    </button>
+                    <button 
+                        onClick={() => onTestPrint(printerWidth)} 
+                        className="text-sm text-gray-700 font-semibold border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.356-1.07 2.448-2.384 2.448H6.384C5.07 24.948 4 23.856 4 22.5c0-1.44 1.152-3.036 2.405-4.5m11.318 0c.397-1.362.63-2.826.63-4.342 0-1.44-1.152-3.036-2.405-4.5l-1.050-1.242A3.375 3.375 0 0 0 14.25 6H9.75a3.375 3.375 0 0 0-2.345 1.05L6.34 8.292c-1.253 1.464-2.405 3.06-2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z" />
+                        </svg>
+                        Testar Impressão ({printerWidth}mm)
+                    </button>
+                </div>
+                
+                {showKioskHelp && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-2 text-sm text-gray-700 w-full animate-fadeIn">
+                        <h4 className="font-bold text-blue-800 mb-2">Impressão 100% Automática (Sem Janela de Confirmação)</h4>
+                        <p className="mb-2">Para que o cupom saia direto na impressora, você precisa configurar o Google Chrome ou Edge em <strong>Modo Quiosque (Kiosk)</strong>.</p>
+                        <ol className="list-decimal list-inside space-y-1 ml-2">
+                            <li>Crie um atalho do Chrome na sua área de trabalho.</li>
+                            <li>Clique com o botão direito no atalho e vá em <strong>Propriedades</strong>.</li>
+                            <li>No campo <strong>Destino</strong>, adicione ao final (após as aspas): <br/>
+                                <code className="bg-white px-1 py-0.5 rounded border text-xs font-mono select-all"> --kiosk-printing</code>
+                            </li>
+                            <li>Use este atalho para abrir o GuaraFood.</li>
+                        </ol>
+                        <p className="mt-2 text-xs text-blue-600">
+                            <strong>Nota:</strong> Certifique-se de que sua impressora térmica esteja definida como <strong>Padrão</strong> no Windows/Sistema.
+                        </p>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -238,15 +265,10 @@ const RestaurantSettings: React.FC = () => {
             const savedData = await updateRestaurant(restaurantId, updatePayload);
             
             // 3. OPTIMISTIC UPDATE / FORCED PERSISTENCE
-            // Instead of just relying on what the DB returned (which might be stale if cache is hit),
-            // we merge the DB response metadata with the LOCAL values we just sent.
-            // This prevents the UI from reverting to old values.
-            
             setRestaurant(prev => {
                 if (!prev) return savedData;
                 return {
                     ...savedData,
-                    // Force the local values to stay on screen
                     operatingHours: operatingHours,
                     mercado_pago_credentials: { accessToken: mercadoPagoToken },
                     manualPixKey: manualPixKey
@@ -254,9 +276,6 @@ const RestaurantSettings: React.FC = () => {
             });
 
             // 4. VERIFICATION (Background Check)
-            // We still check if the DB persisted it correctly to warn the user,
-            // but we don't revert the UI if it fails.
-            
             const savedToken = savedData.mercado_pago_credentials?.accessToken || '';
             const isTokenSaved = savedToken === mercadoPagoToken;
             const savedHoursStr = JSON.stringify(savedData.operatingHours);
@@ -325,8 +344,32 @@ const RestaurantSettings: React.FC = () => {
         };
         
         setTestOrder(dummyOrder);
+        
+        // Wait for render then try print
         setTimeout(() => {
-            window.print();
+            if (window.electronAPI) {
+                const printElement = document.getElementById('printable-order');
+                if (printElement) {
+                    const htmlContent = printElement.innerHTML;
+                    window.electronAPI.printOrder({ 
+                        html: htmlContent, 
+                        printerWidth: width 
+                    })
+                    .then(result => {
+                        if (!result.success) {
+                            addToast({ message: "Impressão silenciosa falhou. Usando janela do sistema...", type: 'warning' });
+                            window.print();
+                        }
+                    })
+                    .catch(err => {
+                        console.error("Electron bridge error:", err);
+                        window.print();
+                    });
+                }
+            } else {
+                // Plano B: Chrome Kiosk
+                window.print();
+            }
         }, 500);
     };
     
@@ -532,8 +575,8 @@ const RestaurantSettings: React.FC = () => {
                 </div>
             )}
 
-            {/* Hidden Print Area */}
-            <div className="hidden">
+            {/* Hidden Print Area. FIX: use print:block */}
+            <div className="hidden print:block">
                 <div id="printable-order">
                     {testOrder && <PrintableOrder order={testOrder} printerWidth={testPrinterWidth} />}
                 </div>

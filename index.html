@@ -13,37 +13,21 @@
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     
-    <!-- Controle de Cache (Cache Busting) - Garante atualizações automáticas -->
+    <!-- Controle de Cache (Cache Busting) -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     
-    <!-- Cor do navegador (Barra de endereços) -->
     <meta name="theme-color" content="#ea580c" />
     
-    <!-- SEO Básico -->
     <title>GuaraFood - Delivery da Cidade</title>
-    <meta name="description" content="Peça comida online nos melhores restaurantes da região. Lanches, Pizzas, Açaí e muito mais com entrega rápida." />
+    <meta name="description" content="Peça comida online nos melhores restaurantes da região." />
     
-    <!-- Open Graph / WhatsApp / Facebook -->
-    <meta property="og:type" content="website" />
-    <meta property="og:title" content="GuaraFood - Delivery" />
-    <meta property="og:description" content="Sua fome pede, GuaraFood entrega. Peça agora!" />
-    <meta property="og:image" content="https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=600" />
-    <meta property="og:site_name" content="GuaraFood" />
-
     <script src="https://cdn.tailwindcss.com"></script>
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.0",
-    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.80.0"
-  }
-}
-</script>
+    
+    <!-- REMOVIDO IMPORTMAP CONFLITANTE -->
+    <!-- O Vite gerencia as dependências via node_modules. Manter o importmap causava conflito de versões (React 18 vs 19) -->
+
 <style>
   /* Splash Screen Animation */
   @keyframes pulse-logo {
@@ -57,7 +41,7 @@
   }
 
   @keyframes highlight-animation {
-    0% { background-color: rgba(254, 249, 195, 0.8); } /* bg-yellow-100 with opacity */
+    0% { background-color: rgba(254, 249, 195, 0.8); }
     100% { background-color: transparent; }
   }
   .highlight-scroll {
@@ -65,75 +49,80 @@
   }
   
   @keyframes toast-in {
-    from {
-      transform: translateX(100%);
-      opacity: 0;
-    }
-    to {
-      transform: translateX(0);
-      opacity: 1;
-    }
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
   }
   
   @keyframes toast-out {
-    from {
-      transform: translateX(0);
-      opacity: 1;
-    }
-    to {
-      transform: translateX(100%);
-      opacity: 0;
-    }
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(100%); opacity: 0; }
   }
   
-  .toast-in {
-    animation: toast-in 0.3s ease-out forwards;
-  }
+  .toast-in { animation: toast-in 0.3s ease-out forwards; }
+  .toast-out { animation: toast-out 0.3s ease-in forwards; }
   
-  .toast-out {
-    animation: toast-out 0.3s ease-in forwards;
+  .new-order-pulse {
+    animation: pulse-blue 2s infinite;
+    border: 1px solid #3B82F6;
   }
-  
-  /* New Order Pulse Animation */
   @keyframes pulse-blue {
     0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
     70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
     100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
   }
-  .new-order-pulse {
-    animation: pulse-blue 2s infinite;
-    border: 1px solid #3B82F6; /* blue-500 */
-  }
 
-  /* Print-specific styles */
+  /* --- ESTILOS CRÍTICOS PARA IMPRESSÃO TÉRMICA (KIOSK MODE) --- */
   @media print {
+    /* Esconde tudo por padrão */
     body * {
       visibility: hidden;
     }
+    
+    /* Garante que o container do cupom seja visível */
     #printable-order, #printable-order * {
-      visibility: visible;
+      visibility: visible !important;
     }
+
+    /* Posiciona o cupom no topo absoluto */
     #printable-order {
       position: absolute;
       left: 0;
       top: 0;
       width: 100%;
+      margin: 0;
+      padding: 0;
+      background: white;
     }
-    /* Force background colors for thermal printing */
+
+    /* Remove margens da página geradas pelo navegador */
+    @page {
+        margin: 0;
+        size: auto; 
+    }
+
+    /* Força impressão de cores e fundos (importante para preto/branco térmico) */
     * {
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
-    @page {
-        margin: 0;
-    }
   }
 </style>
+<script type="importmap">
+{
+  "imports": {
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "vite": "https://esm.sh/vite@^7.3.0",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.87.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+  }
+}
+</script>
 <link rel="stylesheet" href="/index.css">
 </head>
   <body class="bg-gray-50">
     <div id="root">
-        <!-- Splash Screen Content (Será substituído pelo React assim que carregar) -->
         <div id="splash-screen" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: #ea580c; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; color: white; font-family: sans-serif; transition: opacity 0.5s ease-out;">
             <div class="splash-logo" style="display: flex; flex-direction: column; align-items: center;">
                 <svg width="80" height="80" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="white">
@@ -154,7 +143,6 @@
     </div>
     <script type="module" src="/index.tsx"></script>
     <script>
-      // Segurança: Remove a tela de splash se demorar muito (ex: erro de script)
       setTimeout(() => {
         const splash = document.getElementById('splash-screen');
         if (splash) {
@@ -162,7 +150,7 @@
             splash.style.opacity = '0';
             setTimeout(() => splash.remove(), 500);
         }
-      }, 7000); // 7 segundos de timeout
+      }, 7000);
 
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {

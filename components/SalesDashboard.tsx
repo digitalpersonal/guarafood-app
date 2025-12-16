@@ -411,8 +411,8 @@ const SalesDashboard: React.FC = () => {
                 </div>
             </div>
 
-            {/* PRINTABLE REPORT (Hidden on screen, visible on print) */}
-            <div id="printable-financial-report" className="hidden">
+            {/* PRINTABLE REPORT (Hidden on screen, visible on print) FIX: use print:block */}
+            <div id="printable-financial-report" className="hidden print:block">
                 <style>
                     {`
                         @media print {

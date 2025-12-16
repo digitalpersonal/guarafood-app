@@ -1,5 +1,4 @@
 
-// ... existing imports ...
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, Coupon, Order } from '../types';
 import { useCart } from '../hooks/useCart';
@@ -287,10 +286,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
                         setCurrentStep('SUCCESS');
                         localStorage.setItem(`customerData-${customerName.toLowerCase()}`, JSON.stringify({ phone: customerPhone, address }));
-                        setTimeout(() => {
-                            clearCart();
-                            onClose();
-                        }, 15000); 
+                        clearCart();
                     }
                 }
             ).subscribe();
@@ -322,7 +318,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             addToast({ message: 'Pedido enviado com sucesso!', type: 'success' });
             clearCart();
             setCurrentStep('SUCCESS');
-            setTimeout(() => onClose(), 15000);
         } catch (err) {
             console.error('Failed to create order:', err);
             addToast({ message: `Erro ao enviar pedido: ${err}`, type: 'error' });
@@ -807,7 +802,13 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 </div>
             </div>
 
-             <p className="text-sm text-gray-500">Redirecionando em 15 segundos...</p>
+             {/* MANUAL CLOSE BUTTON INSTEAD OF TIMEOUT */}
+             <button
+                onClick={onClose}
+                className="mt-6 bg-green-600 text-white font-bold py-3 px-12 rounded-full hover:bg-green-700 transition-all shadow-lg hover:scale-105 active:scale-95"
+            >
+                Entendi, acompanhar pedido
+            </button>
         </div>
     );
 

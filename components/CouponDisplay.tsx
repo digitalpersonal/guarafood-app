@@ -37,7 +37,8 @@ const CouponDisplay: React.FC<CouponDisplayProps> = ({ restaurantId, className }
             setCoupons(data);
         } catch (err) {
             console.error("Failed to load coupons:", err);
-            setError(`Falha ao carregar cupons: ${getErrorMessage(err)}`);
+            // Silent fail for coupons in customer view is often better than showing an error block
+            // setError(`Falha ao carregar cupons: ${getErrorMessage(err)}`);
         } finally {
             setIsLoading(false);
         }
@@ -65,22 +66,16 @@ const CouponDisplay: React.FC<CouponDisplayProps> = ({ restaurantId, className }
     }, [addToast]);
 
     if (isLoading) {
-        return <Spinner message="Carregando cupons..." />;
+        // Optional: return null here too if you don't want a spinner for this specific section
+        return null; 
     }
 
     if (error) {
-        return <div className="p-4 text-red-500 text-center">{error}</div>;
+        return null; // Hide on error
     }
 
     if (activeCoupons.length === 0) {
-        return (
-            <div className={`p-4 ${className}`}>
-                <div className="text-center py-6 bg-gray-100 rounded-lg">
-                    <CouponIcon className="w-10 h-10 mx-auto text-gray-400 mb-3"/>
-                    <p className="text-gray-500">Nenhum cupom ativo no momento.</p>
-                </div>
-            </div>
-        );
+        return null; // Hides the component entirely if no coupons
     }
 
     return (

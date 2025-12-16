@@ -30,6 +30,12 @@ const ChatBubbleLeftRightIcon: React.FC<{ className?: string }> = ({ className }
     </svg>
 );
 
+const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+    </svg>
+);
+
 interface CustomerOrdersProps {
     onBack: () => void;
 }
@@ -110,6 +116,23 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ onBack }) => {
         }
     };
 
+    const handleClearHistory = async () => {
+        const confirmed = await confirm({
+            title: 'Limpar Histórico',
+            message: 'Isso apagará a lista de pedidos do seu dispositivo. O histórico no restaurante não será afetado.',
+            confirmText: 'Limpar',
+            cancelText: 'Cancelar',
+            isDestructive: true
+        });
+
+        if (confirmed) {
+            localStorage.removeItem('guarafood-order-history');
+            localStorage.removeItem('guarafood-active-orders');
+            setOrders([]);
+            addToast({ message: 'Histórico limpo com sucesso!', type: 'success' });
+        }
+    };
+
     const handleHelp = (order: Order) => {
         const phone = order.restaurantPhone.replace(/\D/g, '');
         const message = `Olá, gostaria de falar sobre o pedido #${order.id.substring(0, 6)} feito pelo app.`;
@@ -132,13 +155,24 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ onBack }) => {
         <div className="min-h-screen bg-gray-50 pb-20">
             {/* Header */}
             <header className="bg-white shadow-sm p-4 sticky top-0 z-20">
-                <div className="flex items-center gap-3 mb-4">
-                    <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-100 transition-colors">
-                        <ArrowLeftIcon className="w-6 h-6 text-gray-700" />
-                    </button>
-                    <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                        Meus Pedidos
-                    </h1>
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                        <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-100 transition-colors">
+                            <ArrowLeftIcon className="w-6 h-6 text-gray-700" />
+                        </button>
+                        <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                            Meus Pedidos
+                        </h1>
+                    </div>
+                    {orders.length > 0 && (
+                        <button 
+                            onClick={handleClearHistory}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                            title="Limpar Histórico"
+                        >
+                            <TrashIcon className="w-5 h-5" />
+                        </button>
+                    )}
                 </div>
                 
                 {/* Tabs */}
@@ -188,65 +222,70 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ onBack }) => {
                         )}
                     </div>
                 ) : (
-                    filteredOrders.map((order) => (
-                        <div key={order.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                            {/* Card Header */}
-                            <div className="p-4 border-b border-gray-50 flex justify-between items-start">
-                                <div className="flex gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center text-orange-600 font-bold text-lg flex-shrink-0">
-                                        {order.restaurantName.charAt(0)}
+                    filteredOrders.map((order) => {
+                        // FIX: Safeguard against undefined restaurantName to prevent crash
+                        const safeRestaurantName = order.restaurantName || 'Restaurante';
+                        
+                        return (
+                            <div key={order.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                                {/* Card Header */}
+                                <div className="p-4 border-b border-gray-50 flex justify-between items-start">
+                                    <div className="flex gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center text-orange-600 font-bold text-lg flex-shrink-0">
+                                            {safeRestaurantName.charAt(0).toUpperCase()}
+                                        </div>
+                                        <div>
+                                            <h3 className="font-bold text-gray-800 leading-tight">{safeRestaurantName}</h3>
+                                            <p className="text-xs text-gray-500 mt-0.5">
+                                                #{order.id.substring(0, 6)} • {new Date(order.timestamp).toLocaleDateString('pt-BR')}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h3 className="font-bold text-gray-800 leading-tight">{order.restaurantName}</h3>
-                                        <p className="text-xs text-gray-500 mt-0.5">
-                                            #{order.id.substring(0, 6)} • {new Date(order.timestamp).toLocaleDateString('pt-BR')}
-                                        </p>
+                                    <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide ${getStatusColor(order.status)}`}>
+                                        {order.status}
+                                    </span>
+                                </div>
+
+                                {/* Items Summary */}
+                                <div className="p-4">
+                                    <ul className="text-sm text-gray-600 space-y-1 mb-3">
+                                        {order.items.slice(0, 3).map((item, idx) => (
+                                            <li key={idx} className="flex items-center gap-2">
+                                                <span className="font-bold text-gray-400 w-4">{item.quantity}x</span>
+                                                <span className="truncate">{item.name}</span>
+                                            </li>
+                                        ))}
+                                        {order.items.length > 3 && (
+                                            <li className="text-xs text-gray-400 pl-6">+ mais {order.items.length - 3} itens</li>
+                                        )}
+                                    </ul>
+                                    
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-gray-500">Total</span>
+                                        <span className="font-bold text-gray-900 text-lg">R$ {order.totalPrice.toFixed(2)}</span>
                                     </div>
                                 </div>
-                                <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide ${getStatusColor(order.status)}`}>
-                                    {order.status}
-                                </span>
-                            </div>
 
-                            {/* Items Summary */}
-                            <div className="p-4">
-                                <ul className="text-sm text-gray-600 space-y-1 mb-3">
-                                    {order.items.slice(0, 3).map((item, idx) => (
-                                        <li key={idx} className="flex items-center gap-2">
-                                            <span className="font-bold text-gray-400 w-4">{item.quantity}x</span>
-                                            <span className="truncate">{item.name}</span>
-                                        </li>
-                                    ))}
-                                    {order.items.length > 3 && (
-                                        <li className="text-xs text-gray-400 pl-6">+ mais {order.items.length - 3} itens</li>
-                                    )}
-                                </ul>
-                                
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="text-gray-500">Total</span>
-                                    <span className="font-bold text-gray-900 text-lg">R$ {order.totalPrice.toFixed(2)}</span>
+                                {/* Actions */}
+                                <div className="grid grid-cols-2 border-t border-gray-100 divide-x divide-gray-100">
+                                    <button 
+                                        onClick={() => handleHelp(order)}
+                                        className="py-3 flex items-center justify-center gap-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                                    >
+                                        <ChatBubbleLeftRightIcon className="w-4 h-4" />
+                                        Ajuda
+                                    </button>
+                                    <button 
+                                        onClick={() => handleReorder(order.items)}
+                                        className="py-3 flex items-center justify-center gap-2 text-sm font-bold text-orange-600 hover:bg-orange-50 transition-colors"
+                                    >
+                                        <RefreshIcon className="w-4 h-4" />
+                                        Repetir
+                                    </button>
                                 </div>
                             </div>
-
-                            {/* Actions */}
-                            <div className="grid grid-cols-2 border-t border-gray-100 divide-x divide-gray-100">
-                                <button 
-                                    onClick={() => handleHelp(order)}
-                                    className="py-3 flex items-center justify-center gap-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
-                                >
-                                    <ChatBubbleLeftRightIcon className="w-4 h-4" />
-                                    Ajuda
-                                </button>
-                                <button 
-                                    onClick={() => handleReorder(order.items)}
-                                    className="py-3 flex items-center justify-center gap-2 text-sm font-bold text-orange-600 hover:bg-orange-50 transition-colors"
-                                >
-                                    <RefreshIcon className="w-4 h-4" />
-                                    Repetir
-                                </button>
-                            </div>
-                        </div>
-                    ))
+                        );
+                    })
                 )}
             </main>
         </div>

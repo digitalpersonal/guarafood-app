@@ -36,7 +36,6 @@ interface OrderDetailsModalProps {
 
 const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, printerWidth = 80 }) => {
     const { text, color } = statusConfig[order.status];
-    const printableRef = useRef<HTMLDivElement>(null);
     const [isEditing, setIsEditing] = useState(false); // State to control editing modal
     const [currentOrder, setCurrentOrder] = useState<Order>(order); // Use internal state for order
 
@@ -68,6 +67,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
 
     // Check if the order can be edited
     const canEditOrder = ['Novo Pedido', 'Preparando'].includes(currentOrder.status);
+    const isPix = currentOrder.paymentMethod.toLowerCase().includes('pix');
 
     return (
         <>
@@ -110,7 +110,14 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                                         CEP: {currentOrder.customerAddress.zipCode}
                                     </p>
                                 )}
-                                <p className="text-sm text-gray-600">Pagamento: <span className="font-medium">{currentOrder.paymentMethod}</span></p>
+                                <div className="text-sm text-gray-600 flex flex-wrap items-center gap-2">
+                                    Pagamento: <span className="font-medium">{currentOrder.paymentMethod}</span>
+                                    {isPix && (
+                                        <span className="bg-green-100 text-green-800 text-xs font-bold px-2 py-0.5 rounded border border-green-200">
+                                            PAGO VIA PIX
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                             <div className="space-y-1">
                                 <h3 className="font-bold text-gray-700 border-b pb-1 mb-2">Restaurante</h3>
@@ -214,8 +221,8 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                     </div>
                 </div>
             </div>
-             {/* Hidden component for printing */}
-            <div className="hidden">
+             {/* Hidden component for printing. FIX: use print:block to ensure visibility during print */}
+            <div className="hidden print:block">
                 <div id="printable-order">
                     {/* Ensure currentOrder is passed to PrintableOrder */}
                     <PrintableOrder order={currentOrder} printerWidth={printerWidth} /> 

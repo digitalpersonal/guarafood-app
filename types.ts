@@ -1,5 +1,4 @@
 
-
 export interface Banner {
   id: number;
   title: string;
@@ -227,4 +226,18 @@ export interface PromptOptions {
     cancelText?: string;
     onSubmit: (value: string) => void;
     onCancel: () => void;
+}
+
+// --- ELECTRON API INTERFACE ---
+// Define the shape of the bridge exposed by contextBridge in Electron
+export interface ElectronAPI {
+    printOrder: (data: { html: string; printerWidth: number }) => Promise<{ success: boolean; error?: string }>;
+    getVersion: () => Promise<string>;
+}
+
+// Extend the Window interface
+declare global {
+    interface Window {
+        electronAPI?: ElectronAPI;
+    }
 }

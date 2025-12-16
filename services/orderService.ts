@@ -28,13 +28,15 @@ const normalizeOrder = (data: any): Order => {
     };
 };
 
+// Modificado para aceitar opções de limite para não travar o navegador
 export const subscribeToOrders = (
     callback: (orders: Order[]) => void, 
     restaurantId?: number,
-    onStatusChange?: (status: 'SUBSCRIBED' | 'CLOSED' | 'CHANNEL_ERROR' | 'TIMED_OUT') => void
+    onStatusChange?: (status: 'SUBSCRIBED' | 'CLOSED' | 'CHANNEL_ERROR' | 'TIMED_OUT') => void,
+    limit: number = 200 // Default limit para segurança
 ): (() => void) => {
-    // Busca inicial
-    fetchOrders(restaurantId).then(callback).catch(console.error);
+    // Busca inicial com limite
+    fetchOrders(restaurantId, { limit }).then(callback).catch(console.error);
 
     const channelName = restaurantId ? `public:orders:restaurantId=eq.${restaurantId}` : 'public:orders';
     const channel = supabase.channel(channelName);
@@ -50,7 +52,8 @@ export const subscribeToOrders = (
             },
             (payload) => {
                 console.log('Change received!', payload);
-                fetchOrders(restaurantId).then(callback).catch(console.error);
+                // Atualiza a lista respeitando o limite
+                fetchOrders(restaurantId, { limit }).then(callback).catch(console.error);
             }
         )
         .subscribe((status) => {
@@ -64,11 +67,17 @@ export const subscribeToOrders = (
     };
 };
 
-export const fetchOrders = async (restaurantId?: number): Promise<Order[]> => {
+export const fetchOrders = async (restaurantId?: number, options?: { limit?: number }): Promise<Order[]> => {
     let query = supabase.from('orders').select('*');
     if (restaurantId) {
         query = query.eq('restaurant_id', restaurantId);
     }
+    
+    // Performance improvement: Limit query size for operational dashboards
+    if (options?.limit) {
+        query = query.limit(options.limit);
+    }
+
     const { data, error } = await query.order('timestamp', { ascending: false });
     handleSupabaseError({ error, customMessage: 'Failed to fetch orders' });
     
@@ -100,6 +109,7 @@ export interface NewOrderData {
 
 export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
     const isDebt = orderData.paymentMethod === 'Marcar na minha conta';
+    const isPix = orderData.paymentMethod === 'Pix';
     
     // CONVERSÃO IMPORTANTE: CamelCase (App) -> snake_case (Banco)
     const newOrderPayload = {
@@ -117,8 +127,9 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
         discount_amount: orderData.discountAmount,
         subtotal: orderData.subtotal,
         delivery_fee: orderData.deliveryFee,
-        status: orderData.paymentMethod === 'Pix' ? 'Aguardando Pagamento' : 'Novo Pedido',
-        payment_status: isDebt ? 'pending' : 'paid',
+        // FIX: Forçar 'Novo Pedido' para evitar erro de enum no banco se 'Aguardando Pagamento' não existir
+        status: 'Novo Pedido', 
+        payment_status: (isDebt || isPix) ? 'pending' : 'paid',
         timestamp: new Date().toISOString(),
     };
 
@@ -145,7 +156,7 @@ export const updateOrderDetails = async (
         totalPrice: number;
         subtotal: number;
         discountAmount?: number;
-        paymentMethod?: string; // Allow changing payment method if it was "Marcar na minha conta" for example
+        paymentMethod?: string; 
     }
 ): Promise<Order> => {
     const payload = {

@@ -63,6 +63,11 @@ const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
   </svg>
 );
+const DragHandleIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+    </svg>
+);
 
 
 const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> = ({ restaurantId: propRestaurantId, onBack }) => {
@@ -87,6 +92,8 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
     const [isAddonModalOpen, setIsAddonModalOpen] = useState(false);
     const [editingAddon, setEditingAddon] = useState<Addon | null>(null);
 
+    // Drag and Drop State
+    const [draggedCategoryIndex, setDraggedCategoryIndex] = useState<number | null>(null);
 
     // Category editing state
     const [editingCategory, setEditingCategory] = useState<{ id: number; oldName: string; newName: string; newIconUrl: string | null } | null>(null);
@@ -432,6 +439,8 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             }
         }
     };
+    
+    // --- Category Reordering (Button & Drag) ---
     const handleReorderCategory = async (index: number, direction: 'up' | 'down') => {
         const newOrder = [...menuCategories];
         const swapIndex = direction === 'up' ? index - 1 : index + 1;
@@ -444,6 +453,45 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
         } catch (error) {
             addToast({ message: `Erro ao reordenar: ${getErrorMessage(error)}`, type: 'error' });
             loadData(); // Revert on failure
+        }
+    };
+
+    // DRAG HANDLERS
+    const handleDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+        setDraggedCategoryIndex(index);
+        // Required for Firefox
+        e.dataTransfer.effectAllowed = 'move';
+        // Set a transparent drag image if desired, or let browser handle it
+    };
+
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+        e.preventDefault(); // Necessary to allow dropping
+        e.dataTransfer.dropEffect = 'move';
+    };
+
+    const handleDrop = async (e: React.DragEvent<HTMLDivElement>, targetIndex: number) => {
+        e.preventDefault();
+        
+        if (draggedCategoryIndex === null || draggedCategoryIndex === targetIndex) {
+            setDraggedCategoryIndex(null);
+            return;
+        }
+
+        const newCategories = [...menuCategories];
+        const [movedItem] = newCategories.splice(draggedCategoryIndex, 1);
+        newCategories.splice(targetIndex, 0, movedItem);
+
+        setMenuCategories(newCategories); // Optimistic Update
+        setDraggedCategoryIndex(null);
+
+        if (restaurantId) {
+            try {
+                await updateCategoryOrder(restaurantId, newCategories);
+            } catch (error) {
+                console.error(error);
+                addToast({ message: "Erro ao reordenar.", type: 'error' });
+                loadData(); // Revert
+            }
         }
     };
 
@@ -655,13 +703,25 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                 ) : (
                     <div className="space-y-6">
                         {menuCategories.map((category, index) => (
-                            <div key={category.id} className="bg-white rounded-lg shadow-md">
-                                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-t-lg border-b">
+                            <div 
+                                key={category.id} 
+                                className={`bg-white rounded-lg shadow-md transition-opacity duration-200 ${draggedCategoryIndex === index ? 'opacity-50 border-2 border-dashed border-gray-400' : ''}`}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, index)}
+                                onDragOver={(e) => handleDragOver(e, index)}
+                                onDrop={(e) => handleDrop(e, index)}
+                            >
+                                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-t-lg border-b cursor-move group">
                                     <div className="flex items-center gap-2 flex-grow">
-                                        <div className="flex flex-col">
-                                            <button onClick={() => handleReorderCategory(index, 'up')} disabled={index === 0} className="disabled:opacity-20 text-gray-500 hover:text-black"><ChevronUpIcon className="w-5 h-5"/></button>
-                                            <button onClick={() => handleReorderCategory(index, 'down')} disabled={index === menuCategories.length - 1} className="disabled:opacity-20 text-gray-500 hover:text-black"><ChevronDownIcon className="w-5 h-5"/></button>
+                                        {/* Drag Handle & Buttons */}
+                                        <div className="flex items-center gap-1 mr-2 text-gray-400">
+                                            <div className="flex flex-col mr-1">
+                                                <button onClick={() => handleReorderCategory(index, 'up')} disabled={index === 0} className="disabled:opacity-20 hover:text-black p-0.5"><ChevronUpIcon className="w-3 h-3"/></button>
+                                                <button onClick={() => handleReorderCategory(index, 'down')} disabled={index === menuCategories.length - 1} className="disabled:opacity-20 hover:text-black p-0.5"><ChevronDownIcon className="w-3 h-3"/></button>
+                                            </div>
+                                            <DragHandleIcon className="w-5 h-5 cursor-grab active:cursor-grabbing text-gray-300 group-hover:text-gray-500" />
                                         </div>
+
                                         {editingCategory?.id === category.id ? (
                                             <div className="flex flex-col w-full max-w-sm gap-2">
                                                 <input 
