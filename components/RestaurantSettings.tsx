@@ -265,10 +265,15 @@ const RestaurantSettings: React.FC = () => {
             const savedData = await updateRestaurant(restaurantId, updatePayload);
             
             // 3. OPTIMISTIC UPDATE / FORCED PERSISTENCE
+            // Instead of just relying on what the DB returned (which might be stale if cache is hit),
+            // we merge the DB response metadata with the LOCAL values we just sent.
+            // This prevents the UI from reverting to old values.
+            
             setRestaurant(prev => {
                 if (!prev) return savedData;
                 return {
                     ...savedData,
+                    // Force the local values to stay on screen
                     operatingHours: operatingHours,
                     mercado_pago_credentials: { accessToken: mercadoPagoToken },
                     manualPixKey: manualPixKey
@@ -276,6 +281,9 @@ const RestaurantSettings: React.FC = () => {
             });
 
             // 4. VERIFICATION (Background Check)
+            // We still check if the DB persisted it correctly to warn the user,
+            // but we don't revert the UI if it fails.
+            
             const savedToken = savedData.mercado_pago_credentials?.accessToken || '';
             const isTokenSaved = savedToken === mercadoPagoToken;
             const savedHoursStr = JSON.stringify(savedData.operatingHours);
@@ -344,32 +352,8 @@ const RestaurantSettings: React.FC = () => {
         };
         
         setTestOrder(dummyOrder);
-        
-        // Wait for render then try print
         setTimeout(() => {
-            if (window.electronAPI) {
-                const printElement = document.getElementById('printable-order');
-                if (printElement) {
-                    const htmlContent = printElement.innerHTML;
-                    window.electronAPI.printOrder({ 
-                        html: htmlContent, 
-                        printerWidth: width 
-                    })
-                    .then(result => {
-                        if (!result.success) {
-                            addToast({ message: "Impressão silenciosa falhou. Usando janela do sistema...", type: 'warning' });
-                            window.print();
-                        }
-                    })
-                    .catch(err => {
-                        console.error("Electron bridge error:", err);
-                        window.print();
-                    });
-                }
-            } else {
-                // Plano B: Chrome Kiosk
-                window.print();
-            }
+            window.print();
         }, 500);
     };
     

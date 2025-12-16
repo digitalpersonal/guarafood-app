@@ -4,7 +4,7 @@ import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from
 import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant } from './services/databaseService';
 import { AuthProvider, useAuth } from './services/authService';
 import { getInitializationError, getErrorMessage } from './services/api';
-import { isRestaurantOpen, getRestaurantStatusInfo, isLunchTime } from './utils/restaurantUtils';
+import { isRestaurantOpen } from './utils/restaurantUtils';
 
 import RestaurantCard from './components/RestaurantCard';
 import Spinner from './components/Spinner';
@@ -56,12 +56,6 @@ const HeartIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
-const ClockIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-);
-
 // Helper to create valid HTML IDs from category names
 const slugify = (text: string) => `category-${text.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '')}`;
 
@@ -70,7 +64,6 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     const [dailyPromotions, setDailyPromotions] = useState<(MenuItem | Combo)[]>([]);
     const [dailySpecials, setDailySpecials] = useState<MenuItem[]>([]);
     const [weeklySpecials, setWeeklySpecials] = useState<MenuItem[]>([]);
-    const [marmitaItems, setMarmitaItems] = useState<MenuItem[]>([]); // New State for Marmitas
     const [addons, setAddons] = useState<Addon[]>([]);
     const [allPizzas, setAllPizzas] = useState<MenuItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -78,8 +71,6 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     const [activeCategory, setActiveCategory] = useState<string | null>(null);
     const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-    const statusInfo = getRestaurantStatusInfo(restaurant);
-    const isLunch = isLunchTime(restaurant); // Determine if it's lunch time
 
     useEffect(() => {
         const loadMenu = async () => {
@@ -99,24 +90,14 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                 const weeklyPromos = menuData.flatMap(category => category.items).filter(item => item.isWeeklySpecial);
                 setWeeklySpecials(weeklyPromos);
                 
-                // Extract Marmitas
-                const marmitas = menuData.flatMap(category => category.items).filter(item => item.isMarmita);
-                setMarmitaItems(marmitas);
-                
-                // Filter menu: Remove Specials and Marmitas from standard lists to avoid duplication
-                // Also remove Marmitas completely if it's not Lunch Time (handled in rendering usually, but cleaner here)
-                const menuFiltered = menuData
+                const menuWithoutSpecials = menuData
                     .map(category => ({
                         ...category,
-                        items: category.items.filter(item => 
-                            !item.isDailySpecial && 
-                            !item.isWeeklySpecial && 
-                            !item.isMarmita // Remove marmitas from normal categories always
-                        ),
+                        items: category.items.filter(item => !item.isDailySpecial && !item.isWeeklySpecial),
                     }))
                     .filter(category => category.items.length > 0 || (category.combos && category.combos.length > 0));
 
-                setMenu(menuFiltered);
+                setMenu(menuWithoutSpecials);
                 setAddons(addonsData);
 
                 const promotedItems = menuData
@@ -124,8 +105,8 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                     .filter(item => !!item.activePromotion);
                 setDailyPromotions(promotedItems);
 
-                if (menuFiltered.length > 0) {
-                    setActiveCategory(slugify(menuFiltered[0].name));
+                if (menuWithoutSpecials.length > 0) {
+                    setActiveCategory(slugify(menuWithoutSpecials[0].name));
                 }
             } catch (err) {
                 setError('Falha ao carregar o cardápio. Por favor, tente recarregar a página.');
@@ -217,37 +198,10 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
 
             <div className="p-4 bg-white rounded-t-2xl -mt-4 relative z-20 text-center border-b shadow-sm">
                 <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{restaurant.name}</h1>
-                <div className="flex flex-col items-center gap-1 mt-1">
-                    <p className="text-gray-600 text-sm font-medium uppercase tracking-wide">{restaurant.category}</p>
-                    {/* Status Badge in Header */}
-                    <span className={`text-xs font-bold px-3 py-1 rounded-full text-white ${statusInfo.colorClass}`}>
-                        {statusInfo.statusText}
-                    </span>
-                </div>
+                <p className="text-gray-600 mt-1 text-sm font-medium uppercase tracking-wide">{restaurant.category}</p>
                 {restaurant.description && <p className="text-gray-500 text-sm mt-2 max-w-lg mx-auto">{restaurant.description}</p>}
             </div>
             
-            {/* --- MARMITA BANNER (Lunch Only) --- */}
-            {!isLoading && isLunch && marmitaItems.length > 0 && (
-                <div className="p-4 bg-gradient-to-r from-red-50 to-orange-50 border-b-4 border-orange-200 shadow-inner">
-                    <div className="flex items-center gap-2 mb-3">
-                        <div className="bg-orange-500 p-2 rounded-full text-white shadow">
-                            <ClockIcon className="w-6 h-6" />
-                        </div>
-                        <div>
-                            <h2 className="text-xl font-bold text-gray-800">Cardápio do Almoço</h2>
-                            <p className="text-xs text-orange-600 font-bold uppercase">Disponível agora!</p>
-                        </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        {marmitaItems.map(item => (
-                            <MenuItemCard key={`marmita-${item.id}`} item={item} allPizzas={allPizzas} allAddons={addons} />
-                        ))}
-                    </div>
-                </div>
-            )}
-
             {!isLoading && restaurant.category === 'Supermercado' && weeklySpecials.length > 0 && (
                 <div className="p-4 bg-green-50 border-b-2 border-t-2 border-green-200">
                     <h2 className="text-2xl font-bold mb-4 text-green-700 flex items-center gap-2">

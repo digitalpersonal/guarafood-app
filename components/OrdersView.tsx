@@ -64,9 +64,6 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
 
     // Check if Pix payment is pending
     const isPendingPayment = order.paymentStatus === 'pending' && order.paymentMethod !== 'Dinheiro';
-    
-    // Check if it is a Pix payment (any type)
-    const isPix = order.paymentMethod.toLowerCase().includes('pix');
 
     const handleConfirmAndUpdate = async (message: string, newStatus: OrderStatus) => {
         const confirmed = await confirm({
@@ -189,7 +186,7 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
 
                 <div className="flex items-center gap-1 text-[10px] text-gray-600 truncate">
                     <CreditCardIcon className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                    <span className={`truncate ${order.paymentMethod === 'Marcar na minha conta' ? 'text-red-600 font-bold' : isPix ? 'text-green-600 font-bold' : ''}`}>
+                    <span className={`truncate ${order.paymentMethod === 'Marcar na minha conta' ? 'text-red-600 font-bold' : ''}`}>
                         {order.paymentMethod === 'Marcar na minha conta' ? 'FIADO' : order.paymentMethod}
                     </span>
                 </div>

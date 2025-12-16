@@ -36,6 +36,7 @@ interface OrderDetailsModalProps {
 
 const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, printerWidth = 80 }) => {
     const { text, color } = statusConfig[order.status];
+    const printableRef = useRef<HTMLDivElement>(null);
     const [isEditing, setIsEditing] = useState(false); // State to control editing modal
     const [currentOrder, setCurrentOrder] = useState<Order>(order); // Use internal state for order
 
@@ -67,7 +68,6 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
 
     // Check if the order can be edited
     const canEditOrder = ['Novo Pedido', 'Preparando'].includes(currentOrder.status);
-    const isPix = currentOrder.paymentMethod.toLowerCase().includes('pix');
 
     return (
         <>
@@ -110,14 +110,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                                         CEP: {currentOrder.customerAddress.zipCode}
                                     </p>
                                 )}
-                                <div className="text-sm text-gray-600 flex flex-wrap items-center gap-2">
-                                    Pagamento: <span className="font-medium">{currentOrder.paymentMethod}</span>
-                                    {isPix && (
-                                        <span className="bg-green-100 text-green-800 text-xs font-bold px-2 py-0.5 rounded border border-green-200">
-                                            PAGO VIA PIX
-                                        </span>
-                                    )}
-                                </div>
+                                <p className="text-sm text-gray-600">Pagamento: <span className="font-medium">{currentOrder.paymentMethod}</span></p>
                             </div>
                             <div className="space-y-1">
                                 <h3 className="font-bold text-gray-700 border-b pb-1 mb-2">Restaurante</h3>

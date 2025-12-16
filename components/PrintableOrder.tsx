@@ -15,8 +15,6 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
     const headerFontSize = printerWidth === 58 ? '14px' : '16px';
     const smallFontSize = printerWidth === 58 ? '10px' : '11px';
 
-    const isPix = order.paymentMethod.toLowerCase().includes('pix');
-
     return (
         <div id="thermal-receipt">
             <style>
@@ -165,19 +163,6 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         margin: 10px 0;
                         text-transform: uppercase;
                     }
-
-                    .pix-alert {
-                        border: 3px solid #000;
-                        padding: 8px;
-                        text-align: center;
-                        font-weight: 900;
-                        font-size: ${headerFontSize};
-                        margin: 10px 0;
-                        text-transform: uppercase;
-                        background-color: #000;
-                        color: #fff !important;
-                        -webkit-print-color-adjust: exact;
-                    }
                     
                     /* Utilitários */
                     .bold { font-weight: 900; }
@@ -199,13 +184,6 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                     {order.customerAddress ? 'ENTREGA' : 'RETIRADA NO BALCÃO'}
                 </div>
             </div>
-
-            {/* DESTAQUE PIX PARA IMPRESSÃO */}
-            {isPix && (
-                <div className="pix-alert">
-                    *** PAGO VIA PIX ***
-                </div>
-            )}
 
             {/* CLIENTE */}
             <div className="section-header">CLIENTE</div>

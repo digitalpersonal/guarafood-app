@@ -8,7 +8,7 @@ import MenuManagement from './MenuManagement';
 import RestaurantSettings from './RestaurantSettings';
 import PrintableOrder from './PrintableOrder';
 import DebtManager from './DebtManager';
-import { useSound } from '../hooks/useSound';
+import { useSound } from '../hooks/useSound'; // Import Hook
 
 // Reusable Icons
 const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -47,12 +47,6 @@ const SignalIcon: React.FC<{ className?: string; color?: string }> = ({ classNam
     </svg>
 );
 
-const DesktopIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
-    </svg>
-);
-
 
 // Lazy load SalesDashboard to avoid heavy initial bundle
 const SalesDashboard = React.lazy(() => import('./SalesDashboard'));
@@ -68,7 +62,6 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     
     // Connection Status
     const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'DISCONNECTED'>('DISCONNECTED');
-    const [isDesktopMode, setIsDesktopMode] = useState(false);
     
     // Hook de som
     const { playNotification, initAudioContext } = useSound();
@@ -78,18 +71,8 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const isFirstLoadRef = useRef(true);
     const [printerWidth, setPrinterWidth] = useState<number>(80);
 
-    // Detect Electron environment
+    // Wake Lock Logic
     useEffect(() => {
-        if (window.electronAPI) {
-            setIsDesktopMode(true);
-            console.log("Desktop Mode (Electron) Detected");
-        }
-    }, []);
-
-    // Wake Lock Logic (Only for Web, Electron handles this differently)
-    useEffect(() => {
-        if (isDesktopMode) return; // Skip Wake Lock API in Electron if managed there
-
         let wakeLock: any = null;
 
         const requestWakeLock = async () => {
@@ -121,7 +104,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 });
             }
         };
-    }, [isDesktopMode]);
+    }, []);
 
     // Load printer width preference
     useEffect(() => {
@@ -139,43 +122,16 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     // Effect to trigger print when orderToPrint changes
     useEffect(() => {
         if (orderToPrint) {
-            if (isDesktopMode && window.electronAPI) {
-                // --- PLANO A: ELECTRON DESKTOP PRINTING ---
-                setTimeout(() => {
-                    const printElement = document.getElementById('printable-order');
-                    if (printElement) {
-                        const htmlContent = printElement.innerHTML;
-                        window.electronAPI!.printOrder({ 
-                            html: htmlContent, 
-                            printerWidth: printerWidth 
-                        })
-                        .then(result => {
-                            if (!result.success) {
-                                console.warn("Impressão automática (Electron) falhou:", result.error);
-                                // FALLBACK: Tenta window.print() se o método silencioso falhar
-                                window.print();
-                            }
-                        })
-                        .catch(err => {
-                            console.error("Erro na ponte Electron:", err);
-                            window.print();
-                        });
-                    }
-                    setOrderToPrint(null);
-                }, 500);
-            } else {
-                // --- PLANO B: CHROME KIOSK / BROWSER PRINTING ---
-                // Se rodar com --kiosk-printing, window.print() imprime direto (silencioso).
-                // Se rodar normal, abre a janela de seleção.
-                // O setTimeout dá tempo para o React renderizar o componente <PrintableOrder> no DOM.
-                const timer = setTimeout(() => {
-                    window.print();
-                    setOrderToPrint(null); 
-                }, 500); 
-                return () => clearTimeout(timer);
-            }
+            // CRITICAL: Delay printing by 1000ms (1 second) to allow the DOM to fully render the PrintableOrder component.
+            // In Kiosk mode, the browser prints immediately. If the component isn't rendered yet, it prints a blank page.
+            const timer = setTimeout(() => {
+                window.print();
+                // We clear the order after printing is triggered.
+                setOrderToPrint(null); 
+            }, 1000); 
+            return () => clearTimeout(timer);
         }
-    }, [orderToPrint, isDesktopMode, printerWidth]);
+    }, [orderToPrint]);
 
     const handleManualPrint = (order: Order) => {
         setOrderToPrint(order);
@@ -185,6 +141,8 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         if (!currentUser?.restaurantId) return;
 
         // Subscribe to orders and handle notifications
+        // LIMITATION: Fetch only last 200 orders to prevent browser memory bloat after months of usage.
+        // History is available in "Financeiro"
         const unsubscribe = subscribeToOrders((allOrders) => {
             const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
 
@@ -197,6 +155,9 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 // Find orders that need alerting
                 const ordersToAlert = allOrders.filter(order => {
                     const prevStatus = previousOrdersStatusRef.current.get(order.id);
+                    
+                    // Trigger if current status is 'Novo Pedido' AND
+                    // (It is a brand new order OR It existed but status changed to 'Novo Pedido')
                     return order.status === 'Novo Pedido' && prevStatus !== 'Novo Pedido';
                 });
 
@@ -272,22 +233,18 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     
     return (
         <div className="w-full min-h-screen bg-gray-50" onClick={enableAudio} onTouchStart={enableAudio}>
-            {/* Status Bar */}
-            <div className="flex text-white text-xs font-bold">
-                <div 
-                    className={`flex-1 p-1 cursor-pointer flex items-center justify-center gap-2 transition-colors duration-500 ${connectionStatus === 'CONNECTED' ? 'bg-green-600' : 'bg-red-600'}`} 
-                    onClick={enableAudio}
-                    title={connectionStatus === 'CONNECTED' ? "Sistema online" : "Desconectado"}
-                >
-                    <div className={`w-2 h-2 rounded-full ${connectionStatus === 'CONNECTED' ? 'bg-white animate-pulse' : 'bg-white'}`}></div>
-                    <span>{connectionStatus === 'CONNECTED' ? 'Online' : 'Reconectando...'}</span>
-                    {connectionStatus === 'CONNECTED' && <SpeakerIcon className="w-3 h-3 opacity-70" />}
-                </div>
-                {/* Desktop Mode Indicator */}
-                <div className={`px-4 p-1 flex items-center gap-2 ${isDesktopMode ? 'bg-blue-600' : 'bg-gray-600'}`} title={isDesktopMode ? "Rodando em Electron (App Desktop)" : "Rodando no Navegador (Web)"}>
-                    {isDesktopMode ? <DesktopIcon className="w-3 h-3" /> : <SignalIcon className="w-3 h-3" />}
-                    <span>{isDesktopMode ? 'Desktop' : 'Web'}</span>
-                </div>
+            <div 
+                className={`text-white text-center text-xs font-bold p-1 cursor-pointer flex items-center justify-center gap-2 transition-colors duration-500 ${connectionStatus === 'CONNECTED' ? 'bg-green-600' : 'bg-red-600'}`} 
+                onClick={enableAudio}
+                title={connectionStatus === 'CONNECTED' ? "Sistema online e recebendo pedidos" : "Desconectado. Verifique sua internet."}
+            >
+                <div className={`w-2 h-2 rounded-full ${connectionStatus === 'CONNECTED' ? 'bg-white animate-pulse' : 'bg-white'}`}></div>
+                {connectionStatus === 'CONNECTED' ? (
+                    <span>Sistema Online - Tela Ativa</span>
+                ) : (
+                    <span>Desconectado - Reconectando...</span>
+                )}
+                {connectionStatus === 'CONNECTED' && <SpeakerIcon className="w-3 h-3 ml-2 opacity-70" />}
             </div>
 
             <header className="p-4 sticky top-0 bg-gray-50 z-20 border-b">

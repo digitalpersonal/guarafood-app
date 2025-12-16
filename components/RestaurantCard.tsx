@@ -1,13 +1,11 @@
-
 import React from 'react';
 import type { Restaurant } from '../types';
 import OptimizedImage from './OptimizedImage';
-import { getRestaurantStatusInfo } from '../utils/restaurantUtils';
 
 interface RestaurantCardProps {
   restaurant: Restaurant;
   onClick: (restaurant: Restaurant) => void;
-  isOpen: boolean; // Kept for backward compatibility but derived internally now
+  isOpen: boolean;
   isFavorite?: boolean;
   onToggleFavorite?: (e: React.MouseEvent) => void;
 }
@@ -37,10 +35,7 @@ const HeartIcon: React.FC<{ className?: string; filled?: boolean }> = ({ classNa
 );
 
 
-const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, isFavorite, onToggleFavorite }) => {
-  
-  const statusInfo = getRestaurantStatusInfo(restaurant);
-  const isOpen = statusInfo.isOpen;
+const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, isOpen, isFavorite, onToggleFavorite }) => {
 
   const cleanedPhone = restaurant.phone.replace(/\D/g, '');
   const whatsappUrl = `https://wa.me/55${cleanedPhone}`;
@@ -49,18 +44,19 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, is
 
   return (
     <div 
-      className={`bg-white rounded-lg shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col relative ${!isOpen ? 'opacity-80 grayscale-[30%]' : ''}`}
+      className={`bg-white rounded-lg shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col relative ${!isOpen ? 'opacity-60' : ''}`}
       onClick={() => onClick(restaurant)}
     >
-      {/* Status Badge - Dynamic */}
-      <div className={`absolute top-0 right-0 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg z-20 shadow-sm ${statusInfo.colorClass}`}>
-          {statusInfo.statusText.toUpperCase()}
-      </div>
+      {!isOpen && (
+        <div className="absolute top-0 right-0 bg-gray-700 text-white text-xs font-bold px-2 py-0.5 rounded-bl-lg z-20">
+            FECHADO
+        </div>
+      )}
       
       {/* Botão de Favorito (Flutuante) */}
       <button 
         onClick={onToggleFavorite}
-        className="absolute top-2 left-2 z-30 p-2 rounded-full bg-white/80 backdrop-blur-sm shadow-sm hover:bg-white transition-all hover:scale-110 active:scale-90"
+        className="absolute top-2 right-2 z-30 p-2 rounded-full bg-white/80 backdrop-blur-sm shadow-sm hover:bg-white transition-all hover:scale-110 active:scale-90"
         title={isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
       >
         <HeartIcon className={`w-5 h-5 ${isFavorite ? 'text-red-500 fill-red-500' : 'text-gray-400'}`} filled={isFavorite} />

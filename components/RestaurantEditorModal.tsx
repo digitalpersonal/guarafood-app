@@ -572,7 +572,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                                     {day.isOpen && showSecondShift[index] && (
                                         <div className="grid grid-cols-12 gap-2 items-center mt-2 pt-2 border-t border-gray-200">
                                             <div className="col-span-4 text-right">
-                                                <span className="text-xs text-gray-500 font-medium mr-2">2º Turno (Almoço/Jantar):</span>
+                                                <span className="text-xs text-gray-500 font-medium mr-2">2º Turno:</span>
                                             </div>
                                             <div className="col-span-3">
                                                 <input type="time" value={day.opens2 || ''} onChange={(e) => handleOperatingHoursChange(index, 'opens2', e.target.value)} className="w-full p-1 border rounded text-sm"/>

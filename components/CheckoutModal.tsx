@@ -1,4 +1,5 @@
 
+// ... existing imports ...
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, Coupon, Order } from '../types';
 import { useCart } from '../hooks/useCart';
