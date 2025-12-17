@@ -149,29 +149,31 @@ const PrinterSettings: React.FC<{ onTestPrint: (width: number) => void }> = ({ o
 
                 <div className="bg-blue-50 border-l-4 border-blue-500 p-5 rounded-r-xl shadow-sm">
                     <h4 className="font-extrabold text-blue-900 flex items-center gap-2 mb-2">
-                         🚀 IMPRESSÃO AUTOMÁTICA (MODO PROFISSIONAL)
+                         🚀 IMPRESSÃO AUTOMÁTICA PROFISSIONAL
                     </h4>
                     <p className="text-sm text-blue-800 leading-relaxed mb-4">
-                        Para o sistema imprimir <strong>sozinho</strong> e o som de alerta funcionar mesmo se você estiver ouvindo música no YouTube, siga estes passos no Windows:
+                        Se o Windows der erro de "Destino Não é Válido", é porque o Chrome está em uma pasta diferente. Tente estes dois códigos no final do campo <strong>Destino</strong> do seu atalho (sempre dê um espaço após o <code>.exe"</code>):
                     </p>
                     
-                    <div className="space-y-4">
-                        <div className="bg-white/60 p-3 rounded-lg border border-blue-100">
-                            <p className="text-xs font-bold text-blue-900 uppercase mb-1">Passo 1: Evite conflitos de navegadores</p>
-                            <p className="text-sm text-blue-800 italic">O jeito mais fácil é usar o <strong>Microsoft Edge</strong> ou <strong>Firefox</strong> para a música, e deixar o Chrome exclusivo para o GuaraFood.</p>
+                    <div className="space-y-5">
+                        <div>
+                            <p className="text-xs font-bold text-blue-900 uppercase mb-1">Opção A (Versão 64 bits - Padrão):</p>
+                            <div className="bg-gray-900 text-green-400 p-3 rounded-md font-mono text-[11px] break-all select-all shadow-inner">
+                                --kiosk-printing --user-data-dir="C:\GuaraFoodPDV"
+                            </div>
                         </div>
 
-                        <div className="bg-white/60 p-3 rounded-lg border border-blue-100">
-                            <p className="text-xs font-bold text-blue-900 uppercase mb-1">Passo 2: O Segredo do Perfil Isolado</p>
-                            <p className="text-sm text-blue-800 mb-2">Se quiser usar Chrome para tudo, altere o atalho do GuaraFood para este código (no campo <strong>Destino</strong>):</p>
-                            <div className="bg-gray-900 text-green-400 p-3 rounded-md font-mono text-[11px] break-all select-all shadow-inner">
-                                --kiosk-printing --user-data-dir="C:/GuaraFoodApp"
+                        <div className="border-t border-blue-200 pt-3">
+                            <p className="text-xs font-bold text-blue-900 uppercase mb-1">Opção B (Versão 32 bits - Program Files x86):</p>
+                            <p className="text-[10px] text-blue-700 mb-2 italic">Use esta se a primeira der erro:</p>
+                            <div className="bg-gray-900 text-yellow-400 p-3 rounded-md font-mono text-[11px] break-all select-all shadow-inner">
+                                --kiosk-printing --user-data-dir="C:\GuaraFoodPDV_x86"
                             </div>
                         </div>
 
                         <div className="bg-blue-100/50 p-3 rounded-lg border border-blue-200">
-                             <p className="text-xs text-blue-800">
-                                <strong>Por que isolar?</strong> O comando <code>--user-data-dir</code> cria uma instância separada. Assim, sua música no YouTube "normal" não desativa o modo de impressão automática do atalho do GuaraFood.
+                             <p className="text-xs text-blue-800 leading-tight">
+                                💡 <strong>Dica:</strong> Não apague o que já está no campo Destino. Apenas vá até o final do texto, dê <strong>um espaço</strong> e cole o código acima.
                              </p>
                         </div>
                     </div>
