@@ -195,6 +195,16 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         font-size: ${baseFontSize};
                     }
                     
+                    .sachet-info {
+                        font-size: ${headerFontSize};
+                        font-weight: 900;
+                        text-align: center;
+                        margin-top: 10px;
+                        padding: 5px;
+                        border: 2px dashed #000;
+                        text-transform: uppercase;
+                    }
+                    
                     /* Utilitários */
                     .bold { font-weight: 900; }
                     .center { text-align: center; }
@@ -279,6 +289,13 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                     </div>
                 ))}
             </div>
+            
+            {/* PREFERÊNCIA DE SACHÊ */}
+            {order.wantsSachets !== undefined && (
+                <div className="sachet-info">
+                    {order.wantsSachets ? "[✓] ENVIAR SACHÊS/DESCARTÁVEIS" : "[X] NÃO ENVIAR SACHÊS"}
+                </div>
+            )}
 
             {/* TOTAIS */}
             <div className="receipt-footer">

@@ -56,6 +56,7 @@ const OrderTracker: React.FC = () => {
                     return;
                 }
 
+                // If filtering is robust, this should work. Ensure status filter handles array correctly
                 const { data, error } = await supabase
                     .from('orders')
                     .select('id, status, restaurant_name, total_price, timestamp')
@@ -135,19 +136,19 @@ const OrderTracker: React.FC = () => {
 
     return (
         <div 
-            className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-4" 
+            className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-4" 
             onClick={initAudioContext} // Resume audio context on interaction
             onTouchStart={initAudioContext}
         >
             {/* Tooltip Alert */}
             {showTooltip && (
-                <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white text-xs font-bold py-1 px-3 rounded-full shadow-lg animate-bounce">
+                <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white text-xs font-bold py-1 px-3 rounded-full shadow-lg animate-bounce z-50">
                     Acompanhe aqui ⬇
                     <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-blue-600 rotate-45"></div>
                 </div>
             )}
 
-            <div className="bg-white rounded-xl shadow-2xl border border-orange-100 overflow-hidden max-w-md mx-auto">
+            <div className="bg-white rounded-xl shadow-[0_-5px_20px_-5px_rgba(0,0,0,0.2)] border border-orange-100 overflow-hidden max-w-md mx-auto">
                 {/* Header / Collapsed View */}
                 <div 
                     className={`p-3 flex items-center justify-between cursor-pointer ${isPending ? 'bg-yellow-50' : 'bg-orange-50'}`}

@@ -437,24 +437,15 @@ const CustomerView: React.FC<CustomerViewProps> = ({ selectedRestaurant, onSelec
         return restaurants.filter(restaurant => {
             const restaurantCategories = restaurant.category ? restaurant.category.split(',').map(c => c.trim()) : [];
             
-            // Logic:
-            // 1. Is 'Todos' selected? (Ignore other filters)
-            // 2. Is 'Favoritos' selected? (Must be in favorites list)
-            // 3. Are other categories selected? (Must match at least one)
-            
             const isTodos = selectedCategories.includes('Todos') || selectedCategories.length === 0;
             const wantsFavorites = selectedCategories.includes('Favoritos');
             
-            // Filter out special categories for standard matching
             const standardCategories = selectedCategories.filter(c => c !== 'Todos' && c !== 'Favoritos');
             const hasStandardSelection = standardCategories.length > 0;
 
             const matchesStandard = !hasStandardSelection || standardCategories.some(sel => restaurantCategories.includes(sel));
             const matchesFavorites = !wantsFavorites || favorites.includes(restaurant.id);
             
-            // If 'Todos' is explicitly selected, we usually just show everything, unless Favorites is ALSO selected.
-            // But usually 'Todos' acts as a reset.
-            // Here: Matches if (Todos OR Standard Match) AND (Matches Favorites requirement)
             const matchesCategory = (isTodos || matchesStandard) && matchesFavorites;
             
             const matchesSearch = restaurant.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -727,7 +718,9 @@ const AppContent: React.FC = () => {
             <div className="flex-grow relative print-container">
                 {renderContent()}
             </div>
-            {!currentUser && <OrderTracker />}
+            {/* Show tracker if NOT logged in (guest) OR if viewing customer side as admin/merchant (rare case but safe) */}
+            {/* Using absolute positioning to overlap content but stay above footer */}
+            <OrderTracker />
             <Footer onLoginClick={() => setView('login')} />
         </div>
     );

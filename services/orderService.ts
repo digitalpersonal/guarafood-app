@@ -4,6 +4,9 @@ import { supabase, handleSupabaseError } from './api';
 
 // Mapeia do Banco (snake_case) para o App (camelCase)
 const normalizeOrder = (data: any): Order => {
+    // Tenta extrair a preferência de sachê do objeto de endereço (JSONB)
+    const wantsSachets = data.customer_address?.wantsSachets === true;
+
     return {
         id: data.id,
         timestamp: data.timestamp || data.created_at,
@@ -11,6 +14,7 @@ const normalizeOrder = (data: any): Order => {
         customerName: data.customer_name,
         customerPhone: data.customer_phone,
         customerAddress: data.customer_address,
+        wantsSachets: wantsSachets, // Mapeado aqui
         items: data.items,
         totalPrice: data.total_price,
         restaurantId: data.restaurant_id,
@@ -94,6 +98,7 @@ export interface NewOrderData {
         neighborhood: string;
         complement?: string;
     };
+    wantsSachets?: boolean; // Novo campo
     items: CartItem[];
     totalPrice: number;
     restaurantId: number;
@@ -111,11 +116,18 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
     const isDebt = orderData.paymentMethod === 'Marcar na minha conta';
     const isPix = orderData.paymentMethod === 'Pix';
     
+    // Injetamos a preferência de sachê dentro do objeto de endereço (JSONB)
+    // Isso evita ter que criar uma nova coluna no banco de dados agora.
+    const addressWithSachetPreference = {
+        ...orderData.customerAddress,
+        wantsSachets: orderData.wantsSachets === true
+    };
+    
     // CONVERSÃO IMPORTANTE: CamelCase (App) -> snake_case (Banco)
     const newOrderPayload = {
         customer_name: orderData.customerName,
         customer_phone: orderData.customerPhone,
-        customer_address: orderData.customerAddress,
+        customer_address: addressWithSachetPreference, // Enviando aqui
         items: orderData.items,
         total_price: orderData.totalPrice,
         restaurant_id: orderData.restaurantId,

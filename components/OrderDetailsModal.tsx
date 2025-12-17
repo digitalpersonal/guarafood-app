@@ -17,6 +17,11 @@ const PrintIcon: React.FC<{ className?: string }> = ({ className }) => (
 const EditIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
 );
+const LeafIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+        <path fillRule="evenodd" d="M12.963 2.286a.75.75 0 00-1.071-.136 9.742 9.742 0 00-3.539 6.177 7.547 7.547 0 01-1.705-1.715.75.75 0 00-1.152-.082A9 9 0 1015.68 4.534a7.46 7.46 0 01-2.717-2.248zM15.75 14.25a3.75 3.75 0 11-7.313-1.172c.628.465 1.35.81 2.133 1a5.99 5.99 0 011.925-3.545 3.75 3.75 0 013.255 3.717z" clipRule="evenodd" />
+    </svg>
+);
 
 
 const statusConfig: { [key in OrderStatus]: { text: string; color: string; } } = {
@@ -117,6 +122,21 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                                 <p className="font-semibold">{currentOrder.restaurantName}</p>
                                 <p className="text-sm text-gray-600">{currentOrder.restaurantAddress}</p>
                                 <p className="text-sm text-gray-600">Telefone: {currentOrder.restaurantPhone}</p>
+                            </div>
+                        </div>
+                        
+                        {/* CONDIMENTS PREFERENCE */}
+                        <div className={`p-3 rounded-lg border flex items-center gap-3 ${currentOrder.wantsSachets ? 'bg-green-50 border-green-200' : 'bg-orange-50 border-orange-200'}`}>
+                            <div className={currentOrder.wantsSachets ? 'text-green-600' : 'text-orange-500'}>
+                                <LeafIcon className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-bold text-gray-800">
+                                    {currentOrder.wantsSachets ? 'Enviar Sachês/Descartáveis' : 'NÃO Enviar Sachês/Descartáveis'}
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                    {currentOrder.wantsSachets ? 'O cliente solicitou o envio.' : 'O cliente optou por não receber para evitar desperdício.'}
+                                </p>
                             </div>
                         </div>
 

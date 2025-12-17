@@ -1,5 +1,4 @@
 
-// ... existing imports ...
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, Coupon, Order } from '../types';
 import { useCart } from '../hooks/useCart';
@@ -10,7 +9,6 @@ import { supabase } from '../services/api';
 import { isRestaurantOpen } from '../utils/restaurantUtils';
 import Spinner from './Spinner';
 
-// ... existing icons ...
 const CheckCircleIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
         <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm13.36-1.814a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clipRule="evenodd" />
@@ -62,8 +60,12 @@ const StoreIcon: React.FC<{ className?: string }> = ({ className }) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 .75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 0 0 3.75-.615A2.993 2.993 0 0 0 9.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 0 0 2.25 1.016c.896 0 1.7-.393 2.25-1.016a3.001 3.001 0 0 0 3.75.614m-16.5 0a3.004 3.004 0 0 1-.621-4.72l1.189-1.19A1.5 1.5 0 0 1 5.378 3h13.243a1.5 1.5 0 0 1 1.06.44l1.19 1.189a3 3 0 0 1-.621 4.72m-13.5 8.65h3.75a.75.75 0 0 0 .75-.75V13.5a.75.75 0 0 0-.75-.75H6.75a.75.75 0 0 0-.75.75v3.75c0 .415.336.75.75.75Z" />
     </svg>
 );
+const LeafIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+        <path fillRule="evenodd" d="M12.963 2.286a.75.75 0 00-1.071-.136 9.742 9.742 0 00-3.539 6.177 7.547 7.547 0 01-1.705-1.715.75.75 0 00-1.152-.082A9 9 0 1015.68 4.534a7.46 7.46 0 01-2.717-2.248zM15.75 14.25a3.75 3.75 0 11-7.313-1.172c.628.465 1.35.81 2.133 1a5.99 5.99 0 011.925-3.545 3.75 3.75 0 013.255 3.717z" clipRule="evenodd" />
+    </svg>
+);
 
-// ... existing interfaces and steps consts ...
 interface CheckoutModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -81,7 +83,6 @@ const steps: { id: CheckoutStep; title: string; icon: React.FC<{ className?: str
 ];
 
 const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaurant }) => {
-    // ... existing hooks and state ...
     const { cartItems, totalPrice, clearCart } = useCart();
     const { addToast } = useNotification();
     const [currentStep, setCurrentStep] = useState<CheckoutStep>('SUMMARY');
@@ -91,6 +92,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [changeFor, setChangeFor] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('DELIVERY');
+    const [wantsSachets, setWantsSachets] = useState(false);
     const [address, setAddress] = useState({
         zipCode: '37810-000', 
         street: '',
@@ -110,6 +112,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
     const [hasAvailableCoupons, setHasAvailableCoupons] = useState(false);
 
+    // AUTOCOMPLETE STATE (List Only)
+    const [knownCustomers, setKnownCustomers] = useState<{name: string, phone: string, address: any}[]>([]);
+
     const isOpenNow = isRestaurantOpen(restaurant);
 
     const paymentOptions = useMemo(() => {
@@ -117,6 +122,57 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             ? restaurant.paymentGateways 
             : ["Pix", "Cartão de Crédito", "Cartão de Débito", "Dinheiro", "Marcar na minha conta"];
     }, [restaurant]);
+
+    // Load known customers from localStorage on mount
+    useEffect(() => {
+        if (isOpen) {
+            const loadedCustomers: {name: string, phone: string, address: any}[] = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('customerData-')) {
+                    try {
+                        const rawName = key.replace('customerData-', '');
+                        // Capitalize name for display (e.g. "joao" -> "Joao")
+                        const displayName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+                        
+                        const data = JSON.parse(localStorage.getItem(key) || '{}');
+                        if (data.phone && data.address) {
+                            loadedCustomers.push({
+                                name: displayName,
+                                phone: data.phone,
+                                address: data.address
+                            });
+                        }
+                    } catch (e) {
+                        console.error("Error parsing saved customer", e);
+                    }
+                }
+            }
+            setKnownCustomers(loadedCustomers);
+        }
+    }, [isOpen]);
+
+    // TYPE-AHEAD LOGIC: Preenche automaticamente se encontrar match
+    const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setCustomerName(val);
+        
+        // Só tenta autocompletar se tiver 3 ou mais letras para evitar falsos positivos rápidos
+        if (val.length >= 3) {
+            const match = knownCustomers.find(c => 
+                c.name.toLowerCase().startsWith(val.toLowerCase())
+            );
+
+            if (match) {
+                // Preenche silenciosamente os outros campos
+                setCustomerPhone(match.phone);
+                setAddress({
+                    ...match.address,
+                    zipCode: match.address.zipCode || '37810-000'
+                });
+            }
+        }
+    };
 
     const resetState = () => {
         setCurrentStep('SUMMARY');
@@ -131,6 +187,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setPixData(null);
         setPixError(null);
         setIsManualPix(false);
+        setWantsSachets(false); 
         setCountdown(300);
         setDeliveryMethod('DELIVERY');
         setAddress({ zipCode: '37810-000', street: '', number: '', neighborhood: '', complement: '' });
@@ -147,7 +204,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     useEffect(() => {
         if (isOpen) {
             resetState();
-            // Check for available coupons when modal opens
             const checkCoupons = async () => {
                 try {
                     const coupons = await fetchCouponsForRestaurant(restaurant.id);
@@ -179,20 +235,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const handleAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setAddress(prev => ({ ...prev, [name]: value }));
-    };
-
-     const handleNameBlur = () => {
-        if (!customerName) return;
-        const storedData = localStorage.getItem(`customerData-${customerName.toLowerCase()}`);
-        if (storedData) {
-            const { phone, address: savedAddress } = JSON.parse(storedData);
-            setCustomerPhone(phone);
-            setAddress({
-                ...savedAddress,
-                zipCode: '37810-000'
-            });
-            addToast({ message: 'Seus dados foram preenchidos. Verifique se estão corretos!', type: 'info' });
-        }
     };
     
     const handleApplyCoupon = async () => {
@@ -244,13 +286,11 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     };
 
     const handlePixPayment = async (orderData: NewOrderData) => {
-        // Fallback Logic Check: Check hasPixConfigured which handles masked tokens
         const hasAutoPix = restaurant.hasPixConfigured;
         const hasManualPix = !!restaurant.manualPixKey;
 
-        // If no auto credentials, go straight to manual
         if (!hasAutoPix && hasManualPix) {
-            setPixError("Configuração Automática não detectada."); // Optional hint
+            setPixError("Configuração Automática não detectada."); 
             setIsManualPix(true);
             setCurrentStep('PIX_PAYMENT');
             return;
@@ -304,6 +344,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         window.dispatchEvent(new Event('guarafood:update-orders'));
 
                         setCurrentStep('SUCCESS');
+                        // Use saved name for key, ensuring consistency
                         localStorage.setItem(`customerData-${customerName.toLowerCase()}`, JSON.stringify({ phone: customerPhone, address }));
                         clearCart();
                     }
@@ -312,9 +353,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
         } catch (err: any) {
             console.error("Pix Auto Error:", err);
-            // Automatic Fallback to Manual Pix on Error
             if (restaurant.manualPixKey) {
-                // Ensure we capture the error message to show in the manual UI
                 setPixError(err.message || 'Erro desconhecido');
                 setIsManualPix(true);
                 setCurrentStep('PIX_PAYMENT');
@@ -368,6 +407,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
             paymentMethod: "Pix (Comprovante via WhatsApp)", 
             customerAddress: customerAddress,
+            wantsSachets: wantsSachets
         };
         await handlePayOnDelivery(orderData);
     };
@@ -431,6 +471,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
             paymentMethod: finalPaymentMethod,
             customerAddress: customerAddress,
+            wantsSachets: wantsSachets
         };
 
         if (paymentMethod === 'Pix') {
@@ -498,8 +539,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         }
     }
 
-    // Render methods...
-    
     const renderStepper = () => (
         <div className="flex justify-between items-center px-4 py-3 bg-gray-50 border-b" role="navigation" aria-label="Progresso do Checkout">
             {steps.map((step, index) => {
@@ -637,9 +676,40 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 </div>
             </div>
 
+            {/* --- ECO OPTION (SACHETS) --- */}
+            <div className="bg-green-50 border border-green-200 p-3 rounded-lg flex items-start gap-3">
+                <div className="text-green-600 mt-0.5">
+                    <LeafIcon className="w-5 h-5" />
+                </div>
+                <div className="flex-grow">
+                    <h4 className="font-bold text-sm text-green-800">Ajude o Meio Ambiente</h4>
+                    <p className="text-xs text-green-700 mb-2">Para evitar desperdício, só enviamos descartáveis se você pedir.</p>
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                        <input 
+                            type="checkbox" 
+                            checked={wantsSachets} 
+                            onChange={(e) => setWantsSachets(e.target.checked)}
+                            className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                        />
+                        <span className="text-sm font-medium text-gray-800">Quero receber sachês (maionese/catchup), guardanapos e talheres.</span>
+                    </label>
+                </div>
+            </div>
+
             <div>
                 <label htmlFor="customerName" className="block text-sm font-medium text-gray-700">Nome Completo</label>
-                <input id="customerName" type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} onBlur={handleNameBlur} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" aria-required="true"/>
+                <div className="relative">
+                    <input 
+                        id="customerName" 
+                        type="text" 
+                        value={customerName} 
+                        onChange={handleNameChange} 
+                        required 
+                        autoComplete="off"
+                        className="mt-1 w-full p-3 border rounded-lg bg-gray-50" 
+                        aria-required="true"
+                    />
+                </div>
             </div>
             <div>
                 <label htmlFor="customerPhone" className="block text-sm font-medium text-gray-700">Telefone (WhatsApp)</label>
@@ -729,6 +799,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         </form>
     );
 
+    // ... renderPixPayment and renderSuccess remain same ...
     const renderPixPayment = () => {
         if (isManualPix) {
             return (

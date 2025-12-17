@@ -1,3 +1,4 @@
+
 import React, { Component, ReactNode } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -11,15 +12,9 @@ interface ErrorBoundaryState {
   error: any;
 }
 
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  public state: ErrorBoundaryState = { hasError: false, error: null };
-  // FIX: Explicitly define `props` as a class property as a workaround for an atypical TypeScript error
-  public readonly props: ErrorBoundaryProps;
-
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.props = props; 
-  }
+// Fix: Ensured the class correctly extends React Component with generics to inherit props and state definitions properly.
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: any): ErrorBoundaryState {
     return { hasError: true, error };
@@ -30,7 +25,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   render() {
-    const { children } = this.props;
+    // Fix: Removed destructuring and opted for direct access to this.state and this.props to satisfy compiler type checks.
     if (this.state.hasError) {
       let errorMessage = 'Erro desconhecido.';
       if (this.state.error) {
@@ -68,7 +63,8 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
       );
     }
 
-    return children;
+    // Fix: Return children directly from this.props to avoid potential destructuring inference errors.
+    return this.props.children;
   }
 }
 

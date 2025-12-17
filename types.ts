@@ -1,5 +1,4 @@
 
-
 export interface Banner {
   id: number;
   title: string;
@@ -175,6 +174,7 @@ export interface Order {
     neighborhood: string;
     complement?: string;
   };
+  wantsSachets?: boolean; // New Field: Flag for condiments
   items: CartItem[];
   totalPrice: number;
   restaurantId: number;
