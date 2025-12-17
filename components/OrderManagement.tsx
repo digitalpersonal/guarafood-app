@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { subscribeToOrders } from '../services/orderService';
 import { useAuth } from '../services/authService'; 
@@ -8,9 +7,8 @@ import MenuManagement from './MenuManagement';
 import RestaurantSettings from './RestaurantSettings';
 import PrintableOrder from './PrintableOrder';
 import DebtManager from './DebtManager';
-import { useSound } from '../hooks/useSound'; // Import Hook
+import { useSound } from '../hooks/useSound';
 
-// Reusable Icons
 const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
@@ -31,7 +29,7 @@ const SpeakerIcon: React.FC<{ className?: string }> = ({ className }) => (
 
 const BanknotesIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
     </svg>
 );
 
@@ -41,14 +39,7 @@ const BookOpenIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
-const SignalIcon: React.FC<{ className?: string; color?: string }> = ({ className, color }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={color || "currentColor"} className={className}>
-      <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm13.36-1.814a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clipRule="evenodd" />
-    </svg>
-);
 
-
-// Lazy load SalesDashboard to avoid heavy initial bundle
 const SalesDashboard = React.lazy(() => import('./SalesDashboard'));
 const CustomerList = React.lazy(() => import('./CustomerList'));
 
@@ -56,162 +47,113 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { currentUser, logout } = useAuth();
     const [activeTab, setActiveTab] = useState<'orders' | 'menu' | 'settings' | 'financial' | 'customers' | 'debt'>('orders');
     const [orders, setOrders] = useState<Order[]>([]);
-    
-    // State for Automatic Printing
     const [orderToPrint, setOrderToPrint] = useState<Order | null>(null);
-    
-    // Connection Status
     const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'DISCONNECTED'>('DISCONNECTED');
-    
-    // Hook de som
     const { playNotification, initAudioContext } = useSound();
     
-    // Ref to track STATUS of orders, not just IDs. Map<OrderId, Status>
     const previousOrdersStatusRef = useRef<Map<string, string>>(new Map());
     const isFirstLoadRef = useRef(true);
+    
+    // TRAVA DE IMPRESSÃO: Evita duplicidade
+    const printedOrderIdsRef = useRef<Set<string>>(new Set());
+
     const [printerWidth, setPrinterWidth] = useState<number>(80);
 
-    // Wake Lock Logic
     useEffect(() => {
         let wakeLock: any = null;
-
         const requestWakeLock = async () => {
             if ('wakeLock' in navigator) {
-                try {
-                    wakeLock = await (navigator as any).wakeLock.request('screen');
-                    console.log('Wake Lock is active!');
-                } catch (err: any) {
-                    console.error(`${err.name}, ${err.message}`);
-                }
+                try { wakeLock = await (navigator as any).wakeLock.request('screen'); } 
+                catch (err: any) { console.error(`${err.name}, ${err.message}`); }
             }
         };
-
         requestWakeLock();
-
-        const handleVisibilityChange = () => {
-            if (wakeLock !== null && document.visibilityState === 'visible') {
-                requestWakeLock();
-            }
-        };
-
+        const handleVisibilityChange = () => { if (wakeLock !== null && document.visibilityState === 'visible') requestWakeLock(); };
         document.addEventListener('visibilitychange', handleVisibilityChange);
-
         return () => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
-            if (wakeLock !== null) {
-                wakeLock.release().then(() => {
-                    console.log('Wake Lock released');
-                });
-            }
+            if (wakeLock !== null) wakeLock.release();
         };
     }, []);
 
-    // Load printer width preference
     useEffect(() => {
         const savedWidth = localStorage.getItem('guarafood-printer-width');
-        if (savedWidth) {
-            setPrinterWidth(parseInt(savedWidth, 10));
-        }
+        if (savedWidth) setPrinterWidth(parseInt(savedWidth, 10));
     }, []);
 
-    // Initialize Audio Context on first user interaction
-    const enableAudio = useCallback(() => {
-        initAudioContext();
-    }, [initAudioContext]);
+    const enableAudio = useCallback(() => { initAudioContext(); }, [initAudioContext]);
 
-    // Effect to trigger print when orderToPrint changes
+    // Gatilho de Impressão Robusto
     useEffect(() => {
         if (orderToPrint) {
-            // STEP 1: Wait 750ms (increased from 500ms) to ensure the DOM has fully rendered
-            const renderTimer = setTimeout(() => {
-                
-                // FORCE FOCUS: Try to bring window to front before printing
-                // This helps if the user is in another window (e.g., Spotify)
+            if (printedOrderIdsRef.current.has(orderToPrint.id)) {
+                setOrderToPrint(null); 
+                return;
+            }
+
+            const printTimer = setTimeout(() => {
                 window.focus();
-
-                // STEP 2: Trigger the print dialog (or automatic print in Kiosk mode)
+                printedOrderIdsRef.current.add(orderToPrint.id);
                 window.print();
-
-                // STEP 3: Cleanup AFTER printing.
-                // NOTE: In Kiosk mode, window.print() might return immediately.
-                // We add a delay to ensure the spooler caught the content.
+                
                 const cleanupTimer = setTimeout(() => {
                     setOrderToPrint(null);
-                }, 2000); // 2 seconds safety buffer
+                }, 1000);
 
                 return () => clearTimeout(cleanupTimer);
-
-            }, 750); 
+            }, 500); 
             
-            return () => clearTimeout(renderTimer);
+            return () => clearTimeout(printTimer);
         }
     }, [orderToPrint]);
 
     const handleManualPrint = (order: Order) => {
-        // Clear first to force re-render if it was already the same order
+        printedOrderIdsRef.current.delete(order.id);
         setOrderToPrint(null);
-        setTimeout(() => setOrderToPrint(order), 100);
+        setTimeout(() => setOrderToPrint(order), 50);
     };
 
     useEffect(() => {
         if (!currentUser?.restaurantId) return;
 
-        // Subscribe to orders and handle notifications
         const unsubscribe = subscribeToOrders((allOrders) => {
             const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
-
-            // Create a map of current order statuses
             const currentStatusMap = new Map<string, string>();
             allOrders.forEach(o => currentStatusMap.set(o.id, o.status));
 
-            // Only trigger effects if it's NOT the first load
             if (!isFirstLoadRef.current) {
-                // Find orders that need alerting
+                // LÓGICA CRÍTICA: Só imprime e avisa se o status MUDOU para 'Novo Pedido'.
+                // Se o pedido era 'Aguardando Pagamento' e agora é 'Novo Pedido', ele dispara.
                 const ordersToAlert = allOrders.filter(order => {
                     const prevStatus = previousOrdersStatusRef.current.get(order.id);
-                    
-                    // Trigger if current status is 'Novo Pedido' AND
-                    // (It is a brand new order OR It existed but status changed to 'Novo Pedido')
                     return order.status === 'Novo Pedido' && prevStatus !== 'Novo Pedido';
                 });
 
                 if (ordersToAlert.length > 0) {
                     const newestOrder = ordersToAlert[0];
-                    console.log("Novo pedido detectado:", newestOrder.id);
                     
-                    // 1. Notification API
                     if (areNotificationsEnabled && Notification.permission === 'granted') {
                          try {
-                             new Notification('Novo Pedido Confirmado!', {
+                             new Notification('Pedido Confirmado!', {
                                 body: `Pedido #${newestOrder.id.substring(0,6)} - R$ ${newestOrder.totalPrice.toFixed(2)}`,
                                 icon: '/vite.svg',
                                 tag: newestOrder.id
                             });
-                         } catch (e) {
-                             console.error("Notification API error", e);
-                         }
+                         } catch (e) { console.error("Notification API error", e); }
                     }
                     
-                    // 2. Sound
                     playNotification();
-
-                    // 3. Auto Print
                     setOrderToPrint(newestOrder);
                 }
             }
 
-            // Update the Ref
             previousOrdersStatusRef.current = currentStatusMap;
             setOrders(allOrders);
             isFirstLoadRef.current = false;
 
         }, currentUser.restaurantId, (status) => {
-            // Callback for connection status
-            if (status === 'SUBSCRIBED') {
-                setConnectionStatus('CONNECTED');
-            } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-                setConnectionStatus('DISCONNECTED');
-            }
+            if (status === 'SUBSCRIBED') setConnectionStatus('CONNECTED');
+            else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setConnectionStatus('DISCONNECTED');
         }, 200); 
         
         return () => unsubscribe();
@@ -222,8 +164,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         switch (activeTab) {
             case 'orders':
                 return <OrdersView orders={orders} printerWidth={printerWidth} onPrint={handleManualPrint} />;
-            case 'menu':
-                return <MenuManagement />;
+            case 'menu': return <MenuManagement />;
             case 'financial':
                 return (
                     <React.Suspense fallback={<div className="p-4 text-center">Carregando módulo financeiro...</div>}>
@@ -236,12 +177,9 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         <CustomerList orders={orders} />
                     </React.Suspense>
                 );
-            case 'debt':
-                return <DebtManager orders={orders} />;
-            case 'settings':
-                return <RestaurantSettings />;
-            default:
-                return null;
+            case 'debt': return <DebtManager orders={orders} />;
+            case 'settings': return <RestaurantSettings />;
+            default: return null;
         }
     }
     
@@ -250,14 +188,10 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <div 
                 className={`text-white text-center text-xs font-bold p-1 cursor-pointer flex items-center justify-center gap-2 transition-colors duration-500 ${connectionStatus === 'CONNECTED' ? 'bg-green-600' : 'bg-red-600'}`} 
                 onClick={enableAudio}
-                title={connectionStatus === 'CONNECTED' ? "Sistema online e recebendo pedidos" : "Desconectado. Verifique sua internet."}
+                title={connectionStatus === 'CONNECTED' ? "Sistema online" : "Desconectado"}
             >
                 <div className={`w-2 h-2 rounded-full ${connectionStatus === 'CONNECTED' ? 'bg-white animate-pulse' : 'bg-white'}`}></div>
-                {connectionStatus === 'CONNECTED' ? (
-                    <span>Sistema Online - Tela Ativa</span>
-                ) : (
-                    <span>Desconectado - Reconectando...</span>
-                )}
+                {connectionStatus === 'CONNECTED' ? <span>Sistema Online - Tela Ativa</span> : <span>Desconectado - Reconectando...</span>}
                 {connectionStatus === 'CONNECTED' && <SpeakerIcon className="w-3 h-3 ml-2 opacity-70" />}
             </div>
 
@@ -271,7 +205,6 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                            Painel: {currentUser?.name || 'Restaurante'}
                         </h1>
                     </div>
-                    {/* Reinserted Logout Button */}
                     <button onClick={logout} className="flex items-center space-x-2 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition-colors font-semibold flex-shrink-0" title="Sair">
                         <LogoutIcon className="w-6 h-6" />
                         <span className="hidden sm:inline">Sair</span>
@@ -280,50 +213,17 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             </header>
              <div className="p-4 border-b sticky top-[89px] bg-gray-50 z-10 overflow-x-auto">
                 <div className="flex space-x-2 rounded-lg bg-gray-200 p-1 min-w-max">
-                    <button 
-                        onClick={() => setActiveTab('orders')} 
-                        className={`px-4 py-2 text-center font-semibold rounded-md transition-colors ${activeTab === 'orders' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}
-                    >
-                        Pedidos
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('menu')}
-                         className={`px-4 py-2 text-center font-semibold rounded-md transition-colors ${activeTab === 'menu' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}
-                    >
-                        Cardápio
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('debt')}
-                         className={`px-4 py-2 text-center font-semibold rounded-md transition-colors flex items-center gap-2 ${activeTab === 'debt' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}
-                    >
-                        <BookOpenIcon className="w-4 h-4" />
-                        Fiados
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('financial')}
-                         className={`px-4 py-2 text-center font-semibold rounded-md transition-colors flex items-center gap-2 ${activeTab === 'financial' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}
-                    >
-                        <BanknotesIcon className="w-4 h-4" />
-                        Financeiro
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('customers')}
-                         className={`px-4 py-2 text-center font-semibold rounded-md transition-colors ${activeTab === 'customers' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}
-                    >
-                        Clientes
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('settings')}
-                         className={`px-4 py-2 text-center font-semibold rounded-md transition-colors ${activeTab === 'settings' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}
-                    >
-                        Configurações
-                    </button>
+                    <button onClick={() => setActiveTab('orders')} className={`px-4 py-2 text-center font-semibold rounded-md transition-colors ${activeTab === 'orders' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}>Pedidos</button>
+                    <button onClick={() => setActiveTab('menu')} className={`px-4 py-2 text-center font-semibold rounded-md transition-colors ${activeTab === 'menu' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}>Cardápio</button>
+                    <button onClick={() => setActiveTab('debt')} className={`px-4 py-2 text-center font-semibold rounded-md transition-colors flex items-center gap-2 ${activeTab === 'debt' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}><BookOpenIcon className="w-4 h-4" />Fiados</button>
+                    <button onClick={() => setActiveTab('financial')} className={`px-4 py-2 text-center font-semibold rounded-md transition-colors flex items-center gap-2 ${activeTab === 'financial' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}><BanknotesIcon className="w-4 h-4" />Financeiro</button>
+                    <button onClick={() => setActiveTab('customers')} className={`px-4 py-2 text-center font-semibold rounded-md transition-colors ${activeTab === 'customers' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}>Clientes</button>
+                    <button onClick={() => setActiveTab('settings')} className={`px-4 py-2 text-center font-semibold rounded-md transition-colors ${activeTab === 'settings' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}>Configurações</button>
                 </div>
             </div>
 
             {renderContent()}
 
-            {/* Hidden Area for Automatic Printing. IMPORTANT: Use "hidden print:block" AND "id=printable-order" */}
             <div className="hidden print:block">
                 <div id="printable-order">
                     {orderToPrint && <PrintableOrder order={orderToPrint} printerWidth={printerWidth} />}

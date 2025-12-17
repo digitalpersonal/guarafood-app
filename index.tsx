@@ -1,3 +1,4 @@
+
 import React, { Component, ReactNode, ErrorInfo } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -11,15 +12,16 @@ interface ErrorBoundaryState {
   error: any;
 }
 
-// Fix: Import and extend Component directly to ensure 'this.props' and 'this.state' are correctly inherited and typed.
+// Fix: Explicitly extend Component with generics to ensure state and props are correctly inherited and recognized by TypeScript.
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Fix: Initializing state correctly within the class.
+  // Fix: Declare state property as a class member for better TypeScript compatibility and clarity.
   public state: ErrorBoundaryState = { hasError: false, error: null };
 
   constructor(props: ErrorBoundaryProps) {
     super(props);
   }
 
+  // Fix: Static method correctly updates state when an error is caught in the subtree.
   static getDerivedStateFromError(error: any): ErrorBoundaryState {
     return { hasError: true, error };
   }
@@ -29,6 +31,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   render() {
+    // Fix: Access state via 'this.state' which is now correctly recognized as inherited from React.Component.
     if (this.state.hasError) {
       let errorMessage = 'Erro desconhecido.';
       if (this.state.error) {
@@ -66,7 +69,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
-    // Fix: Accessing children from this.props which is now guaranteed to exist by extending Component correctly.
+    // Fix: Access children via 'this.props' which is correctly inherited and typed from the base Component class.
     return this.props.children;
   }
 }

@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
@@ -40,7 +39,7 @@ const PrinterIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 const StoreIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
-        <path fillRule="evenodd" d="M7.5 6v.75H5.513c-.96 0-1.764.724-1.865 1.679l-1.263 12A1.875 1.875 0 004.25 22.5h15.5a1.875 1.875 0 001.865-2.071l-1.263-12a1.875 1.875 0 00-1.865-1.679H16.5V6a4.5 4.5 0 10-9 0zM12 3a3 3 0 00-3 3v.75h6V6a3 3 0 00-3-3zm-3 8.25a3 3 0 106 0v-.75a.75.75 0 011.5 0v.75a4.5 4.5 0 11-9 0v-.75a.75.75 0 011.5 0v.75z" clipRule="evenodd" />
+        <path fillRule="evenodd" d="M7.5 6v.75H5.513c-.96 0-1.764.724-1.865 1.679l-1.263 12A1.875 1.875 0 004.25 22.5h15.5a1.875 1.875 0 001.865-2.071l-1.263-12a1.875 1.875 0 00-1.865-1.679H16.5V6a4.5 4.5 0 10-9 0zM12 3a3 3 0 00-3 3v.75h6V6a3 3 0 00-3-3zm-3 8.25a3 3 0 106 0v-.75a.75.75 0 011.5 0v.75a4.5 4.5 0 11-9 0v-.75a.75.75 0 011.5v.75z" clipRule="evenodd" />
     </svg>
 );
 
@@ -63,17 +62,11 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
         if (order.status !== 'Novo Pedido') return false;
         const orderDate = new Date(order.timestamp);
         const now = new Date();
-        // Consider new if less than 5 minutes old
         return (now.getTime() - orderDate.getTime()) < 300000;
     }, [order.status, order.timestamp]);
 
-    // Check if Pix payment IS ACTUALLY PAID
     const isPixPaid = order.paymentMethod.toLowerCase().includes('pix') && order.paymentStatus === 'paid';
-    
-    // Check if pending (Pix not paid OR Debt not paid)
     const isPendingPayment = order.paymentStatus === 'pending' && order.paymentMethod !== 'Dinheiro';
-    
-    // Check if Pickup (Retirada)
     const isPickup = !order.customerAddress || order.customerAddress.street === 'Retirada no Local';
 
     const handleConfirmAndUpdate = async (message: string, newStatus: OrderStatus) => {
@@ -153,13 +146,11 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
             onClick={() => onViewDetails(order)}
             role="article"
         >
-            {/* Header Compacto */}
             <div className="flex justify-between items-start mb-1">
                 <div className="flex items-center gap-1">
                     <span className="font-mono font-bold text-gray-800 text-sm">#{order.id.substring(0, 4)}</span>
                     <span className="text-[10px] text-gray-500 bg-gray-100 px-1 rounded">{timeString}</span>
                 </div>
-                {/* Print Button */}
                 <button 
                     onClick={(e) => { e.stopPropagation(); onPrint(order); }} 
                     className="p-1 -mt-1 -mr-1 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors" 
@@ -169,7 +160,6 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                 </button>
             </div>
             
-            {/* Price Row */}
             <div className="flex justify-end mb-1 items-center gap-2">
                  {isPendingPayment ? (
                      <span className="bg-red-100 text-red-700 text-[10px] font-bold px-1 rounded border border-red-200 animate-pulse">
@@ -183,7 +173,6 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                 <span className="block font-bold text-sm text-orange-700">R$ {order.totalPrice.toFixed(2)}</span>
             </div>
 
-            {/* Informações Resumidas */}
             <div className="space-y-1 mb-1">
                 <div className="flex items-center gap-1 text-xs text-gray-800 truncate" title={order.customerName}>
                     <UserIcon className="w-3 h-3 text-gray-400 flex-shrink-0" />
@@ -211,7 +200,6 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                 </div>
             </div>
 
-            {/* Itens Colapsáveis Compactos */}
             <div className="border-t border-dashed border-gray-200 pt-1 mt-1">
                 <button
                     onClick={(e) => {
@@ -233,16 +221,10 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                                 </span>
                             </li>
                         ))}
-                        {order.notes && (
-                            <li className="text-orange-600 italic border-t border-gray-200 pt-0.5 mt-0.5">
-                                "{order.notes}"
-                            </li>
-                        )}
                     </ul>
                 )}
             </div>
 
-            {/* Action Buttons */}
             {order.status !== 'Entregue' && order.status !== 'Cancelado' && (
                 <ActionButtons />
             )}
@@ -302,7 +284,9 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
     }, [orders, searchTerm]);
 
     const { activeOrders, historyOrders, groupedActiveOrders, groupedHistoryOrders } = useMemo(() => {
-        const active = filteredOrders.filter(o => ['Novo Pedido', 'Preparando', 'A Caminho', 'Aguardando Pagamento'].includes(o.status));
+        // REQUISITO: O lojista NÃO deve ver pedidos em 'Aguardando Pagamento'. 
+        // Eles só entram na visão do restaurante quando o status é confirmado para 'Novo Pedido'.
+        const active = filteredOrders.filter(o => ['Novo Pedido', 'Preparando', 'A Caminho'].includes(o.status));
         const history = filteredOrders.filter(o => ['Entregue', 'Cancelado'].includes(o.status));
         const group = (orderList: Order[]) => orderList.reduce((acc, order) => {
             const status = order.status;
@@ -319,9 +303,8 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
         };
     }, [filteredOrders]);
 
-    // Active Columns Configuration
+    // Colunas ativas para o restaurante (removido Aguardando Pagamento da visualização)
     const activeSections = [
-        { title: 'Pendente', status: 'Aguardando Pagamento' as OrderStatus, bgColor: 'bg-gray-100 border-gray-200' },
         { title: 'Novos', status: 'Novo Pedido' as OrderStatus, bgColor: 'bg-blue-50' },
         { title: 'Cozinha', status: 'Preparando' as OrderStatus, bgColor: 'bg-yellow-50' },
         { title: 'Entrega/Retirada', status: 'A Caminho' as OrderStatus, bgColor: 'bg-orange-50' },
@@ -391,13 +374,11 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
             <main className="p-3 bg-gray-50 min-h-[calc(100vh-200px)]">
                 {viewMode === 'active' && (
                     <div id="panel-active-orders" role="tabpanel" className="h-full">
-                        {/* KANBAN LAYOUT - Compact Grid */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-start h-full">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start h-full">
                             {activeSections.map(section => {
                                 const ordersInSection = groupedActiveOrders[section.status] || [];
                                 return (
                                     <div key={section.status} className={`p-2 rounded-lg flex flex-col shadow-inner border border-gray-200 ${section.bgColor}`}>
-                                        {/* Column Header */}
                                         <h2 className="text-sm font-bold mb-2 flex justify-between items-center text-gray-700 uppercase tracking-wide px-1">
                                             {section.title}
                                             <span className="bg-white text-gray-800 px-2 py-0.5 rounded-full text-xs shadow-sm font-extrabold border">
@@ -405,7 +386,6 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                                             </span>
                                         </h2>
                                         
-                                        {/* Orders Container */}
                                         <div className="space-y-2 flex-grow min-h-[100px]">
                                             {ordersInSection.length > 0 ? (
                                                 ordersInSection.map((order: Order) => (
