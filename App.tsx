@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from './types';
 import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant } from './services/databaseService';
 import { AuthProvider, useAuth } from './services/authService';
@@ -392,24 +392,15 @@ const CustomerView: React.FC<CustomerViewProps> = ({ selectedRestaurant, onSelec
         return restaurants.filter(restaurant => {
             const restaurantCategories = restaurant.category ? restaurant.category.split(',').map(c => c.trim()) : [];
             
-            // Logic:
-            // 1. Is 'Todos' selected? (Ignore other filters)
-            // 2. Is 'Favoritos' selected? (Must be in favorites list)
-            // 3. Are other categories selected? (Must match at least one)
-            
             const isTodos = selectedCategories.includes('Todos') || selectedCategories.length === 0;
             const wantsFavorites = selectedCategories.includes('Favoritos');
             
-            // Filter out special categories for standard matching
             const standardCategories = selectedCategories.filter(c => c !== 'Todos' && c !== 'Favoritos');
             const hasStandardSelection = standardCategories.length > 0;
 
             const matchesStandard = !hasStandardSelection || standardCategories.some(sel => restaurantCategories.includes(sel));
             const matchesFavorites = !wantsFavorites || favorites.includes(restaurant.id);
             
-            // If 'Todos' is explicitly selected, we usually just show everything, unless Favorites is ALSO selected.
-            // But usually 'Todos' acts as a reset.
-            // Here: Matches if (Todos OR Standard Match) AND (Matches Favorites requirement)
             const matchesCategory = (isTodos || matchesStandard) && matchesFavorites;
             
             const matchesSearch = restaurant.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -475,7 +466,7 @@ const CustomerView: React.FC<CustomerViewProps> = ({ selectedRestaurant, onSelec
                 <div className="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full text-center">
                     <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                         <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                         </svg>
                     </div>
                     <h2 className="text-xl font-bold text-gray-800 mb-2">Erro de Conexão</h2>
@@ -591,9 +582,6 @@ const CustomerView: React.FC<CustomerViewProps> = ({ selectedRestaurant, onSelec
                     </div>
                     {filteredRestaurants.length === 0 && <p className="text-center text-gray-500 col-span-full py-8">Nenhum restaurante encontrado.</p>}
                 </div>
-                
-                {/* Tracker Overlay */}
-                <OrderTracker />
             </main>
              <Cart restaurant={selectedRestaurant} />
         </>
@@ -624,7 +612,7 @@ const AppContent: React.FC = () => {
                     <div className="max-w-xl w-full text-center bg-white p-8 rounded-lg shadow-lg">
                         <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                             <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                             </svg>
                         </div>
                         <h1 className="text-2xl font-bold text-gray-800 mb-2">Erro de Autenticação</h1>
@@ -685,6 +673,8 @@ const AppContent: React.FC = () => {
             <div className="flex-grow relative print-container">
                 {renderContent()}
             </div>
+            {/* O OrderTracker agora é global, flutuando sobre tudo com z-[9999] */}
+            <OrderTracker />
             <Footer onLoginClick={() => setView('login')} />
         </div>
     );

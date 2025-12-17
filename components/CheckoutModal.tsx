@@ -8,6 +8,7 @@ import { validateCouponByCode, fetchCouponsForRestaurant } from '../services/dat
 import { supabase } from '../services/api';
 import { isRestaurantOpen } from '../utils/restaurantUtils';
 import Spinner from './Spinner';
+import OptimizedImage from './OptimizedImage';
 
 const CheckCircleIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
@@ -34,22 +35,6 @@ const ClipboardIcon: React.FC<{ className?: string }> = ({ className }) => (
       <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v3.043c0 .317-.135.619-.372.83h-9.312a1.125 1.125 0 01-1.125-1.125v-3.043c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
     </svg>
 );
-const WarningIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-    </svg>
-);
-const EyeIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-    </svg>
-);
-const ClockIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-);
 const TruckIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 0 1-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 0 0-3.213-9.193 2.056 2.056 0 0 0-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 0 0-10.026 0 1.106 1.106 0 0 0-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" />
@@ -58,11 +43,6 @@ const TruckIcon: React.FC<{ className?: string }> = ({ className }) => (
 const StoreIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 .75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 0 0 3.75-.615A2.993 2.993 0 0 0 9.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 0 0 2.25 1.016c.896 0 1.7-.393 2.25-1.016a3.001 3.001 0 0 0 3.75.614m-16.5 0a3.004 3.004 0 0 1-.621-4.72l1.189-1.19A1.5 1.5 0 0 1 5.378 3h13.243a1.5 1.5 0 0 1 1.06.44l1.19 1.189a3 3 0 0 1-.621 4.72m-13.5 8.65h3.75a.75.75 0 0 0 .75-.75V13.5a.75.75 0 0 0-.75-.75H6.75a.75.75 0 0 0-.75.75v3.75c0 .415.336.75.75.75Z" />
-    </svg>
-);
-const LeafIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
-        <path fillRule="evenodd" d="M12.963 2.286a.75.75 0 00-1.071-.136 9.742 9.742 0 00-3.539 6.177 7.547 7.547 0 01-1.705-1.715.75.75 0 00-1.152-.082A9 9 0 1015.68 4.534a7.46 7.46 0 01-2.717-2.248zM15.75 14.25a3.75 3.75 0 11-7.313-1.172c.628.465 1.35.81 2.133 1a5.99 5.99 0 011.925-3.545 3.75 3.75 0 013.255 3.717z" clipRule="evenodd" />
     </svg>
 );
 
@@ -112,8 +92,47 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
     const [hasAvailableCoupons, setHasAvailableCoupons] = useState(false);
 
-    // AUTOCOMPLETE STATE (List Only)
-    const [knownCustomers, setKnownCustomers] = useState<{name: string, phone: string, address: any}[]>([]);
+    // --- AUTOCOMPLETE LOGIC (NATIVE DATALIST) ---
+    const [knownCustomers, setKnownCustomers] = useState<Record<string, { phone: string, address: any }>>({});
+
+    // Load known customers on open
+    useEffect(() => {
+        if (isOpen) {
+            const loaded: Record<string, { phone: string, address: any }> = {};
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('customerData-')) {
+                    try {
+                        const rawName = key.replace('customerData-', '');
+                        // Capitalize for display
+                        const displayName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+                        const data = JSON.parse(localStorage.getItem(key) || '{}');
+                        if (data.phone && data.address) {
+                            loaded[displayName] = data;
+                        }
+                    } catch (e) { console.error("Error loading data", e); }
+                }
+            }
+            setKnownCustomers(loaded);
+        }
+    }, [isOpen]);
+
+    // Handle Name Change and Silent Autofill
+    const handleNameChange = (val: string) => {
+        setCustomerName(val);
+        
+        // Se houver correspondência exata, preenche o resto silenciosamente
+        const matched = knownCustomers[val];
+        if (matched) {
+            setCustomerPhone(matched.phone);
+            setAddress({
+                ...matched.address,
+                zipCode: matched.address.zipCode || '37810-000'
+            });
+            // Toast discreto apenas para informar o usuário que os dados voltaram
+            addToast({ message: "Dados automáticos!", type: 'success', duration: 1500 });
+        }
+    };
 
     const isOpenNow = isRestaurantOpen(restaurant);
 
@@ -122,57 +141,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             ? restaurant.paymentGateways 
             : ["Pix", "Cartão de Crédito", "Cartão de Débito", "Dinheiro", "Marcar na minha conta"];
     }, [restaurant]);
-
-    // Load known customers from localStorage on mount
-    useEffect(() => {
-        if (isOpen) {
-            const loadedCustomers: {name: string, phone: string, address: any}[] = [];
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && key.startsWith('customerData-')) {
-                    try {
-                        const rawName = key.replace('customerData-', '');
-                        // Capitalize name for display (e.g. "joao" -> "Joao")
-                        const displayName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
-                        
-                        const data = JSON.parse(localStorage.getItem(key) || '{}');
-                        if (data.phone && data.address) {
-                            loadedCustomers.push({
-                                name: displayName,
-                                phone: data.phone,
-                                address: data.address
-                            });
-                        }
-                    } catch (e) {
-                        console.error("Error parsing saved customer", e);
-                    }
-                }
-            }
-            setKnownCustomers(loadedCustomers);
-        }
-    }, [isOpen]);
-
-    // TYPE-AHEAD LOGIC: Preenche automaticamente se encontrar match
-    const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = e.target.value;
-        setCustomerName(val);
-        
-        // Só tenta autocompletar se tiver 3 ou mais letras para evitar falsos positivos rápidos
-        if (val.length >= 3) {
-            const match = knownCustomers.find(c => 
-                c.name.toLowerCase().startsWith(val.toLowerCase())
-            );
-
-            if (match) {
-                // Preenche silenciosamente os outros campos
-                setCustomerPhone(match.phone);
-                setAddress({
-                    ...match.address,
-                    zipCode: match.address.zipCode || '37810-000'
-                });
-            }
-        }
-    };
 
     const resetState = () => {
         setCurrentStep('SUMMARY');
@@ -286,16 +254,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     };
 
     const handlePixPayment = async (orderData: NewOrderData) => {
-        const hasAutoPix = restaurant.hasPixConfigured;
-        const hasManualPix = !!restaurant.manualPixKey;
-
-        if (!hasAutoPix && hasManualPix) {
-            setPixError("Configuração Automática não detectada."); 
-            setIsManualPix(true);
-            setCurrentStep('PIX_PAYMENT');
-            return;
-        }
-
         setIsSubmitting(true);
         setPixError(null);
         try {
@@ -303,13 +261,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 body: { restaurantId: restaurant.id, orderData },
             });
             
-            if (response.error) {
-                throw new Error(response.error.message || "Falha na conexão com o servidor de pagamento");
-            }
-
-            if (response.data && response.data.error) {
-                 throw new Error(response.data.error);
-            }
+            if (response.error) throw new Error(response.error.message || "Falha na conexão");
+            if (response.data && response.data.error) throw new Error(response.data.error);
 
             const { orderId, qrCode, qrCodeBase64 } = response.data;
             setPixData({ qrCode, qrCodeBase64 });
@@ -319,7 +272,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 setCountdown(prev => {
                     if (prev <= 1) {
                         clearInterval(countdownIntervalRef.current!);
-                        setPixError("Tempo esgotado. Por favor, inicie um novo pedido.");
+                        setPixError("Tempo esgotado.");
                         return 0;
                     }
                     return prev - 1;
@@ -332,19 +285,12 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 (payload) => {
                     const updatedOrder = payload.new as Order;
                     if (updatedOrder.status === 'Novo Pedido') {
-                        if (pixChannelRef.current) {
-                            pixChannelRef.current.unsubscribe();
-                            pixChannelRef.current = null;
-                        }
+                        if (pixChannelRef.current) { pixChannelRef.current.unsubscribe(); pixChannelRef.current = null; }
                         if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-                        
                         saveOrderToHistory(orderId);
                         saveOrderDetailsToHistory(updatedOrder);
-                        
                         window.dispatchEvent(new Event('guarafood:update-orders'));
-
                         setCurrentStep('SUCCESS');
-                        // Use saved name for key, ensuring consistency
                         localStorage.setItem(`customerData-${customerName.toLowerCase()}`, JSON.stringify({ phone: customerPhone, address }));
                         clearCart();
                     }
@@ -358,7 +304,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 setIsManualPix(true);
                 setCurrentStep('PIX_PAYMENT');
             } else {
-                setPixError(`Erro ao gerar Pix: ${err.message || 'Erro desconhecido'}. Tente outra forma de pagamento.`);
+                setPixError(`Erro ao gerar Pix: ${err.message}. Tente outra forma.`);
             }
         } finally {
             setIsSubmitting(false);
@@ -373,12 +319,12 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             saveOrderDetailsToHistory(order);
             window.dispatchEvent(new Event('guarafood:update-orders'));
             localStorage.setItem(`customerData-${customerName.toLowerCase()}`, JSON.stringify({ phone: customerPhone, address }));
-            addToast({ message: 'Pedido enviado com sucesso!', type: 'success' });
+            addToast({ message: 'Pedido enviado!', type: 'success' });
             clearCart();
             setCurrentStep('SUCCESS');
         } catch (err) {
             console.error('Failed to create order:', err);
-            addToast({ message: `Erro ao enviar pedido: ${err}`, type: 'error' });
+            addToast({ message: `Erro ao enviar pedido`, type: 'error' });
         } finally {
             setIsSubmitting(false);
         }
@@ -386,615 +332,268 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const handleConfirmManualPix = async () => {
         const customerAddress = deliveryMethod === 'PICKUP' 
-            ? {
-                zipCode: '00000-000',
-                street: 'Retirada no Local',
-                number: 'S/N',
-                neighborhood: restaurant.name,
-                complement: 'Cliente irá buscar'
-            }
-            : {
-                zipCode: address.zipCode,
-                street: address.street,
-                number: address.number,
-                neighborhood: address.neighborhood,
-                complement: address.complement,
-            };
+            ? { zipCode: '00000-000', street: 'Retirada no Local', number: 'S/N', neighborhood: restaurant.name, complement: 'Cliente irá buscar' }
+            : { zipCode: address.zipCode, street: address.street, number: address.number, neighborhood: address.neighborhood, complement: address.complement };
 
         const orderData: NewOrderData = {
             customerName, customerPhone, items: cartItems, totalPrice: finalPriceWithFee, subtotal: totalPrice,
             discountAmount, couponCode: appliedCoupon?.code, deliveryFee: effectiveDeliveryFee, restaurantId: restaurant.id,
             restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
-            paymentMethod: "Pix (Comprovante via WhatsApp)", 
-            customerAddress: customerAddress,
-            wantsSachets: wantsSachets
+            paymentMethod: "Pix (Comprovante via WhatsApp)", customerAddress, wantsSachets
         };
         await handlePayOnDelivery(orderData);
     };
 
     const handleSubmitDetails = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!isOpenNow) {
-            addToast({ message: "Restaurante Fechado. Não é possível enviar o pedido.", type: 'error' });
-            return;
-        }
+        if (!isOpenNow) { addToast({ message: "Restaurante Fechado.", type: 'error' }); return; }
+        if (!customerName || !customerPhone || !paymentMethod) { setFormError('Preencha nome, telefone e pagamento.'); return; }
+        if (deliveryMethod === 'DELIVERY' && (!address.street || !address.number || !address.neighborhood)) { setFormError('Endereço incompleto.'); return; }
         
-        if (!customerName || !customerPhone || !paymentMethod) {
-            setFormError('Preencha nome, telefone e forma de pagamento.');
-            return;
-        }
-
-        if (deliveryMethod === 'DELIVERY') {
-            if (!address.street || !address.number || !address.neighborhood) {
-                setFormError('Preencha o endereço completo para entrega.');
-                return;
-            }
-        }
-        
-        const phoneDigits = customerPhone.replace(/\D/g, '');
-        if (!/^\d{10,11}$/.test(phoneDigits)) {
-            setFormError('Por favor, insira um número de telefone válido com DDD (10 ou 11 dígitos).');
-            return;
-        }
-
         setFormError(null);
-
         let finalPaymentMethod = paymentMethod;
-        const paymentLower = paymentMethod.toLowerCase();
-
-        if (paymentLower === 'dinheiro' && changeFor) {
+        if (paymentMethod.toLowerCase() === 'dinheiro' && changeFor) {
             const changeValue = parseFloat(changeFor);
-            if (!isNaN(changeValue) && changeValue > 0) {
-                finalPaymentMethod = `Dinheiro (Troco para R$ ${changeValue.toFixed(2)})`;
-            }
+            if (!isNaN(changeValue) && changeValue > 0) finalPaymentMethod = `Dinheiro (Troco para R$ ${changeValue.toFixed(2)})`;
         }
 
         const customerAddress = deliveryMethod === 'PICKUP' 
-            ? {
-                zipCode: '00000-000',
-                street: 'Retirada no Local',
-                number: 'S/N',
-                neighborhood: restaurant.name, 
-                complement: 'Cliente irá buscar'
-            }
-            : {
-                zipCode: address.zipCode,
-                street: address.street,
-                number: address.number,
-                neighborhood: address.neighborhood,
-                complement: address.complement,
-            };
+            ? { zipCode: '00000-000', street: 'Retirada no Local', number: 'S/N', neighborhood: restaurant.name, complement: 'Cliente irá buscar' }
+            : { zipCode: address.zipCode, street: address.street, number: address.number, neighborhood: address.neighborhood, complement: address.complement };
 
         const orderData: NewOrderData = {
             customerName, customerPhone, items: cartItems, totalPrice: finalPriceWithFee, subtotal: totalPrice,
             discountAmount, couponCode: appliedCoupon?.code, deliveryFee: effectiveDeliveryFee, restaurantId: restaurant.id,
             restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
-            paymentMethod: finalPaymentMethod,
-            customerAddress: customerAddress,
-            wantsSachets: wantsSachets
+            paymentMethod: finalPaymentMethod, customerAddress, wantsSachets
         };
 
-        if (paymentMethod === 'Pix') {
-            await handlePixPayment(orderData);
-        } else {
-            await handlePayOnDelivery(orderData);
-        }
+        if (paymentMethod === 'Pix') await handlePixPayment(orderData);
+        else await handlePayOnDelivery(orderData);
     };
 
     const handleBackFromPix = () => {
-        if (countdownIntervalRef.current) {
-            clearInterval(countdownIntervalRef.current);
-            countdownIntervalRef.current = null;
-        }
-        if (pixChannelRef.current) {
-            pixChannelRef.current.unsubscribe();
-            pixChannelRef.current = null;
-        }
+        if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+        if (pixChannelRef.current) pixChannelRef.current.unsubscribe();
         setCurrentStep('DETAILS');
         setPixData(null);
         setPixError(null);
         setIsManualPix(false);
-        addToast({ message: "Pagamento Pix cancelado.", type: 'info' });
     };
 
     const handleNextStep = () => {
-        setFormError(null);
         if (currentStep === 'SUMMARY') {
-            if (cartItems.length === 0) {
-                addToast({ message: "Seu carrinho está vazio. Adicione itens antes de prosseguir.", type: 'error' });
-                return;
-            }
-            if (!isOpenNow) {
-                addToast({ message: "Restaurante Fechado. Não é possível prosseguir.", type: 'error' });
-                return;
-            }
+            if (cartItems.length === 0) return;
+            if (!isOpenNow) return;
             setCurrentStep('DETAILS');
         }
     };
 
     const handlePrevStep = () => {
-        setFormError(null);
-        if (currentStep === 'DETAILS') {
-            setCurrentStep('SUMMARY');
-        } else if (currentStep === 'PIX_PAYMENT') {
-            handleBackFromPix();
-        }
+        if (currentStep === 'DETAILS') setCurrentStep('SUMMARY');
+        else if (currentStep === 'PIX_PAYMENT') handleBackFromPix();
     };
 
     if (!isOpen) return null;
 
     const currentStepIndex = steps.findIndex(step => step.id === currentStep);
 
-    const handleCopyPixCode = () => {
-        if (pixData?.qrCode) {
-            navigator.clipboard.writeText(pixData.qrCode);
-            addToast({ message: 'Código Pix copiado!', type: 'success' });
-        }
-    };
-    
-    const handleCopyManualKey = () => {
-        if (restaurant.manualPixKey) {
-            navigator.clipboard.writeText(restaurant.manualPixKey);
-            addToast({ message: 'Chave Pix copiada!', type: 'success' });
-        }
-    }
-
-    const renderStepper = () => (
-        <div className="flex justify-between items-center px-4 py-3 bg-gray-50 border-b" role="navigation" aria-label="Progresso do Checkout">
-            {steps.map((step, index) => {
-                if (step.id === 'PIX_PAYMENT' && paymentMethod !== 'Pix' && index > currentStepIndex) return null;
-                if (step.id === 'SUCCESS' && currentStep !== 'SUCCESS' && index > currentStepIndex) return null;
-                
-                const isCurrent = index === currentStepIndex;
-                const isCompleted = index < currentStepIndex;
-                const textColor = isCompleted ? 'text-orange-600' : isCurrent ? 'text-orange-500' : 'text-gray-400';
-                const circleBg = isCompleted ? 'bg-orange-600' : isCurrent ? 'bg-orange-500' : 'bg-gray-300';
-                const iconColor = isCompleted ? 'text-white' : 'text-gray-700';
-
-                return (
-                    <React.Fragment key={step.id}>
-                        <div className="flex flex-col items-center flex-1" aria-current={isCurrent ? 'step' : undefined}>
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${circleBg} ${isCompleted ? 'text-white' : iconColor}`}>
-                                {isCompleted ? <CheckCircleIcon className="w-5 h-5" aria-hidden="true"/> : <step.icon className="w-5 h-5" aria-hidden="true"/>}
-                            </div>
-                            <span className={`text-xs mt-1 text-center whitespace-nowrap ${textColor}`}>{step.title}</span>
-                        </div>
-                        {index < steps.length - 1 && index < currentStepIndex && (
-                            <div className="flex-1 border-t-2 border-orange-600 mx-1" aria-hidden="true"></div>
-                        )}
-                         {index < steps.length - 1 && index >= currentStepIndex && (
-                            <div className="flex-1 border-t-2 border-gray-300 mx-1" aria-hidden="true"></div>
-                        )}
-                    </React.Fragment>
-                );
-            })}
-        </div>
-    );
-
-    const renderSummary = () => (
-        <div className="overflow-y-auto p-4 space-y-4 pr-2 -mr-2" role="region" aria-labelledby="order-summary-heading">
-            <h3 id="order-summary-heading" className="text-xl font-bold text-gray-800 mb-4">Seu Pedido</h3>
-            
-            {!isOpenNow && (
-                <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded-r" role="alert">
-                    <p className="font-bold flex items-center gap-2">
-                        <ClockIcon className="w-5 h-5" />
-                        Restaurante Fechado
-                    </p>
-                    <p className="text-sm">No momento não estamos recebendo pedidos. Por favor, verifique o horário de funcionamento.</p>
-                </div>
-            )}
-
-            {cartItems.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                    <ShoppingBagIcon className="w-16 h-16 mx-auto text-gray-300 mb-4" aria-hidden="true"/>
-                    Sua sacola está vazia. Adicione alguns itens!
-                </div>
-            ) : (
-                <div className="space-y-3" role="list">
-                    {cartItems.map(item => (
-                        <div key={item.id} className="flex items-start space-x-3 border-b pb-3 last:border-b-0 last:pb-0" role="listitem">
-                            <img src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-md object-cover flex-shrink-0" loading="lazy"/>
-                            <div className="flex-grow">
-                                <p className="font-semibold text-gray-800">
-                                    {item.quantity}x {item.name} {item.sizeName && `(${item.sizeName})`}
-                                </p>
-                                {item.halves && item.halves.length > 1 && (
-                                    <p className="text-xs text-gray-500 pl-1">
-                                        (Meia {item.halves.map(h => h.name).join(' / Meia ')})
-                                    </p>
-                                )}
-                                {item.selectedAddons && item.selectedAddons.length > 0 && (
-                                    <ul className="text-xs text-gray-500 pl-1 mt-1" role="list">
-                                        {item.selectedAddons.map(addon => (
-                                            <li key={addon.id} role="listitem">
-                                                + {addon.name} {addon.price > 0 && `(R$ ${addon.price.toFixed(2)})`}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
-                                <p className="text-sm text-orange-600 font-bold mt-1">R$ {(item.price * item.quantity).toFixed(2)}</p>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-            
-            <div className="border-t pt-4 space-y-2 text-sm">
-                <div className="flex justify-between text-gray-600">
-                    <span>Subtotal</span>
-                    <span>R$ {totalPrice.toFixed(2)}</span>
-                </div>
-                {appliedCoupon && (
-                    <div className="flex justify-between text-green-600 font-semibold">
-                        <span>Desconto ({appliedCoupon.code})</span>
-                        <span>- R$ {discountAmount.toFixed(2)}</span>
-                    </div>
-                )}
-                <div className="flex justify-between text-gray-600">
-                    <span>Taxa de Entrega</span>
-                    <span>{deliveryMethod === 'PICKUP' ? 'Grátis (Retirada)' : `R$ ${(restaurant.deliveryFee || 0).toFixed(2)}`}</span>
-                </div>
-                <div className="flex justify-between font-bold text-lg text-gray-800 border-t pt-2 mt-1">
-                    <span>Total</span>
-                    <span>R$ {finalPriceWithFee.toFixed(2)}</span>
-                </div>
-            </div>
-        </div>
-    );
-
-    const renderDetails = () => (
-        <form onSubmit={handleSubmitDetails} id="checkout-form" className="overflow-y-auto space-y-4 p-4 pr-2 -mr-2" role="form" aria-labelledby="details-payment-heading">
-            <h3 id="details-payment-heading" className="text-xl font-bold text-gray-800 mb-4">Seus Dados e Pagamento</h3>
-            
-            <div className="flex justify-center mb-6">
-                <div className="bg-gray-100 p-1 rounded-lg flex w-full max-w-sm">
-                    <button
-                        type="button"
-                        onClick={() => setDeliveryMethod('DELIVERY')}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md font-bold text-sm transition-all ${
-                            deliveryMethod === 'DELIVERY'
-                                ? 'bg-white text-orange-600 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                        }`}
-                    >
-                        <TruckIcon className="w-5 h-5" />
-                        Entrega
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setDeliveryMethod('PICKUP')}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md font-bold text-sm transition-all ${
-                            deliveryMethod === 'PICKUP'
-                                ? 'bg-white text-orange-600 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                        }`}
-                    >
-                        <StoreIcon className="w-5 h-5" />
-                        Retirada
-                    </button>
-                </div>
-            </div>
-
-            {/* --- ECO OPTION (SACHETS) --- */}
-            <div className="bg-green-50 border border-green-200 p-3 rounded-lg flex items-start gap-3">
-                <div className="text-green-600 mt-0.5">
-                    <LeafIcon className="w-5 h-5" />
-                </div>
-                <div className="flex-grow">
-                    <h4 className="font-bold text-sm text-green-800">Ajude o Meio Ambiente</h4>
-                    <p className="text-xs text-green-700 mb-2">Para evitar desperdício, só enviamos descartáveis se você pedir.</p>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                        <input 
-                            type="checkbox" 
-                            checked={wantsSachets} 
-                            onChange={(e) => setWantsSachets(e.target.checked)}
-                            className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-                        />
-                        <span className="text-sm font-medium text-gray-800">Quero receber sachês (maionese/catchup), guardanapos e talheres.</span>
-                    </label>
-                </div>
-            </div>
-
-            <div>
-                <label htmlFor="customerName" className="block text-sm font-medium text-gray-700">Nome Completo</label>
-                <div className="relative">
-                    <input 
-                        id="customerName" 
-                        type="text" 
-                        value={customerName} 
-                        onChange={handleNameChange} 
-                        required 
-                        autoComplete="off"
-                        className="mt-1 w-full p-3 border rounded-lg bg-gray-50" 
-                        aria-required="true"
-                    />
-                </div>
-            </div>
-            <div>
-                <label htmlFor="customerPhone" className="block text-sm font-medium text-gray-700">Telefone (WhatsApp)</label>
-                <input id="customerPhone" type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" aria-required="true"/>
-            </div>
-            
-            {deliveryMethod === 'DELIVERY' && (
-                <div className="border-t pt-4">
-                    <h3 className="text-md font-medium text-gray-800 mb-2">Endereço de Entrega</h3>
-                    <div className="space-y-3">
-                        <div className="grid grid-cols-4 gap-3">
-                            <div className="col-span-3">
-                                <label htmlFor="street" className="block text-sm font-medium text-gray-700">Rua</label>
-                                <input id="street" name="street" type="text" value={address.street} onChange={handleAddressChange} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" aria-required="true"/>
-                            </div>
-                            <div>
-                                <label htmlFor="number" className="block text-sm font-medium text-gray-700">Nº</label>
-                                <input id="number" name="number" type="text" value={address.number} onChange={handleAddressChange} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" aria-required="true"/>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label htmlFor="neighborhood" className="block text-sm font-medium text-gray-700">Bairro</label>
-                                <input id="neighborhood" name="neighborhood" type="text" value={address.neighborhood} onChange={handleAddressChange} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" aria-required="true"/>
-                            </div>
-                            <div>
-                                <label htmlFor="complement" className="block text-sm font-medium text-gray-700">Complemento</label>
-                                <input id="complement" name="complement" type="text" value={address.complement} onChange={handleAddressChange} className="mt-1 w-full p-3 border rounded-lg bg-gray-50"/>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            <div className="border-t pt-4">
-                <span className="block text-sm font-medium text-gray-700">Forma de Pagamento</span>
-                <div className="mt-2 space-y-2" role="radiogroup" aria-label="Selecione a forma de pagamento">
-                    {paymentOptions.map(gateway => (
-                         <div key={gateway}>
-                            <label className="flex items-center p-3 border rounded-lg cursor-pointer has-[:checked]:bg-orange-50 has-[:checked]:border-orange-500">
-                                <input type="radio" name="payment" value={gateway} checked={paymentMethod === gateway} onChange={e => setPaymentMethod(e.target.value)} className="h-4 w-4 text-orange-600 focus:ring-orange-500"/>
-                                <div className="ml-3 flex flex-col">
-                                    <span className="text-gray-700">{gateway}</span>
-                                    {gateway.toLowerCase().includes('cartão') && (
-                                        <span className="text-xs text-blue-600 font-medium mt-0.5">
-                                            ⓘ O entregador levará a maquininha.
-                                        </span>
-                                    )}
-                                     {gateway === 'Marcar na minha conta' && (
-                                        <span className="text-xs text-orange-600 font-bold mt-0.5 flex items-center">
-                                            <WarningIcon className="w-3 h-3 inline mr-1" />
-                                            Sujeito a aprovação do estabelecimento.
-                                        </span>
-                                    )}
-                                </div>
-                            </label>
-                            {gateway === 'Dinheiro' && paymentMethod === 'Dinheiro' && (
-                                <div className="mt-2 pl-4">
-                                    <label htmlFor="changeFor" className="block text-sm font-medium text-gray-700">Troco para quanto? (Opcional)</label>
-                                    <input id="changeFor" type="number" value={changeFor} onChange={e => setChangeFor(e.target.value)} placeholder="Ex: 50" className="mt-1 w-full p-2 border rounded-lg bg-gray-50"/>
-                                </div>
-                            )}
-                        </div>
-                    ))}
-                </div>
-            </div>
-            
-            {hasAvailableCoupons && (
-                <div>
-                    <label htmlFor="couponCode" className="block text-sm font-medium text-gray-700">Cupom de Desconto</label>
-                    {appliedCoupon ? (
-                        <div className="mt-1 flex justify-between items-center p-3 border rounded-lg bg-green-50 border-green-300">
-                            <p className="text-green-800 font-semibold">Cupom "{appliedCoupon.code}" aplicado!</p>
-                            <button type="button" onClick={handleRemoveCoupon} className="text-red-600 font-bold text-lg" aria-label={`Remover cupom ${appliedCoupon.code}`}>&times;</button>
-                        </div>
-                    ) : (
-                        <div className="mt-1 flex gap-2">
-                            <input id="couponCode" type="text" value={couponCodeInput} onChange={e => setCouponCodeInput(e.target.value.toUpperCase())} placeholder="Ex: BEMVINDO10" className="flex-grow p-3 border rounded-lg bg-gray-50 uppercase"/>
-                            <button type="button" onClick={handleApplyCoupon} disabled={isApplyingCoupon} className="bg-gray-800 text-white font-bold px-4 rounded-lg hover:bg-gray-700 disabled:bg-gray-400">
-                                {isApplyingCoupon ? 'Validando...' : 'Aplicar'}
-                            </button>
-                        </div>
-                    )}
-                    {formError && <p className="text-red-500 text-sm mt-1">{formError}</p>}
-                </div>
-            )}
-        </form>
-    );
-
-    // ... renderPixPayment and renderSuccess remain same ...
-    const renderPixPayment = () => {
-        if (isManualPix) {
-            return (
-                <div className="text-center flex flex-col items-center p-4" role="region" aria-labelledby="manual-pix-heading">
-                    <h3 id="manual-pix-heading" className="text-xl font-bold text-gray-800 mb-2">Pagamento Pix Manual</h3>
-                    
-                    {pixError && (
-                        <div className="bg-red-50 text-red-700 p-3 rounded-lg border border-red-200 text-sm mb-4 w-full text-left">
-                            <strong>Atenção:</strong> {pixError}
-                        </div>
-                    )}
-
-                    <p className="text-sm text-gray-600 mb-4 px-4">
-                        Por favor, faça o Pix manualmente usando a chave abaixo e envie o comprovante se solicitado.
-                    </p>
-                    
-                    <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg w-full max-w-sm mb-4">
-                        <p className="text-xs text-orange-700 font-bold uppercase mb-1">Chave Pix do Restaurante</p>
-                        <div className="flex items-center justify-between gap-2 bg-white p-2 rounded border border-orange-100">
-                            <span className="text-lg font-mono font-bold text-gray-800 break-all select-all">{restaurant.manualPixKey}</span>
-                            <button 
-                                onClick={handleCopyManualKey} 
-                                className="bg-orange-600 text-white p-2 rounded hover:bg-orange-700 flex-shrink-0 shadow-md"
-                                aria-label="Copiar chave"
-                            >
-                                <ClipboardIcon className="w-5 h-5"/>
-                            </button>
-                        </div>
-                    </div>
-
-                    <p className="text-2xl font-bold text-gray-800 mb-6">Valor: R$ {finalPriceWithFee.toFixed(2)}</p>
-
-                    <button 
-                        onClick={handleConfirmManualPix} 
-                        className="bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 transition-colors w-full max-w-xs shadow-lg animate-pulse"
-                        disabled={isSubmitting}
-                    >
-                        {isSubmitting ? <Spinner message="Enviando..." /> : 'JÁ FIZ O PAGAMENTO'}
-                    </button>
-                </div>
-            );
-        }
-
-        return (
-            <div className="text-center flex flex-col items-center p-4" role="region" aria-labelledby="pix-payment-heading">
-                <h3 id="pix-payment-heading" className="text-xl font-bold text-gray-800 mb-2">Pague com Pix para confirmar</h3>
-                <p className="text-sm text-gray-500 mb-4">Use o app do seu banco para escanear o QR Code ou copie o código abaixo.</p>
-                {pixData ? (
-                    <>
-                        <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="PIX QR Code" className="w-48 h-48 mx-auto my-2 border-4 border-gray-700 p-1 rounded-lg" />
-                        <button 
-                            onClick={handleCopyPixCode} 
-                            className="flex items-center justify-center gap-2 bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors my-2 w-full max-w-xs shadow-lg" 
-                            aria-label="Copiar código Pix"
-                        >
-                            <ClipboardIcon className="w-5 h-5"/>
-                            <span>Copiar Código Pix</span>
-                        </button>
-                        <div className="w-full max-w-xs mt-2 relative">
-                             <textarea 
-                                readOnly 
-                                value={pixData.qrCode} 
-                                className="font-mono bg-gray-100 p-2 rounded-lg text-xs w-full h-16 resize-none text-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400"
-                                aria-label="Código Pix Copia e Cola"
-                            />
-                        </div>
-                       
-                        <p className="text-2xl font-bold text-orange-600 mt-2">R$ {finalPriceWithFee.toFixed(2)}</p>
-                        <div className="mt-4 text-sm font-semibold text-gray-700" aria-live="polite">Tempo restante: {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}</div>
-                    </>
-                ) : isSubmitting ? (
-                    <Spinner message="Gerando QR Code..." />
-                ) : null}
-                {pixError && <p className="text-red-500 text-sm mt-2" role="alert">{pixError}</p>}
-            </div>
-        );
-    };
-
-    const renderSuccess = () => (
-        <div className="text-center flex flex-col items-center justify-center p-8 bg-blue-50 h-full" role="status" aria-live="assertive">
-            <svg className="w-20 h-20 text-green-500 mb-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-            <h3 className="text-2xl font-bold text-gray-800">Pedido Confirmado!</h3>
-            
-            <div className="bg-white border border-blue-200 rounded-lg p-4 mt-6 mb-6 w-full shadow-sm">
-                <div className="flex flex-col items-center">
-                    <p className="text-lg font-bold text-blue-800 mb-1 flex items-center gap-2">
-                        <EyeIcon className="w-5 h-5"/>
-                        Acompanhe seu Pedido
-                    </p>
-                    <p className="text-sm text-blue-700">
-                        O rastreamento do pedido aparecerá no rodapé da tela inicial assim que você fechar esta janela.
-                    </p>
-                </div>
-            </div>
-
-             {/* MANUAL CLOSE BUTTON WITH TRACKER TRIGGER */}
-             <button
-                onClick={() => {
-                    // Força a atualização do OrderTracker imediatamente ao clicar
-                    window.dispatchEvent(new Event('guarafood:update-orders'));
-                    onClose();
-                }}
-                className="mt-6 bg-green-600 text-white font-bold py-3 px-12 rounded-full hover:bg-green-700 transition-all shadow-lg hover:scale-105 active:scale-95"
-            >
-                Entendi
-            </button>
-        </div>
-    );
-
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={currentStep === 'SUCCESS' ? undefined : onClose} aria-modal="true" role="dialog" aria-labelledby="checkout-modal-title">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                {/* Header only if not success, to allow full screen effect for success */}
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={currentStep === 'SUCCESS' ? undefined : onClose}>
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                
+                {/* Header */}
                 {currentStep !== 'SUCCESS' && (
                     <div className="p-4 border-b flex justify-between items-start gap-4">
                         <div className="flex-grow min-w-0">
-                             <h2 id="checkout-modal-title" className="text-xl font-bold text-gray-800 truncate" title={restaurant.name}>
-                                {restaurant.name}
-                            </h2>
-                            <p className="text-xs text-gray-500 truncate">{restaurant.address}</p>
+                             <h2 className="text-xl font-bold text-gray-800 truncate">{restaurant.name}</h2>
+                             <p className="text-[10px] text-gray-500 truncate">{restaurant.address}</p>
                         </div>
-                        <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl font-bold" aria-label="Fechar">&times;</button>
+                        <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl font-bold">&times;</button>
                     </div>
                 )}
 
-                {currentStep !== 'SUCCESS' && renderStepper()}
+                {/* Stepper */}
+                {currentStep !== 'SUCCESS' && (
+                    <div className="flex justify-between items-center px-4 py-3 bg-gray-50 border-b">
+                        {steps.map((step, index) => {
+                            if (step.id === 'PIX_PAYMENT' && paymentMethod !== 'Pix' && index > currentStepIndex) return null;
+                            if (step.id === 'SUCCESS' && currentStep !== 'SUCCESS' && index > currentStepIndex) return null;
+                            const isCurrent = index === currentStepIndex;
+                            const isCompleted = index < currentStepIndex;
+                            const textColor = isCompleted ? 'text-orange-600' : isCurrent ? 'text-orange-500' : 'text-gray-400';
+                            const circleBg = isCompleted ? 'bg-orange-600' : isCurrent ? 'bg-orange-500' : 'bg-gray-300';
+                            return (
+                                <React.Fragment key={step.id}>
+                                    <div className="flex flex-col items-center flex-1">
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${circleBg} text-white`}>
+                                            {isCompleted ? <CheckCircleIcon className="w-5 h-5" /> : <step.icon className="w-5 h-5" />}
+                                        </div>
+                                        <span className={`text-[10px] mt-1 text-center whitespace-nowrap font-bold ${textColor}`}>{step.title}</span>
+                                    </div>
+                                    {index < steps.length - 1 && <div className={`flex-1 border-t-2 mx-1 ${index < currentStepIndex ? 'border-orange-600' : 'border-gray-300'}`}></div>}
+                                </React.Fragment>
+                            );
+                        })}
+                    </div>
+                )}
 
-                {currentStep === 'SUMMARY' && renderSummary()}
-                {currentStep === 'DETAILS' && renderDetails()}
-                {currentStep === 'PIX_PAYMENT' && renderPixPayment()}
-                {currentStep === 'SUCCESS' && renderSuccess()}
+                {/* --- SUMMARY STEP --- */}
+                {currentStep === 'SUMMARY' && (
+                    <div className="overflow-y-auto p-4 space-y-4">
+                        <h3 className="text-xl font-bold text-gray-800">Seu Pedido</h3>
+                        <div className="space-y-3">
+                            {cartItems.map(item => (
+                                <div key={item.id} className="flex items-start space-x-3 border-b pb-3 last:border-b-0">
+                                    <OptimizedImage src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-md object-cover flex-shrink-0" />
+                                    <div className="flex-grow">
+                                        <p className="font-semibold text-gray-800 text-sm">{item.quantity}x {item.name} {item.sizeName && `(${item.sizeName})`}</p>
+                                        <p className="text-xs text-orange-600 font-bold mt-1">R$ {(item.price * item.quantity).toFixed(2)}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="border-t pt-4 space-y-2 text-sm">
+                            <div className="flex justify-between text-gray-600"><span>Subtotal</span><span>R$ {totalPrice.toFixed(2)}</span></div>
+                            {appliedCoupon && <div className="flex justify-between text-green-600 font-semibold"><span>Desconto</span><span>- R$ {discountAmount.toFixed(2)}</span></div>}
+                            <div className="flex justify-between text-gray-600"><span>Entrega</span><span>{deliveryMethod === 'PICKUP' ? 'Grátis' : `R$ ${(restaurant.deliveryFee || 0).toFixed(2)}`}</span></div>
+                            <div className="flex justify-between font-bold text-lg text-gray-800 border-t pt-2"><span>Total</span><span>R$ {finalPriceWithFee.toFixed(2)}</span></div>
+                        </div>
+                    </div>
+                )}
+
+                {/* --- DETAILS STEP --- */}
+                {currentStep === 'DETAILS' && (
+                    <form onSubmit={handleSubmitDetails} id="checkout-form" className="overflow-y-auto space-y-4 p-4 relative">
+                        <h3 className="text-xl font-bold text-gray-800 mb-2">Dados e Pagamento</h3>
+                        
+                        <div className="bg-gray-100 p-1 rounded-lg flex mb-4">
+                            <button type="button" onClick={() => setDeliveryMethod('DELIVERY')} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md font-bold text-sm transition-all ${deliveryMethod === 'DELIVERY' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500'}`}><TruckIcon className="w-5 h-5" />Entrega</button>
+                            <button type="button" onClick={() => setDeliveryMethod('PICKUP')} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md font-bold text-sm transition-all ${deliveryMethod === 'PICKUP' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500'}`}><StoreIcon className="w-5 h-5" />Retirada</button>
+                        </div>
+
+                        {/* NATIVE DATALIST AUTOCOMPLETE */}
+                        <div className="relative">
+                            <label htmlFor="customerName" className="block text-sm font-medium text-gray-700">Nome Completo</label>
+                            <input 
+                                id="customerName" 
+                                list="known-customers-list"
+                                type="text" 
+                                value={customerName} 
+                                onChange={(e) => handleNameChange(e.target.value)}
+                                required 
+                                autoComplete="name" 
+                                className="mt-1 w-full p-3 border rounded-lg bg-gray-50 focus:ring-2 focus:ring-orange-400"
+                                placeholder="Seu nome"
+                            />
+                            <datalist id="known-customers-list">
+                                {Object.keys(knownCustomers).map(name => (
+                                    <option key={name} value={name} />
+                                ))}
+                            </datalist>
+                        </div>
+
+                        <div>
+                            <label htmlFor="customerPhone" className="block text-sm font-medium text-gray-700">WhatsApp</label>
+                            <input id="customerPhone" type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" placeholder="(00) 00000-0000" />
+                        </div>
+                        
+                        {deliveryMethod === 'DELIVERY' && (
+                            <div className="border-t pt-4 space-y-3">
+                                <h4 className="text-sm font-bold text-gray-800">Endereço</h4>
+                                <div className="grid grid-cols-4 gap-2">
+                                    <input name="street" placeholder="Rua" type="text" value={address.street} onChange={handleAddressChange} required className="col-span-3 p-3 border rounded-lg bg-gray-50 text-sm" />
+                                    <input name="number" placeholder="Nº" type="text" value={address.number} onChange={handleAddressChange} required className="p-3 border rounded-lg bg-gray-50 text-sm" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <input name="neighborhood" placeholder="Bairro" type="text" value={address.neighborhood} onChange={handleAddressChange} required className="p-3 border rounded-lg bg-gray-50 text-sm" />
+                                    <input name="complement" placeholder="Obs / Ap" type="text" value={address.complement} onChange={handleAddressChange} className="p-3 border rounded-lg bg-gray-50 text-sm" />
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="border-t pt-4">
+                            <span className="block text-sm font-medium text-gray-700 mb-2">Pagamento</span>
+                            <div className="space-y-2">
+                                {paymentOptions.map(gateway => (
+                                     <label key={gateway} className="flex items-center p-3 border rounded-lg cursor-pointer has-[:checked]:bg-orange-50 has-[:checked]:border-orange-500">
+                                        <input type="radio" name="payment" value={gateway} checked={paymentMethod === gateway} onChange={e => setPaymentMethod(e.target.value)} className="h-4 w-4 text-orange-600" />
+                                        <div className="ml-3 flex flex-col">
+                                            <span className="text-sm font-semibold text-gray-700">{gateway}</span>
+                                            {gateway.toLowerCase().includes('cartão') && <span className="text-[10px] text-blue-600">ⓘ Maquininha na entrega.</span>}
+                                        </div>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        {hasAvailableCoupons && (
+                            <div className="pt-2">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Cupom</label>
+                                {appliedCoupon ? (
+                                    <div className="flex justify-between items-center p-3 border rounded-lg bg-green-50 border-green-300">
+                                        <p className="text-green-800 text-xs font-bold">Cupom "{appliedCoupon.code}" ativo!</p>
+                                        <button type="button" onClick={handleRemoveCoupon} className="text-red-600 font-bold">&times;</button>
+                                    </div>
+                                ) : (
+                                    <div className="flex gap-2">
+                                        <input type="text" value={couponCodeInput} onChange={e => setCouponCodeInput(e.target.value.toUpperCase())} placeholder="CÓDIGO" className="flex-grow p-3 border rounded-lg bg-gray-50 uppercase text-sm" />
+                                        <button type="button" onClick={handleApplyCoupon} disabled={isApplyingCoupon} className="bg-gray-800 text-white font-bold px-4 rounded-lg disabled:opacity-50 text-xs">{isApplyingCoupon ? '...' : 'Aplicar'}</button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        {formError && <p className="text-red-500 text-xs mt-2 font-bold">{formError}</p>}
+                    </form>
+                )}
+
+                {/* --- PIX STEP --- */}
+                {currentStep === 'PIX_PAYMENT' && (
+                    <div className="text-center flex flex-col items-center p-6">
+                        <h3 className="text-xl font-bold text-gray-800 mb-2">{isManualPix ? 'Pix Manual' : 'Pague para Confirmar'}</h3>
+                        {isManualPix ? (
+                            <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg w-full mb-4">
+                                <p className="text-[10px] text-orange-700 font-bold uppercase mb-1">Chave Pix</p>
+                                <div className="flex items-center justify-between gap-2 bg-white p-2 rounded border border-orange-100">
+                                    <span className="text-lg font-mono font-bold text-gray-800 break-all select-all">{restaurant.manualPixKey}</span>
+                                    <button onClick={() => { navigator.clipboard.writeText(restaurant.manualPixKey || ''); addToast({ message: 'Copiado!', type: 'success' }); }} className="bg-orange-600 text-white p-2 rounded shadow-md"><ClipboardIcon className="w-5 h-5"/></button>
+                                </div>
+                                <button onClick={handleConfirmManualPix} className="mt-6 bg-green-600 text-white font-bold py-4 px-6 rounded-xl w-full shadow-lg" disabled={isSubmitting}>JÁ FIZ O PAGAMENTO</button>
+                            </div>
+                        ) : (
+                            pixData ? (
+                                <>
+                                    <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="PIX" className="w-48 h-48 mx-auto my-2 border-4 border-gray-700 p-1 rounded-lg" />
+                                    <button onClick={() => { navigator.clipboard.writeText(pixData.qrCode); addToast({ message: 'Copiado!', type: 'success' }); }} className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg my-2 w-full max-w-xs shadow-lg flex justify-center items-center gap-2"><ClipboardIcon className="w-5 h-5"/>Copiar Código</button>
+                                    <p className="text-2xl font-bold text-orange-600 mt-2">R$ {finalPriceWithFee.toFixed(2)}</p>
+                                    <div className="mt-4 text-[10px] font-bold text-gray-500">Tempo: {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}</div>
+                                </>
+                            ) : <Spinner message="Gerando Pix..." />
+                        )}
+                        {pixError && <p className="text-red-500 text-xs mt-2 font-bold">{pixError}</p>}
+                    </div>
+                )}
+
+                {/* --- SUCCESS STEP --- */}
+                {currentStep === 'SUCCESS' && (
+                    <div className="text-center flex flex-col items-center justify-center p-8 bg-blue-50 h-full">
+                        <CheckCircleIcon className="w-20 h-20 text-green-500 mb-4 animate-bounce" />
+                        <h3 className="text-2xl font-bold text-gray-800">Pedido Confirmado!</h3>
+                        <p className="text-sm text-blue-700 mt-4 px-4">Acompanhe pelo rastreador no rodapé.</p>
+                        <button onClick={() => { window.dispatchEvent(new Event('guarafood:update-orders')); onClose(); }} className="mt-8 bg-green-600 text-white font-bold py-4 px-12 rounded-full shadow-lg">Entendi</button>
+                    </div>
+                )}
                 
+                {/* Footer Actions */}
                 {(currentStep === 'SUMMARY' || currentStep === 'DETAILS' || (currentStep === 'PIX_PAYMENT' && !isManualPix)) && (
                     <div className="mt-auto p-4 border-t bg-gray-50 rounded-b-lg flex justify-between items-center">
-                        {currentStep === 'SUMMARY' && (
-                            <button
-                                type="button"
-                                onClick={onClose}
-                                className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300"
-                            >
-                                Voltar para o carrinho
-                            </button>
-                        )}
-                        {currentStep === 'DETAILS' && (
-                            <button
-                                type="button"
-                                onClick={handlePrevStep}
-                                className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300"
-                            >
-                                Voltar
-                            </button>
-                        )}
-                        {currentStep === 'PIX_PAYMENT' && !isManualPix && (
-                            <button
-                                type="button"
-                                onClick={handlePrevStep}
-                                className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300"
-                            >
-                                Cancelar Pix
-                            </button>
-                        )}
-
+                        <button type="button" onClick={handlePrevStep} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold text-sm">{currentStep === 'SUMMARY' ? 'Fechar' : 'Voltar'}</button>
                         <div className="flex flex-col items-end">
-                            <span className="font-bold text-lg text-orange-600">Total: R$ {finalPriceWithFee.toFixed(2)}</span>
-                            {currentStep === 'SUMMARY' && (
-                                <button
-                                    onClick={handleNextStep}
-                                    disabled={cartItems.length === 0 || !isOpenNow} // Disable if closed
-                                    className="mt-2 bg-orange-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-orange-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
-                                >
-                                    Continuar
-                                </button>
-                            )}
-                            {currentStep === 'DETAILS' && (
-                                <button
-                                    type="submit"
-                                    form="checkout-form"
-                                    disabled={isSubmitting}
-                                    className="mt-2 w-full bg-orange-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-orange-700 transition-colors disabled:bg-orange-300"
-                                >
-                                    {isSubmitting ? <Spinner message="Processando..." /> : (paymentMethod === 'Pix' ? 'Pagar com Pix' : 'Finalizar Pedido')}
-                                </button>
-                            )}
+                            <span className="font-bold text-[10px] text-gray-400">Total: <span className="text-orange-600 text-lg">R$ {finalPriceWithFee.toFixed(2)}</span></span>
+                            <button onClick={currentStep === 'SUMMARY' ? handleNextStep : undefined} type={currentStep === 'DETAILS' ? 'submit' : 'button'} form={currentStep === 'DETAILS' ? 'checkout-form' : undefined} disabled={isSubmitting || (currentStep === 'SUMMARY' && !isOpenNow)} className="mt-1 bg-orange-600 text-white font-bold py-2.5 px-8 rounded-lg disabled:opacity-50 text-sm">
+                                {isSubmitting ? '...' : currentStep === 'SUMMARY' ? 'Continuar' : (paymentMethod === 'Pix' ? 'Pagar' : 'Confirmar')}
+                            </button>
                         </div>
-                    </div>
-                )}
-                 {currentStep === 'PIX_PAYMENT' && isManualPix && (
-                    <div className="mt-auto p-4 border-t bg-gray-50 rounded-b-lg flex justify-start">
-                         <button
-                            type="button"
-                            onClick={handlePrevStep}
-                            className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300"
-                        >
-                            Voltar / Cancelar
-                        </button>
                     </div>
                 )}
             </div>

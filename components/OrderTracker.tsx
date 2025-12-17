@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/api';
 import { useSound } from '../hooks/useSound';
 
@@ -43,58 +43,51 @@ const OrderTracker: React.FC = () => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [showTooltip, setShowTooltip] = useState(false);
     
-    // Use the custom sound hook
     const { playNotification, initAudioContext } = useSound();
 
-    useEffect(() => {
-        // Load orders from local storage
-        const loadOrders = async () => {
-            try {
-                const storedOrderIds = JSON.parse(localStorage.getItem('guarafood-active-orders') || '[]');
-                if (storedOrderIds.length === 0) {
-                    setActiveOrders([]); // Clear if empty
-                    return;
-                }
-
-                // If filtering is robust, this should work. Ensure status filter handles array correctly
-                const { data, error } = await supabase
-                    .from('orders')
-                    .select('id, status, restaurant_name, total_price, timestamp')
-                    .in('id', storedOrderIds)
-                    .order('timestamp', { ascending: false });
-
-                if (error) throw error;
-
-                if (data) {
-                    // Filter out completed/cancelled, BUT keep "Aguardando Pagamento"
-                    const ongoing = data.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado');
-                    setActiveOrders(ongoing);
-                    
-                    if (ongoing.length > 0) {
-                        setShowTooltip(true);
-                        setTimeout(() => setShowTooltip(false), 8000); 
-                    }
-                    
-                    // Cleanup completed orders from local storage
-                    const completedIds = data.filter(o => o.status === 'Entregue' || o.status === 'Cancelado').map(o => o.id);
-                    if (completedIds.length > 0) {
-                        const updatedStorage = storedOrderIds.filter((id: string) => !completedIds.includes(id));
-                        localStorage.setItem('guarafood-active-orders', JSON.stringify(updatedStorage));
-                    }
-                }
-            } catch (err) {
-                console.error("Failed to load active orders:", err);
+    const loadOrders = useCallback(async () => {
+        try {
+            const storedOrderIds = JSON.parse(localStorage.getItem('guarafood-active-orders') || '[]');
+            if (storedOrderIds.length === 0) {
+                setActiveOrders([]);
+                return;
             }
-        };
 
+            const { data, error } = await supabase
+                .from('orders')
+                .select('id, status, restaurant_name, total_price, timestamp')
+                .in('id', storedOrderIds)
+                .order('timestamp', { ascending: false });
+
+            if (error) throw error;
+
+            if (data) {
+                const ongoing = data.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado');
+                setActiveOrders(ongoing);
+                
+                // Se um novo pedido apareceu e o tracker estava oculto, mostra o tooltip
+                if (ongoing.length > 0 && activeOrders.length === 0) {
+                    setShowTooltip(true);
+                    setTimeout(() => setShowTooltip(false), 8000); 
+                }
+            }
+        } catch (err) {
+            console.error("Failed to load active orders:", err);
+        }
+    }, [activeOrders.length]);
+
+    useEffect(() => {
         loadOrders();
 
-        // Listen for internal event when a new order is placed
+        // Escuta o evento global disparado pelo checkout para aparecer na hora
         window.addEventListener('guarafood:update-orders', loadOrders);
+        
+        // Polling de segurança a cada 30 segundos para garantir status atualizado se o Realtime falhar
+        const interval = setInterval(loadOrders, 30000);
 
-        // Subscribe to changes
+        // Inscrição em tempo real para mudanças de status
         const subscription = supabase
-            .channel('public:orders')
+            .channel('public:orders:tracker')
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (payload) => {
                 const updatedOrder = payload.new;
                 const storedOrderIds = JSON.parse(localStorage.getItem('guarafood-active-orders') || '[]');
@@ -104,13 +97,12 @@ const OrderTracker: React.FC = () => {
                         const exists = prev.find(o => o.id === updatedOrder.id);
                         if (!exists) return prev;
                         
-                        // Play sound on status change (e.g., pending -> new)
                         if (exists.status !== updatedOrder.status) {
                             playNotification();
-                        }
-
-                        if (updatedOrder.status === 'Entregue' || updatedOrder.status === 'Cancelado') {
-                             return prev.filter(o => o.id !== updatedOrder.id);
+                            // Se foi entregue ou cancelado, removemos da lista ativa
+                            if (updatedOrder.status === 'Entregue' || updatedOrder.status === 'Cancelado') {
+                                 return prev.filter(o => o.id !== updatedOrder.id);
+                            }
                         }
                         
                         return prev.map(o => o.id === updatedOrder.id ? { ...o, status: updatedOrder.status } : o);
@@ -121,101 +113,101 @@ const OrderTracker: React.FC = () => {
 
         return () => {
             window.removeEventListener('guarafood:update-orders', loadOrders);
+            clearInterval(interval);
             supabase.removeChannel(subscription);
         };
-    }, [playNotification]);
+    }, [loadOrders, playNotification]);
 
     if (activeOrders.length === 0) return null;
 
     const mainOrder = activeOrders[0];
     const currentStep = statusSteps[mainOrder.status] ?? 1;
-    // Special progress for Pending
     const progress = currentStep === 0 ? 5 : (currentStep / 4) * 100;
-    
     const isPending = mainOrder.status === 'Aguardando Pagamento';
 
     return (
         <div 
-            className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-4" 
-            onClick={initAudioContext} // Resume audio context on interaction
+            className="fixed bottom-0 left-0 right-0 z-[9999] px-4 pb-4 pointer-events-none" 
+            onClick={initAudioContext}
             onTouchStart={initAudioContext}
         >
-            {/* Tooltip Alert */}
-            {showTooltip && (
-                <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white text-xs font-bold py-1 px-3 rounded-full shadow-lg animate-bounce z-50">
-                    Acompanhe aqui ⬇
-                    <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-blue-600 rotate-45"></div>
-                </div>
-            )}
-
-            <div className="bg-white rounded-xl shadow-[0_-5px_20px_-5px_rgba(0,0,0,0.2)] border border-orange-100 overflow-hidden max-w-md mx-auto">
-                {/* Header / Collapsed View */}
-                <div 
-                    className={`p-3 flex items-center justify-between cursor-pointer ${isPending ? 'bg-yellow-50' : 'bg-orange-50'}`}
-                    onClick={() => setIsExpanded(!isExpanded)}
-                >
-                    <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-full ${isPending ? 'bg-yellow-200 text-yellow-700' : 'bg-orange-100 text-orange-600'}`}>
-                            {isPending ? <ClockIcon className="w-6 h-6" /> : <MotorcycleIcon className="w-6 h-6" />}
-                        </div>
-                        <div>
-                            <p className="text-sm font-bold text-gray-800">Pedido em andamento</p>
-                            <p className={`text-xs font-semibold ${isPending ? 'text-yellow-700' : 'text-orange-600'}`}>
-                                {statusLabels[mainOrder.status] || mainOrder.status}
-                            </p>
-                        </div>
-                    </div>
-                    <button className="text-gray-400">
-                        {isExpanded ? <ChevronDownIcon className="w-5 h-5"/> : <ChevronUpIcon className="w-5 h-5"/>}
-                    </button>
-                </div>
-
-                {/* Progress Bar (Always Visible) */}
-                <div className="h-1.5 w-full bg-gray-200">
-                    <div 
-                        className={`h-full transition-all duration-1000 ease-out ${isPending ? 'bg-yellow-500' : 'bg-orange-500'}`}
-                        style={{ width: `${progress}%` }}
-                    ></div>
-                </div>
-
-                {/* Expanded Details */}
-                {isExpanded && (
-                    <div className="p-4 bg-white space-y-4">
-                        <div className="flex justify-between items-center text-sm text-gray-600">
-                            <span>{mainOrder.restaurant_name}</span>
-                            <span className="font-mono font-bold">#{mainOrder.id.substring(0, 6)}</span>
-                        </div>
-                        
-                        {/* Steps Visualization */}
-                        <div className="flex justify-between items-center relative">
-                            {/* Connecting Line */}
-                            <div className="absolute top-1/2 left-0 w-full h-0.5 bg-gray-200 -z-10"></div>
-                            
-                            {[1, 2, 3, 4].map((step) => {
-                                const isCompleted = step <= currentStep && !isPending;
-                                const isCurrent = step === currentStep && !isPending;
-                                
-                                return (
-                                    <div key={step} className="flex flex-col items-center gap-1 bg-white px-1">
-                                        <div className={`w-3 h-3 rounded-full border-2 ${isCompleted ? 'bg-orange-500 border-orange-500' : 'bg-white border-gray-300'} ${isCurrent ? 'ring-2 ring-orange-200' : ''}`}></div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                        <div className="flex justify-between text-[10px] text-gray-500 font-medium">
-                            <span>Recebido</span>
-                            <span>Preparo</span>
-                            <span>Saiu</span>
-                            <span>Entregue</span>
-                        </div>
-                        
-                        {isPending && (
-                            <div className="text-center text-xs text-yellow-700 bg-yellow-50 p-2 rounded border border-yellow-100">
-                                Aguardando confirmação do pagamento...
-                            </div>
-                        )}
+            <div className="relative max-w-md mx-auto pointer-events-auto">
+                {showTooltip && (
+                    <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white text-xs font-bold py-1 px-3 rounded-full shadow-lg animate-bounce">
+                        Acompanhe seu pedido aqui!
+                        <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-blue-600 rotate-45"></div>
                     </div>
                 )}
+
+                <div className="bg-white rounded-xl shadow-[0_-5px_30px_-5px_rgba(0,0,0,0.4)] border border-orange-100 overflow-hidden">
+                    <div 
+                        className={`p-3 flex items-center justify-between cursor-pointer ${isPending ? 'bg-yellow-50' : 'bg-orange-50'}`}
+                        onClick={() => setIsExpanded(!isExpanded)}
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-full ${isPending ? 'bg-yellow-200 text-yellow-700' : 'bg-orange-100 text-orange-600'}`}>
+                                {isPending ? <ClockIcon className="w-6 h-6" /> : <MotorcycleIcon className="w-6 h-6" />}
+                            </div>
+                            <div>
+                                <p className="text-sm font-bold text-gray-800 leading-tight">Pedido em andamento</p>
+                                <p className={`text-xs font-semibold ${isPending ? 'text-yellow-700' : 'text-orange-600'}`}>
+                                    {statusLabels[mainOrder.status] || mainOrder.status}
+                                </p>
+                            </div>
+                        </div>
+                        <button className="text-gray-400 p-1">
+                            {isExpanded ? <ChevronDownIcon className="w-5 h-5"/> : <ChevronUpIcon className="w-5 h-5"/>}
+                        </button>
+                    </div>
+
+                    <div className="h-1.5 w-full bg-gray-200">
+                        <div 
+                            className={`h-full transition-all duration-1000 ease-out ${isPending ? 'bg-yellow-500' : 'bg-orange-500'}`}
+                            style={{ width: `${progress}%` }}
+                        ></div>
+                    </div>
+
+                    {isExpanded && (
+                        <div className="p-4 bg-white space-y-4 animate-fadeIn">
+                            <div className="flex justify-between items-center text-sm text-gray-600 border-b pb-2">
+                                <span className="font-bold text-gray-800">{mainOrder.restaurant_name}</span>
+                                <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">#{mainOrder.id.substring(0, 6)}</span>
+                            </div>
+                            
+                            <div className="px-2">
+                                <div className="flex justify-between items-center relative">
+                                    <div className="absolute top-1/2 left-0 w-full h-0.5 bg-gray-200 -z-10"></div>
+                                    {[1, 2, 3, 4].map((step) => {
+                                        const isCompleted = step <= currentStep && !isPending;
+                                        const isCurrent = step === currentStep && !isPending;
+                                        return (
+                                            <div key={step} className="flex flex-col items-center gap-1 bg-white px-1">
+                                                <div className={`w-3 h-3 rounded-full border-2 ${isCompleted ? 'bg-orange-500 border-orange-500' : 'bg-white border-gray-300'} ${isCurrent ? 'ring-2 ring-orange-200' : ''}`}></div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className="flex justify-between text-[9px] text-gray-500 font-bold mt-2 uppercase">
+                                    <span>Recebido</span>
+                                    <span>Preparo</span>
+                                    <span>Entrega</span>
+                                    <span>Fim</span>
+                                </div>
+                            </div>
+                            
+                            {isPending && (
+                                <div className="text-center text-[10px] text-yellow-700 bg-yellow-50 p-2 rounded border border-yellow-100 font-bold">
+                                    Aguardando confirmação do pagamento...
+                                </div>
+                            )}
+                            
+                            <div className="flex justify-between items-center text-xs pt-2 border-t text-gray-500">
+                                <span>Total</span>
+                                <span className="font-bold text-gray-900">R$ {Number(mainOrder.total_price).toFixed(2)}</span>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
