@@ -1,5 +1,4 @@
-
-import React, { ReactNode, Component, ErrorInfo } from 'react';
+import React, { ReactNode, ErrorInfo } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
@@ -12,9 +11,9 @@ interface ErrorBoundaryState {
   error: any;
 }
 
-// Fix: Use Component from react import directly and remove override keyword which was causing issues with inheritance detection.
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Fix: Initializing state without override keyword as it's not required and was causing a compilation error.
+// Fix: Explicitly extend React.Component with props and state types to ensure 'this.props' is correctly recognized.
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Fix: Re-initializing state without override keyword.
   public state: ErrorBoundaryState = { hasError: false, error: null };
 
   constructor(props: ErrorBoundaryProps) {
@@ -67,6 +66,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
+    // Fix: Accessing children from this.props which is now guaranteed to exist by extending React.Component correctly.
     return this.props.children;
   }
 }
