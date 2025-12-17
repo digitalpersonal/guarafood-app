@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { subscribeToOrders } from '../services/orderService';
 import { useAuth } from '../services/authService'; 
@@ -53,8 +54,6 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     
     const previousOrdersStatusRef = useRef<Map<string, string>>(new Map());
     const isFirstLoadRef = useRef(true);
-    
-    // TRAVA DE IMPRESSÃO: Evita duplicidade
     const printedOrderIdsRef = useRef<Set<string>>(new Set());
 
     const [printerWidth, setPrinterWidth] = useState<number>(80);
@@ -122,8 +121,9 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             allOrders.forEach(o => currentStatusMap.set(o.id, o.status));
 
             if (!isFirstLoadRef.current) {
-                // LÓGICA CRÍTICA: Só imprime e avisa se o status MUDOU para 'Novo Pedido'.
-                // Se o pedido era 'Aguardando Pagamento' e agora é 'Novo Pedido', ele dispara.
+                // LÓGICA DE ALERTA:
+                // 1. Pedido é 'Novo Pedido'
+                // 2. Antes ele não era 'Novo Pedido' (era Aguardando Pagamento ou não existia)
                 const ordersToAlert = allOrders.filter(order => {
                     const prevStatus = previousOrdersStatusRef.current.get(order.id);
                     return order.status === 'Novo Pedido' && prevStatus !== 'Novo Pedido';
@@ -134,7 +134,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     
                     if (areNotificationsEnabled && Notification.permission === 'granted') {
                          try {
-                             new Notification('Pedido Confirmado!', {
+                             new Notification('Novo Pedido!', {
                                 body: `Pedido #${newestOrder.id.substring(0,6)} - R$ ${newestOrder.totalPrice.toFixed(2)}`,
                                 icon: '/vite.svg',
                                 tag: newestOrder.id
@@ -191,7 +191,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 title={connectionStatus === 'CONNECTED' ? "Sistema online" : "Desconectado"}
             >
                 <div className={`w-2 h-2 rounded-full ${connectionStatus === 'CONNECTED' ? 'bg-white animate-pulse' : 'bg-white'}`}></div>
-                {connectionStatus === 'CONNECTED' ? <span>Sistema Online - Tela Ativa</span> : <span>Desconectado - Reconectando...</span>}
+                {connectionStatus === 'CONNECTED' ? <span>Sistema Online - Monitorando Pedidos</span> : <span>Desconectado - Reconectando...</span>}
                 {connectionStatus === 'CONNECTED' && <SpeakerIcon className="w-3 h-3 ml-2 opacity-70" />}
             </div>
 

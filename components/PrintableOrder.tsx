@@ -1,3 +1,4 @@
+
 import React from 'react';
 import type { Order } from '../types';
 
@@ -42,7 +43,9 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                             z-index: 9999;
                             min-height: 100vh;
                             box-sizing: border-box;
-                            -webkit-font-smoothing: none; /* Desativa suavização para preto puro */
+                            /* DESATIVA SUAVIZAÇÃO: Garante preto puro para fita térmica */
+                            -webkit-font-smoothing: none;
+                            -moz-osx-font-smoothing: grayscale;
                         }
                         
                         .no-print {
@@ -53,8 +56,8 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                     /* Estilos do Cupom */
                     #thermal-receipt {
                         font-family: 'Courier New', Courier, monospace; 
-                        width: 90%; /* Ajustado conforme pedido de 90% */
-                        margin: 0 auto; /* Centralizado no papel */
+                        width: 90%; /* Margem física de segurança */
+                        margin: 0 auto; 
                         max-width: ${widthCss};
                         background-color: #fff;
                         color: #000;
@@ -66,7 +69,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
 
                     #thermal-receipt * {
                         box-sizing: border-box;
-                        color: #000 !important; /* Força preto puro */
+                        color: #000 !important; /* Força contraste máximo */
                     }
 
                     .receipt-header {
@@ -97,17 +100,16 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         width: 100%;
                     }
 
-                    /* ESTILO FORTE PARA ENDEREÇO */
+                    /* CAIXA DE ENDEREÇO COM DESTAQUE MÁXIMO */
                     .address-box {
-                        border: 3px solid #000; /* Borda mais grossa */
-                        padding: 5px;
+                        border: 3px solid #000;
+                        padding: 6px;
                         margin-top: 8px;
-                        font-size: ${headerFontSize}; /* Aumentado */
-                        font-weight: 900 !important; /* Peso máximo */
+                        font-size: ${headerFontSize};
+                        font-weight: 900 !important;
                         width: 100%;
                         word-wrap: break-word;
                         background: #fff;
-                        letter-spacing: 0.5px;
                     }
 
                     .item-row {
@@ -126,12 +128,12 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         font-size: ${headerFontSize};
                     }
                     
-                    /* ESTILO FORTE PARA SUBTOTAL E TOTAL */
+                    /* VALORES EM ULTRA-NEGRITO */
                     .sub-row {
                         display: flex;
                         justify-content: space-between;
-                        font-size: ${headerFontSize}; /* Maior */
-                        font-weight: 900 !important; /* Mais forte */
+                        font-size: ${headerFontSize}; 
+                        font-weight: 900 !important; 
                         margin-bottom: 3px;
                         width: 100%;
                     }
@@ -144,7 +146,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         font-size: ${titleFontSize};
                         font-weight: 900;
                         margin-top: 10px;
-                        padding: 8px 5px;
+                        padding: 10px 5px;
                         width: 100%;
                         -webkit-print-color-adjust: exact !important;
                         print-color-adjust: exact !important;
@@ -177,37 +179,37 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                     }
                     .mode-banner * { color: #fff !important; }
                     
-                    .bold { font-weight: 900 !important; }
+                    .bold-extra { font-weight: 900 !important; }
                     .center { text-align: center; }
                 `}
             </style>
 
             <div className="receipt-header">
                 <div className="receipt-title">{order.restaurantName}</div>
-                <div className="bold">
+                <div className="bold-extra">
                     {new Date(order.timestamp).toLocaleDateString('pt-BR')} - {new Date(order.timestamp).toLocaleTimeString('pt-BR').substring(0,5)}
                 </div>
-                <div className="bold" style={{ fontSize: titleFontSize, marginTop: '5px' }}>
-                    SENHA: #{order.id.substring(0, 4).toUpperCase()}
+                <div className="bold-extra" style={{ fontSize: titleFontSize, marginTop: '5px' }}>
+                    #{order.id.substring(0, 6).toUpperCase()}
                 </div>
             </div>
 
             <div className="mode-banner">
-                <span>{isPickup ? "*** RETIRADA ***" : "=== ENTREGA ==="}</span>
+                <span>{isPickup ? "*** RETIRADA NO BALCÃO ***" : "=== ENTREGA EM CASA ==="}</span>
             </div>
 
             <div className="section-header">
                 <span>CLIENTE</span>
             </div>
-            <div style={{ fontSize: headerFontSize }} className="bold">{order.customerName}</div>
-            <div className="bold">Tel: {order.customerPhone}</div>
+            <div style={{ fontSize: headerFontSize }} className="bold-extra">{order.customerName}</div>
+            <div className="bold-extra">Tel: {order.customerPhone}</div>
             
             {!isPickup && order.customerAddress && (
                 <div className="address-box">
-                    <div className="bold">ENTREGAR EM:</div>
-                    <div>{order.customerAddress.street}, {order.customerAddress.number}</div>
-                    <div>BAIRRO: {order.customerAddress.neighborhood}</div>
-                    {order.customerAddress.complement && <div>OBS: {order.customerAddress.complement}</div>}
+                    <div className="bold-extra" style={{textDecoration: 'underline', marginBottom: '4px'}}>ENDEREÇO DE ENTREGA:</div>
+                    <div className="bold-extra">RUA: {order.customerAddress.street}, {order.customerAddress.number}</div>
+                    <div className="bold-extra">BAIRRO: {order.customerAddress.neighborhood}</div>
+                    {order.customerAddress.complement && <div className="bold-extra">OBS: {order.customerAddress.complement}</div>}
                 </div>
             )}
 
@@ -218,14 +220,14 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
             </div>
             <div>
                 {order.items.map((item, index) => (
-                    <div key={`${item.id}-${index}`} style={{ borderBottom: '1px dashed #000', paddingBottom: '4px', marginTop: '5px' }}>
+                    <div key={`${item.id}-${index}`} style={{ borderBottom: '1px dashed #000', paddingBottom: '4px', marginTop: '6px' }}>
                         <div className="item-row">
                             <span className="item-qty">{item.quantity}</span>
-                            <span className="item-name bold">{item.name}</span>
-                            <span className="bold">{(item.price * item.quantity).toFixed(2)}</span>
+                            <span className="item-name bold-extra">{item.name}</span>
+                            <span className="bold-extra">{(item.price * item.quantity).toFixed(2)}</span>
                         </div>
                         {item.notes && (
-                            <div className="bold" style={{ fontSize: smallFontSize, backgroundColor: '#eee', padding: '2px', display: 'inline-block' }}>
+                            <div className="bold-extra" style={{ fontSize: smallFontSize, backgroundColor: '#eee', padding: '4px', display: 'inline-block', border: '1px solid #000', marginTop: '4px' }}>
                                 OBS: {item.notes}
                             </div>
                         )}
@@ -233,41 +235,42 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                 ))}
             </div>
 
-            <div className="section-header" style={{marginTop: '15px'}}>
-                <span>RESUMO VALORES</span>
+            <div className="section-header" style={{marginTop: '20px'}}>
+                <span>RESUMO DO PAGAMENTO</span>
             </div>
             <div className="sub-row">
                 <span>SUBTOTAL:</span>
-                <span>{order.subtotal?.toFixed(2)}</span>
+                <span>R$ {order.subtotal?.toFixed(2)}</span>
             </div>
             {order.deliveryFee != null && order.deliveryFee > 0 && (
                 <div className="sub-row">
                     <span>TAXA ENTREGA:</span>
-                    <span>{order.deliveryFee.toFixed(2)}</span>
+                    <span>R$ {order.deliveryFee.toFixed(2)}</span>
                 </div>
             )}
             {order.discountAmount != null && order.discountAmount > 0 && (
                 <div className="sub-row">
                     <span>DESCONTO:</span>
-                    <span>-{order.discountAmount.toFixed(2)}</span>
+                    <span>- R$ {order.discountAmount.toFixed(2)}</span>
                 </div>
             )}
             
             <div className="total-box">
-                <span>TOTAL PEDIDO</span>
+                <span>VALOR TOTAL</span>
                 <span>R$ {order.totalPrice.toFixed(2)}</span>
             </div>
 
             <div style={{marginTop: '15px'}}>
-                <div className="center bold" style={{fontSize: '12px', marginBottom: '4px'}}>FORMA DE PAGAMENTO</div>
+                <div className="center bold-extra" style={{fontSize: '12px', marginBottom: '4px'}}>FORMA DE PAGAMENTO</div>
                 <div className="payment-box">
                     {order.paymentMethod === 'Marcar na minha conta' ? 'FIADO / CONTA' : order.paymentMethod}
-                    {isPixPaid ? ' (PAGO)' : ''}
+                    {isPixPaid ? ' (PAGO VIA PIX)' : ''}
                 </div>
             </div>
 
-            <div className="center bold" style={{ fontSize: smallFontSize, marginTop: '30px', borderTop: '2px solid #000', paddingTop: '10px' }}>
-                GuaraFood - Delivery da Cidade
+            <div className="center bold-extra" style={{ fontSize: smallFontSize, marginTop: '35px', borderTop: '2px solid #000', paddingTop: '10px' }}>
+                GuaraFood - Gestão Inteligente
+                <br/>Obrigado pela preferência!
                 <br/>.<br/>.
             </div>
         </div>

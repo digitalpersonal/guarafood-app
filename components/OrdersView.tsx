@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
@@ -87,17 +88,6 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
         const btnClass = "flex-1 py-1 px-2 rounded text-xs font-bold text-white shadow-sm hover:opacity-90 transition-opacity whitespace-nowrap";
         
         switch (order.status) {
-            case 'Aguardando Pagamento':
-                return (
-                    <div className="flex gap-1 mt-2">
-                        <button onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate("Confirmar pgto e aceitar?", 'Novo Pedido'); }} className={`${btnClass} bg-green-600`}>
-                            Confirmar Pgto
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate("Cancelar pedido?", 'Cancelado'); }} className={`${btnClass} bg-red-600`}>
-                            Cancelar
-                        </button>
-                    </div>
-                );
             case 'Novo Pedido':
                  return (
                     <div className="flex gap-1 mt-2">
@@ -161,15 +151,11 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
             </div>
             
             <div className="flex justify-end mb-1 items-center gap-2">
-                 {isPendingPayment ? (
-                     <span className="bg-red-100 text-red-700 text-[10px] font-bold px-1 rounded border border-red-200 animate-pulse">
-                        Pgto Pendente
-                     </span>
-                ) : isPixPaid ? (
+                {isPixPaid && (
                     <span className="bg-green-100 text-green-800 text-[10px] font-bold px-1.5 py-0.5 rounded border border-green-200 shadow-sm">
                         PIX PAGO
                     </span>
-                ) : null}
+                )}
                 <span className="block font-bold text-sm text-orange-700">R$ {order.totalPrice.toFixed(2)}</span>
             </div>
 
@@ -284,8 +270,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
     }, [orders, searchTerm]);
 
     const { activeOrders, historyOrders, groupedActiveOrders, groupedHistoryOrders } = useMemo(() => {
-        // REQUISITO: O lojista NÃO deve ver pedidos em 'Aguardando Pagamento'. 
-        // Eles só entram na visão do restaurante quando o status é confirmado para 'Novo Pedido'.
+        // FILTRO CRÍTICO: Excluímos 'Aguardando Pagamento' da visão ativa do lojista.
         const active = filteredOrders.filter(o => ['Novo Pedido', 'Preparando', 'A Caminho'].includes(o.status));
         const history = filteredOrders.filter(o => ['Entregue', 'Cancelado'].includes(o.status));
         const group = (orderList: Order[]) => orderList.reduce((acc, order) => {
@@ -303,7 +288,6 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
         };
     }, [filteredOrders]);
 
-    // Colunas ativas para o restaurante (removido Aguardando Pagamento da visualização)
     const activeSections = [
         { title: 'Novos', status: 'Novo Pedido' as OrderStatus, bgColor: 'bg-blue-50' },
         { title: 'Cozinha', status: 'Preparando' as OrderStatus, bgColor: 'bg-yellow-50' },

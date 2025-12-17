@@ -4,7 +4,6 @@ import { supabase, handleSupabaseError } from './api';
 
 // Mapeia do Banco (snake_case) para o App (camelCase)
 const normalizeOrder = (data: any): Order => {
-    // Tenta extrair a preferência de sachê do objeto de endereço (JSONB)
     const wantsSachets = data.customer_address?.wantsSachets === true;
 
     return {
@@ -14,7 +13,7 @@ const normalizeOrder = (data: any): Order => {
         customerName: data.customer_name,
         customerPhone: data.customer_phone,
         customerAddress: data.customer_address,
-        wantsSachets: wantsSachets, // Mapeado aqui
+        wantsSachets: wantsSachets,
         items: data.items,
         totalPrice: data.total_price,
         restaurantId: data.restaurant_id,
@@ -32,14 +31,12 @@ const normalizeOrder = (data: any): Order => {
     };
 };
 
-// Modificado para aceitar opções de limite para não travar o navegador
 export const subscribeToOrders = (
     callback: (orders: Order[]) => void, 
     restaurantId?: number,
     onStatusChange?: (status: 'SUBSCRIBED' | 'CLOSED' | 'CHANNEL_ERROR' | 'TIMED_OUT') => void,
-    limit: number = 200 // Default limit para segurança
+    limit: number = 200
 ): (() => void) => {
-    // Busca inicial com limite
     fetchOrders(restaurantId, { limit }).then(callback).catch(console.error);
 
     const channelName = restaurantId ? `public:orders:restaurantId=eq.${restaurantId}` : 'public:orders';
@@ -55,8 +52,6 @@ export const subscribeToOrders = (
                 filter: restaurantId ? `restaurant_id=eq.${restaurantId}` : undefined 
             },
             (payload) => {
-                console.log('Change received!', payload);
-                // Atualiza a lista respeitando o limite
                 fetchOrders(restaurantId, { limit }).then(callback).catch(console.error);
             }
         )
@@ -77,7 +72,6 @@ export const fetchOrders = async (restaurantId?: number, options?: { limit?: num
         query = query.eq('restaurant_id', restaurantId);
     }
     
-    // Performance improvement: Limit query size for operational dashboards
     if (options?.limit) {
         query = query.limit(options.limit);
     }
@@ -98,7 +92,7 @@ export interface NewOrderData {
         neighborhood: string;
         complement?: string;
     };
-    wantsSachets?: boolean; // Novo campo
+    wantsSachets?: boolean;
     items: CartItem[];
     totalPrice: number;
     restaurantId: number;
@@ -114,20 +108,17 @@ export interface NewOrderData {
 
 export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
     const isDebt = orderData.paymentMethod === 'Marcar na minha conta';
-    const isPix = orderData.paymentMethod === 'Pix';
+    const isPix = orderData.paymentMethod.toLowerCase().includes('pix');
     
-    // Injetamos a preferência de sachê dentro do objeto de endereço (JSONB)
-    // Isso evita ter que criar uma nova coluna no banco de dados agora.
     const addressWithSachetPreference = {
         ...orderData.customerAddress,
         wantsSachets: orderData.wantsSachets === true
     };
     
-    // CONVERSÃO IMPORTANTE: CamelCase (App) -> snake_case (Banco)
     const newOrderPayload = {
         customer_name: orderData.customerName,
         customer_phone: orderData.customerPhone,
-        customer_address: addressWithSachetPreference, // Enviando aqui
+        customer_address: addressWithSachetPreference,
         items: orderData.items,
         total_price: orderData.totalPrice,
         restaurant_id: orderData.restaurantId,
@@ -139,8 +130,8 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
         discount_amount: orderData.discountAmount,
         subtotal: orderData.subtotal,
         delivery_fee: orderData.deliveryFee,
-        // FIX: Forçar 'Novo Pedido' para evitar erro de enum no banco se 'Aguardando Pagamento' não existir
-        status: 'Novo Pedido', 
+        // LÓGICA CRÍTICA: Se for Pix, nasce invisível para o lojista
+        status: isPix ? 'Aguardando Pagamento' : 'Novo Pedido', 
         payment_status: (isDebt || isPix) ? 'pending' : 'paid',
         timestamp: new Date().toISOString(),
     };

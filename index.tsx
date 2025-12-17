@@ -1,4 +1,3 @@
-
 import React, { Component, ReactNode, ErrorInfo } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -12,14 +11,14 @@ interface ErrorBoundaryState {
   error: any;
 }
 
-// Fix: Explicitly extend Component with generics to ensure state and props are correctly inherited and recognized by TypeScript.
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Fix: Declare state property as a class member for better TypeScript compatibility and clarity.
+/**
+ * ErrorBoundary component catches JavaScript errors anywhere in their child component tree,
+ * logs those errors, and displays a fallback UI instead of the component tree that crashed.
+ */
+// Fix: Explicitly extending from React.Component to ensure props and state are correctly inherited and recognized by TypeScript.
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Fix: Explicitly initialize state property as a class member.
   public state: ErrorBoundaryState = { hasError: false, error: null };
-
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-  }
 
   // Fix: Static method correctly updates state when an error is caught in the subtree.
   static getDerivedStateFromError(error: any): ErrorBoundaryState {
@@ -31,19 +30,22 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   render() {
-    // Fix: Access state via 'this.state' which is now correctly recognized as inherited from React.Component.
-    if (this.state.hasError) {
+    // Fix: Access props via 'this' instance to resolve the reported 'Property props does not exist' error.
+    const { hasError, error } = this.state;
+    const { children } = this.props;
+
+    if (hasError) {
       let errorMessage = 'Erro desconhecido.';
-      if (this.state.error) {
-          if (this.state.error instanceof Error) {
-              errorMessage = this.state.error.message;
-          } else if (typeof this.state.error === 'string') {
-              errorMessage = this.state.error;
+      if (error) {
+          if (error instanceof Error) {
+              errorMessage = error.message;
+          } else if (typeof error === 'string') {
+              errorMessage = error;
           } else {
               try {
-                  errorMessage = JSON.stringify(this.state.error, null, 2);
+                  errorMessage = JSON.stringify(error, null, 2);
               } catch (e) {
-                  errorMessage = String(this.state.error);
+                  errorMessage = String(error);
               }
           }
       }
@@ -69,8 +71,8 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
-    // Fix: Access children via 'this.props' which is correctly inherited and typed from the base Component class.
-    return this.props.children;
+    // Fix: Return children accessed via this.props.
+    return children;
   }
 }
 
