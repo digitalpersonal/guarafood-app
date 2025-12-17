@@ -323,9 +323,11 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
             {renderContent()}
 
-            {/* Hidden Area for Automatic Printing. IMPORTANT: Use "hidden print:block" */}
+            {/* Hidden Area for Automatic Printing. IMPORTANT: Use "hidden print:block" AND "id=printable-order" */}
             <div className="hidden print:block">
-                {orderToPrint && <PrintableOrder order={orderToPrint} printerWidth={printerWidth} />}
+                <div id="printable-order">
+                    {orderToPrint && <PrintableOrder order={orderToPrint} printerWidth={printerWidth} />}
+                </div>
             </div>
         </div>
     );

@@ -152,24 +152,20 @@ const PrinterSettings: React.FC<{ onTestPrint: (width: number) => void }> = ({ o
                 
                 {showKioskHelp && (
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-2 text-sm text-gray-700 w-full animate-fadeIn">
-                        <h4 className="font-bold text-blue-800 mb-2">Impressão 100% Automática (Modo PDV)</h4>
-                        <p className="mb-2">Para que o cupom saia direto na impressora, você precisa configurar o Google Chrome ou Edge em <strong>Modo Quiosque (Kiosk)</strong>.</p>
-                        <ol className="list-decimal list-inside space-y-1 ml-2">
-                            <li>Crie um atalho do Chrome na sua área de trabalho.</li>
-                            <li>Clique com o botão direito no atalho e vá em <strong>Propriedades</strong>.</li>
-                            <li>No campo <strong>Destino</strong>, adicione ao final (após as aspas): <br/>
-                                <code className="bg-white px-1 py-0.5 rounded border text-xs font-mono select-all"> --kiosk-printing</code>
-                            </li>
-                            <li>Use este atalho para abrir o GuaraFood.</li>
+                        <h4 className="font-bold text-blue-800 mb-2">Configuração Profissional (Recomendada)</h4>
+                        <p className="mb-2">Para evitar que o Chrome trave se você abrir outras abas (YouTube, Spotify), e para imprimir direto:</p>
+                        <ol className="list-decimal list-inside space-y-2 ml-1">
+                            <li>Crie um atalho do Chrome na área de trabalho.</li>
+                            <li>Clique com botão direito &gt; <strong>Propriedades</strong>.</li>
+                            <li>No campo <strong>Destino</strong>, vá até o final, dê um espaço e cole exatamente isto:</li>
                         </ol>
-                        <hr className="my-3 border-blue-200" />
-                        <h4 className="font-bold text-blue-800 mb-2">⚡ Dica de Ouro: Spotify + PDV (Modo Isolado)</h4>
-                        <p className="mb-2">Se você usa o mesmo PC para música ou YouTube, o Chrome pode se confundir e abrir a caixa de impressão. Para evitar isso, crie um "Chrome Dedicado":</p>
-                        <ol className="list-decimal list-inside space-y-1 ml-2">
-                            <li>No campo <strong>Destino</strong> do atalho, adicione também:</li>
-                            <li><code className="bg-white px-1 py-0.5 rounded border text-xs font-mono select-all">--user-data-dir="C:/GuaraFoodPDV"</code></li>
-                        </ol>
-                        <p className="mt-2 text-xs">Isso cria um navegador independente. O GuaraFood fica em um, e o Spotify no outro.</p>
+                        <div className="mt-2 bg-white border border-gray-300 rounded p-2 font-mono text-xs text-gray-600 break-all select-all cursor-text relative group">
+                             --kiosk-printing --user-data-dir="C:/GuaraFoodPDV"
+                             <div className="absolute right-1 top-1 text-[9px] text-gray-400 opacity-0 group-hover:opacity-100">Copiar</div>
+                        </div>
+                        <div className="mt-3 p-2 bg-yellow-100 border border-yellow-200 rounded text-xs text-yellow-800">
+                            <strong>Atenção:</strong> Não use o comando <code>--disable-print-preview</code>, pois ele pode bloquear a impressão automática nas versões novas do Chrome.
+                        </div>
                     </div>
                 )}
             </div>

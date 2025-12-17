@@ -47,8 +47,8 @@ serve(async (req: Request) => {
     const accessToken = restaurant.mercado_pago_credentials.accessToken
 
     // 3. SALVAR PEDIDO NO BANCO
-    // FIX: Usamos 'Novo Pedido' em vez de 'Aguardando Pagamento' para evitar erro de ENUM no banco.
-    // O campo payment_status: 'pending' indicará que ainda não foi pago.
+    // LÓGICA CRÍTICA: Status 'Aguardando Pagamento' garante que o pedido NÃO apareça como NOVO
+    // e NÃO toque a campainha até o webhook confirmar o pagamento (que muda para 'Novo Pedido').
     const dbOrderPayload = {
       restaurant_id: orderData.restaurantId,
       customer_name: orderData.customerName,
@@ -64,7 +64,7 @@ serve(async (req: Request) => {
       discount_amount: orderData.discountAmount,
       subtotal: orderData.subtotal,
       delivery_fee: orderData.deliveryFee,
-      status: 'Novo Pedido', 
+      status: 'Aguardando Pagamento', // Alterado de 'Novo Pedido'
       payment_status: 'pending',
       timestamp: new Date().toISOString()
     }

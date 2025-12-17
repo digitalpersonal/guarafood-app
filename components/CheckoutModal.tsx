@@ -824,9 +824,13 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 </div>
             </div>
 
-             {/* MANUAL CLOSE BUTTON */}
+             {/* MANUAL CLOSE BUTTON WITH TRACKER TRIGGER */}
              <button
-                onClick={onClose}
+                onClick={() => {
+                    // Força a atualização do OrderTracker imediatamente ao clicar
+                    window.dispatchEvent(new Event('guarafood:update-orders'));
+                    onClose();
+                }}
                 className="mt-6 bg-green-600 text-white font-bold py-3 px-12 rounded-full hover:bg-green-700 transition-all shadow-lg hover:scale-105 active:scale-95"
             >
                 Entendi

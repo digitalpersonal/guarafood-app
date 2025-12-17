@@ -636,9 +636,6 @@ const CustomerView: React.FC<CustomerViewProps> = ({ selectedRestaurant, onSelec
                     </div>
                     {filteredRestaurants.length === 0 && <p className="text-center text-gray-500 col-span-full py-8">Nenhum restaurante encontrado.</p>}
                 </div>
-                
-                {/* Tracker Overlay */}
-                <OrderTracker />
             </main>
              <Cart restaurant={selectedRestaurant} />
         </>
@@ -730,6 +727,7 @@ const AppContent: React.FC = () => {
             <div className="flex-grow relative print-container">
                 {renderContent()}
             </div>
+            {!currentUser && <OrderTracker />}
             <Footer onLoginClick={() => setView('login')} />
         </div>
     );

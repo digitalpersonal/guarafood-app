@@ -67,8 +67,10 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
         return (now.getTime() - orderDate.getTime()) < 300000;
     }, [order.status, order.timestamp]);
 
-    // Check if Pix payment
-    const isPixPaid = order.paymentMethod.toLowerCase().includes('pix');
+    // Check if Pix payment IS ACTUALLY PAID
+    const isPixPaid = order.paymentMethod.toLowerCase().includes('pix') && order.paymentStatus === 'paid';
+    
+    // Check if pending (Pix not paid OR Debt not paid)
     const isPendingPayment = order.paymentStatus === 'pending' && order.paymentMethod !== 'Dinheiro';
     
     // Check if Pickup (Retirada)
@@ -95,8 +97,8 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
             case 'Aguardando Pagamento':
                 return (
                     <div className="flex gap-1 mt-2">
-                        <button onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate("Confirmar pgto?", 'Novo Pedido'); }} className={`${btnClass} bg-green-600`}>
-                            Confirmar
+                        <button onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate("Confirmar pgto e aceitar?", 'Novo Pedido'); }} className={`${btnClass} bg-green-600`}>
+                            Confirmar Pgto
                         </button>
                         <button onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate("Cancelar pedido?", 'Cancelado'); }} className={`${btnClass} bg-red-600`}>
                             Cancelar

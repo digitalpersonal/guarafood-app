@@ -14,8 +14,14 @@ const MotorcycleIcon: React.FC<{ className?: string }> = ({ className }) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 110-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253.962.584 1.892.985 2.783.247.55.06 1.21-.463 1.511l-.657.38c-.551.318-1.26.117-1.527-.461a20.845 20.845 0 01-1.44-4.282m3.102.069a18.03 18.03 0 01-.59-4.59c0-1.586.205-3.124.59-4.59m0 9.18a23.848 23.848 0 018.835 2.535M10.34 6.66a23.847 23.847 0 008.835-2.535m0 0A23.74 23.74 0 0018.795 3m.38 1.125a23.91 23.91 0 011.014 5.395m-1.014 8.855c-.118.38-.245.754-.38 1.125m.38-1.125a23.91 23.91 0 001.014-5.395m0-3.46c.495.413.811 1.035.811 1.73 0 .695-.316 1.317-.811 1.73m0-3.46a24.42 24.42 0 010 3.46" />
     </svg>
 );
+const ClockIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+);
 
 const statusSteps: Record<string, number> = {
+    'Aguardando Pagamento': 0,
     'Novo Pedido': 1,
     'Preparando': 2,
     'A Caminho': 3,
@@ -24,6 +30,7 @@ const statusSteps: Record<string, number> = {
 };
 
 const statusLabels: Record<string, string> = {
+    'Aguardando Pagamento': 'Aguardando Pagamento',
     'Novo Pedido': 'Recebido',
     'Preparando': 'Preparando',
     'A Caminho': 'Saiu para Entrega',
@@ -58,6 +65,7 @@ const OrderTracker: React.FC = () => {
                 if (error) throw error;
 
                 if (data) {
+                    // Filter out completed/cancelled, BUT keep "Aguardando Pagamento"
                     const ongoing = data.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado');
                     setActiveOrders(ongoing);
                     
@@ -66,7 +74,7 @@ const OrderTracker: React.FC = () => {
                         setTimeout(() => setShowTooltip(false), 8000); 
                     }
                     
-                    // Cleanup
+                    // Cleanup completed orders from local storage
                     const completedIds = data.filter(o => o.status === 'Entregue' || o.status === 'Cancelado').map(o => o.id);
                     if (completedIds.length > 0) {
                         const updatedStorage = storedOrderIds.filter((id: string) => !completedIds.includes(id));
@@ -95,7 +103,7 @@ const OrderTracker: React.FC = () => {
                         const exists = prev.find(o => o.id === updatedOrder.id);
                         if (!exists) return prev;
                         
-                        // Play sound on status change
+                        // Play sound on status change (e.g., pending -> new)
                         if (exists.status !== updatedOrder.status) {
                             playNotification();
                         }
@@ -119,8 +127,11 @@ const OrderTracker: React.FC = () => {
     if (activeOrders.length === 0) return null;
 
     const mainOrder = activeOrders[0];
-    const currentStep = statusSteps[mainOrder.status] || 1;
-    const progress = (currentStep / 4) * 100;
+    const currentStep = statusSteps[mainOrder.status] ?? 1;
+    // Special progress for Pending
+    const progress = currentStep === 0 ? 5 : (currentStep / 4) * 100;
+    
+    const isPending = mainOrder.status === 'Aguardando Pagamento';
 
     return (
         <div 
@@ -139,16 +150,18 @@ const OrderTracker: React.FC = () => {
             <div className="bg-white rounded-xl shadow-2xl border border-orange-100 overflow-hidden max-w-md mx-auto">
                 {/* Header / Collapsed View */}
                 <div 
-                    className="p-3 bg-orange-50 flex items-center justify-between cursor-pointer"
+                    className={`p-3 flex items-center justify-between cursor-pointer ${isPending ? 'bg-yellow-50' : 'bg-orange-50'}`}
                     onClick={() => setIsExpanded(!isExpanded)}
                 >
                     <div className="flex items-center gap-3">
-                        <div className="bg-orange-100 p-2 rounded-full text-orange-600">
-                            <MotorcycleIcon className="w-6 h-6" />
+                        <div className={`p-2 rounded-full ${isPending ? 'bg-yellow-200 text-yellow-700' : 'bg-orange-100 text-orange-600'}`}>
+                            {isPending ? <ClockIcon className="w-6 h-6" /> : <MotorcycleIcon className="w-6 h-6" />}
                         </div>
                         <div>
                             <p className="text-sm font-bold text-gray-800">Pedido em andamento</p>
-                            <p className="text-xs text-orange-600 font-semibold">{statusLabels[mainOrder.status] || mainOrder.status}</p>
+                            <p className={`text-xs font-semibold ${isPending ? 'text-yellow-700' : 'text-orange-600'}`}>
+                                {statusLabels[mainOrder.status] || mainOrder.status}
+                            </p>
                         </div>
                     </div>
                     <button className="text-gray-400">
@@ -159,7 +172,7 @@ const OrderTracker: React.FC = () => {
                 {/* Progress Bar (Always Visible) */}
                 <div className="h-1.5 w-full bg-gray-200">
                     <div 
-                        className="h-full bg-orange-500 transition-all duration-1000 ease-out"
+                        className={`h-full transition-all duration-1000 ease-out ${isPending ? 'bg-yellow-500' : 'bg-orange-500'}`}
                         style={{ width: `${progress}%` }}
                     ></div>
                 </div>
@@ -178,8 +191,8 @@ const OrderTracker: React.FC = () => {
                             <div className="absolute top-1/2 left-0 w-full h-0.5 bg-gray-200 -z-10"></div>
                             
                             {[1, 2, 3, 4].map((step) => {
-                                const isCompleted = step <= currentStep;
-                                const isCurrent = step === currentStep;
+                                const isCompleted = step <= currentStep && !isPending;
+                                const isCurrent = step === currentStep && !isPending;
                                 
                                 return (
                                     <div key={step} className="flex flex-col items-center gap-1 bg-white px-1">
@@ -194,6 +207,12 @@ const OrderTracker: React.FC = () => {
                             <span>Saiu</span>
                             <span>Entregue</span>
                         </div>
+                        
+                        {isPending && (
+                            <div className="text-center text-xs text-yellow-700 bg-yellow-50 p-2 rounded border border-yellow-100">
+                                Aguardando confirmação do pagamento...
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
