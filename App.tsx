@@ -42,19 +42,7 @@ const HeartIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
-const PastelIcon = () => (
-    <svg width="42" height="42" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12 20C12 18.8954 12.8954 18 14 18H50C51.1046 18 52 18.8954 52 20V44C52 45.1046 51.1046 46 50 46H14C12.8954 46 12 45.1046 12 44V20Z" fill="#FBBF24" stroke="#D97706" strokeWidth="2.5"/>
-        <circle cx="20" cy="26" r="2" fill="#D97706" opacity="0.6"/>
-        <circle cx="44" cy="30" r="1.5" fill="#D97706" opacity="0.6"/>
-        <circle cx="32" cy="38" r="2.5" fill="#D97706" opacity="0.5"/>
-        <circle cx="24" cy="40" r="1.5" fill="#D97706" opacity="0.6"/>
-        <path d="M12 22H15M12 26H15M12 30H15M12 34H15M12 38H15M12 42H15" stroke="#D97706" strokeWidth="1.5" strokeLinecap="round"/>
-        <path d="M49 22H52M49 26H52M49 30H52M49 34H52M49 38H52M49 42H52" stroke="#D97706" strokeWidth="1.5" strokeLinecap="round"/>
-    </svg>
-);
-
-const categoryIcons: Record<string, React.ReactNode> = {
+const categoryIcons: Record<string, string> = {
     'Lanches': '🍔',
     'Pizza': '🍕',
     'Açaí': '🍧',
@@ -65,8 +53,6 @@ const categoryIcons: Record<string, React.ReactNode> = {
     'Saudável': '🥗',
     'Italiana': '🍝',
     'Marmita': '🍱',
-    'Pastelaria': <PastelIcon />,
-    'Pastel': <PastelIcon />,
     'Supermercado': '🛒',
     'Todos': '✨',
     'Favoritos': '❤️'
@@ -81,6 +67,8 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     const [allPizzas, setAllPizzas] = useState<MenuItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [activeCategory, setActiveCategory] = useState<string | null>(null);
+
+    const isOpen = isRestaurantOpen(restaurant);
 
     useEffect(() => {
         const loadMenu = async () => {
@@ -120,6 +108,14 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
         document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
+    const handleBackClick = () => {
+        // Limpa a URL ao voltar
+        const url = new URL(window.location.href);
+        url.searchParams.delete('r');
+        window.history.pushState({}, '', url.toString());
+        onBack();
+    };
+
     return (
         <div className="w-full">
             <div className="relative h-40 sm:h-52 bg-gradient-to-br from-gray-800 to-gray-900 overflow-hidden">
@@ -128,7 +124,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                          <OptimizedImage src={restaurant.imageUrl} alt={restaurant.name} priority={true} className="w-full h-full rounded-full" objectFit="contain" />
                     </div>
                 </div>
-                <button onClick={onBack} className="absolute top-4 left-4 bg-white/90 backdrop-blur rounded-full p-2 shadow-md z-20 hover:scale-105 active:scale-95 transition-transform">
+                <button onClick={handleBackClick} className="absolute top-4 left-4 bg-white/90 backdrop-blur rounded-full p-2 shadow-md z-20 hover:scale-105 active:scale-95 transition-transform">
                     <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
                 </button>
             </div>
@@ -136,13 +132,18 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
             <div className="p-4 bg-white rounded-t-2xl -mt-4 relative z-20 text-center border-b shadow-sm">
                 <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{restaurant.name}</h1>
                 <p className="text-gray-600 mt-1 text-sm font-medium uppercase tracking-wide">{restaurant.category}</p>
+                {!isOpen && (
+                    <div className="mt-2 inline-block bg-red-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-sm">
+                        FECHADO NO MOMENTO
+                    </div>
+                )}
             </div>
             
             {!isLoading && marmitas.length > 0 && (
                  <div className="bg-gradient-to-r from-orange-100 to-yellow-50 p-4 border-b-4 border-orange-200">
                     <h2 className="text-xl font-black text-orange-800 uppercase mb-4">Hora do Almoço</h2>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        {marmitas.map(item => <MenuItemCard key={`marmita-${item.id}`} item={item} allPizzas={allPizzas} allAddons={addons} />)}
+                        {marmitas.map(item => <MenuItemCard key={`marmita-${item.id}`} item={item} allPizzas={allPizzas} allAddons={addons} isOpen={isOpen} />)}
                     </div>
                 </div>
             )}
@@ -166,8 +167,8 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                             <div key={category.name} id={slugify(category.name)} className="scroll-mt-44 rounded-lg">
                                 <h2 className="text-2xl font-bold mb-4">{category.name}</h2>
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                    {category.combos?.map(combo => <ComboCard key={`combo-${combo.id}`} combo={combo} menuItems={menu.flatMap(c => c.items)} />)}
-                                    {category.items.map(item => <MenuItemCard key={item.id} item={item} allPizzas={allPizzas} allAddons={addons} />)}
+                                    {category.combos?.map(combo => <ComboCard key={`combo-${combo.id}`} combo={combo} menuItems={menu.flatMap(c => c.items)} isOpen={isOpen} />)}
+                                    {category.items.map(item => <MenuItemCard key={item.id} item={item} allPizzas={allPizzas} allAddons={addons} isOpen={isOpen} />)}
                                 </div>
                             </div>
                         ))}
@@ -193,10 +194,21 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
             try {
                 const data = await fetchRestaurants();
                 setRestaurants(data);
+
+                // Lógica de Deep Linking: Se houver ?r=ID na URL, abre o restaurante
+                const params = new URLSearchParams(window.location.search);
+                const rId = params.get('r');
+                if (rId) {
+                    const id = parseInt(rId, 10);
+                    const found = data.find(r => r.id === id);
+                    if (found) {
+                        onSelectRestaurant(found);
+                    }
+                }
             } catch (err) { console.error(err); } finally { setIsLoading(false); }
         };
         loadInitialData();
-    }, []);
+    }, [onSelectRestaurant]);
 
     const availableCategories = useMemo(() => {
         const all = restaurants.flatMap(r => r.category ? r.category.split(',').map(c => c.trim()) : []);
@@ -225,6 +237,14 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
         });
     };
 
+    const handleRestaurantClick = (restaurant: Restaurant) => {
+        // Atualiza a URL sem recarregar a página para o cliente poder compartilhar
+        const url = new URL(window.location.href);
+        url.searchParams.set('r', restaurant.id.toString());
+        window.history.pushState({}, '', url.toString());
+        onSelectRestaurant(restaurant);
+    };
+
     if (isLoading) return <div className="h-screen flex items-center justify-center"><Spinner /></div>;
 
     if (selectedRestaurant) return (
@@ -239,7 +259,7 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
             <HomePromotionalBanner onBannerClick={(type, val) => {
                 if (type === 'restaurant') {
                     const r = restaurants.find(res => res.name === val);
-                    if (r) onSelectRestaurant(r);
+                    if (r) handleRestaurantClick(r);
                 } else { handleCategoryToggle(val); }
             }} />
 
@@ -286,7 +306,7 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
                         <RestaurantCard 
                             key={restaurant.id} 
                             restaurant={restaurant} 
-                            onClick={() => onSelectRestaurant(restaurant)} 
+                            onClick={() => handleRestaurantClick(restaurant)} 
                             isOpen={isRestaurantOpen(restaurant)} 
                             isFavorite={favorites.includes(restaurant.id)}
                             onToggleFavorite={(e) => {
