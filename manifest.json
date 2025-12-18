@@ -1,21 +1,21 @@
 {
   "name": "GuaraFood",
   "short_name": "GuaraFood",
-  "start_url": "/?source=pwa",
-  "id": "/",
+  "start_url": "./?source=pwa",
+  "id": ".",
   "display": "standalone",
   "background_color": "#ea580c",
   "theme_color": "#ea580c",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/vite.svg",
+      "src": "vite.svg",
       "type": "image/svg+xml",
       "sizes": "192x192",
       "purpose": "any maskable"
     },
     {
-      "src": "/vite.svg",
+      "src": "vite.svg",
       "type": "image/svg+xml",
       "sizes": "512x512",
       "purpose": "any maskable"

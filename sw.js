@@ -1,27 +1,24 @@
-// Nome do Cache - Versão atualizada para forçar refresh
-const CACHE_NAME = 'guarafood-v2';
+// Nome do Cache
+const CACHE_NAME = 'guarafood-v3';
 
-// Arquivos para cachear imediatamente (App Shell)
+// Arquivos para cachear (Caminhos relativos para funcionar em proxies)
 const urlsToCache = [
-  '/',
-  '/index.html',
-  '/vite.svg',
-  '/manifest.json'
+  './',
+  'index.html',
+  'vite.svg',
+  'manifest.json'
 ];
 
-// Instalação do Service Worker
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
-        console.log('Opened cache');
         return cache.addAll(urlsToCache);
       })
   );
   self.skipWaiting();
 });
 
-// Ativação e limpeza de caches antigos
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -37,12 +34,10 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Estratégia de Fetch: Network First (Tenta internet, se falhar usa cache)
-// Para APIs do Supabase, sempre tenta internet
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Não cachear chamadas de API/Supabase para garantir dados frescos
+  // Não cachear chamadas de API/Supabase
   if (url.href.includes('supabase.co')) {
     return;
   }
@@ -50,7 +45,6 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Se a resposta for válida, clona e atualiza o cache
         if (!response || response.status !== 200 || response.type !== 'basic') {
           return response;
         }
@@ -62,7 +56,6 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(() => {
-        // Se falhar (offline), tenta pegar do cache
         return caches.match(event.request);
       })
   );

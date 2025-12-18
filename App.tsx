@@ -42,7 +42,6 @@ const HeartIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
-// Componente de Ícone de Pastel Personalizado
 const PastelIcon = () => (
     <svg width="42" height="42" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M12 20C12 18.8954 12.8954 18 14 18H50C51.1046 18 52 18.8954 52 20V44C52 45.1046 51.1046 46 50 46H14C12.8954 46 12 45.1046 12 44V20Z" fill="#FBBF24" stroke="#D97706" strokeWidth="2.5"/>
@@ -129,7 +128,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                          <OptimizedImage src={restaurant.imageUrl} alt={restaurant.name} priority={true} className="w-full h-full rounded-full" objectFit="contain" />
                     </div>
                 </div>
-                <button onClick={onBack} className="absolute top-4 left-4 bg-white/90 backdrop-blur rounded-full p-2 shadow-md z-20">
+                <button onClick={onBack} className="absolute top-4 left-4 bg-white/90 backdrop-blur rounded-full p-2 shadow-md z-20 hover:scale-105 active:scale-95 transition-transform">
                     <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
                 </button>
             </div>
@@ -149,10 +148,10 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
             )}
 
             {!isLoading && menu.length > 0 && (
-                <div className="sticky top-[64px] z-40 bg-white shadow-md border-b border-gray-100">
+                <div className="sticky top-[64px] z-30 bg-white shadow-md border-b border-gray-100">
                     <div className="flex space-x-3 overflow-x-auto p-3 no-scrollbar">
                         {menu.map((category) => (
-                            <button key={category.name} onClick={() => handleNavClick(category.name)} className={`px-4 py-2 rounded-full font-semibold text-sm whitespace-nowrap transition-colors ${activeCategory === slugify(category.name) ? 'bg-orange-600 text-white' : 'bg-gray-100 text-gray-700'}`}>
+                            <button key={category.name} onClick={() => handleNavClick(category.name)} className={`px-4 py-2 rounded-full font-semibold text-sm whitespace-nowrap transition-colors ${activeCategory === slugify(category.name) ? 'bg-orange-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
                                 {category.name}
                             </button>
                         ))}
@@ -237,7 +236,6 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
 
     return (
         <main className="pb-16 bg-white min-h-screen">
-            {/* O Banner que você pediu - Agora com fallback garantido */}
             <HomePromotionalBanner onBannerClick={(type, val) => {
                 if (type === 'restaurant') {
                     const r = restaurants.find(res => res.name === val);
@@ -245,7 +243,6 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
                 } else { handleCategoryToggle(val); }
             }} />
 
-            {/* Menu de Categorias Visual (Bolhas) */}
             <div className="p-4 overflow-hidden">
                 <h2 className="text-lg font-bold text-gray-800 mb-4 ml-1">O que você quer comer hoje?</h2>
                 <div className="flex space-x-6 overflow-x-auto pb-4 no-scrollbar">
@@ -267,8 +264,7 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
                 </div>
             </div>
 
-            {/* Chips de Filtro Rápido */}
-            <div className="px-4 py-2 flex gap-2 overflow-x-auto no-scrollbar border-b border-gray-100 pb-4 sticky top-[60px] bg-white z-10">
+            <div className="px-4 py-2 flex gap-2 overflow-x-auto no-scrollbar border-b border-gray-100 pb-4 sticky top-[60px] bg-white z-10 shadow-sm">
                 <button 
                     onClick={() => setShowOpenOnly(!showOpenOnly)} 
                     className={`flex items-center gap-2 px-4 py-1.5 rounded-full border text-xs font-bold transition-all ${showOpenOnly ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-gray-600 border-gray-300'}`}
@@ -277,7 +273,7 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
                 </button>
                 <button 
                     onClick={() => handleCategoryToggle('Favoritos')} 
-                    className={`flex items-center gap-2 px-4 py-1.5 rounded-full border text-xs font-bold transition-all ${selectedCategories.includes('Favoritos') ? 'bg-red-500 text-white border-red-500' : 'bg-white text-gray-600 border-gray-300'}`}
+                    className={`flex items-center gap-2 px-4 py-1.5 rounded-full border text-xs font-bold transition-all ${selectedCategories.includes('Favoritos') ? 'bg-red-50 text-white border-red-500' : 'bg-white text-gray-600 border-gray-300'}`}
                 >
                     <HeartIcon className="w-3 h-3" /> Favoritos
                 </button>
@@ -319,6 +315,15 @@ const AppContent: React.FC = () => {
     const { currentUser, loading } = useAuth();
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
 
+    // Remove Splash Screen on mount
+    useEffect(() => {
+        const splash = document.getElementById('splash-screen');
+        if (splash) {
+            splash.style.opacity = '0';
+            setTimeout(() => splash.remove(), 500);
+        }
+    }, []);
+
     const renderContent = () => {
         if (loading) return <div className="h-screen flex items-center justify-center"><Spinner /></div>;
         if (currentUser?.role === 'admin') return <AdminDashboard onBack={() => setView('customer')} />;
@@ -329,9 +334,14 @@ const AppContent: React.FC = () => {
     };
 
     return (
-        <div className="container mx-auto max-w-7xl bg-white min-h-screen flex flex-col shadow-xl">
-            <HeaderGlobal onOrdersClick={() => setView('history')} onHomeClick={() => { setView('customer'); setSelectedRestaurant(null); }} />
-            <div className="flex-grow relative print-container">{renderContent()}</div>
+        <div className="container mx-auto max-w-7xl bg-white min-h-screen flex flex-col shadow-xl overflow-x-hidden">
+            <HeaderGlobal 
+                onOrdersClick={() => setView('history')} 
+                onHomeClick={() => { setView('customer'); setSelectedRestaurant(null); }} 
+            />
+            <div className="flex-grow relative print-container">
+                {renderContent()}
+            </div>
             <OrderTracker />
             <Footer onLoginClick={() => setView('login')} />
         </div>

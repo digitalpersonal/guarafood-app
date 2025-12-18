@@ -2,179 +2,116 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="vite.svg" />
     
-    <!-- Configuração PWA / Mobile -->
-    <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" href="/vite.svg" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="vite.svg" />
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="GuaraFood">
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     
-    <!-- Controle de Cache (Cache Busting) - Garante atualizações automáticas -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     
-    <!-- Cor do navegador (Barra de endereços) -->
     <meta name="theme-color" content="#ea580c" />
     
-    <!-- SEO Básico -->
     <title>GuaraFood - Delivery da Cidade</title>
-    <meta name="description" content="Peça comida online nos melhores restaurantes da região. Lanches, Pizzas, Açaí e muito mais com entrega rápida." />
     
-    <!-- Open Graph / WhatsApp / Facebook -->
-    <meta property="og:type" content="website" />
-    <meta property="og:title" content="GuaraFood - Delivery" />
-    <meta property="og:description" content="Sua fome pede, GuaraFood entrega. Peça agora!" />
-    <meta property="og:image" content="https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=600" />
-    <meta property="og:site_name" content="GuaraFood" />
-
     <script src="https://cdn.tailwindcss.com"></script>
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.0",
-    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.80.0"
-  }
-}
-</script>
-<style>
-  /* Splash Screen Animation */
-  @keyframes pulse-logo {
-    0% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.05); opacity: 0.9; }
-    100% { transform: scale(1); opacity: 1; }
-  }
-  
-  .splash-logo {
-    animation: pulse-logo 2s infinite ease-in-out;
-  }
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://aistudiocdn.com/react@^19.2.0",
+        "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+        "react/": "https://aistudiocdn.com/react@^19.2.0/",
+        "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.0",
+        "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.80.0"
+      }
+    }
+    </script>
+    <style>
+      @keyframes pulse-logo {
+        0% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.05); opacity: 0.9; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      
+      .splash-logo {
+        animation: pulse-logo 2s infinite ease-in-out;
+      }
 
-  @keyframes highlight-animation {
-    0% { background-color: rgba(254, 249, 195, 0.8); } /* bg-yellow-100 with opacity */
-    100% { background-color: transparent; }
-  }
-  .highlight-scroll {
-    animation: highlight-animation 1.5s ease-out;
-  }
-  
-  @keyframes toast-in {
-    from {
-      transform: translateX(100%);
-      opacity: 0;
-    }
-    to {
-      transform: translateX(0);
-      opacity: 1;
-    }
-  }
-  
-  @keyframes toast-out {
-    from {
-      transform: translateX(0);
-      opacity: 1;
-    }
-    to {
-      transform: translateX(100%);
-      opacity: 0;
-    }
-  }
-  
-  .toast-in {
-    animation: toast-in 0.3s ease-out forwards;
-  }
-  
-  .toast-out {
-    animation: toast-out 0.3s ease-in forwards;
-  }
-  
-  /* New Order Pulse Animation */
-  @keyframes pulse-blue {
-    0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
-    70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
-  }
-  .new-order-pulse {
-    animation: pulse-blue 2s infinite;
-    border: 1px solid #3B82F6; /* blue-500 */
-  }
+      #splash-screen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: #ea580c;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        color: white;
+        font-family: sans-serif;
+        transition: opacity 0.5s ease-out, visibility 0.5s;
+        pointer-events: auto;
+      }
 
-  /* Print-specific styles */
-  @media print {
-    body * {
-      visibility: hidden;
-    }
-    #printable-order, #printable-order * {
-      visibility: visible;
-    }
-    #printable-order {
-      position: absolute;
-      left: 0;
-      top: 0;
-      width: 100%;
-    }
-    /* Force background colors for thermal printing */
-    * {
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-    }
-    @page {
-        margin: 0;
-    }
-  }
-</style>
-<link rel="stylesheet" href="/index.css">
+      #splash-screen.hidden {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+
+      @media print {
+        body * { visibility: hidden; }
+        #printable-order, #printable-order * { visibility: visible; }
+        #printable-order { position: absolute; left: 0; top: 0; width: 100%; }
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      }
+    </style>
+  <link rel="stylesheet" href="/index.css">
 </head>
   <body class="bg-gray-50">
     <div id="root">
-        <!-- Splash Screen Content (Será substituído pelo React assim que carregar) -->
-        <div id="splash-screen" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: #ea580c; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; color: white; font-family: sans-serif; transition: opacity 0.5s ease-out;">
+        <div id="splash-screen">
             <div class="splash-logo" style="display: flex; flex-direction: column; align-items: center;">
                 <svg width="80" height="80" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="white">
                     <path d="M21 13H3c-1.103 0-2 .897-2 2v2c0 1.103.897 2 2 2h18c1.103 0 2-.897 2-2v-2c0-1.103-.897-2-2-2zM1 9V7c0-1.103.897-2 2-2h2v4H3c-1.103 0-2 .897-2 2v2h4V9H1zM19 5h2c1.103 0 2 .897 2 2v2h-4V5zM11 5h2v4h-2V5zm-4 0h2v4H7V5z"/>
-                    <path d="M11 11.5a.5.5 0 0 1 .5-.5h.999a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5z"/>
-                    <path d="M14 11.5a.5.5 0 0 1 .5-.5h.999a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5z"/>
-                    <path d="M17 11.5a.5.5 0 0 1 .5-.5h.999a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5z"/>
-                    <path d="M11 14.5a.5.5 0 0 1 .5-.5h.999a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5z"/>
-                    <path d="M14 14.5a.5.5 0 0 1 .5-.5h.999a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5z"/>
-                    <path d="M17 14.5a.5.5 0 0 1 .5-.5h.999a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5z"/>
-                    <path d="M12 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>
                     <path d="M12 2c-4.963 0-9 4.037-9 9 0 4.148 3.037 7.6 7 8.722V21h4v-1.278c3.963-1.122 7-4.574 7-8.722 0-4.963-4.037-9-9-9zm0 16a7 7 0 1 1 0-14 7 7 0 0 1 0 14z"/>
                 </svg>
                 <h1 style="font-size: 2rem; font-weight: 800; margin-top: 1rem; letter-spacing: 0.05em;">GuaraFood</h1>
-                <p id="loading-text" style="margin-top: 1rem; font-size: 0.8rem; opacity: 0.8;">Carregando...</p>
+                <p style="margin-top: 1rem; font-size: 0.8rem; opacity: 0.8;">Carregando sua fome...</p>
             </div>
         </div>
     </div>
-    <script type="module" src="/index.tsx"></script>
+    <script type="module" src="index.tsx"></script>
     <script>
-      // Segurança: Remove a tela de splash se demorar muito (ex: erro de script)
-      setTimeout(() => {
+      // Função universal para remover o splash
+      function hideSplash() {
         const splash = document.getElementById('splash-screen');
         if (splash) {
-            console.warn("Splash screen removed by timeout safety.");
-            splash.style.opacity = '0';
-            setTimeout(() => splash.remove(), 500);
+          splash.classList.add('hidden');
+          splash.style.pointerEvents = 'none'; // Libera cliques mesmo se o elemento persistir
         }
-      }, 7000); // 7 segundos de timeout
+      }
 
+      // Timeout de segurança: 3 segundos é o suficiente para carregar o básico
+      setTimeout(hideSplash, 3000);
+
+      // Service Worker: Registro relativo e resiliente
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then((registration) => {
-              console.log('ServiceWorker registration successful with scope: ', registration.scope);
-            })
-            .catch((err) => {
-              console.log('ServiceWorker registration failed: ', err);
-            });
+          navigator.serviceWorker.register('sw.js')
+            .then(reg => console.log('SW registrado'))
+            .catch(err => console.warn('SW falhou (comum em previews):', err.message));
         });
       }
     </script>
-  </body>
+  <script type="module" src="/index.tsx"></script>
+</body>
 </html>

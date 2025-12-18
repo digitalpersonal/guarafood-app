@@ -76,11 +76,8 @@ const OrderTracker: React.FC = () => {
 
     useEffect(() => {
         loadOrders();
-
-        // Escuta o evento global disparado no Checkout para carregar imediatamente
         window.addEventListener('guarafood:update-orders', loadOrders);
         
-        // Inscrição em tempo real para mudanças de status (Webhook mp ou lojista mudando)
         const subscription = supabase
             .channel('public:orders:tracker')
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (payload) => {
@@ -114,17 +111,15 @@ const OrderTracker: React.FC = () => {
 
     const mainOrder = activeOrders[0];
     const currentStep = statusSteps[mainOrder.status] ?? 1;
-    // Progresso inicial mínimo para mostrar que algo começou
     const progress = currentStep === 0 ? 5 : (currentStep / 4) * 100;
     const isPending = mainOrder.status === 'Aguardando Pagamento';
 
     return (
-        <div 
-            className="fixed bottom-0 left-0 right-0 z-[9999] px-4 pb-4 pointer-events-none" 
-            onClick={initAudioContext}
-            onTouchStart={initAudioContext}
-        >
-            <div className="relative max-w-md mx-auto pointer-events-auto">
+        <div className="fixed bottom-0 left-0 right-0 z-[100] px-4 pb-4 pointer-events-none">
+            <div 
+                className="relative max-w-md mx-auto pointer-events-auto"
+                onClick={initAudioContext}
+            >
                 {showTooltip && (
                     <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white text-xs font-bold py-1 px-3 rounded-full shadow-lg animate-bounce">
                         Acompanhe seu pedido aqui!
@@ -134,7 +129,7 @@ const OrderTracker: React.FC = () => {
 
                 <div className="bg-white rounded-xl shadow-[0_-5px_30px_-5px_rgba(0,0,0,0.4)] border border-orange-100 overflow-hidden">
                     <div 
-                        className={`p-3 flex items-center justify-between cursor-pointer ${isPending ? 'bg-yellow-50' : 'bg-orange-50'}`}
+                        className={`p-3 flex items-center justify-between cursor-pointer ${isPending ? 'bg-yellow-50' : 'bg-orange-50'} hover:opacity-95`}
                         onClick={() => setIsExpanded(!isExpanded)}
                     >
                         <div className="flex items-center gap-3">
@@ -171,7 +166,6 @@ const OrderTracker: React.FC = () => {
                                 <div className="flex justify-between items-center relative">
                                     <div className="absolute top-1/2 left-0 w-full h-0.5 bg-gray-200 -z-10"></div>
                                     {[1, 2, 3, 4].map((step) => {
-                                        // Enquanto está pendente de pgto, as bolinhas de progresso não brilham
                                         const isCompleted = step <= currentStep && !isPending;
                                         const isCurrent = step === currentStep && !isPending;
                                         return (
