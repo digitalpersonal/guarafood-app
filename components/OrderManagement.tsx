@@ -39,7 +39,6 @@ const BookOpenIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
-
 const SalesDashboard = React.lazy(() => import('./SalesDashboard'));
 const CustomerList = React.lazy(() => import('./CustomerList'));
 
@@ -105,16 +104,17 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         const unsubscribe = subscribeToOrders((allOrders) => {
             const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
             
-            // BLOQUEIO CRÍTICO: Filtramos o array antes de qualquer processamento.
-            // Pedidos 'Aguardando Pagamento' são totalmente ignorados pelo painel do lojista.
+            // 1. Monitoramos TODA a lista para rastrear transições (inclusive pendentes)
+            const currentStatusMap = new Map<string, string>();
+            allOrders.forEach(o => currentStatusMap.set(o.id, o.status));
+
+            // 2. Filtramos apenas o que o lojista deve ver (Exclui aguardando pagamento)
             const filteredOrdersForMerchant = allOrders.filter(o => o.status !== 'Aguardando Pagamento');
 
-            const currentStatusMap = new Map<string, string>();
-            filteredOrdersForMerchant.forEach(o => currentStatusMap.set(o.id, o.status));
-
             if (!isFirstLoadRef.current) {
-                // ALERTA SOMENTE SE: O status agora é 'Novo Pedido' E antes NÃO era 'Novo Pedido'.
-                // Isso captura tanto novos pedidos (Dinheiro) quanto confirmações de Pix (Aguardando -> Novo).
+                // ALERTA SOMENTE SE: O status agora é 'Novo Pedido' E antes NÃO era 'Novo Pedido'
+                // Se antes era 'Aguardando Pagamento' e agora é 'Novo Pedido', entra aqui.
+                // Se era nulo (acabou de ser criado manual como Novo), entra aqui.
                 const ordersToAlert = filteredOrdersForMerchant.filter(order => {
                     const prevStatus = previousOrdersStatusRef.current.get(order.id);
                     return order.status === 'Novo Pedido' && prevStatus !== 'Novo Pedido';
@@ -136,6 +136,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 }
             }
 
+            // Atualizamos o mapa de status com TODOS os pedidos para a próxima comparação
             previousOrdersStatusRef.current = currentStatusMap;
             setOrders(filteredOrdersForMerchant);
             isFirstLoadRef.current = false;

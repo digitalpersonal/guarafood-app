@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
@@ -270,9 +269,13 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
     }, [orders, searchTerm]);
 
     const { activeOrders, historyOrders, groupedActiveOrders, groupedHistoryOrders } = useMemo(() => {
-        // FILTRO CRÍTICO: Excluímos pedidos em 'Aguardando Pagamento' da visão ativa do lojista.
-        // Eles só aparecerão quando o status mudar para 'Novo Pedido' (Pagamento Confirmado).
-        const active = filteredOrders.filter(o => ['Novo Pedido', 'Preparando', 'A Caminho'].includes(o.status));
+        // FILTRO CRÍTICO DE SEGURANÇA: Pedidos em 'Aguardando Pagamento' são TOTALMENTE ignorados pelo lojista nesta tela.
+        // Eles só aparecerão quando o status mudar para 'Novo Pedido' (Pagamento Confirmado ou Manual).
+        const active = filteredOrders.filter(o => 
+            ['Novo Pedido', 'Preparando', 'A Caminho'].includes(o.status) && 
+            o.status !== 'Aguardando Pagamento'
+        );
+        
         const history = filteredOrders.filter(o => ['Entregue', 'Cancelado'].includes(o.status));
         
         const group = (orderList: Order[]) => orderList.reduce((acc, order) => {
