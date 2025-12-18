@@ -67,12 +67,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             }
         };
         requestWakeLock();
-        const handleVisibilityChange = () => { if (wakeLock !== null && document.visibilityState === 'visible') requestWakeLock(); };
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-            if (wakeLock !== null) wakeLock.release();
-        };
+        return () => { if (wakeLock !== null) wakeLock.release(); };
     }, []);
 
     useEffect(() => {
@@ -82,26 +77,18 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     const enableAudio = useCallback(() => { initAudioContext(); }, [initAudioContext]);
 
-    // Gatilho de Impressão Robusto
     useEffect(() => {
         if (orderToPrint) {
             if (printedOrderIdsRef.current.has(orderToPrint.id)) {
                 setOrderToPrint(null); 
                 return;
             }
-
             const printTimer = setTimeout(() => {
                 window.focus();
                 printedOrderIdsRef.current.add(orderToPrint.id);
                 window.print();
-                
-                const cleanupTimer = setTimeout(() => {
-                    setOrderToPrint(null);
-                }, 1000);
-
-                return () => clearTimeout(cleanupTimer);
+                setTimeout(() => setOrderToPrint(null), 1000);
             }, 500); 
-            
             return () => clearTimeout(printTimer);
         }
     }, [orderToPrint]);
@@ -117,21 +104,23 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
         const unsubscribe = subscribeToOrders((allOrders) => {
             const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
+            
+            // BLOQUEIO CRÍTICO: Filtramos o array antes de qualquer processamento.
+            // Pedidos 'Aguardando Pagamento' são invisíveis para o lojista.
+            const filteredOrdersForMerchant = allOrders.filter(o => o.status !== 'Aguardando Pagamento');
+
             const currentStatusMap = new Map<string, string>();
-            allOrders.forEach(o => currentStatusMap.set(o.id, o.status));
+            filteredOrdersForMerchant.forEach(o => currentStatusMap.set(o.id, o.status));
 
             if (!isFirstLoadRef.current) {
-                // LÓGICA DE ALERTA:
-                // 1. Pedido é 'Novo Pedido'
-                // 2. Antes ele não era 'Novo Pedido' (era Aguardando Pagamento ou não existia)
-                const ordersToAlert = allOrders.filter(order => {
+                // ALERTA SOMENTE SE: O status agora é 'Novo Pedido' E antes NÃO era 'Novo Pedido' (ou nem existia no mapa filtrado).
+                const ordersToAlert = filteredOrdersForMerchant.filter(order => {
                     const prevStatus = previousOrdersStatusRef.current.get(order.id);
                     return order.status === 'Novo Pedido' && prevStatus !== 'Novo Pedido';
                 });
 
                 if (ordersToAlert.length > 0) {
                     const newestOrder = ordersToAlert[0];
-                    
                     if (areNotificationsEnabled && Notification.permission === 'granted') {
                          try {
                              new Notification('Novo Pedido!', {
@@ -141,14 +130,13 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             });
                          } catch (e) { console.error("Notification API error", e); }
                     }
-                    
                     playNotification();
                     setOrderToPrint(newestOrder);
                 }
             }
 
             previousOrdersStatusRef.current = currentStatusMap;
-            setOrders(allOrders);
+            setOrders(filteredOrdersForMerchant);
             isFirstLoadRef.current = false;
 
         }, currentUser.restaurantId, (status) => {

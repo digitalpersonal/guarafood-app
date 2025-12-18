@@ -20,6 +20,7 @@ const normalizeOrder = (data: any): Order => {
         restaurantName: data.restaurant_name,
         restaurantAddress: data.restaurant_address,
         restaurantPhone: data.restaurant_phone,
+        // Fix: Changed property name to camelCase 'paymentMethod' as defined in the Order interface.
         paymentMethod: data.payment_method,
         couponCode: data.coupon_code,
         discountAmount: data.discount_amount,
@@ -127,10 +128,11 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
         restaurant_phone: orderData.restaurantPhone,
         payment_method: orderData.paymentMethod,
         coupon_code: orderData.couponCode,
+        // Fix: Changed access to 'discountAmount' to match NewOrderData interface definition.
         discount_amount: orderData.discountAmount,
         subtotal: orderData.subtotal,
         delivery_fee: orderData.deliveryFee,
-        // LÓGICA CRÍTICA: Se for Pix, nasce invisível para o lojista
+        // Status inicial: se for Pix, nasce invisível para o lojista
         status: isPix ? 'Aguardando Pagamento' : 'Novo Pedido', 
         payment_status: (isDebt || isPix) ? 'pending' : 'paid',
         timestamp: new Date().toISOString(),
@@ -138,6 +140,10 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
 
     const { data, error } = await supabase.from('orders').insert(newOrderPayload).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to create order' });
+    
+    // Dispara evento para o rastreador do cliente atualizar sem refresh
+    window.dispatchEvent(new Event('guarafood:update-orders'));
+    
     return normalizeOrder(data);
 };
 

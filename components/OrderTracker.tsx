@@ -65,7 +65,6 @@ const OrderTracker: React.FC = () => {
                 const ongoing = data.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado');
                 setActiveOrders(ongoing);
                 
-                // Se um novo pedido apareceu e o tracker estava oculto, mostra o tooltip
                 if (ongoing.length > 0 && activeOrders.length === 0) {
                     setShowTooltip(true);
                     setTimeout(() => setShowTooltip(false), 8000); 
@@ -79,12 +78,9 @@ const OrderTracker: React.FC = () => {
     useEffect(() => {
         loadOrders();
 
-        // Escuta o evento global disparado pelo checkout para aparecer na hora
+        // Escuta o evento global para atualizar na hora que o checkout fecha ou confirma
         window.addEventListener('guarafood:update-orders', loadOrders);
         
-        // Polling de segurança a cada 30 segundos para garantir status atualizado se o Realtime falhar
-        const interval = setInterval(loadOrders, 30000);
-
         // Inscrição em tempo real para mudanças de status
         const subscription = supabase
             .channel('public:orders:tracker')
@@ -99,12 +95,10 @@ const OrderTracker: React.FC = () => {
                         
                         if (exists.status !== updatedOrder.status) {
                             playNotification();
-                            // Se foi entregue ou cancelado, removemos da lista ativa
                             if (updatedOrder.status === 'Entregue' || updatedOrder.status === 'Cancelado') {
                                  return prev.filter(o => o.id !== updatedOrder.id);
                             }
                         }
-                        
                         return prev.map(o => o.id === updatedOrder.id ? { ...o, status: updatedOrder.status } : o);
                     });
                 }
@@ -113,7 +107,6 @@ const OrderTracker: React.FC = () => {
 
         return () => {
             window.removeEventListener('guarafood:update-orders', loadOrders);
-            clearInterval(interval);
             supabase.removeChannel(subscription);
         };
     }, [loadOrders, playNotification]);

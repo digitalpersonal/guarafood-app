@@ -270,9 +270,11 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
     }, [orders, searchTerm]);
 
     const { activeOrders, historyOrders, groupedActiveOrders, groupedHistoryOrders } = useMemo(() => {
-        // FILTRO CRÍTICO: Excluímos 'Aguardando Pagamento' da visão ativa do lojista.
+        // FILTRO CRÍTICO: Excluímos pedidos em 'Aguardando Pagamento' da visão ativa do lojista.
+        // Eles só aparecerão quando o status mudar para 'Novo Pedido' (Pagamento Confirmado).
         const active = filteredOrders.filter(o => ['Novo Pedido', 'Preparando', 'A Caminho'].includes(o.status));
         const history = filteredOrders.filter(o => ['Entregue', 'Cancelado'].includes(o.status));
+        
         const group = (orderList: Order[]) => orderList.reduce((acc, order) => {
             const status = order.status;
             if (!acc[status]) acc[status] = [];

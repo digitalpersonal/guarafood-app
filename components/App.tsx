@@ -1,29 +1,28 @@
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from './types';
-import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant } from './services/databaseService';
-import { AuthProvider, useAuth } from './services/authService';
-import { getInitializationError, getErrorMessage } from './services/api';
-import { isRestaurantOpen } from './utils/restaurantUtils';
+import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from '../types';
+import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant } from '../services/databaseService';
+import { AuthProvider, useAuth } from '../services/authService';
+import { getInitializationError, getErrorMessage } from '../services/api';
+import { isRestaurantOpen } from '../utils/restaurantUtils';
 
-import RestaurantCard from './components/RestaurantCard';
-import Spinner from './components/Spinner';
-import MenuItemCard from './components/MenuItemCard';
-import ComboCard from './components/ComboCard';
-import Cart from './components/Cart';
-import LoginScreen from './components/LoginScreen';
-import AdminDashboard from './components/AdminDashboard';
-import OrderManagement from './components/OrderManagement';
-import CouponDisplay from './components/CouponDisplay';
-import HomePromotionalBanner from './components/HomePromotionalBanner';
-import { CartProvider } from './hooks/useCart';
-import { AnimationProvider } from './hooks/useAnimation';
-import { NotificationProvider } from './hooks/useNotification';
-import OptimizedImage from './components/OptimizedImage';
-import OrderTracker from './components/OrderTracker';
-import CustomerOrders from './components/CustomerOrders';
-import HeaderGlobal from './components/HeaderGlobal';
-import Footer from './components/Footer';
+import RestaurantCard from './RestaurantCard';
+import Spinner from './Spinner';
+import MenuItemCard from './MenuItemCard';
+import ComboCard from './ComboCard';
+import Cart from './Cart';
+import LoginScreen from './LoginScreen';
+import AdminDashboard from './AdminDashboard';
+import OrderManagement from './OrderManagement';
+import CouponDisplay from './CouponDisplay';
+import HomePromotionalBanner from './HomePromotionalBanner';
+import { CartProvider } from '../hooks/useCart';
+import { AnimationProvider } from '../hooks/useAnimation';
+import { NotificationProvider } from '../hooks/useNotification';
+import OptimizedImage from './OptimizedImage';
+import OrderTracker from './OrderTracker';
+import CustomerOrders from './CustomerOrders';
+import HeaderGlobal from './HeaderGlobal';
+import Footer from './Footer';
 
 
 const SearchIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -127,7 +126,8 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
 
                 const promotedItems = menuData
                     .flatMap(category => [...category.items, ...(category.combos || [])])
-                    .filter(item => !!item.activePromotion && !item.isMarmita);
+                    // Fix: Use narrowing to safely check 'isMarmita' which only exists on MenuItem, not Combo.
+                    .filter(item => !!item.activePromotion && !((item as any).isMarmita));
                 setDailyPromotions(promotedItems);
 
                 if (menuWithoutSpecialsAndMarmitas.length > 0) {
@@ -634,6 +634,7 @@ const CustomerView: React.FC<CustomerViewProps> = ({ selectedRestaurant, onSelec
 };
 
 
+// Fix: Define ViewState type before its first usage in AppContent to avoid hoisting issues.
 type ViewState = 'customer' | 'login' | 'history';
 
 const AppContent: React.FC = () => {
