@@ -55,8 +55,7 @@ const categoryIcons: Record<string, string> = {
     'Italiana': '🍝',
     'Marmita': '🍱',
     'Supermercado': '🛒',
-    'Todos': '✨',
-    'Favoritos': '❤️'
+    'Todos': '✨'
 };
 
 const slugify = (text: string) => `category-${text.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '')}`;
@@ -68,6 +67,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     const [allPizzas, setAllPizzas] = useState<MenuItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [activeCategory, setActiveCategory] = useState<string | null>(null);
+    const observer = useRef<IntersectionObserver | null>(null);
 
     const isOpen = isRestaurantOpen(restaurant);
 
@@ -104,13 +104,44 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
         loadMenu();
     }, [restaurant]);
 
+    // Lógica de espionagem de scroll para destacar categoria ativa
+    useEffect(() => {
+        if (isLoading || menu.length === 0) return;
+
+        observer.current = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    setActiveCategory(entry.target.id);
+                }
+            });
+        }, { rootMargin: '-100px 0px -70% 0px' });
+
+        menu.forEach(category => {
+            const el = document.getElementById(slugify(category.name));
+            if (el) observer.current?.observe(el);
+        });
+
+        return () => observer.current?.disconnect();
+    }, [isLoading, menu]);
+
     const handleNavClick = (categoryName: string) => {
         const id = slugify(categoryName);
-        document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const element = document.getElementById(id);
+        if (element) {
+            const offset = 120; // Ajuste para não cobrir o título com a barra fixa
+            const bodyRect = document.body.getBoundingClientRect().top;
+            const elementRect = element.getBoundingClientRect().top;
+            const elementPosition = elementRect - bodyRect;
+            const offsetPosition = elementPosition - offset;
+
+            window.scrollTo({
+                top: offsetPosition,
+                behavior: 'smooth'
+            });
+        }
     };
 
     const handleBackClick = () => {
-        // Limpa a URL ao voltar
         const url = new URL(window.location.href);
         url.searchParams.delete('r');
         window.history.pushState({}, '', url.toString());
@@ -153,7 +184,11 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                 <div className="sticky top-[64px] z-30 bg-white shadow-md border-b border-gray-100">
                     <div className="flex space-x-3 overflow-x-auto p-3 no-scrollbar">
                         {menu.map((category) => (
-                            <button key={category.name} onClick={() => handleNavClick(category.name)} className={`px-4 py-2 rounded-full font-semibold text-sm whitespace-nowrap transition-colors ${activeCategory === slugify(category.name) ? 'bg-orange-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                            <button 
+                                key={category.name} 
+                                onClick={() => handleNavClick(category.name)} 
+                                className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-all ${activeCategory === slugify(category.name) ? 'bg-orange-600 text-white scale-105 shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                            >
                                 {category.name}
                             </button>
                         ))}
@@ -161,12 +196,15 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                 </div>
             )}
             
-            <div className="p-4">
+            <div className="p-4 min-h-screen">
                 {isLoading ? <Spinner /> : (
-                    <div className="space-y-8">
+                    <div className="space-y-12">
                         {menu.map((category) => (
-                            <div key={category.name} id={slugify(category.name)} className="scroll-mt-44 rounded-lg">
-                                <h2 className="text-2xl font-bold mb-4">{category.name}</h2>
+                            <div key={category.name} id={slugify(category.name)} className="scroll-mt-44">
+                                <h2 className="text-2xl font-black text-gray-800 mb-6 flex items-center gap-2">
+                                    <div className="w-2 h-8 bg-orange-500 rounded-full"></div>
+                                    {category.name}
+                                </h2>
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                     {category.combos?.map(combo => <ComboCard key={`combo-${combo.id}`} combo={combo} menuItems={menu.flatMap(c => c.items)} isOpen={isOpen} />)}
                                     {category.items.map(item => <MenuItemCard key={item.id} item={item} allPizzas={allPizzas} allAddons={addons} isOpen={isOpen} />)}
@@ -183,7 +221,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
 const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRestaurant: (r: Restaurant | null) => void }> = ({ selectedRestaurant, onSelectRestaurant }) => {
     const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [selectedCategories, setSelectedCategories] = useState<string[]>(['Todos']);
+    const [activeCategory, setActiveCategory] = useState<string>('Todos'); // AGORA SELEÇÃO ÚNICA
     const [showOpenOnly, setShowOpenOnly] = useState(false);
     const [favorites, setFavorites] = useState<number[]>([]);
 
@@ -196,15 +234,12 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
                 const data = await fetchRestaurants();
                 setRestaurants(data);
 
-                // Lógica de Deep Linking: Se houver ?r=ID na URL, abre o restaurante
                 const params = new URLSearchParams(window.location.search);
                 const rId = params.get('r');
                 if (rId) {
                     const id = parseInt(rId, 10);
                     const found = data.find(r => r.id === id);
-                    if (found) {
-                        onSelectRestaurant(found);
-                    }
+                    if (found) onSelectRestaurant(found);
                 }
             } catch (err) { console.error(err); } finally { setIsLoading(false); }
         };
@@ -219,27 +254,23 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
     const filteredRestaurants = useMemo(() => {
         return restaurants.filter(restaurant => {
             const restaurantCats = restaurant.category ? restaurant.category.split(',').map(c => c.trim()) : [];
-            const matchesCategory = selectedCategories.includes('Todos') || selectedCategories.some(c => restaurantCats.includes(c));
-            const matchesFavorites = !selectedCategories.includes('Favoritos') || favorites.includes(restaurant.id);
+            const matchesCategory = activeCategory === 'Todos' || restaurantCats.includes(activeCategory);
+            const matchesFavorites = activeCategory !== 'Favoritos' || favorites.includes(restaurant.id);
             const matchesOpen = !showOpenOnly || isRestaurantOpen(restaurant);
             return matchesCategory && matchesFavorites && matchesOpen;
         });
-    }, [restaurants, selectedCategories, favorites, showOpenOnly]);
+    }, [restaurants, activeCategory, favorites, showOpenOnly]);
 
-    const handleCategoryToggle = (category: string) => {
-        if (category === 'Todos') { setSelectedCategories(['Todos']); return; }
-        setSelectedCategories(prev => {
-            const clean = prev.filter(c => c !== 'Todos');
-            if (clean.includes(category)) {
-                const filtered = clean.filter(c => c !== category);
-                return filtered.length === 0 ? ['Todos'] : filtered;
-            }
-            return [...clean, category];
-        });
+    const handleCategorySelect = (category: string) => {
+        // Se clicar na que já está selecionada, volta para 'Todos'
+        if (activeCategory === category) {
+            setActiveCategory('Todos');
+        } else {
+            setActiveCategory(category);
+        }
     };
 
     const handleRestaurantClick = (restaurant: Restaurant) => {
-        // Atualiza a URL sem recarregar a página para o cliente poder compartilhar
         const url = new URL(window.location.href);
         url.searchParams.set('r', restaurant.id.toString());
         window.history.pushState({}, '', url.toString());
@@ -261,24 +292,24 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
                 if (type === 'restaurant') {
                     const r = restaurants.find(res => res.name === val);
                     if (r) handleRestaurantClick(r);
-                } else { handleCategoryToggle(val); }
+                } else { handleCategorySelect(val); }
             }} />
 
             <div className="p-4 overflow-hidden">
                 <h2 className="text-lg font-bold text-gray-800 mb-4 ml-1">O que você quer comer hoje?</h2>
                 <div className="flex space-x-6 overflow-x-auto pb-4 no-scrollbar">
                     {availableCategories.map(category => {
-                        const isSelected = selectedCategories.includes(category);
+                        const isSelected = activeCategory === category;
                         return (
                             <button 
                                 key={category} 
-                                onClick={() => handleCategoryToggle(category)} 
+                                onClick={() => handleCategorySelect(category)} 
                                 className="flex flex-col items-center space-y-2 min-w-[70px] transition-transform active:scale-95"
                             >
-                                <div className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl shadow-md border-2 transition-all ${isSelected ? 'bg-orange-50 border-orange-500' : 'bg-white border-transparent'}`}>
-                                    {categoryIcons[category] || '🍽️'}
+                                <div className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl shadow-md border-2 transition-all ${isSelected ? 'bg-orange-600 border-orange-500 scale-110 shadow-orange-200' : 'bg-white border-transparent'}`}>
+                                    <span className={isSelected ? 'brightness-125' : ''}>{categoryIcons[category] || '🍽️'}</span>
                                 </div>
-                                <span className={`text-xs font-bold whitespace-nowrap ${isSelected ? 'text-orange-600' : 'text-gray-600'}`}>{category}</span>
+                                <span className={`text-[10px] font-black uppercase tracking-tighter ${isSelected ? 'text-orange-600' : 'text-gray-500'}`}>{category}</span>
                             </button>
                         );
                     })}
@@ -288,13 +319,13 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
             <div className="px-4 py-2 flex gap-2 overflow-x-auto no-scrollbar border-b border-gray-100 pb-4 sticky top-[60px] bg-white z-10 shadow-sm">
                 <button 
                     onClick={() => setShowOpenOnly(!showOpenOnly)} 
-                    className={`flex items-center gap-2 px-4 py-1.5 rounded-full border text-xs font-bold transition-all ${showOpenOnly ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-gray-600 border-gray-300'}`}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-full border text-xs font-bold transition-all ${showOpenOnly ? 'bg-orange-600 text-white border-orange-600 shadow-md' : 'bg-white text-gray-600 border-gray-300'}`}
                 >
                     <FunnelIcon className="w-3 h-3" /> Abertos agora
                 </button>
                 <button 
-                    onClick={() => handleCategoryToggle('Favoritos')} 
-                    className={`flex items-center gap-2 px-4 py-1.5 rounded-full border text-xs font-bold transition-all ${selectedCategories.includes('Favoritos') ? 'bg-red-50 text-white border-red-500' : 'bg-white text-gray-600 border-gray-300'}`}
+                    onClick={() => handleCategorySelect('Favoritos')} 
+                    className={`flex items-center gap-2 px-4 py-2 rounded-full border text-xs font-bold transition-all ${activeCategory === 'Favoritos' ? 'bg-red-500 text-white border-red-500 shadow-md' : 'bg-white text-gray-600 border-gray-300'}`}
                 >
                     <HeartIcon className="w-3 h-3" /> Favoritos
                 </button>
@@ -322,7 +353,7 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
                 {filteredRestaurants.length === 0 && (
                     <div className="text-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
                         <p className="text-gray-400 font-bold">Nenhum restaurante encontrado.</p>
-                        <button onClick={() => { setSelectedCategories(['Todos']); setShowOpenOnly(false); }} className="mt-4 text-orange-600 font-black underline">Limpar Filtros</button>
+                        <button onClick={() => { setActiveCategory('Todos'); setShowOpenOnly(false); }} className="mt-4 text-orange-600 font-black underline">Limpar Filtros</button>
                     </div>
                 )}
             </div>
@@ -336,7 +367,6 @@ const AppContent: React.FC = () => {
     const { currentUser, loading } = useAuth();
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
 
-    // Remove Splash Screen on mount
     useEffect(() => {
         const splash = document.getElementById('splash-screen');
         if (splash) {
