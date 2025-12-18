@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 
 // Icons
@@ -41,17 +40,29 @@ const Footer: React.FC<FooterProps> = ({ onLoginClick }) => {
 
   return (
     <>
-      <footer className="w-full py-8 mt-auto bg-orange-600 text-white shadow-inner">
-        <div className="container mx-auto flex flex-col items-center justify-center px-4 text-center space-y-6">
+      <footer className="relative w-full py-12 mt-auto text-white overflow-hidden bg-gray-900">
+        {/* Background Image Container */}
+        <div className="absolute inset-0 z-0">
+            <img 
+                src="https://images.pexels.com/photos/1640772/pexels-photo-1640772.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1" 
+                alt="Footer Background" 
+                className="w-full h-full object-cover opacity-30"
+            />
+            {/* Dark Overlays for Readability */}
+            <div className="absolute inset-0 bg-black/60"></div>
+            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/40 to-black/80"></div>
+        </div>
+
+        <div className="relative z-10 container mx-auto flex flex-col items-center justify-center px-4 text-center space-y-8">
           
           <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md justify-center">
             {/* Botão Como Instalar */}
             <button 
               onClick={() => setShowInstallModal(true)}
-              className="flex items-center justify-center gap-2 px-4 py-2 border border-white/40 rounded-lg hover:bg-white/10 transition-colors text-sm font-medium"
+              className="flex items-center justify-center gap-2 px-6 py-3 bg-white/10 backdrop-blur-md border border-white/20 rounded-xl hover:bg-white/20 transition-all text-sm font-bold shadow-xl"
             >
               <DevicePhoneMobileIcon className="w-5 h-5" />
-              <span>Instalar App</span>
+              <span>Instalar Aplicativo</span>
             </button>
 
             {/* Botão WhatsApp Dev */}
@@ -59,30 +70,43 @@ const Footer: React.FC<FooterProps> = ({ onLoginClick }) => {
               href="https://wa.me/5535991048020" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors text-sm font-bold shadow-lg"
+              className="flex items-center justify-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl transition-all text-sm font-black shadow-xl shadow-green-900/20"
             >
               <WhatsAppIcon className="w-5 h-5" />
-              <span>Fale com o Desenvolvedor</span>
+              <span>Falar com o desenvolvedor</span>
             </a>
           </div>
 
-          <p className="text-xs text-white/60">
-            &copy; {new Date().getFullYear()} GuaraFood. Todos os direitos reservados.
-          </p>
+          <div className="space-y-2">
+            <p className="text-lg font-black tracking-tight">
+              GUARA<span className="text-orange-500">FOOD</span>
+            </p>
+            <p className="text-xs text-white/50 max-w-xs mx-auto">
+              A única praça de alimentação digital de Guaranésia. Qualidade e rapidez em cada entrega.
+            </p>
+          </div>
 
-          <p className="text-sm font-bold tracking-wide">
-            Desenvolvido por Multiplus - Sílvio T. de Sá Filho
-          </p>
+          <div className="pt-4 border-t border-white/10 w-full max-w-lg space-y-4">
+            <p className="text-[10px] text-white/40 uppercase tracking-[0.2em] font-bold">
+              Desenvolvido por Multiplus
+            </p>
+            <p className="text-sm font-bold text-white/80">
+              Sílvio T. de Sá Filho
+            </p>
+            <p className="text-[10px] text-white/30">
+              &copy; {new Date().getFullYear()} Todos os direitos reservados.
+            </p>
+          </div>
 
           {/* Botão de Acesso Restrito (Discreto) */}
           {onLoginClick && (
             <button 
               onClick={onLoginClick}
-              className="mt-4 flex items-center gap-1 text-[10px] text-white/30 hover:text-white/80 transition-colors"
+              className="mt-6 flex items-center gap-1.5 text-[9px] text-white/20 hover:text-white/60 transition-colors uppercase font-black tracking-widest p-2 border border-white/5 rounded-lg hover:bg-white/5"
               title="Acesso Restrito para Lojistas"
             >
               <LockClosedIcon className="w-3 h-3" />
-              <span>Área do Lojista</span>
+              <span>Portal do Parceiro</span>
             </button>
           )}
         </div>
@@ -91,52 +115,55 @@ const Footer: React.FC<FooterProps> = ({ onLoginClick }) => {
       {/* Modal de Instruções de Instalação */}
       {showInstallModal && (
         <div 
-          className="fixed inset-0 bg-black/80 z-[100] flex justify-center items-center p-4" 
+          className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[100] flex justify-center items-center p-4 animate-fadeIn" 
           onClick={() => setShowInstallModal(false)}
         >
           <div 
-            className="bg-white text-gray-800 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden"
+            className="bg-white text-gray-800 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="bg-orange-600 p-4 flex justify-between items-center text-white">
-              <h3 className="font-bold text-lg">Adicionar à Tela Inicial</h3>
-              <button onClick={() => setShowInstallModal(false)}>
+            <div className="bg-orange-600 p-5 flex justify-between items-center text-white">
+              <h3 className="font-black text-lg uppercase tracking-tight">Instalar no Celular</h3>
+              <button onClick={() => setShowInstallModal(false)} className="p-1 hover:bg-black/10 rounded-full">
                 <XMarkIcon className="w-6 h-6" />
               </button>
             </div>
             
-            <div className="p-6 space-y-6">
+            <div className="p-6 space-y-8">
               {/* Android Instructions */}
-              <div>
-                <h4 className="font-bold text-orange-600 flex items-center gap-2 mb-2">
-                  <DevicePhoneMobileIcon className="w-5 h-5" /> Android (Chrome)
-                </h4>
-                <ol className="list-decimal list-inside text-sm text-gray-600 space-y-1">
-                  <li>Toque no menu (três pontos <strong>⋮</strong>) no canto superior.</li>
-                  <li>Selecione a opção <strong>"Adicionar à tela inicial"</strong> ou "Instalar aplicativo".</li>
-                  <li>Confirme tocando em <strong>Adicionar</strong>.</li>
-                </ol>
+              <div className="flex gap-4">
+                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <DevicePhoneMobileIcon className="w-6 h-6 text-green-600" />
+                </div>
+                <div>
+                    <h4 className="font-black text-gray-900 mb-1">Android (Chrome)</h4>
+                    <ol className="text-xs text-gray-600 space-y-2">
+                        <li>1. Toque nos <strong>três pontos ⋮</strong> no canto superior.</li>
+                        <li>2. Selecione <strong>"Instalar aplicativo"</strong>.</li>
+                        <li>3. Confirme em <strong>Adicionar</strong>.</li>
+                    </ol>
+                </div>
               </div>
 
-              <hr className="border-gray-200" />
-
-              {/* iOS Instructions */}
-              <div>
-                <h4 className="font-bold text-blue-600 flex items-center gap-2 mb-2">
-                  <DevicePhoneMobileIcon className="w-5 h-5" /> iPhone (Safari)
-                </h4>
-                <ol className="list-decimal list-inside text-sm text-gray-600 space-y-1">
-                  <li>Toque no botão de compartilhamento <ShareIcon className="w-4 h-4 inline mx-1" /> na barra inferior.</li>
-                  <li>Role para baixo e toque em <strong>"Adicionar à Tela de Início"</strong>.</li>
-                  <li>Toque em <strong>Adicionar</strong> no canto superior direito.</li>
-                </ol>
+              <div className="flex gap-4 border-t pt-6">
+                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <DevicePhoneMobileIcon className="w-6 h-6 text-blue-600" />
+                </div>
+                <div>
+                    <h4 className="font-black text-gray-900 mb-1">iPhone (Safari)</h4>
+                    <ol className="text-xs text-gray-600 space-y-2">
+                        <li>1. Toque no ícone de <strong>Compartilhar</strong> <ShareIcon className="w-4 h-4 inline" />.</li>
+                        <li>2. Role e toque em <strong>"Tela de Início"</strong>.</li>
+                        <li>3. Toque em <strong>Adicionar</strong> no topo.</li>
+                    </ol>
+                </div>
               </div>
 
               <button 
                 onClick={() => setShowInstallModal(false)}
-                className="w-full bg-gray-200 text-gray-800 font-bold py-3 rounded-lg hover:bg-gray-300 transition-colors"
+                className="w-full bg-gray-900 text-white font-black py-4 rounded-xl hover:bg-black transition-all shadow-lg uppercase text-xs tracking-widest"
               >
-                Entendi
+                Pronto, entendi!
               </button>
             </div>
           </div>

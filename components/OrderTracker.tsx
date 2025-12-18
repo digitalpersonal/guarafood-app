@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/api';
 import { useSound } from '../hooks/useSound';
@@ -78,10 +77,10 @@ const OrderTracker: React.FC = () => {
     useEffect(() => {
         loadOrders();
 
-        // Escuta o evento global para atualizar na hora que o checkout fecha ou confirma
+        // Escuta o evento global disparado no Checkout para carregar imediatamente
         window.addEventListener('guarafood:update-orders', loadOrders);
         
-        // Inscrição em tempo real para mudanças de status
+        // Inscrição em tempo real para mudanças de status (Webhook mp ou lojista mudando)
         const subscription = supabase
             .channel('public:orders:tracker')
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (payload) => {
@@ -115,6 +114,7 @@ const OrderTracker: React.FC = () => {
 
     const mainOrder = activeOrders[0];
     const currentStep = statusSteps[mainOrder.status] ?? 1;
+    // Progresso inicial mínimo para mostrar que algo começou
     const progress = currentStep === 0 ? 5 : (currentStep / 4) * 100;
     const isPending = mainOrder.status === 'Aguardando Pagamento';
 
@@ -171,6 +171,7 @@ const OrderTracker: React.FC = () => {
                                 <div className="flex justify-between items-center relative">
                                     <div className="absolute top-1/2 left-0 w-full h-0.5 bg-gray-200 -z-10"></div>
                                     {[1, 2, 3, 4].map((step) => {
+                                        // Enquanto está pendente de pgto, as bolinhas de progresso não brilham
                                         const isCompleted = step <= currentStep && !isPending;
                                         const isCurrent = step === currentStep && !isPending;
                                         return (
@@ -190,7 +191,7 @@ const OrderTracker: React.FC = () => {
                             
                             {isPending && (
                                 <div className="text-center text-[10px] text-yellow-700 bg-yellow-50 p-2 rounded border border-yellow-100 font-bold">
-                                    Aguardando confirmação do pagamento...
+                                    Aguardando confirmação do pagamento pelo banco...
                                 </div>
                             )}
                             

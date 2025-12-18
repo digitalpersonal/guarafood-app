@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { subscribeToOrders } from '../services/orderService';
 import { useAuth } from '../services/authService'; 
@@ -52,6 +51,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'DISCONNECTED'>('DISCONNECTED');
     const { playNotification, initAudioContext } = useSound();
     
+    // Status anterior para detectar transições de status
     const previousOrdersStatusRef = useRef<Map<string, string>>(new Map());
     const isFirstLoadRef = useRef(true);
     const printedOrderIdsRef = useRef<Set<string>>(new Set());
@@ -106,14 +106,15 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
             
             // BLOQUEIO CRÍTICO: Filtramos o array antes de qualquer processamento.
-            // Pedidos 'Aguardando Pagamento' são invisíveis para o lojista.
+            // Pedidos 'Aguardando Pagamento' são totalmente ignorados pelo painel do lojista.
             const filteredOrdersForMerchant = allOrders.filter(o => o.status !== 'Aguardando Pagamento');
 
             const currentStatusMap = new Map<string, string>();
             filteredOrdersForMerchant.forEach(o => currentStatusMap.set(o.id, o.status));
 
             if (!isFirstLoadRef.current) {
-                // ALERTA SOMENTE SE: O status agora é 'Novo Pedido' E antes NÃO era 'Novo Pedido' (ou nem existia no mapa filtrado).
+                // ALERTA SOMENTE SE: O status agora é 'Novo Pedido' E antes NÃO era 'Novo Pedido'.
+                // Isso captura tanto novos pedidos (Dinheiro) quanto confirmações de Pix (Aguardando -> Novo).
                 const ordersToAlert = filteredOrdersForMerchant.filter(order => {
                     const prevStatus = previousOrdersStatusRef.current.get(order.id);
                     return order.status === 'Novo Pedido' && prevStatus !== 'Novo Pedido';

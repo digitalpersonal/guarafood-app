@@ -1,4 +1,4 @@
-import React, { ReactNode, ErrorInfo } from 'react';
+import React, { ReactNode, ErrorInfo, Component } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
@@ -15,8 +15,8 @@ interface ErrorBoundaryState {
  * ErrorBoundary component catches JavaScript errors anywhere in their child component tree,
  * logs those errors, and displays a fallback UI instead of the component tree that crashed.
  */
-// Fix: Use React.Component explicitly to ensure proper inheritance and visibility of 'props' and 'state' members.
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+// Fix: Use Component explicitly to ensure proper inheritance and visibility of 'props' and 'state' members.
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   // Fix: Explicitly initialize state property as a class member.
   public state: ErrorBoundaryState = { hasError: false, error: null };
 
@@ -30,9 +30,9 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   render() {
-    // Fix: Access state and props via 'this' instance to resolve inheritance visibility issues.
-    const { hasError, error } = this.state;
-    const { children } = this.props;
+    // Fix: Access state and props via 'this' instance and ensure they are recognized as part of the React Component structure.
+    const { hasError, error } = (this as any).state;
+    const { children } = (this as any).props;
 
     if (hasError) {
       let errorMessage = 'Erro desconhecido.';

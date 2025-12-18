@@ -2,11 +2,13 @@ import React, { useMemo, useState } from 'react';
 import type { Combo, MenuItem } from '../types';
 import { useCart } from '../hooks/useCart';
 import { useAnimation } from '../hooks/useAnimation';
+import { useNotification } from '../hooks/useNotification';
 import OptimizedImage from './OptimizedImage';
 
 interface ComboCardProps {
   combo: Combo;
   menuItems: MenuItem[];
+  isOpen?: boolean;
 }
 
 const ComboDetailsModal: React.FC<{ combo: Combo; items: MenuItem[]; onClose: () => void }> = ({ combo, items, onClose }) => (
@@ -52,9 +54,10 @@ const ComboDetailsModal: React.FC<{ combo: Combo; items: MenuItem[]; onClose: ()
     </div>
 );
 
-const ComboCard: React.FC<ComboCardProps> = ({ combo, menuItems }) => {
+const ComboCard: React.FC<ComboCardProps> = ({ combo, menuItems, isOpen = true }) => {
   const { addToCart } = useCart();
   const { addFlyingItem } = useAnimation();
+  const { addToast } = useNotification();
   const [isDetailsVisible, setIsDetailsVisible] = useState(false);
 
   const includedItems = useMemo(() => {
@@ -64,6 +67,10 @@ const ComboCard: React.FC<ComboCardProps> = ({ combo, menuItems }) => {
   }, [combo.menuItemIds, menuItems]);
   
   const handleAddToCart = (event: React.MouseEvent<HTMLButtonElement>) => {
+      if (!isOpen) {
+          addToast({ message: "Este restaurante está fechado agora.", type: 'warning' });
+          return;
+      }
       const rect = event.currentTarget.getBoundingClientRect();
       addFlyingItem(combo.imageUrl, rect);
       addToCart(combo);
@@ -73,7 +80,7 @@ const ComboCard: React.FC<ComboCardProps> = ({ combo, menuItems }) => {
 
   return (
     <>
-      <div className={`rounded-lg overflow-hidden flex p-3 space-x-4 border-2 shadow-lg relative ${combo.activePromotion ? 'bg-orange-50 border-orange-400' : 'bg-amber-50 border-yellow-400'}`}>
+      <div className={`rounded-lg overflow-hidden flex p-3 space-x-4 border-2 shadow-lg relative ${combo.activePromotion ? 'bg-orange-50 border-orange-400' : 'bg-amber-50 border-yellow-400'} ${!isOpen ? 'grayscale opacity-75' : ''}`}>
         <div className={`absolute top-0 -left-2 transform -rotate-45 text-black text-xs font-extrabold px-4 py-1 rounded-br-lg rounded-tl-sm shadow-md ${combo.activePromotion ? 'bg-orange-500 text-white' : 'bg-yellow-400'}`}>
             {tagText}
         </div>
@@ -106,10 +113,10 @@ const ComboCard: React.FC<ComboCardProps> = ({ combo, menuItems }) => {
           <OptimizedImage src={combo.imageUrl} alt={combo.name} className="w-full h-full rounded-md" />
           <button 
             onClick={handleAddToCart}
-            className="absolute -bottom-2 -right-2 bg-gray-800 text-white rounded-full w-9 h-9 flex items-center justify-center text-xl font-bold shadow-lg hover:bg-orange-600 transition-colors z-10"
+            className={`absolute -bottom-2 -right-2 rounded-full w-9 h-9 flex items-center justify-center text-xl font-bold shadow-lg transition-all z-10 ${isOpen ? 'bg-gray-800 text-white hover:bg-orange-600' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
             aria-label={`Adicionar ${combo.name} ao carrinho`}
           >
-            +
+            {isOpen ? '+' : '×'}
           </button>
         </div>
       </div>

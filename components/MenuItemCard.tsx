@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { MenuItem, Addon, CartItem } from '../types';
 import { useCart } from '../hooks/useCart';
 import { useAnimation } from '../hooks/useAnimation';
+import { useNotification } from '../hooks/useNotification';
 import PizzaCustomizationModal from './PizzaCustomizationModal';
 import AcaiCustomizationModal from './AcaiCustomizationModal';
 import GenericCustomizationModal from './GenericCustomizationModal';
@@ -11,6 +12,7 @@ interface MenuItemCardProps {
   item: MenuItem;
   allPizzas: MenuItem[];
   allAddons: Addon[];
+  isOpen?: boolean; // Propriedade para saber se o restaurante está aberto
 }
 
 const StarIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -27,15 +29,21 @@ const CalendarDaysIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 
 
-const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons }) => {
+const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons, isOpen = true }) => {
   const { addToCart } = useCart();
   const { addFlyingItem } = useAnimation();
+  const { addToast } = useNotification();
   const [isPizzaModalOpen, setIsPizzaModalOpen] = useState(false);
   const [isAcaiModalOpen, setIsAcaiModalOpen] = useState(false);
   const [isGenericModalOpen, setIsGenericModalOpen] = useState(false);
 
 
   const handleAddToCartClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (!isOpen) {
+        addToast({ message: "Este restaurante está fechado agora.", type: 'warning' });
+        return;
+    }
+
     if (item.isPizza) {
       setIsPizzaModalOpen(true);
     } else if (item.isAcai) {
@@ -53,21 +61,19 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons 
   };
 
   const handleCustomizedItemAddToCart = (customizedItem: CartItem) => {
-    // For now, add to cart without animation from the modal, as getting the button rect is complex.
     addToCart(customizedItem);
     setIsPizzaModalOpen(false);
     setIsAcaiModalOpen(false);
     setIsGenericModalOpen(false);
   };
 
-  // Define styles for special items
   const containerClasses = item.isDailySpecial 
     ? "bg-yellow-50 border border-yellow-200 shadow-md" 
     : "bg-white shadow-sm hover:shadow-md";
 
   return (
     <>
-      <div className={`${containerClasses} rounded-lg overflow-hidden flex p-3 space-x-4 relative transition-all duration-300 group`}>
+      <div className={`${containerClasses} rounded-lg overflow-hidden flex p-3 space-x-4 relative transition-all duration-300 group ${!isOpen ? 'opacity-75' : ''}`}>
           
           {/* Badge: Destaque do Dia */}
           {item.isDailySpecial && (
@@ -92,7 +98,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons 
              </div>
           )}
 
-        <div className="flex-grow pt-4"> {/* Added pt-4 to clear absolute badges */}
+        <div className="flex-grow pt-4"> 
           <h4 className="font-bold text-md text-gray-800 flex items-center gap-1">
               {item.name}
               {item.isDailySpecial && <StarIcon className="w-4 h-4 text-yellow-500 fill-yellow-500" />}
@@ -139,12 +145,13 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons 
         </div>
 
         <div className="flex-shrink-0 relative w-24 h-24 self-center">
-          <OptimizedImage src={item.imageUrl} alt={item.name} className="w-full h-full rounded-md shadow-sm" />
+          <OptimizedImage src={item.imageUrl} alt={item.name} className={`w-full h-full rounded-md shadow-sm ${!isOpen ? 'grayscale' : ''}`} />
           <button 
             onClick={handleAddToCartClick}
-            className="absolute -bottom-2 -right-2 bg-gray-800 text-white rounded-full w-9 h-9 flex items-center justify-center text-xl font-bold shadow-lg hover:bg-orange-600 transition-colors z-10 transform group-hover:scale-110"
+            className={`absolute -bottom-2 -right-2 rounded-full w-9 h-9 flex items-center justify-center text-xl font-bold shadow-lg transition-all z-10 transform ${isOpen ? 'bg-gray-800 text-white hover:bg-orange-600 group-hover:scale-110' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+            title={isOpen ? "Adicionar" : "Restaurante Fechado"}
           >
-            +
+            {isOpen ? '+' : '×'}
           </button>
         </div>
       </div>
