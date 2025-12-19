@@ -102,9 +102,12 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     
     const deliveryMethodRef = useRef<HTMLDivElement>(null);
 
+    // Carregar dados memorizados do cliente
     useEffect(() => {
         if (isOpen) {
             const loaded: Record<string, { phone: string, address: any }> = {};
+            
+            // 1. Tentar carregar o dicionário de clientes salvos
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
                 if (key && key.startsWith('customerData-')) {
@@ -118,8 +121,36 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 }
             }
             setKnownCustomers(loaded);
+
+            // 2. Tentar carregar o ÚLTIMO cliente que pediu (Preenchimento Automático Prioritário)
+            const lastData = localStorage.getItem('guarafood-last-customer');
+            if (lastData) {
+                try {
+                    const parsed = JSON.parse(lastData);
+                    setCustomerName(parsed.name || '');
+                    setCustomerPhone(parsed.phone || '');
+                    if (parsed.address) setAddress(parsed.address);
+                    setHighlightFields(true);
+                    setTimeout(() => setHighlightFields(false), 2000);
+                } catch (e) { console.error("Error parsing last customer", e); }
+            }
         }
     }, [isOpen]);
+
+    // Função CRÍTICA: Salvar dados do cliente AGORA
+    const saveCustomerDataLocally = (name: string, phone: string, addr: any) => {
+        if (!name || name.length < 3) return;
+        
+        const customerPayload = { phone, address: addr, name, lastUpdated: new Date().toISOString() };
+        
+        // Salva no dicionário por nome
+        localStorage.setItem(`customerData-${name.toLowerCase().trim()}`, JSON.stringify(customerPayload));
+        
+        // Salva como o "último usado" globalmente
+        localStorage.setItem('guarafood-last-customer', JSON.stringify(customerPayload));
+        
+        console.log("Customer data persisted for autofill.");
+    };
 
     const handleNameChange = (val: string) => {
         setCustomerName(val);
@@ -135,12 +166,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             
             setHighlightFields(true);
             setTimeout(() => setHighlightFields(false), 2000);
-            
-            addToast({ message: "Dados recuperados automaticamente!", type: 'success', duration: 1500 });
-            
-            setTimeout(() => {
-                deliveryMethodRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }, 100);
+            addToast({ message: "Dados recuperados!", type: 'success', duration: 1000 });
         }
     };
 
@@ -162,8 +188,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const resetState = () => {
         setCurrentStep('SUMMARY');
-        setCustomerName('');
-        setCustomerPhone('');
+        // Não resetamos nome/telefone aqui para manter o autofill que o useEffect carregou
         setPaymentMethod(paymentOptions[0] || 'Pix'); 
         setChangeFor('');
         setIsSubmitting(false);
@@ -176,7 +201,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setWantsSachets(false); 
         setCountdown(300);
         setDeliveryMethod('DELIVERY');
-        setAddress({ zipCode: '37810-000', street: '', number: '', neighborhood: '', complement: '' });
         if (countdownIntervalRef.current) {
             clearInterval(countdownIntervalRef.current);
             countdownIntervalRef.current = null;
@@ -263,6 +287,10 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const handlePixPayment = async (orderData: NewOrderData) => {
         setIsSubmitting(true);
         setPixError(null);
+        
+        // Salva dados do cliente IMEDIATAMENTE (antes da resposta da rede)
+        saveCustomerDataLocally(customerName, customerPhone, address);
+
         try {
             const response = await supabase.functions.invoke('create-payment', {
                 body: { restaurantId: restaurant.id, orderData },
@@ -297,7 +325,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
                         window.dispatchEvent(new Event('guarafood:update-orders'));
                         setCurrentStep('SUCCESS');
-                        localStorage.setItem(`customerData-${customerName.toLowerCase()}`, JSON.stringify({ phone: customerPhone, address }));
                         clearCart();
                     }
                 }
@@ -319,11 +346,14 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const handlePayOnDelivery = async (orderData: NewOrderData) => {
         setIsSubmitting(true);
+        
+        // Salva dados do cliente IMEDIATAMENTE
+        saveCustomerDataLocally(customerName, customerPhone, address);
+
         try {
             const order = await createOrder(orderData);
             persistOrderIdGlobally(order.id);
             window.dispatchEvent(new Event('guarafood:update-orders'));
-            localStorage.setItem(`customerData-${customerName.toLowerCase()}`, JSON.stringify({ phone: customerPhone, address }));
             addToast({ message: 'Pedido enviado!', type: 'success' });
             clearCart();
             setCurrentStep('SUCCESS');
@@ -675,7 +705,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                             pixData ? (
                                 <>
                                     <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="PIX" className="w-48 h-48 mx-auto my-2 border-4 border-gray-700 p-1 rounded-lg" />
-                                    <button type="button" onClick={() => { navigator.clipboard.writeText(pixData.qrCode); addToast({ message: 'Copiado!', type: 'success' }); }} className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg my-2 w-full max-xs shadow-lg flex justify-center items-center gap-2 active:scale-95 transition-transform"><ClipboardIcon className="w-5 h-5"/>Copiar Código</button>
+                                    <button type="button" onClick={() => { navigator.clipboard.writeText(pixData.qrCode); addToast({ message: 'Copiado!', type: 'success' }); }} className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg my-2 w-full max-xs shadow-lg flex justify-center items-center gap-2 active:scale-95 transition-all"><ClipboardIcon className="w-5 h-5"/>Copiar Código</button>
                                     <p className="text-2xl font-bold text-orange-600 mt-2">R$ {finalPriceWithFee.toFixed(2)}</p>
                                     <div className="mt-4 text-[10px] font-bold text-gray-500">Tempo: {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}</div>
                                 </>

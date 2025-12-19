@@ -8,7 +8,7 @@ const normalizeOrder = (data: any): Order => {
 
     return {
         id: data.id,
-        order_number: data.order_number, // MAPEIA O NOVO CAMPO SEQUENCIAL
+        order_number: data.order_number, 
         timestamp: data.timestamp || data.created_at,
         status: data.status,
         customerName: data.customer_name,
@@ -28,7 +28,6 @@ const normalizeOrder = (data: any): Order => {
         deliveryFee: data.delivery_fee,
         payment_id: data.payment_id,
         payment_details: data.payment_details,
-        // Se for Pix Automático e não tiver o status 'paid' no banco, consideramos pending
         paymentStatus: data.payment_status || (data.payment_method === 'Marcar na minha conta' ? 'pending' : 'paid')
     };
 };
@@ -39,32 +38,64 @@ export const subscribeToOrders = (
     onStatusChange?: (status: 'SUBSCRIBED' | 'CLOSED' | 'CHANNEL_ERROR' | 'TIMED_OUT') => void,
     limit: number = 200
 ): (() => void) => {
-    fetchOrders(restaurantId, { limit }).then(callback).catch(console.error);
+    let isMounted = true;
+    let retryTimeout: number | null = null;
 
-    const channelName = restaurantId ? `public:orders:restaurantId=eq.${restaurantId}` : 'public:orders';
-    const channel = supabase.channel(channelName);
-    
-    const subscription = channel
-        .on(
-            'postgres_changes',
-            { 
-                event: '*', 
-                schema: 'public', 
-                table: 'orders', 
-                filter: restaurantId ? `restaurant_id=eq.${restaurantId}` : undefined 
-            },
-            () => {
-                fetchOrders(restaurantId, { limit }).then(callback).catch(console.error);
-            }
-        )
-        .subscribe((status) => {
-            if (onStatusChange) {
-                onStatusChange(status);
-            }
-        });
+    const refreshData = async () => {
+        if (!isMounted) return;
+        try {
+            const orders = await fetchOrders(restaurantId, { limit });
+            if (isMounted) callback(orders);
+        } catch (e) {
+            console.error("Erro ao atualizar pedidos:", e);
+        }
+    };
+
+    const createChannel = () => {
+        if (!isMounted) return;
+
+        const channelName = restaurantId ? `orders_rest_${restaurantId}_${Date.now()}` : `orders_all_${Date.now()}`;
+        const channel = supabase.channel(channelName);
+        
+        channel
+            .on(
+                'postgres_changes',
+                { 
+                    event: '*', 
+                    schema: 'public', 
+                    table: 'orders', 
+                    filter: restaurantId ? `restaurant_id=eq.${restaurantId}` : undefined 
+                },
+                () => {
+                    refreshData();
+                }
+            )
+            .subscribe((status) => {
+                if (isMounted && onStatusChange) {
+                    onStatusChange(status as any);
+                }
+                
+                if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                    console.warn(`Realtime status: ${status}. Tentando reconectar em 5s...`);
+                    if (retryTimeout) clearTimeout(retryTimeout);
+                    retryTimeout = window.setTimeout(() => {
+                        supabase.removeChannel(channel);
+                        createChannel();
+                        refreshData();
+                    }, 5000);
+                }
+            });
+
+        return channel;
+    };
+
+    refreshData();
+    let currentChannel = createChannel();
 
     return () => {
-        supabase.removeChannel(channel);
+        isMounted = false;
+        if (retryTimeout) clearTimeout(retryTimeout);
+        if (currentChannel) supabase.removeChannel(currentChannel);
     };
 };
 
@@ -131,8 +162,6 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
         discount_amount: orderData.discountAmount,
         subtotal: orderData.subtotal,
         delivery_fee: orderData.deliveryFee,
-        //createOrder só é usado para fluxos MANUAIS (Dinheiro/Manual Pix/Fiado)
-        //Por isso, aqui o status é sempre 'Novo Pedido' para o lojista ver na hora.
         status: 'Novo Pedido', 
         payment_status: isDebt ? 'pending' : 'paid',
         timestamp: new Date().toISOString(),

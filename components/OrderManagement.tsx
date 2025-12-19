@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { subscribeToOrders } from '../services/orderService';
+import { subscribeToOrders, fetchOrders } from '../services/orderService';
 import { useAuth } from '../services/authService'; 
 import type { Order } from '../types';
 import OrdersView from './OrdersView';
@@ -30,16 +30,70 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [activeTab, setActiveTab] = useState<'orders' | 'menu' | 'settings' | 'financial' | 'customers' | 'debt'>('orders');
     const [orders, setOrders] = useState<Order[]>([]);
     const [orderToPrint, setOrderToPrint] = useState<Order | null>(null);
-    const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'DISCONNECTED'>('DISCONNECTED');
+    const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'RECONNECTING'>('CONNECTED');
     const { playNotification, initAudioContext } = useSound();
     
+    const lastSuccessfulSyncRef = useRef<number>(Date.now());
     const previousOrdersStatusRef = useRef<Map<string, string>>(new Map());
     const isFirstLoadRef = useRef(true);
     const printedOrderIdsRef = useRef<Set<string>>(new Set());
+    const pollingIntervalRef = useRef<number | null>(null);
+    const heartbeatIntervalRef = useRef<number | null>(null);
 
     const [printerWidth, setPrinterWidth] = useState<number>(80);
 
+    // Sincronização forçada (Heartbeat / Manual)
+    const forceSync = useCallback(async () => {
+        if (!currentUser?.restaurantId) return;
+        try {
+            const allOrders = await fetchOrders(currentUser.restaurantId, { limit: 200 });
+            processOrdersUpdate(allOrders);
+            lastSuccessfulSyncRef.current = Date.now();
+            setConnectionStatus('CONNECTED');
+        } catch (e) {
+            console.warn("Sync failed, checking network...");
+            if (!navigator.onLine) setConnectionStatus('RECONNECTING');
+        }
+    }, [currentUser?.restaurantId]);
+
+    const processOrdersUpdate = useCallback((allOrders: Order[]) => {
+        const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
+        
+        const currentStatusMap = new Map<string, string>();
+        allOrders.forEach(o => currentStatusMap.set(o.id, o.status));
+
+        const visibleOrders = allOrders.filter(o => o.status !== 'Aguardando Pagamento');
+
+        if (!isFirstLoadRef.current) {
+            const ordersToAlert = visibleOrders.filter(order => {
+                const prevStatus = previousOrdersStatusRef.current.get(order.id);
+                return order.status === 'Novo Pedido' && prevStatus !== 'Novo Pedido';
+            });
+
+            if (ordersToAlert.length > 0) {
+                const newestOrder = ordersToAlert[0];
+                if (areNotificationsEnabled && Notification.permission === 'granted') {
+                     try {
+                         new Notification('Novo Pedido!', {
+                            body: `Pedido ${newestOrder.order_number || ''} - R$ ${newestOrder.totalPrice.toFixed(2)}`,
+                            icon: '/vite.svg',
+                            tag: newestOrder.id
+                        });
+                     } catch (e) { console.error("Notification API error", e); }
+                }
+                playNotification();
+                setOrderToPrint(newestOrder);
+            }
+        }
+
+        previousOrdersStatusRef.current = currentStatusMap;
+        setOrders(visibleOrders);
+        isFirstLoadRef.current = false;
+        lastSuccessfulSyncRef.current = Date.now();
+    }, [playNotification]);
+
     useEffect(() => {
+        // Bloquear suspensão de tela (WakeLock)
         let wakeLock: any = null;
         const requestWakeLock = async () => {
             if ('wakeLock' in navigator) {
@@ -48,8 +102,35 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             }
         };
         requestWakeLock();
-        return () => { if (wakeLock !== null) wakeLock.release(); };
-    }, []);
+
+        // Listeners de Redes e Foco
+        const handleOnline = () => { setConnectionStatus('CONNECTED'); forceSync(); };
+        const handleOffline = () => setConnectionStatus('RECONNECTING');
+        const handleVisibilityChange = () => { if (document.visibilityState === 'visible') forceSync(); };
+
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        window.addEventListener('focus', forceSync);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        // HEARTBEAT: Se ficar mais de 45s sem sinal, força sync
+        heartbeatIntervalRef.current = window.setInterval(() => {
+            const timeSinceLastSync = Date.now() - lastSuccessfulSyncRef.current;
+            if (timeSinceLastSync > 45000) {
+                console.log("Heartbeat: Detectado hiato de conexão, forçando sync...");
+                forceSync();
+            }
+        }, 15000);
+
+        return () => { 
+            if (wakeLock !== null) wakeLock.release(); 
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+            window.removeEventListener('focus', forceSync);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
+        };
+    }, [forceSync]);
 
     useEffect(() => {
         const savedWidth = localStorage.getItem('guarafood-printer-width');
@@ -84,54 +165,23 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         if (!currentUser?.restaurantId) return;
 
         const unsubscribe = subscribeToOrders((allOrders) => {
-            const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
-            
-            // 1. Mapa de status de TODOS os pedidos (incluindo os ocultos por Pix)
-            const currentStatusMap = new Map<string, string>();
-            allOrders.forEach(o => currentStatusMap.set(o.id, o.status));
-
-            // 2. FILTRO DE SEGURANÇA MÁXIMA: Pedidos em "Aguardando Pagamento" são invisíveis para o Merchant.
-            // Eles só "nascem" para o lojista quando o status vira "Novo Pedido" (pago).
-            const visibleOrders = allOrders.filter(o => o.status !== 'Aguardando Pagamento');
-
-            if (!isFirstLoadRef.current) {
-                // SÓ ALERTA E IMPRIME SE:
-                // O pedido era desconhecido ou estava oculto (Aguardando Pgto) E agora é um "Novo Pedido"
-                const ordersToAlert = visibleOrders.filter(order => {
-                    const prevStatus = previousOrdersStatusRef.current.get(order.id);
-                    // Importante: se prevStatus for 'Aguardando Pagamento', ele não estava em visibleOrders antes
-                    return order.status === 'Novo Pedido' && prevStatus !== 'Novo Pedido';
-                });
-
-                if (ordersToAlert.length > 0) {
-                    const newestOrder = ordersToAlert[0];
-                    if (areNotificationsEnabled && Notification.permission === 'granted') {
-                         try {
-                             new Notification('Novo Pedido!', {
-                                body: `Pedido ${newestOrder.order_number || ''} - R$ ${newestOrder.totalPrice.toFixed(2)}`,
-                                icon: '/vite.svg',
-                                tag: newestOrder.id
-                            });
-                         } catch (e) { console.error("Notification API error", e); }
-                    }
-                    playNotification();
-                    setOrderToPrint(newestOrder);
-                }
-            }
-
-            previousOrdersStatusRef.current = currentStatusMap;
-            setOrders(visibleOrders);
-            isFirstLoadRef.current = false;
-
+            processOrdersUpdate(allOrders);
         }, currentUser.restaurantId, (status) => {
             if (status === 'SUBSCRIBED') setConnectionStatus('CONNECTED');
-            else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setConnectionStatus('DISCONNECTED');
+            else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                setConnectionStatus('RECONNECTING');
+            }
         }, 200); 
         
-        return () => unsubscribe();
-    }, [currentUser, playNotification]);
+        // POLLING DE SEGURANÇA (HTTP): Sempre ativo em segundo plano a cada 30s
+        pollingIntervalRef.current = window.setInterval(forceSync, 30000);
 
-    
+        return () => {
+            unsubscribe();
+            if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+        };
+    }, [currentUser?.restaurantId, processOrdersUpdate, forceSync]);
+
     const renderContent = () => {
         switch (activeTab) {
             case 'orders':
@@ -157,12 +207,13 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     
     return (
         <div className="w-full min-h-screen bg-gray-50" onClick={enableAudio} onTouchStart={enableAudio}>
+            {/* BARRA DE STATUS INTELIGENTE */}
             <div 
-                className={`text-white text-center text-[10px] uppercase tracking-widest font-black p-1.5 cursor-pointer flex items-center justify-center gap-2 transition-colors duration-500 ${connectionStatus === 'CONNECTED' ? 'bg-green-600' : 'bg-red-600'}`} 
-                onClick={enableAudio}
+                className={`text-white text-center text-[10px] uppercase tracking-widest font-black p-1.5 cursor-pointer flex items-center justify-center gap-2 transition-all duration-500 ${connectionStatus === 'CONNECTED' ? 'bg-green-600' : 'bg-red-600 animate-pulse'}`} 
+                onClick={forceSync}
             >
-                <div className={`w-2.5 h-2.5 rounded-full ${connectionStatus === 'CONNECTED' ? 'bg-white animate-pulse' : 'bg-white'}`}></div>
-                {connectionStatus === 'CONNECTED' ? <span>Painel Online - Monitorando Vendas</span> : <span>Sem Conexão - Tentando Reconectar...</span>}
+                <div className={`w-2.5 h-2.5 rounded-full bg-white ${connectionStatus === 'CONNECTED' ? 'opacity-100' : 'animate-ping'}`}></div>
+                {connectionStatus === 'CONNECTED' ? <span>Painel Online</span> : <span>Conexão Interrompida - Recompondo...</span>}
             </div>
 
             <header className="p-4 sticky top-0 bg-gray-50 z-20 border-b flex justify-between items-center gap-4">
@@ -174,10 +225,21 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         {currentUser?.name || 'Painel Lojista'}
                     </h1>
                 </div>
-                <button onClick={logout} className="flex items-center space-x-2 p-2 text-gray-500 hover:text-red-600 rounded-lg transition-colors font-bold flex-shrink-0">
-                    <LogoutIcon className="w-6 h-6" />
-                    <span className="hidden sm:inline">Sair</span>
-                </button>
+                <div className="flex items-center gap-2">
+                    <button 
+                        onClick={forceSync}
+                        className={`p-2 rounded-lg transition-all ${connectionStatus === 'CONNECTED' ? 'text-gray-400 hover:text-orange-600' : 'text-white bg-red-500'}`}
+                        title="Sincronizar Pedidos"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`w-6 h-6 ${connectionStatus !== 'CONNECTED' ? 'animate-spin' : ''}`}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                        </svg>
+                    </button>
+                    <button onClick={logout} className="flex items-center space-x-2 p-2 text-gray-500 hover:text-red-600 rounded-lg transition-colors font-bold flex-shrink-0">
+                        <LogoutIcon className="w-6 h-6" />
+                        <span className="hidden sm:inline">Sair</span>
+                    </button>
+                </div>
             </header>
 
              <nav className="p-4 border-b sticky top-[95px] bg-gray-50 z-10 overflow-x-auto no-scrollbar">
