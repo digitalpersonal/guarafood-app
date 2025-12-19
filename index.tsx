@@ -1,4 +1,5 @@
-import React, { Component, ReactNode, ErrorInfo } from 'react';
+
+import React, { ReactNode, ErrorInfo } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 
@@ -11,65 +12,47 @@ interface ErrorBoundaryState {
   error: any;
 }
 
-/**
- * ErrorBoundary component catches JavaScript errors anywhere in their child component tree.
- */
-// Fix: Using Component directly and explicitly declaring state/props to satisfy TypeScript's inheritance checks
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Fix: Explicitly declare state and props properties because the compiler is failing to recognize them via inheritance on the 'ErrorBoundary' type
-  public state: ErrorBoundaryState;
-  public props: ErrorBoundaryProps;
-
-  // Fix: Corrected constructor to ensure properties are properly initialized and super() is called with props
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.props = props;
-    this.state = {
-      hasError: false,
-      error: null
-    };
-  }
+// Fix: Use React.Component explicitly to ensure state and props are correctly inherited and recognized by the TypeScript compiler
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Fix: Initialize state using a class property initializer for better type inference
+  public state: ErrorBoundaryState = {
+    hasError: false,
+    error: null
+  };
 
   public static getDerivedStateFromError(error: any): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
   public componentDidCatch(error: any, errorInfo: ErrorInfo) {
-    console.error("Uncaught error:", error, errorInfo);
+    console.error("GuaraFood Critical Error:", error, errorInfo);
   }
 
   public render(): ReactNode {
-    // Fix: Accessing state inherited from Component via declared property which resolves the 'Property does not exist' errors
+    // Fix: Accessing state property inherited from React.Component
     if (this.state.hasError) {
-      let errorMessage = 'Erro desconhecido.';
-      if (this.state.error) {
-          if (this.state.error instanceof Error) {
-              errorMessage = this.state.error.message;
-          } else {
-              errorMessage = String(this.state.error);
-          }
-      }
+      const errorMessage = this.state.error instanceof Error ? this.state.error.message : String(this.state.error);
 
       return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-red-50 p-6 text-center font-sans">
-          <div className="bg-white p-8 rounded-xl shadow-2xl max-w-md w-full border-t-8 border-red-600">
-            <h1 className="text-3xl font-black text-red-600 mb-4">Algo deu errado</h1>
-            <p className="text-gray-700 mb-6 font-medium">Ocorreu um erro inesperado no aplicativo.</p>
-            <div className="bg-gray-100 p-4 rounded text-left text-xs font-mono text-gray-800 overflow-auto mb-6 max-h-40 border border-gray-300 whitespace-pre-wrap">
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 p-6 text-center font-sans">
+          <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full border-t-8 border-orange-600">
+            <h1 className="text-2xl font-black text-gray-800 mb-2">Ops! Ocorreu um erro</h1>
+            <p className="text-gray-600 mb-6 font-medium">Não foi possível carregar o GuaraFood.</p>
+            <div className="bg-red-50 p-4 rounded-xl text-left text-xs font-mono text-red-800 overflow-auto mb-6 max-h-40 border border-red-100">
                 {errorMessage}
             </div>
             <button
               onClick={() => window.location.reload()}
-              className="bg-red-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-red-700 transition-colors w-full shadow-md active:scale-95"
+              className="bg-orange-600 text-white font-black py-4 px-6 rounded-xl hover:bg-orange-700 transition-all w-full shadow-lg active:scale-95"
             >
-              Recarregar Página
+              Tentar Novamente
             </button>
           </div>
         </div>
       );
     }
 
-    // Fix: Accessing props.children which is now correctly recognized by the compiler
+    // Fix: Accessing props property inherited from React.Component
     return this.props.children;
   }
 }

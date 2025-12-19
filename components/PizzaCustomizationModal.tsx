@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo, useEffect } from 'react';
 import type { MenuItem, Addon, CartItem, SizeOption } from '../types';
 
@@ -28,7 +27,6 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
 
     useEffect(() => {
         setFirstHalf(initialPizza);
-        // Set default size if available
         if (initialPizza.sizes && initialPizza.sizes.length > 0) {
             setSelectedSize(initialPizza.sizes[0]);
         } else {
@@ -48,7 +46,7 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
         
         const getPriceForSize = (pizza: MenuItem, sizeName: string): number => {
             const sizeOption = pizza.sizes?.find(s => s.name === sizeName);
-            return sizeOption ? sizeOption.price : pizza.price;
+            return Number(sizeOption ? sizeOption.price : pizza.price);
         };
 
         const firstHalfPrice = getPriceForSize(firstHalf, selectedSize.name);
@@ -56,14 +54,14 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
         
         const pizzaPrice = secondHalf ? Math.max(firstHalfPrice, secondHalfPrice) : firstHalfPrice;
         
-        // FIX: The original reduce implementation had a potential type inference issue.
-        // This was refactored to filter addons first, creating a cleaner and safer calculation
-        // that prevents the 'Operator '+' cannot be applied to types 'number' and 'unknown'' error.
         const addonsPrice = allAddons
             .filter(addon => selectedAddonIds.has(addon.id))
-            .reduce((total, addon) => total + addon.price, 0);
+            .reduce((total, addon) => total + Number(addon.price || 0), 0);
 
-        return { basePrice: pizzaPrice, totalPrice: pizzaPrice + addonsPrice };
+        return { 
+            basePrice: pizzaPrice, 
+            totalPrice: pizzaPrice + addonsPrice 
+        };
     }, [firstHalf, secondHalf, selectedAddonIds, allAddons, selectedSize]);
     
     const handleAddonToggle = (addonId: number) => {
@@ -84,10 +82,7 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
     };
     
     const handleAddToCartClick = () => {
-        if (!selectedSize) {
-            alert("Por favor, selecione um tamanho.");
-            return;
-        }
+        if (!selectedSize) return;
 
         const halves = secondHalf ? [
             { name: firstHalf.name, price: firstHalf.price },
@@ -131,7 +126,6 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                 </div>
 
                 <div className="overflow-y-auto p-4 space-y-4">
-                     {/* --- SIZE SELECTOR --- */}
                     {initialPizza.sizes && initialPizza.sizes.length > 0 && (
                         <div>
                             <h3 className="font-bold mb-2">1. Escolha o Tamanho</h3>
@@ -147,18 +141,16 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                                             className="sr-only"
                                         />
                                         <span className="font-bold text-gray-800">{size.name}</span>
-                                        <span className="text-sm text-gray-600">R$ {size.price.toFixed(2)}</span>
+                                        <span className="text-sm text-gray-600">R$ {Number(size.price).toFixed(2)}</span>
                                     </label>
                                 ))}
                             </div>
                         </div>
                     )}
                     
-                    {/* --- FLAVORS --- */}
                      <div>
                         <h3 className="font-bold mb-2">2. Escolha o(s) Sabor(es)</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* First Half */}
                             <div className="border rounded-lg p-3">
                                 <h3 className="font-bold text-center text-gray-600 text-sm mb-2">1ª Metade</h3>
                                 <div className="flex items-center space-x-3">
@@ -168,7 +160,6 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                                     </div>
                                 </div>
                             </div>
-                            {/* Second Half */}
                             <div className="border rounded-lg p-3 flex flex-col justify-center items-center">
                                 <h3 className="font-bold text-center text-gray-600 text-sm mb-2">2ª Metade</h3>
                                 {secondHalf ? (
@@ -190,7 +181,6 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                         </div>
                      </div>
                     
-                    {/* --- SECOND HALF SELECTOR --- */}
                     {showSecondHalfSelector && (
                         <div>
                             <h3 className="font-bold mb-2">Escolha o segundo sabor:</h3>
@@ -205,7 +195,6 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                         </div>
                     )}
                     
-                    {/* --- ADDONS --- */}
                     {availableAddons.length > 0 && (
                         <div>
                             <h3 className="font-bold mb-2">3. Adicionais (Opcional)</h3>
@@ -221,7 +210,7 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                                             />
                                             <span className="ml-3 font-semibold text-gray-700">{addon.name}</span>
                                         </div>
-                                        {addon.price > 0 && <span className="font-semibold text-gray-600">+ R$ {addon.price.toFixed(2)}</span>}
+                                        {addon.price > 0 && <span className="font-semibold text-gray-600">+ R$ {Number(addon.price).toFixed(2)}</span>}
                                     </label>
                                 ))}
                             </div>
@@ -229,7 +218,6 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                     )}
                 </div>
 
-                {/* --- FOOTER --- */}
                 <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
                     <div className="text-lg font-bold">
                         <span>Total: </span>

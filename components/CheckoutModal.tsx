@@ -103,7 +103,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     
     const deliveryMethodRef = useRef<HTMLDivElement>(null);
 
-    // Carregar dados memorizados do cliente
     useEffect(() => {
         if (isOpen) {
             const loaded: Record<string, { phone: string, address: any }> = {};
@@ -217,13 +216,14 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     }, [isOpen, restaurant.id]);
 
     const { finalPrice, discountAmount } = useMemo(() => {
-        if (!appliedCoupon) return { finalPrice: totalPrice, discountAmount: 0 };
-        let discount = appliedCoupon.discountType === 'PERCENTAGE' ? totalPrice * (appliedCoupon.discountValue / 100) : appliedCoupon.discountValue;
-        return { finalPrice: Math.max(0, totalPrice - discount), discountAmount: discount };
+        const totalNum = Number(totalPrice || 0);
+        if (!appliedCoupon) return { finalPrice: totalNum, discountAmount: 0 };
+        let discount = appliedCoupon.discountType === 'PERCENTAGE' ? totalNum * (Number(appliedCoupon.discountValue) / 100) : Number(appliedCoupon.discountValue);
+        return { finalPrice: Math.max(0, totalNum - discount), discountAmount: discount };
     }, [totalPrice, appliedCoupon]);
 
-    const effectiveDeliveryFee = deliveryMethod === 'PICKUP' ? 0 : (restaurant.deliveryFee || 0);
-    const finalPriceWithFee = finalPrice + effectiveDeliveryFee;
+    const effectiveDeliveryFee = deliveryMethod === 'PICKUP' ? 0 : Number(restaurant.deliveryFee || 0);
+    const finalPriceWithFee = Number(finalPrice) + Number(effectiveDeliveryFee);
     
     const handleAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -238,7 +238,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         try {
             const coupon = await validateCouponByCode(couponCodeInput, restaurant.id);
             if (!coupon || !coupon.isActive || new Date(coupon.expirationDate) < new Date()) throw new Error("Cupom inválido ou expirado.");
-            if (coupon.minOrderValue && totalPrice < coupon.minOrderValue) throw new Error(`Pedido mínimo de R$ ${coupon.minOrderValue.toFixed(2)}.`);
+            if (coupon.minOrderValue && Number(totalPrice) < Number(coupon.minOrderValue)) throw new Error(`Pedido mínimo de R$ ${Number(coupon.minOrderValue).toFixed(2)}.`);
             setAppliedCoupon(coupon);
             addToast({ message: 'Cupom aplicado!', type: 'success' });
         } catch (err: any) { setFormError(err.message); } finally { setIsApplyingCoupon(false); }
@@ -350,8 +350,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             : { zipCode: address.zipCode, street: address.street, number: address.number, neighborhood: address.neighborhood, complement: address.complement };
 
         const orderData: NewOrderData = {
-            customerName, customerPhone, items: cartItems, totalPrice: finalPriceWithFee, subtotal: totalPrice,
-            discountAmount, couponCode: appliedCoupon?.code, deliveryFee: effectiveDeliveryFee, restaurantId: restaurant.id,
+            customerName, customerPhone, items: cartItems, totalPrice: Number(finalPriceWithFee), subtotal: Number(totalPrice),
+            discountAmount: Number(discountAmount), couponCode: appliedCoupon?.code, deliveryFee: Number(effectiveDeliveryFee), restaurantId: restaurant.id,
             restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
             paymentMethod: "Pix (Comprovante via WhatsApp)", customerAddress, wantsSachets
         };
@@ -360,7 +360,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const handleSubmitDetails = async (e: React.FormEvent) => {
         e.preventDefault();
-        // SEGURANÇA: Só permite envio se estiver na etapa DETAILS e sem trava ativa
         if (currentStep !== 'DETAILS' || stepTransitionLock) return;
         
         if (!isOpenNow) { addToast({ message: "O restaurante acabou de fechar.", type: 'error' }); return; }
@@ -379,8 +378,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             : { zipCode: address.zipCode, street: address.street, number: address.number, neighborhood: address.neighborhood, complement: address.complement };
 
         const orderData: NewOrderData = {
-            customerName, customerPhone, items: cartItems, totalPrice: finalPriceWithFee, subtotal: totalPrice,
-            discountAmount, couponCode: appliedCoupon?.code, deliveryFee: effectiveDeliveryFee, restaurantId: restaurant.id,
+            customerName, customerPhone, items: cartItems, totalPrice: Number(finalPriceWithFee), subtotal: Number(totalPrice),
+            discountAmount: Number(discountAmount), couponCode: appliedCoupon?.code, deliveryFee: Number(effectiveDeliveryFee), restaurantId: restaurant.id,
             restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
             paymentMethod: finalPaymentMethod, customerAddress, wantsSachets
         };
@@ -405,7 +404,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             if (cartItems.length === 0) return;
             if (!isOpenNow) return;
             
-            // TRAVA DE SEGURANÇA: Bloqueia qualquer clique acidental de submissão por 500ms
             setStepTransitionLock(true);
             setCurrentStep('DETAILS');
             setTimeout(() => setStepTransitionLock(false), 500);
@@ -482,16 +480,16 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                     <OptimizedImage src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-md object-cover flex-shrink-0" />
                                     <div className="flex-grow">
                                         <p className="font-semibold text-gray-800 text-sm">{item.quantity}x {item.name} {item.sizeName && `(${item.sizeName})`}</p>
-                                        <p className="text-xs text-orange-600 font-bold mt-1">R$ {(item.price * item.quantity).toFixed(2)}</p>
+                                        <p className="text-xs text-orange-600 font-bold mt-1">R$ {(Number(item.price) * item.quantity).toFixed(2)}</p>
                                     </div>
                                 </div>
                             ))}
                         </div>
                         <div className="border-t pt-4 space-y-2 text-sm">
-                            <div className="flex justify-between text-gray-600"><span>Subtotal</span><span>R$ {totalPrice.toFixed(2)}</span></div>
-                            {appliedCoupon && <div className="flex justify-between text-green-600 font-semibold"><span>Desconto</span><span>- R$ {discountAmount.toFixed(2)}</span></div>}
-                            <div className="flex justify-between text-gray-600"><span>Entrega</span><span>{deliveryMethod === 'PICKUP' ? 'Grátis' : `R$ ${(restaurant.deliveryFee || 0).toFixed(2)}`}</span></div>
-                            <div className="flex justify-between font-bold text-lg text-gray-800 border-t pt-2"><span>Total</span><span>R$ {finalPriceWithFee.toFixed(2)}</span></div>
+                            <div className="flex justify-between text-gray-600"><span>Subtotal</span><span>R$ {Number(totalPrice).toFixed(2)}</span></div>
+                            {appliedCoupon && <div className="flex justify-between text-green-600 font-semibold"><span>Desconto</span><span>- R$ {Number(discountAmount).toFixed(2)}</span></div>}
+                            <div className="flex justify-between text-gray-600"><span>Entrega</span><span>{deliveryMethod === 'PICKUP' ? 'Grátis' : `R$ ${Number(restaurant.deliveryFee || 0).toFixed(2)}`}</span></div>
+                            <div className="flex justify-between font-bold text-lg text-gray-800 border-t pt-2"><span>Total</span><span>R$ {Number(finalPriceWithFee).toFixed(2)}</span></div>
                         </div>
                     </div>
                 )}
@@ -639,7 +637,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                 <>
                                     <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="PIX" className="w-48 h-48 mx-auto my-2 border-4 border-gray-700 p-1 rounded-lg" />
                                     <button type="button" onClick={() => { navigator.clipboard.writeText(pixData.qrCode); addToast({ message: 'Copiado!', type: 'success' }); }} className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg my-2 w-full max-xs shadow-lg flex justify-center items-center gap-2 active:scale-95 transition-all"><ClipboardIcon className="w-5 h-5"/>Copiar Código</button>
-                                    <p className="text-2xl font-bold text-orange-600 mt-2">R$ {finalPriceWithFee.toFixed(2)}</p>
+                                    <p className="text-2xl font-bold text-orange-600 mt-2">R$ {Number(finalPriceWithFee).toFixed(2)}</p>
                                     <div className="mt-4 text-[10px] font-bold text-gray-500">Tempo: {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}</div>
                                 </>
                             ) : <Spinner message="Gerando Pix..." />
@@ -662,15 +660,13 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                     </div>
                 )}
                 
-                {/* RODAPÉ DE AÇÕES COM SEPARAÇÃO DE BOTÕES FÍSICA */}
                 {(currentStep === 'SUMMARY' || currentStep === 'DETAILS' || (currentStep === 'PIX_PAYMENT' && !isManualPix)) && (
                     <div className="mt-auto p-4 border-t bg-gray-50 rounded-b-lg flex justify-between items-center bg-white sticky bottom-0 z-10">
                         <button type="button" onClick={handlePrevStep} className="px-5 py-2.5 rounded-lg bg-gray-200 text-gray-800 font-semibold text-sm active:scale-90 transition-transform">{currentStep === 'SUMMARY' ? 'Fechar' : 'Voltar'}</button>
                         
                         <div className="flex flex-col items-end">
-                            <span className="font-bold text-[10px] text-gray-400">Total: <span className="text-orange-600 text-lg">R$ {finalPriceWithFee.toFixed(2)}</span></span>
+                            <span className="font-bold text-[10px] text-gray-400">Total: <span className="text-orange-600 text-lg">R$ {Number(finalPriceWithFee).toFixed(2)}</span></span>
                             
-                            {/* BOTÃO PARA ETAPA SUMMARY */}
                             {currentStep === 'SUMMARY' && (
                                 <button 
                                     onClick={handleNextStep} 
@@ -682,7 +678,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                 </button>
                             )}
 
-                            {/* BOTÃO PARA ETAPA DETAILS (SUBMISSÃO REAL) */}
                             {currentStep === 'DETAILS' && (
                                 <button 
                                     type="submit" 
@@ -694,7 +689,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                 </button>
                             )}
 
-                            {/* BOTÃO PARA PIX PENDENTE (NÃO SUBMETER FORM DENOVO) */}
                             {currentStep === 'PIX_PAYMENT' && !isManualPix && (
                                 <button 
                                     onClick={() => setCurrentStep('DETAILS')} 

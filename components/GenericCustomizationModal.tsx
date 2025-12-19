@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo, useEffect } from 'react';
 import type { MenuItem, Addon, CartItem, SizeOption } from '../types';
 
@@ -35,10 +34,10 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
     }, [allAddons, initialItem]);
     
     const totalPrice = useMemo(() => {
-        const basePrice = selectedSize?.price || initialItem.price;
+        const basePrice = Number(selectedSize?.price || initialItem.price);
         const addonsPrice = availableAddons
             .filter(a => selectedAddonIds.has(a.id))
-            .reduce((total, addon) => total + addon.price, 0);
+            .reduce((total, addon) => total + Number(addon.price || 0), 0);
         
         return basePrice + addonsPrice;
     }, [initialItem, selectedSize, selectedAddonIds, availableAddons]);
@@ -71,7 +70,7 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
             id: cartId,
             name: name,
             price: totalPrice,
-            basePrice: selectedSize.price,
+            basePrice: Number(selectedSize.price),
             imageUrl: initialItem.imageUrl,
             quantity: 1,
             description: `${selectedAddons.length} adicionais selecionados`,
@@ -93,7 +92,6 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
                 </div>
 
                 <div className="overflow-y-auto p-4 space-y-4">
-                     {/* --- SIZE SELECTOR --- */}
                     {initialItem.sizes && initialItem.sizes.length > 0 && (
                         <div>
                             <h3 className="font-bold mb-2">1. Escolha o Tamanho</h3>
@@ -109,14 +107,13 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
                                             className="sr-only"
                                         />
                                         <span className="font-bold text-gray-800">{size.name}</span>
-                                        <span className="text-sm text-gray-600">R$ {size.price.toFixed(2)}</span>
+                                        <span className="text-sm text-gray-600">R$ {Number(size.price).toFixed(2)}</span>
                                     </label>
                                 ))}
                             </div>
                         </div>
                     )}
                     
-                    {/* --- Base Item Display --- */}
                     <div className="border rounded-lg p-3 flex items-center space-x-3 bg-gray-50">
                         <img src={initialItem.imageUrl} alt={initialItem.name} className="w-14 h-14 rounded-md object-cover" loading="lazy"/>
                         <div>
@@ -125,7 +122,6 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
                         </div>
                     </div>
 
-                    {/* --- ADDONS --- */}
                     {availableAddons.length > 0 && (
                         <div>
                             <h3 className="font-bold mb-2">{initialItem.sizes && initialItem.sizes.length > 0 ? '2. ' : ''}Selecione os adicionais</h3>
@@ -141,7 +137,7 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
                                             />
                                             <span className="ml-3 font-semibold text-gray-700">{addon.name}</span>
                                         </div>
-                                        {addon.price > 0 && <span className="font-semibold text-gray-600">+ R$ {addon.price.toFixed(2)}</span>}
+                                        {addon.price > 0 && <span className="font-semibold text-gray-600">+ R$ {Number(addon.price).toFixed(2)}</span>}
                                     </label>
                                 ))}
                             </div>
@@ -149,7 +145,6 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
                     )}
                 </div>
 
-                {/* --- FOOTER --- */}
                 <div className="p-4 border-t bg-gray-50 flex justify-between items-center mt-auto">
                     <div className="text-lg font-bold">
                         <span>Total: </span>

@@ -79,7 +79,6 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         lastSuccessfulSyncRef.current = Date.now();
     }, [playNotification]);
 
-    // Sincronização forçada (Manual/Heartbeat)
     const forceSync = useCallback(async () => {
         if (!currentUser?.restaurantId) return;
         try {
@@ -110,13 +109,13 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         window.addEventListener('focus', handleFocus);
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
-        // HEARTBEAT DE 15s: Se o Realtime falhar, o polling garante a atualização rápida
+        // HEARTBEAT DE 10s: Garante que mudanças de status apareçam instantaneamente
         heartbeatIntervalRef.current = window.setInterval(() => {
             const idleTime = Date.now() - lastSuccessfulSyncRef.current;
-            if (idleTime > 15000) {
+            if (idleTime > 10000) {
                 forceSync();
             }
-        }, 10000);
+        }, 8000);
 
         return () => { 
             if (wakeLock !== null) wakeLock.release(); 
@@ -168,7 +167,6 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     reconnectGraceTimeoutRef.current = null;
                 }
             } else {
-                // TOLERÂNCIA DE 10 SEGUNDOS: Evita mensagens de erro em micro-oscilações
                 if (!reconnectGraceTimeoutRef.current) {
                     reconnectGraceTimeoutRef.current = window.setTimeout(() => {
                         setConnectionStatus('RECONNECTING');
@@ -211,7 +209,6 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     
     return (
         <div className="w-full min-h-screen bg-gray-50" onClick={enableAudio} onTouchStart={enableAudio}>
-            {/* BARRA DE STATUS ESTABILIZADA */}
             <div 
                 className={`text-white text-center text-[10px] uppercase tracking-widest font-black p-1.5 cursor-pointer flex items-center justify-center gap-2 transition-all duration-500 ${connectionStatus === 'CONNECTED' ? 'bg-green-600' : 'bg-red-600 animate-pulse'}`} 
                 onClick={forceSync}

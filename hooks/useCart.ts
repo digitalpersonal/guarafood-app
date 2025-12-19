@@ -1,3 +1,4 @@
+
 import React, { createContext, useState, useContext, useMemo, useCallback, useEffect } from 'react';
 import type { CartItem, MenuItem, Combo } from '../types';
 
@@ -6,7 +7,7 @@ interface CartContextType {
   addToCart: (item: MenuItem | Combo | CartItem) => void;
   removeFromCart: (itemId: string) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
-  updateItemNotes: (itemId: string, notes: string) => void; // New function
+  updateItemNotes: (itemId: string, notes: string) => void;
   clearCart: () => void;
   totalPrice: number;
   totalItems: number;
@@ -14,7 +15,7 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-const CART_STORAGE_KEY = 'guara-food-cart';
+const CART_STORAGE_KEY = 'guara-food-cart-v2';
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
@@ -22,7 +23,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const storedCart = window.localStorage.getItem(CART_STORAGE_KEY);
       return storedCart ? JSON.parse(storedCart) : [];
     } catch (error) {
-      console.error("Failed to parse cart from localStorage", error);
       return [];
     }
   });
@@ -32,7 +32,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [cartItems]);
 
   const addToCart = useCallback((item: MenuItem | Combo | CartItem) => {
-    // Check if it's a pre-built custom item from a modal
     if ('basePrice' in item) {
         const customItem = item as CartItem;
         setCartItems(prevItems => {
@@ -42,12 +41,11 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     cartItem.id === customItem.id ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
                 );
             }
-            return [...prevItems, { ...customItem, quantity: 1 }]; // Add new custom item
+            return [...prevItems, { ...customItem, quantity: 1 }];
         });
         return;
     }
 
-    // Original logic for simple items/combos
     const isCombo = 'menuItemIds' in item;
     const cartId = isCombo ? `combo-${item.id}` : `item-${item.id}`;
 
@@ -61,12 +59,12 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const newCartItem: CartItem = {
           id: cartId,
           name: item.name,
-          price: item.price,
-          basePrice: item.price, // For simple items, basePrice is the same as price
+          price: Number(item.price),
+          basePrice: Number(item.price),
           imageUrl: item.imageUrl,
           quantity: 1,
           description: item.description,
-          originalPrice: item.activePromotion?.name ? item.price : item.originalPrice,
+          originalPrice: item.activePromotion?.name ? Number(item.price) : (item.originalPrice ? Number(item.originalPrice) : undefined),
           promotionName: item.activePromotion?.name,
       };
       return [...prevItems, newCartItem];
@@ -89,7 +87,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [removeFromCart]);
 
-  // New function to update notes for a specific item
   const updateItemNotes = useCallback((itemId: string, notes: string) => {
     setCartItems(prevItems =>
         prevItems.map(item =>
@@ -103,7 +100,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const totalPrice = useMemo(() => {
-    return cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
+    return cartItems.reduce((total, item) => total + (Number(item.price) * item.quantity), 0);
   }, [cartItems]);
 
   const totalItems = useMemo(() => {

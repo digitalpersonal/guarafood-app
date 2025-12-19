@@ -21,7 +21,6 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
     const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
 
     useEffect(() => {
-        // Reset state when modal opens for a new item
         if (initialItem.sizes && initialItem.sizes.length > 0) {
             setSelectedSize(initialItem.sizes[0]);
         } else {
@@ -32,21 +31,18 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
 
     const freeAddonCountLimit = selectedSize?.freeAddonCount || 0;
 
-    // Filter available addons for this item
     const availableAddons = useMemo(() => {
         return allAddons.filter(addon => initialItem.availableAddonIds?.includes(addon.id));
     }, [allAddons, initialItem]);
 
-    // Split into "Free Pool" (Items registered as R$ 0.00) and "Paid Pool" (Items > R$ 0.00)
     const { freePool, paidPool } = useMemo(() => {
-        const free = availableAddons.filter(a => a.price === 0);
-        const paid = availableAddons.filter(a => a.price > 0);
+        const free = availableAddons.filter(a => Number(a.price) === 0);
+        const paid = availableAddons.filter(a => Number(a.price) > 0);
         return { freePool: free, paidPool: paid };
     }, [availableAddons]);
 
-    // Calculate totals and limits
     const { totalPrice, currentFreeCount, isLimitReached } = useMemo(() => {
-        const basePrice = selectedSize?.price || initialItem.price;
+        const basePrice = Number(selectedSize?.price || initialItem.price);
         
         let addonsTotal = 0;
         let freeCount = 0;
@@ -54,8 +50,8 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
         selectedAddonIds.forEach(id => {
             const addon = availableAddons.find(a => a.id === id);
             if (addon) {
-                addonsTotal += addon.price;
-                if (addon.price === 0) {
+                addonsTotal += Number(addon.price || 0);
+                if (Number(addon.price) === 0) {
                     freeCount++;
                 }
             }
@@ -76,10 +72,9 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
             if (isSelected) {
                 newSet.delete(addon.id);
             } else {
-                // Logic check: If it's a free item, check limit
-                if (addon.price === 0) {
+                if (Number(addon.price) === 0) {
                     if (currentFreeCount >= freeAddonCountLimit) {
-                        return prev; // Do nothing if limit reached
+                        return prev;
                     }
                 }
                 newSet.add(addon.id);
@@ -89,17 +84,12 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
     };
     
     const handleAddToCartClick = () => {
-        if (!selectedSize) {
-            alert("Por favor, selecione um tamanho.");
-            return;
-        }
+        if (!selectedSize) return;
         
-        // Reconstruct selected list based on ID set
         const selectedAddons = availableAddons.filter(a => selectedAddonIds.has(a.id));
         
-        // Format description
-        const freeSelectedNames = selectedAddons.filter(a => a.price === 0).map(a => a.name).join(', ');
-        const paidSelectedNames = selectedAddons.filter(a => a.price > 0).map(a => a.name).join(', ');
+        const freeSelectedNames = selectedAddons.filter(a => Number(a.price) === 0).map(a => a.name).join(', ');
+        const paidSelectedNames = selectedAddons.filter(a => Number(a.price) > 0).map(a => a.name).join(', ');
         
         const name = `${initialItem.name} ${selectedSize.name}`;
         
@@ -114,7 +104,7 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
             id: cartId,
             name: name,
             price: totalPrice,
-            basePrice: selectedSize.price,
+            basePrice: Number(selectedSize.price),
             imageUrl: initialItem.imageUrl,
             quantity: 1,
             description: descriptionParts.join(' • '),
@@ -133,7 +123,6 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="acai-modal-title">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                {/* Header */}
                 <div className="p-4 bg-purple-800 text-white flex justify-between items-center shadow-md z-10">
                     <div>
                         <h2 id="acai-modal-title" className="text-xl font-bold">Monte seu Açaí</h2>
@@ -147,7 +136,6 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
                 </div>
 
                 <div className="overflow-y-auto p-4 space-y-6 bg-gray-50 flex-grow">
-                     {/* --- 1. SIZE SELECTOR --- */}
                     {initialItem.sizes && initialItem.sizes.length > 0 && (
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                             <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
@@ -169,9 +157,8 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
                                             />
                                             <div className="flex justify-between items-center mb-1">
                                                 <span className={`font-bold ${isSelected ? 'text-purple-700' : 'text-gray-700'}`}>{size.name}</span>
-                                                {isSelected && <div className="w-2 h-2 bg-purple-600 rounded-full"></div>}
                                             </div>
-                                            <div className="text-sm text-gray-600 font-semibold">R$ {size.price.toFixed(2)}</div>
+                                            <div className="text-sm text-gray-600 font-semibold">R$ {Number(size.price).toFixed(2)}</div>
                                             {size.freeAddonCount && size.freeAddonCount > 0 ? (
                                                 <div className="text-[10px] text-green-700 font-bold mt-1 bg-green-100 px-2 py-0.5 rounded w-fit border border-green-200">
                                                     Inclui {size.freeAddonCount} itens
@@ -184,7 +171,6 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
                         </div>
                     )}
 
-                    {/* --- 2. FREE POOL (LIMITED) --- */}
                     {freePool.length > 0 && (
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                             <div className="flex flex-col mb-4 sticky top-0 bg-white z-10 pb-2 border-b">
@@ -199,7 +185,6 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
                                         </span>
                                     )}
                                 </div>
-                                {/* Progress Bar */}
                                 {freeAddonCountLimit > 0 && (
                                     <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
                                         <div 
@@ -239,7 +224,6 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
                         </div>
                     )}
 
-                    {/* --- 3. PAID POOL (UNLIMITED) --- */}
                     {paidPool.length > 0 && (
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                             <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
@@ -266,7 +250,7 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
                                         </div>
                                         
                                         <span className={`text-sm font-bold ${isSelected ? 'text-orange-700' : 'text-gray-500'}`}>
-                                            + R$ {addon.price.toFixed(2)}
+                                            + R$ {Number(addon.price).toFixed(2)}
                                         </span>
                                     </label>
                                 )})}
@@ -275,7 +259,6 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
                     )}
                 </div>
 
-                {/* --- FOOTER --- */}
                 <div className="p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
                     <div className="flex justify-between items-center mb-3">
                         <span className="text-gray-500 text-sm">Total do Item</span>

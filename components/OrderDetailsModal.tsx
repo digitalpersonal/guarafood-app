@@ -126,7 +126,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                             </div>
                         </div>
                         
-                        {/* CONDIMENTS PREFERENCE HIGHLIGHT (Sustentável) */}
+                        {/* CONDIMENTS PREFERENCE HIGHLIGHT */}
                         <div className={`p-4 rounded-xl border-2 flex items-center gap-4 transition-all shadow-sm ${currentOrder.wantsSachets ? 'bg-emerald-50 border-emerald-500' : 'bg-gray-50 border-gray-100 opacity-70'}`}>
                             <div className={`p-3 rounded-full ${currentOrder.wantsSachets ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-200 text-gray-400'}`}>
                                 <LeafIcon className="w-6 h-6" />
@@ -134,9 +134,6 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                             <div className="flex-grow">
                                 <p className="text-sm font-black text-gray-800 uppercase tracking-wide">
                                     {currentOrder.wantsSachets ? '🌿 Enviar Sachês e Talheres' : '🚫 Não enviar sachês/talheres'}
-                                </p>
-                                <p className="text-[10px] text-gray-600 font-bold leading-tight">
-                                    {currentOrder.wantsSachets ? 'O cliente solicitou o envio dos descartáveis.' : 'Escolha sustentável: cliente optou por reduzir o lixo.'}
                                 </p>
                             </div>
                         </div>
@@ -154,7 +151,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                                                     {item.selectedOptions.map((opt, idx) => (
                                                         <li key={idx} className="font-medium">
                                                             • {opt.groupTitle}: {opt.optionName}
-                                                            {opt.price > 0 && ` (+ R$ ${opt.price.toFixed(2)})`}
+                                                            {opt.price > 0 && ` (+ R$ ${Number(opt.price).toFixed(2)})`}
                                                         </li>
                                                     ))}
                                                 </ul>
@@ -164,17 +161,17 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                                                 <p className="text-xs text-gray-500 pl-2">½ {item.halves[0].name} | ½ {item.halves[1].name}</p>
                                             )}
 
-                                            {item.selectedAddons && item.selectedAddons.length > 0 && (
+                                            {item.selectedAddons && item.selectedAddonIds && (
                                                 <ul className="text-xs text-gray-500 pl-2 mt-1">
                                                     {item.selectedAddons.map(addon => (
-                                                        <li key={addon.id}>+ {addon.name}</li>
+                                                        <li key={addon.id}>+ {addon.name} {addon.price > 0 && `(+ R$ ${Number(addon.price).toFixed(2)})`}</li>
                                                     ))}
                                                 </ul>
                                             )}
                                             
                                             {item.notes && <p className="text-xs text-orange-600 font-bold mt-1">Nota: {item.notes}</p>}
                                         </div>
-                                        <p className="font-semibold ml-4 whitespace-nowrap">R$ {(item.price * item.quantity).toFixed(2)}</p>
+                                        <p className="font-semibold ml-4 whitespace-nowrap">R$ {(Number(item.price) * item.quantity).toFixed(2)}</p>
                                     </li>
                                 ))}
                             </ul>
@@ -184,24 +181,24 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                             {currentOrder.subtotal && (
                               <div className="flex justify-between text-gray-600 text-sm">
                                 <span>Subtotal</span>
-                                <span>R$ {currentOrder.subtotal.toFixed(2)}</span>
+                                <span>R$ {Number(currentOrder.subtotal).toFixed(2)}</span>
                               </div>
                             )}
-                            {currentOrder.discountAmount && currentOrder.discountAmount > 0 && (
+                            {currentOrder.discountAmount && Number(currentOrder.discountAmount) > 0 && (
                               <div className="flex justify-between text-green-600 text-sm font-semibold">
                                 <span>Desconto ({currentOrder.couponCode})</span>
-                                <span>- R$ {currentOrder.discountAmount.toFixed(2)}</span>
+                                <span>- R$ {Number(currentOrder.discountAmount).toFixed(2)}</span>
                               </div>
                             )}
                             {currentOrder.deliveryFee != null && (
                                 <div className="flex justify-between text-gray-600 text-sm">
                                     <span>Taxa de Entrega</span>
-                                    <span>R$ {currentOrder.deliveryFee.toFixed(2)}</span>
+                                    <span>R$ {Number(currentOrder.deliveryFee).toFixed(2)}</span>
                                 </div>
                             )}
                             <div className="flex justify-between items-center font-bold text-lg sm:text-xl text-gray-900 border-t pt-2 mt-1">
                                 <span>Total</span>
-                                <span>R$ {currentOrder.totalPrice.toFixed(2)}</span>
+                                <span>R$ {Number(currentOrder.totalPrice).toFixed(2)}</span>
                             </div>
                         </div>
                     </div>
@@ -237,7 +234,6 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                     </div>
                 </div>
             </div>
-             {/* Hidden component for printing */}
             <div className="hidden print:block">
                 <div id="printable-order">
                     <PrintableOrder order={currentOrder} printerWidth={printerWidth} /> 

@@ -49,12 +49,12 @@ export const subscribeToOrders = (
         }
     };
 
-    // NOME DO CANAL ESTÁTICO: Evita o loop de desconexão a cada 5s
+    // Canal Estático para estabilidade
     const channelName = restaurantId ? `orders_store_${restaurantId}` : `orders_global_admin`;
     
-    // Limpeza de canais anteriores com o mesmo nome para evitar duplicidade
-    const existing = supabase.getChannels().find(ch => ch.name === channelName);
-    if (existing) supabase.removeChannel(existing);
+    // Garantir que não existam múltiplos canais pendentes
+    const existingChannels = supabase.getChannels().filter(ch => ch.name === channelName);
+    existingChannels.forEach(ch => supabase.removeChannel(ch));
 
     const channel = supabase.channel(channelName)
         .on(
