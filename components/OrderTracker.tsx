@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../services/api';
 import { useSound } from '../hooks/useSound';
 
@@ -30,10 +31,10 @@ const statusSteps: Record<string, number> = {
 
 const statusLabels: Record<string, string> = {
     'Aguardando Pagamento': 'Aguardando Pagamento',
-    'Novo Pedido': 'Recebido',
-    'Preparando': 'Preparando',
+    'Novo Pedido': 'Pedido Recebido',
+    'Preparando': 'Sendo Preparado',
     'A Caminho': 'Saiu para Entrega',
-    'Entregue': 'Entregue',
+    'Entregue': 'Pedido Entregue',
     'Cancelado': 'Cancelado'
 };
 
@@ -41,6 +42,8 @@ const OrderTracker: React.FC = () => {
     const [activeOrders, setActiveOrders] = useState<any[]>([]);
     const [isExpanded, setIsExpanded] = useState(false);
     const [showTooltip, setShowTooltip] = useState(false);
+    const previousOrderCountRef = useRef(0);
+    const pollingIntervalRef = useRef<number | null>(null);
     
     const { playNotification, initAudioContext } = useSound();
 
@@ -49,12 +52,13 @@ const OrderTracker: React.FC = () => {
             const storedOrderIds = JSON.parse(localStorage.getItem('guarafood-active-orders') || '[]');
             if (storedOrderIds.length === 0) {
                 setActiveOrders([]);
+                previousOrderCountRef.current = 0;
                 return;
             }
 
             const { data, error } = await supabase
                 .from('orders')
-                .select('id, status, restaurant_name, total_price, timestamp')
+                .select('id, order_number, status, restaurant_name, total_price, timestamp')
                 .in('id', storedOrderIds)
                 .order('timestamp', { ascending: false });
 
@@ -62,50 +66,66 @@ const OrderTracker: React.FC = () => {
 
             if (data) {
                 const ongoing = data.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado');
-                setActiveOrders(ongoing);
                 
-                if (ongoing.length > 0 && activeOrders.length === 0) {
-                    setShowTooltip(true);
-                    setTimeout(() => setShowTooltip(false), 8000); 
+                // Se houver novos pedidos ativos ou mudanças, tocamos a notificação
+                if (ongoing.length > 0) {
+                    const hasStatusChanged = ongoing.some(current => {
+                        const prev = activeOrders.find(o => o.id === current.id);
+                        return prev && prev.status !== current.status;
+                    });
+
+                    if (hasStatusChanged || (ongoing.length > previousOrderCountRef.current)) {
+                        playNotification();
+                    }
                 }
+
+                setActiveOrders(ongoing);
+                previousOrderCountRef.current = ongoing.length;
             }
         } catch (err) {
-            console.error("Failed to load active orders:", err);
+            console.error("Tracker Load Error:", err);
         }
-    }, [activeOrders.length]);
+    }, [playNotification, activeOrders]);
 
     useEffect(() => {
         loadOrders();
-        window.addEventListener('guarafood:update-orders', loadOrders);
         
+        // Listener infalível para abertura via Handshake (Checkout -> Tracker)
+        // Garantido em Android e iOS
+        const handleHandshake = () => {
+            loadOrders(); // Força recarga imediata via HTTP para evitar delay do WebSocket
+            setIsExpanded(true); // Abre o tracker automaticamente
+            setShowTooltip(true); // Mostra balão de ajuda visual
+            setTimeout(() => setShowTooltip(false), 12000); 
+        };
+
+        window.addEventListener('guarafood:update-orders', loadOrders);
+        window.addEventListener('guarafood:open-tracker', handleHandshake);
+        
+        // REDUNDÂNCIA MÁXIMA PARA MOBILE: Polling de segurança
+        // Se o WebSocket do Supabase cair no 4G, o sistema busca o status via HTTP a cada 30s
+        pollingIntervalRef.current = window.setInterval(loadOrders, 30000);
+
+        // Realtime Subscription (WebSocket)
         const subscription = supabase
-            .channel('public:orders:tracker')
+            .channel('public:orders:customer_tracker')
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (payload) => {
                 const updatedOrder = payload.new;
                 const storedOrderIds = JSON.parse(localStorage.getItem('guarafood-active-orders') || '[]');
                 
                 if (storedOrderIds.includes(updatedOrder.id)) {
-                    setActiveOrders(prev => {
-                        const exists = prev.find(o => o.id === updatedOrder.id);
-                        if (!exists) return prev;
-                        
-                        if (exists.status !== updatedOrder.status) {
-                            playNotification();
-                            if (updatedOrder.status === 'Entregue' || updatedOrder.status === 'Cancelado') {
-                                 return prev.filter(o => o.id !== updatedOrder.id);
-                            }
-                        }
-                        return prev.map(o => o.id === updatedOrder.id ? { ...o, status: updatedOrder.status } : o);
-                    });
+                    loadOrders(); // Recarrega tudo para garantir consistência visual
                 }
             })
             .subscribe();
 
         return () => {
             window.removeEventListener('guarafood:update-orders', loadOrders);
+            window.removeEventListener('guarafood:open-tracker', handleHandshake);
+            if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
             supabase.removeChannel(subscription);
         };
-    }, [loadOrders, playNotification]);
+    }, [loadOrders]);
 
     if (activeOrders.length === 0) return null;
 
@@ -114,85 +134,115 @@ const OrderTracker: React.FC = () => {
     const progress = currentStep === 0 ? 5 : (currentStep / 4) * 100;
     const isPending = mainOrder.status === 'Aguardando Pagamento';
 
+    const displayOrderNum = mainOrder.order_number 
+        ? `#${String(mainOrder.order_number).padStart(3, '0')}`
+        : `#${mainOrder.id.substring(mainOrder.id.length - 4).toUpperCase()}`;
+
     return (
-        <div className="fixed bottom-0 left-0 right-0 z-[100] px-4 pb-4 pointer-events-none">
+        <div className="fixed bottom-0 left-0 right-0 z-[100] px-4 pb-4 pb-safe pointer-events-none">
             <div 
                 className="relative max-w-md mx-auto pointer-events-auto"
                 onClick={initAudioContext}
             >
+                {/* Balão de Destaque Visual (Sinalizador Inteligente) */}
                 {showTooltip && (
-                    <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white text-xs font-bold py-1 px-3 rounded-full shadow-lg animate-bounce">
-                        Acompanhe seu pedido aqui!
-                        <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-blue-600 rotate-45"></div>
+                    <div className="absolute -top-16 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white text-[10px] font-black py-2.5 px-5 rounded-2xl shadow-2xl animate-bounce z-20 whitespace-nowrap border-2 border-white">
+                        <span className="mr-1">📱</span> Rastreie o seu pedido por aqui!
+                        <div className="absolute -bottom-1.5 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-blue-600 rotate-45 border-r-2 border-b-2 border-white"></div>
                     </div>
                 )}
 
-                <div className="bg-white rounded-xl shadow-[0_-5px_30px_-5px_rgba(0,0,0,0.4)] border border-orange-100 overflow-hidden">
+                <div className="bg-white rounded-3xl shadow-[0_-10px_50px_-5px_rgba(0,0,0,0.4)] border border-orange-100 overflow-hidden transition-all duration-500 ease-in-out">
                     <div 
-                        className={`p-3 flex items-center justify-between cursor-pointer ${isPending ? 'bg-yellow-50' : 'bg-orange-50'} hover:opacity-95`}
+                        className={`p-4 flex items-center justify-between cursor-pointer ${isPending ? 'bg-yellow-50' : 'bg-orange-50'} hover:bg-white active:scale-[0.98] transition-all`}
                         onClick={() => setIsExpanded(!isExpanded)}
                     >
-                        <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-full ${isPending ? 'bg-yellow-200 text-yellow-700' : 'bg-orange-100 text-orange-600'}`}>
-                                {isPending ? <ClockIcon className="w-6 h-6" /> : <MotorcycleIcon className="w-6 h-6" />}
+                        <div className="flex items-center gap-4">
+                            <div className={`p-3 rounded-2xl ${isPending ? 'bg-yellow-200 text-yellow-700' : 'bg-orange-100 text-orange-600'} shadow-inner border border-white`}>
+                                {isPending ? <ClockIcon className="w-6 h-6" /> : <MotorcycleIcon className="w-6 h-6 animate-pulse" />}
                             </div>
                             <div>
-                                <p className="text-sm font-bold text-gray-800 leading-tight">Pedido em andamento</p>
-                                <p className={`text-xs font-semibold ${isPending ? 'text-yellow-700' : 'text-orange-600'}`}>
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1.5">Rastreamento Ativo</p>
+                                <p className={`text-sm font-black uppercase tracking-tight ${isPending ? 'text-yellow-700' : 'text-orange-600'}`}>
                                     {statusLabels[mainOrder.status] || mainOrder.status}
                                 </p>
                             </div>
                         </div>
-                        <button className="text-gray-400 p-1">
-                            {isExpanded ? <ChevronDownIcon className="w-5 h-5"/> : <ChevronUpIcon className="w-5 h-5"/>}
-                        </button>
+                        <div className="flex items-center gap-3">
+                             {!isExpanded && (
+                                <span className="text-[9px] font-black text-orange-600 bg-orange-100 px-2 py-1 rounded-full uppercase tracking-tighter animate-pulse">
+                                    Ver Detalhes
+                                </span>
+                             )}
+                             <button className="text-gray-400 p-1 bg-gray-50 rounded-full border">
+                                {isExpanded ? <ChevronDownIcon className="w-5 h-5"/> : <ChevronUpIcon className="w-5 h-5"/>}
+                            </button>
+                        </div>
                     </div>
 
-                    <div className="h-1.5 w-full bg-gray-200">
+                    {/* Barra de Progresso Blindada */}
+                    <div className="h-2 w-full bg-gray-200 relative">
                         <div 
-                            className={`h-full transition-all duration-1000 ease-out ${isPending ? 'bg-yellow-500' : 'bg-orange-500'}`}
+                            className={`h-full transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(234,88,12,0.4)] ${isPending ? 'bg-yellow-500' : 'bg-orange-600'}`}
                             style={{ width: `${progress}%` }}
                         ></div>
                     </div>
 
                     {isExpanded && (
-                        <div className="p-4 bg-white space-y-4 animate-fadeIn">
-                            <div className="flex justify-between items-center text-sm text-gray-600 border-b pb-2">
-                                <span className="font-bold text-gray-800">{mainOrder.restaurant_name}</span>
-                                <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">#{mainOrder.id.substring(0, 6)}</span>
+                        <div className="p-6 bg-white space-y-6 animate-fadeIn">
+                            <div className="flex justify-between items-center text-sm text-gray-600 border-b pb-4">
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Restaurante</span>
+                                    <span className="font-black text-gray-900 uppercase tracking-tight truncate max-w-[220px]">{mainOrder.restaurant_name}</span>
+                                </div>
+                                <span className="font-mono bg-gray-900 text-white font-black px-3 py-1.5 rounded-xl shadow-lg text-xs">{displayOrderNum}</span>
                             </div>
                             
-                            <div className="px-2">
+                            <div className="px-1">
                                 <div className="flex justify-between items-center relative">
-                                    <div className="absolute top-1/2 left-0 w-full h-0.5 bg-gray-200 -z-10"></div>
+                                    <div className="absolute top-1/2 left-0 w-full h-1 bg-gray-100 -z-10 -translate-y-1/2"></div>
                                     {[1, 2, 3, 4].map((step) => {
                                         const isCompleted = step <= currentStep && !isPending;
                                         const isCurrent = step === currentStep && !isPending;
                                         return (
-                                            <div key={step} className="flex flex-col items-center gap-1 bg-white px-1">
-                                                <div className={`w-3 h-3 rounded-full border-2 ${isCompleted ? 'bg-orange-500 border-orange-500' : 'bg-white border-gray-300'} ${isCurrent ? 'ring-2 ring-orange-200' : ''}`}></div>
+                                            <div key={step} className="flex flex-col items-center gap-1 bg-white px-2 relative">
+                                                <div className={`w-5 h-5 rounded-full border-2 transition-all duration-500 flex items-center justify-center ${isCompleted ? 'bg-orange-600 border-orange-600 scale-110 shadow-md' : 'bg-white border-gray-200'} ${isCurrent ? 'ring-4 ring-orange-100' : ''}`}>
+                                                    {isCompleted && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                                </div>
                                             </div>
                                         );
                                     })}
                                 </div>
-                                <div className="flex justify-between text-[9px] text-gray-500 font-bold mt-2 uppercase">
-                                    <span>Recebido</span>
-                                    <span>Preparo</span>
-                                    <span>Entrega</span>
-                                    <span>Fim</span>
+                                <div className="flex justify-between text-[9px] text-gray-400 font-black mt-4 uppercase tracking-widest">
+                                    <span className={currentStep >= 1 ? 'text-orange-600' : ''}>Recebido</span>
+                                    <span className={currentStep >= 2 ? 'text-orange-600' : ''}>Preparo</span>
+                                    <span className={currentStep >= 3 ? 'text-orange-600' : ''}>Entrega</span>
+                                    <span className={currentStep >= 4 ? 'text-orange-600' : ''}>Fim</span>
                                 </div>
                             </div>
                             
-                            {isPending && (
-                                <div className="text-center text-[10px] text-yellow-700 bg-yellow-50 p-2 rounded border border-yellow-100 font-bold">
-                                    Aguardando confirmação do pagamento pelo banco...
+                            {isPending ? (
+                                <div className="text-center text-[10px] text-yellow-800 bg-yellow-100/50 p-4 rounded-2xl border border-yellow-200 font-bold animate-pulse">
+                                    ⏳ Aguardando confirmação do pagamento pelo banco...
+                                </div>
+                            ) : (
+                                <div className="text-center text-[9px] text-emerald-700 bg-emerald-50 p-3 rounded-2xl border border-emerald-100 font-black uppercase tracking-widest flex items-center justify-center gap-2">
+                                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></div>
+                                    Conexão Segura Ativa: Acompanhando em Tempo Real
                                 </div>
                             )}
                             
-                            <div className="flex justify-between items-center text-xs pt-2 border-t text-gray-500">
-                                <span>Total</span>
-                                <span className="font-bold text-gray-900">R$ {Number(mainOrder.total_price).toFixed(2)}</span>
+                            <div className="flex justify-between items-center text-xs pt-4 border-t border-gray-50 text-gray-500 font-bold">
+                                <span>Total do Pedido</span>
+                                <span className="font-black text-gray-900 text-lg">R$ {Number(mainOrder.total_price).toFixed(2)}</span>
                             </div>
+                            
+                            <button 
+                                onClick={() => setIsExpanded(false)}
+                                className="w-full py-3 text-[10px] font-black text-gray-300 uppercase tracking-widest hover:text-gray-500 transition-colors bg-gray-50 rounded-xl"
+                            >
+                                Minimizar Painel
+                            </button>
                         </div>
                     )}
                 </div>

@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
   <head>
@@ -10,7 +11,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="GuaraFood">
 
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <!-- viewport-fit=cover é essencial para o rastreador não ficar embaixo da barra do iPhone -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
@@ -33,6 +35,13 @@
     }
     </script>
     <style>
+      :root {
+        --sat: env(safe-area-inset-top);
+        --sar: env(safe-area-inset-right);
+        --sab: env(safe-area-inset-bottom);
+        --sal: env(safe-area-inset-left);
+      }
+
       @keyframes pulse-logo {
         0% { transform: scale(1); opacity: 1; }
         50% { transform: scale(1.05); opacity: 0.9; }
@@ -67,6 +76,11 @@
         pointer-events: none;
       }
 
+      /* Ajuste de padding para iPhones com barra inferior */
+      .pb-safe {
+        padding-bottom: var(--sab);
+      }
+
       @media print {
         body * { visibility: hidden; }
         #printable-order, #printable-order * { visibility: visible; }
@@ -91,24 +105,19 @@
     </div>
     <script type="module" src="index.tsx"></script>
     <script>
-      // Função universal para remover o splash
       function hideSplash() {
         const splash = document.getElementById('splash-screen');
         if (splash) {
           splash.classList.add('hidden');
-          splash.style.pointerEvents = 'none'; // Libera cliques mesmo se o elemento persistir
+          splash.style.pointerEvents = 'none';
         }
       }
-
-      // Timeout de segurança: 3 segundos é o suficiente para carregar o básico
       setTimeout(hideSplash, 3000);
-
-      // Service Worker: Registro relativo e resiliente
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('sw.js')
             .then(reg => console.log('SW registrado'))
-            .catch(err => console.warn('SW falhou (comum em previews):', err.message));
+            .catch(err => console.warn('SW falhou:', err.message));
         });
       }
     </script>

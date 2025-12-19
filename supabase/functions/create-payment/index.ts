@@ -1,3 +1,4 @@
+
 // supabase/functions/create-payment/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -39,12 +40,17 @@ serve(async (req: Request) => {
     const accessToken = restaurant.mercado_pago_credentials.accessToken
 
     // 2. SALVAR PEDIDO NO BANCO COM STATUS PENDENTE
-    // CRÍTICO: O status 'Aguardando Pagamento' impede que o pedido apareça no OrdersView ou OrderManagement (Campainha)
+    // Inserimos a preferência de sachês dentro do objeto customer_address para compatibilidade
+    const customerAddressWithPrefs = {
+        ...orderData.customerAddress,
+        wantsSachets: orderData.wantsSachets === true
+    };
+
     const dbOrderPayload = {
       restaurant_id: orderData.restaurantId,
       customer_name: orderData.customerName,
       customer_phone: orderData.customerPhone,
-      customer_address: orderData.customerAddress,
+      customer_address: customerAddressWithPrefs,
       items: orderData.items,
       total_price: orderData.totalPrice,
       restaurant_name: orderData.restaurantName,
@@ -55,7 +61,7 @@ serve(async (req: Request) => {
       discount_amount: orderData.discountAmount,
       subtotal: orderData.subtotal,
       delivery_fee: orderData.deliveryFee,
-      status: 'Aguardando Pagamento', // <--- ISSO GARANTE QUE NÃO APAREÇA NO PAINEL
+      status: 'Aguardando Pagamento',
       payment_status: 'pending',
       timestamp: new Date().toISOString()
     }
@@ -95,12 +101,10 @@ serve(async (req: Request) => {
     const paymentData = await mpResponse.json()
 
     if (!mpResponse.ok) {
-      // Se falhar no MP, cancelamos o pedido no banco
       await supabaseAdmin.from('orders').update({ status: 'Cancelado' }).eq('id', order.id);
       throw new Error(`Mercado Pago: ${paymentData.message || 'Erro ao gerar Pix'}`)
     }
     
-    // Vincula o ID do Mercado Pago ao pedido
     if (paymentData.id) {
          await supabaseAdmin.from('orders').update({ payment_id: String(paymentData.id) }).eq('id', order.id);
     }

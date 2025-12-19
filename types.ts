@@ -163,6 +163,7 @@ export type OrderStatus = 'Aguardando Pagamento' | 'Novo Pedido' | 'Preparando' 
 
 export interface Order {
   id: string;
+  order_number?: number; // NEW: Sequential number from DB
   timestamp: string;
   status: OrderStatus;
   customerName: string;

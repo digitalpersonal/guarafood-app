@@ -1,28 +1,28 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from '../types';
-import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant } from '../services/databaseService';
-import { AuthProvider, useAuth } from '../services/authService';
-import { getInitializationError, getErrorMessage } from '../services/api';
-import { isRestaurantOpen } from '../utils/restaurantUtils';
 
-import RestaurantCard from './RestaurantCard';
-import Spinner from './Spinner';
-import MenuItemCard from './MenuItemCard';
-import ComboCard from './ComboCard';
-import Cart from './Cart';
-import LoginScreen from './LoginScreen';
-import AdminDashboard from './AdminDashboard';
-import OrderManagement from './OrderManagement';
-import CouponDisplay from './CouponDisplay';
-import HomePromotionalBanner from './HomePromotionalBanner';
-import { CartProvider } from '../hooks/useCart';
-import { AnimationProvider } from '../hooks/useAnimation';
-import { NotificationProvider } from '../hooks/useNotification';
-import OptimizedImage from './OptimizedImage';
-import OrderTracker from './OrderTracker';
-import CustomerOrders from './CustomerOrders';
-import HeaderGlobal from './HeaderGlobal';
-import Footer from './Footer';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from './types';
+import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant } from './services/databaseService';
+import { AuthProvider, useAuth } from './services/authService';
+import { getInitializationError, getErrorMessage } from './services/api';
+import { isRestaurantOpen } from './utils/restaurantUtils';
+
+import RestaurantCard from './components/RestaurantCard';
+import Spinner from './components/Spinner';
+import MenuItemCard from './components/MenuItemCard';
+import ComboCard from './components/ComboCard';
+import Cart from './components/Cart';
+import LoginScreen from './components/LoginScreen';
+import AdminDashboard from './components/AdminDashboard';
+import OrderManagement from './components/OrderManagement';
+import HomePromotionalBanner from './components/HomePromotionalBanner';
+import { CartProvider } from './hooks/useCart';
+import { AnimationProvider } from './hooks/useAnimation';
+import { NotificationProvider } from './hooks/useNotification';
+import OptimizedImage from './components/OptimizedImage';
+import OrderTracker from './components/OrderTracker';
+import CustomerOrders from './components/CustomerOrders';
+import HeaderGlobal from './components/HeaderGlobal';
+import Footer from './components/Footer';
 
 const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -32,17 +32,23 @@ const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
 
 const FunnelIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3z" />
     </svg>
 );
 
-const HeartIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
-        <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 0 1-.383-.218 25.18 25.18 0 0 1-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0 1 12 5.052 5.5 5.5 0 0 1 16.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 0 1-4.244 3.17 15.247 15.247 0 0 1-.383.219l-.022.012-.007.004-.003.001a.752.752 0 0 1-.704 0l-.003-.001z" />
+const PastelIcon = () => (
+    <svg width="42" height="42" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 20C12 18.8954 12.8954 18 14 18H50C51.1046 18 52 18.8954 52 20V44C52 45.1046 51.1046 46 50 46H14C12.8954 46 12 45.1046 12 44V20Z" fill="#FBBF24" stroke="#D97706" strokeWidth="2.5"/>
+        <circle cx="20" cy="26" r="2" fill="#D97706" opacity="0.6"/>
+        <circle cx="44" cy="30" r="1.5" fill="#D97706" opacity="0.6"/>
+        <circle cx="32" cy="38" r="2.5" fill="#D97706" opacity="0.5"/>
+        <circle cx="24" cy="40" r="1.5" fill="#D97706" opacity="0.6"/>
+        <path d="M12 22H15M12 26H15M12 30H15M12 34H15M12 38H15M12 42H15" stroke="#D97706" strokeWidth="1.5" strokeLinecap="round"/>
+        <path d="M49 22H52M49 26H52M49 30H52M49 34H52M49 38H52M49 42H52" stroke="#D97706" strokeWidth="1.5" strokeLinecap="round"/>
     </svg>
 );
 
-const categoryIcons: Record<string, string> = {
+const categoryIcons: Record<string, React.ReactNode> = {
     'Lanches': '🍔',
     'Pizza': '🍕',
     'Açaí': '🍧',
@@ -53,9 +59,10 @@ const categoryIcons: Record<string, string> = {
     'Saudável': '🥗',
     'Italiana': '🍝',
     'Marmita': '🍱',
+    'Pastelaria': <PastelIcon />,
+    'Pastel': <PastelIcon />,
     'Supermercado': '🛒',
-    'Todos': '✨',
-    'Favoritos': '❤️'
+    'Todos': '✨'
 };
 
 const slugify = (text: string) => `category-${text.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '')}`;
@@ -114,7 +121,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                          <OptimizedImage src={restaurant.imageUrl} alt={restaurant.name} priority={true} className="w-full h-full rounded-full" objectFit="contain" />
                     </div>
                 </div>
-                <button onClick={onBack} className="absolute top-4 left-4 bg-white/90 backdrop-blur rounded-full p-2 shadow-md z-20">
+                <button onClick={onBack} className="absolute top-4 left-4 bg-white/90 backdrop-blur rounded-full p-2 shadow-md z-20 hover:scale-105 active:scale-95 transition-transform">
                     <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
                 </button>
             </div>
@@ -134,10 +141,10 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
             )}
 
             {!isLoading && menu.length > 0 && (
-                <div className="sticky top-[64px] z-40 bg-white shadow-md border-b border-gray-100">
+                <div className="sticky top-[64px] z-30 bg-white shadow-md border-b border-gray-100">
                     <div className="flex space-x-3 overflow-x-auto p-3 no-scrollbar">
                         {menu.map((category) => (
-                            <button key={category.name} onClick={() => handleNavClick(category.name)} className={`px-4 py-2 rounded-full font-semibold text-sm whitespace-nowrap transition-colors ${activeCategory === slugify(category.name) ? 'bg-orange-600 text-white' : 'bg-gray-100 text-gray-700'}`}>
+                            <button key={category.name} onClick={() => handleNavClick(category.name)} className={`px-4 py-2 rounded-full font-semibold text-sm whitespace-nowrap transition-colors ${activeCategory === slugify(category.name) ? 'bg-orange-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
                                 {category.name}
                             </button>
                         ))}
@@ -169,12 +176,8 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
     const [isLoading, setIsLoading] = useState(true);
     const [selectedCategories, setSelectedCategories] = useState<string[]>(['Todos']);
     const [showOpenOnly, setShowOpenOnly] = useState(false);
-    const [favorites, setFavorites] = useState<number[]>([]);
 
     useEffect(() => {
-        const savedFavorites = localStorage.getItem('guarafood-favorites');
-        if (savedFavorites) setFavorites(JSON.parse(savedFavorites));
-
         const loadInitialData = async () => {
             try {
                 const data = await fetchRestaurants();
@@ -193,11 +196,10 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
         return restaurants.filter(restaurant => {
             const restaurantCats = restaurant.category ? restaurant.category.split(',').map(c => c.trim()) : [];
             const matchesCategory = selectedCategories.includes('Todos') || selectedCategories.some(c => restaurantCats.includes(c));
-            const matchesFavorites = !selectedCategories.includes('Favoritos') || favorites.includes(restaurant.id);
             const matchesOpen = !showOpenOnly || isRestaurantOpen(restaurant);
-            return matchesCategory && matchesFavorites && matchesOpen;
+            return matchesCategory && matchesOpen;
         });
-    }, [restaurants, selectedCategories, favorites, showOpenOnly]);
+    }, [restaurants, selectedCategories, showOpenOnly]);
 
     const handleCategoryToggle = (category: string) => {
         if (category === 'Todos') { setSelectedCategories(['Todos']); return; }
@@ -222,7 +224,6 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
 
     return (
         <main className="pb-16 bg-white min-h-screen">
-            {/* O Banner que você pediu - Agora com fallback garantido */}
             <HomePromotionalBanner onBannerClick={(type, val) => {
                 if (type === 'restaurant') {
                     const r = restaurants.find(res => res.name === val);
@@ -230,7 +231,6 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
                 } else { handleCategoryToggle(val); }
             }} />
 
-            {/* Menu de Categorias Visual (Bolhas) */}
             <div className="p-4 overflow-hidden">
                 <h2 className="text-lg font-bold text-gray-800 mb-4 ml-1">O que você quer comer hoje?</h2>
                 <div className="flex space-x-6 overflow-x-auto pb-4 no-scrollbar">
@@ -252,24 +252,17 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
                 </div>
             </div>
 
-            {/* Chips de Filtro Rápido */}
-            <div className="px-4 py-2 flex gap-2 overflow-x-auto no-scrollbar border-b border-gray-100 pb-4 sticky top-[60px] bg-white z-10">
+            <div className="px-4 py-2 flex gap-2 overflow-x-auto no-scrollbar border-b border-gray-100 pb-4 sticky top-[60px] bg-white z-10 shadow-sm">
                 <button 
                     onClick={() => setShowOpenOnly(!showOpenOnly)} 
                     className={`flex items-center gap-2 px-4 py-1.5 rounded-full border text-xs font-bold transition-all ${showOpenOnly ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-gray-600 border-gray-300'}`}
                 >
                     <FunnelIcon className="w-3 h-3" /> Abertos agora
                 </button>
-                <button 
-                    onClick={() => handleCategoryToggle('Favoritos')} 
-                    className={`flex items-center gap-2 px-4 py-1.5 rounded-full border text-xs font-bold transition-all ${selectedCategories.includes('Favoritos') ? 'bg-red-500 text-white border-red-500' : 'bg-white text-gray-600 border-gray-300'}`}
-                >
-                    <HeartIcon className="w-3 h-3" /> Favoritos
-                </button>
             </div>
 
             <div className="p-4 pt-6">
-                <h2 className="text-xl font-black text-gray-800 mb-6">Escolha o lugar, e faça seu pedido!</h2>
+                <h2 className="text-xl font-black text-gray-800 mb-6">Escolha o lugar e faça seu pedido!</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredRestaurants.map(restaurant => (
                         <RestaurantCard 
@@ -277,13 +270,6 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
                             restaurant={restaurant} 
                             onClick={() => onSelectRestaurant(restaurant)} 
                             isOpen={isRestaurantOpen(restaurant)} 
-                            isFavorite={favorites.includes(restaurant.id)}
-                            onToggleFavorite={(e) => {
-                                e.stopPropagation();
-                                const newFaves = favorites.includes(restaurant.id) ? favorites.filter(id => id !== restaurant.id) : [...favorites, restaurant.id];
-                                setFavorites(newFaves);
-                                localStorage.setItem('guarafood-favorites', JSON.stringify(newFaves));
-                            }}
                         />
                     ))}
                 </div>
@@ -304,6 +290,15 @@ const AppContent: React.FC = () => {
     const { currentUser, loading } = useAuth();
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
 
+    // Remove Splash Screen on mount
+    useEffect(() => {
+        const splash = document.getElementById('splash-screen');
+        if (splash) {
+            splash.style.opacity = '0';
+            setTimeout(() => splash.remove(), 500);
+        }
+    }, []);
+
     const renderContent = () => {
         if (loading) return <div className="h-screen flex items-center justify-center"><Spinner /></div>;
         if (currentUser?.role === 'admin') return <AdminDashboard onBack={() => setView('customer')} />;
@@ -314,9 +309,14 @@ const AppContent: React.FC = () => {
     };
 
     return (
-        <div className="container mx-auto max-w-7xl bg-white min-h-screen flex flex-col shadow-xl">
-            <HeaderGlobal onOrdersClick={() => setView('history')} onHomeClick={() => { setView('customer'); setSelectedRestaurant(null); }} />
-            <div className="flex-grow relative print-container">{renderContent()}</div>
+        <div className="container mx-auto max-w-7xl bg-white min-h-screen flex flex-col shadow-xl overflow-x-hidden">
+            <HeaderGlobal 
+                onOrdersClick={() => setView('history')} 
+                onHomeClick={() => { setView('customer'); setSelectedRestaurant(null); }} 
+            />
+            <div className="flex-grow relative print-container">
+                {renderContent()}
+            </div>
             <OrderTracker />
             <Footer onLoginClick={() => setView('login')} />
         </div>

@@ -45,6 +45,11 @@ const StoreIcon: React.FC<{ className?: string }> = ({ className }) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 .75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 0 0 3.75-.615A2.993 2.993 0 0 0 9.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 0 0 2.25 1.016c.896 0 1.7-.393 2.25-1.016a3.001 3.001 0 0 0 3.75.614m-16.5 0a3.004 3.004 0 0 1-.621-4.72l1.189-1.19A1.5 1.5 0 0 1 5.378 3h13.243a1.5 1.5 0 0 1 1.06.44l1.19 1.189a3 3 0 0 1-.621 4.72m-13.5 8.65h3.75a.75.75 0 0 0 .75-.75V13.5a.75.75 0 0 0-.75-.75H6.75a.75.75 0 0 0-.75.75v3.75c0 .415.336.75.75.75Z" />
     </svg>
 );
+const LeafIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+        <path fillRule="evenodd" d="M12.963 2.286a.75.75 0 00-1.071-.136 9.742 9.742 0 00-3.539 6.177 7.547 7.547 0 01-1.705-1.715.75.75 0 00-1.152-.082A9 9 0 1015.68 4.534a7.46 7.46 0 01-2.717-2.248zM15.75 14.25a3.75 3.75 0 11-7.313-1.172c.628.465 1.35.81 2.133 1a5.99 5.99 0 011.925-3.545 3.75 3.75 0 013.255 3.717z" clipRule="evenodd" />
+    </svg>
+);
 
 interface CheckoutModalProps {
     isOpen: boolean;
@@ -92,10 +97,11 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
     const [hasAvailableCoupons, setHasAvailableCoupons] = useState(false);
 
-    // --- AUTOCOMPLETE LOGIC (NATIVE DATALIST) ---
     const [knownCustomers, setKnownCustomers] = useState<Record<string, { phone: string, address: any }>>({});
+    const [highlightFields, setHighlightFields] = useState(false);
+    
+    const deliveryMethodRef = useRef<HTMLDivElement>(null);
 
-    // Load known customers on open
     useEffect(() => {
         if (isOpen) {
             const loaded: Record<string, { phone: string, address: any }> = {};
@@ -104,11 +110,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 if (key && key.startsWith('customerData-')) {
                     try {
                         const rawName = key.replace('customerData-', '');
-                        // Capitalize for display
-                        const displayName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
                         const data = JSON.parse(localStorage.getItem(key) || '{}');
                         if (data.phone && data.address) {
-                            loaded[displayName] = data;
+                            loaded[rawName.toLowerCase()] = data;
                         }
                     } catch (e) { console.error("Error loading data", e); }
                 }
@@ -117,20 +121,34 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         }
     }, [isOpen]);
 
-    // Handle Name Change and Silent Autofill
     const handleNameChange = (val: string) => {
         setCustomerName(val);
-        
-        // Se houver correspondência exata, preenche o resto silenciosamente
-        const matched = knownCustomers[val];
+        const searchName = val.toLowerCase().trim();
+        const matched = knownCustomers[searchName];
+
         if (matched) {
             setCustomerPhone(matched.phone);
             setAddress({
                 ...matched.address,
                 zipCode: matched.address.zipCode || '37810-000'
             });
-            // Toast discreto apenas para informar o usuário que os dados voltaram
-            addToast({ message: "Dados automáticos!", type: 'success', duration: 1500 });
+            
+            setHighlightFields(true);
+            setTimeout(() => setHighlightFields(false), 2000);
+            
+            addToast({ message: "Dados recuperados automaticamente!", type: 'success', duration: 1500 });
+            
+            setTimeout(() => {
+                deliveryMethodRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100);
+        }
+    };
+
+    const handleNameBlur = () => {
+        if (customerName.length >= 3) {
+            setTimeout(() => {
+                deliveryMethodRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100);
         }
     };
 
@@ -225,31 +243,20 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setFormError(null);
     };
 
-    const saveOrderToHistory = (orderId: string) => {
+    const persistOrderIdGlobally = (orderId: string) => {
         try {
-            const existing = localStorage.getItem('guarafood-active-orders');
-            const orders = existing ? JSON.parse(existing) : [];
-            if (!orders.includes(orderId)) {
-                orders.push(orderId);
-                localStorage.setItem('guarafood-active-orders', JSON.stringify(orders));
+            const active = JSON.parse(localStorage.getItem('guarafood-active-orders') || '[]');
+            if (!active.includes(orderId)) {
+                active.push(orderId);
+                localStorage.setItem('guarafood-active-orders', JSON.stringify(active));
+            }
+            const historyIds = JSON.parse(localStorage.getItem('guarafood-order-history-ids') || '[]');
+            if (!historyIds.includes(orderId)) {
+                historyIds.push(orderId);
+                localStorage.setItem('guarafood-order-history-ids', JSON.stringify(historyIds));
             }
         } catch (e) {
-            console.error("Failed to save order ID history", e);
-        }
-    };
-
-    const saveOrderDetailsToHistory = (order: Order) => {
-        try {
-            const existing = localStorage.getItem('guarafood-order-history');
-            const orders = existing ? JSON.parse(existing) : [];
-            const exists = orders.some((o: Order) => o.id === order.id);
-            if (!exists) {
-                orders.push(order);
-                if (orders.length > 50) orders.shift();
-                localStorage.setItem('guarafood-order-history', JSON.stringify(orders));
-            }
-        } catch (e) {
-            console.error("Failed to save order details history", e);
+            console.error("Failed to persist order ID", e);
         }
     };
 
@@ -267,6 +274,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             const { orderId, qrCode, qrCodeBase64 } = response.data;
             setPixData({ qrCode, qrCodeBase64 });
             setCurrentStep('PIX_PAYMENT');
+            persistOrderIdGlobally(orderId);
 
             countdownIntervalRef.current = window.setInterval(() => {
                 setCountdown(prev => {
@@ -287,8 +295,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                     if (updatedOrder.status === 'Novo Pedido') {
                         if (pixChannelRef.current) { pixChannelRef.current.unsubscribe(); pixChannelRef.current = null; }
                         if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-                        saveOrderToHistory(orderId);
-                        saveOrderDetailsToHistory(updatedOrder);
                         window.dispatchEvent(new Event('guarafood:update-orders'));
                         setCurrentStep('SUCCESS');
                         localStorage.setItem(`customerData-${customerName.toLowerCase()}`, JSON.stringify({ phone: customerPhone, address }));
@@ -315,8 +321,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setIsSubmitting(true);
         try {
             const order = await createOrder(orderData);
-            saveOrderToHistory(order.id);
-            saveOrderDetailsToHistory(order);
+            persistOrderIdGlobally(order.id);
             window.dispatchEvent(new Event('guarafood:update-orders'));
             localStorage.setItem(`customerData-${customerName.toLowerCase()}`, JSON.stringify({ phone: customerPhone, address }));
             addToast({ message: 'Pedido enviado!', type: 'success' });
@@ -346,7 +351,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const handleSubmitDetails = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!isOpenNow) { addToast({ message: "Restaurante Fechado.", type: 'error' }); return; }
+        if (!isOpenNow) { addToast({ message: "O restaurante acabou de fechar.", type: 'error' }); return; }
         if (!customerName || !customerPhone || !paymentMethod) { setFormError('Preencha nome, telefone e pagamento.'); return; }
         if (deliveryMethod === 'DELIVERY' && (!address.street || !address.number || !address.neighborhood)) { setFormError('Endereço incompleto.'); return; }
         
@@ -390,8 +395,15 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     };
 
     const handlePrevStep = () => {
-        if (currentStep === 'DETAILS') setCurrentStep('SUMMARY');
+        if (currentStep === 'SUMMARY') onClose();
+        else if (currentStep === 'DETAILS') setCurrentStep('SUMMARY');
         else if (currentStep === 'PIX_PAYMENT') handleBackFromPix();
+    };
+
+    const handleFinalClose = () => {
+        window.dispatchEvent(new Event('guarafood:update-orders'));
+        window.dispatchEvent(new Event('guarafood:open-tracker')); 
+        onClose();
     };
 
     if (!isOpen) return null;
@@ -399,21 +411,20 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const currentStepIndex = steps.findIndex(step => step.id === currentStep);
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={currentStep === 'SUCCESS' ? undefined : onClose}>
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 z-[100] flex justify-center items-center p-4 backdrop-blur-sm transition-opacity duration-200" onClick={currentStep === 'SUCCESS' ? undefined : onClose}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden transform transition-all duration-200 scale-100" onClick={e => e.stopPropagation()}>
                 
-                {/* Header */}
                 {currentStep !== 'SUCCESS' && (
-                    <div className="p-4 border-b flex justify-between items-start gap-4">
+                    <div className="p-4 border-b flex justify-between items-start gap-4 bg-white sticky top-0 z-10">
                         <div className="flex-grow min-w-0">
                              <h2 className="text-xl font-bold text-gray-800 truncate">{restaurant.name}</h2>
                              <p className="text-[10px] text-gray-500 truncate">{restaurant.address}</p>
                         </div>
-                        <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl font-bold">&times;</button>
+                        <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-800 text-3xl font-light p-2 -mt-2 -mr-2 transition-colors active:scale-90">&times;</button>
                     </div>
                 )}
 
-                {/* Stepper */}
+                {/* Status Bar / Steps */}
                 {currentStep !== 'SUCCESS' && (
                     <div className="flex justify-between items-center px-4 py-3 bg-gray-50 border-b">
                         {steps.map((step, index) => {
@@ -426,7 +437,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                             return (
                                 <React.Fragment key={step.id}>
                                     <div className="flex flex-col items-center flex-1">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${circleBg} text-white`}>
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${circleBg} text-white transition-all ${isCurrent ? 'scale-110 shadow-md' : ''}`}>
                                             {isCompleted ? <CheckCircleIcon className="w-5 h-5" /> : <step.icon className="w-5 h-5" />}
                                         </div>
                                         <span className={`text-[10px] mt-1 text-center whitespace-nowrap font-bold ${textColor}`}>{step.title}</span>
@@ -438,7 +449,14 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                     </div>
                 )}
 
-                {/* --- SUMMARY STEP --- */}
+                {/* --- CLOSED BANNER (BLINDAGEM) --- */}
+                {!isOpenNow && currentStep !== 'SUCCESS' && (
+                    <div className="bg-red-600 text-white p-3 text-center animate-pulse">
+                        <p className="text-xs font-black uppercase tracking-widest">🚨 Atenção: O Restaurante acaba de fechar!</p>
+                        <p className="text-[10px] opacity-80">Não é possível finalizar pedidos fora do horário de funcionamento.</p>
+                    </div>
+                )}
+
                 {currentStep === 'SUMMARY' && (
                     <div className="overflow-y-auto p-4 space-y-4">
                         <h3 className="text-xl font-bold text-gray-800">Seu Pedido</h3>
@@ -462,109 +480,202 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                     </div>
                 )}
 
-                {/* --- DETAILS STEP --- */}
                 {currentStep === 'DETAILS' && (
-                    <form onSubmit={handleSubmitDetails} id="checkout-form" className="overflow-y-auto space-y-4 p-4 relative">
+                    <form onSubmit={handleSubmitDetails} id="checkout-form" className="overflow-y-auto space-y-5 p-4 relative">
                         <h3 className="text-xl font-bold text-gray-800 mb-2">Dados e Pagamento</h3>
                         
-                        <div className="bg-gray-100 p-1 rounded-lg flex mb-4">
-                            <button type="button" onClick={() => setDeliveryMethod('DELIVERY')} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md font-bold text-sm transition-all ${deliveryMethod === 'DELIVERY' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500'}`}><TruckIcon className="w-5 h-5" />Entrega</button>
-                            <button type="button" onClick={() => setDeliveryMethod('PICKUP')} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md font-bold text-sm transition-all ${deliveryMethod === 'PICKUP' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500'}`}><StoreIcon className="w-5 h-5" />Retirada</button>
+                        <div className="space-y-4 bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                            <div className="relative">
+                                <label htmlFor="customerName" className="block text-xs font-black text-gray-500 uppercase mb-1 tracking-widest">Seu Nome</label>
+                                <input 
+                                    id="customerName" 
+                                    list="known-customers-list"
+                                    type="text" 
+                                    value={customerName} 
+                                    onChange={(e) => handleNameChange(e.target.value)}
+                                    onBlur={handleNameBlur}
+                                    required 
+                                    autoComplete="name" 
+                                    className={`w-full p-3 border-2 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all font-bold text-gray-800 ${highlightFields ? 'border-blue-400 ring-2 ring-blue-100' : 'border-white'}`}
+                                    placeholder="Ex: Maria Silva"
+                                />
+                                <datalist id="known-customers-list">
+                                    {Object.keys(knownCustomers).map(name => (
+                                        <option key={name} value={name.charAt(0).toUpperCase() + name.slice(1)} />
+                                    ))}
+                                </datalist>
+                            </div>
+
+                            <div>
+                                <label htmlFor="customerPhone" className="block text-xs font-black text-gray-500 uppercase mb-1 tracking-widest">WhatsApp</label>
+                                <input 
+                                    id="customerPhone" 
+                                    type="tel" 
+                                    value={customerPhone} 
+                                    onChange={e => setCustomerPhone(e.target.value)} 
+                                    required 
+                                    className={`w-full p-3 border-2 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-400 font-bold transition-all ${highlightFields ? 'border-blue-400 ring-2 ring-blue-100' : 'border-white'}`} 
+                                    placeholder="(00) 00000-0000" 
+                                />
+                            </div>
                         </div>
 
-                        {/* NATIVE DATALIST AUTOCOMPLETE */}
-                        <div className="relative">
-                            <label htmlFor="customerName" className="block text-sm font-medium text-gray-700">Nome Completo</label>
-                            <input 
-                                id="customerName" 
-                                list="known-customers-list"
-                                type="text" 
-                                value={customerName} 
-                                onChange={(e) => handleNameChange(e.target.value)}
-                                required 
-                                autoComplete="name" 
-                                className="mt-1 w-full p-3 border rounded-lg bg-gray-50 focus:ring-2 focus:ring-orange-400"
-                                placeholder="Seu nome"
-                            />
-                            <datalist id="known-customers-list">
-                                {Object.keys(knownCustomers).map(name => (
-                                    <option key={name} value={name} />
-                                ))}
-                            </datalist>
-                        </div>
-
-                        <div>
-                            <label htmlFor="customerPhone" className="block text-sm font-medium text-gray-700">WhatsApp</label>
-                            <input id="customerPhone" type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} required className="mt-1 w-full p-3 border rounded-lg bg-gray-50" placeholder="(00) 00000-0000" />
+                        <div ref={deliveryMethodRef} className="space-y-3 animate-fadeIn">
+                             <label className="block text-xs font-black text-gray-500 uppercase tracking-widest">Como quer receber seu pedido?</label>
+                             <div className="bg-gray-100 p-1 rounded-xl flex shadow-inner border border-gray-200">
+                                <button type="button" onClick={() => setDeliveryMethod('DELIVERY')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-black text-sm transition-all ${deliveryMethod === 'DELIVERY' ? 'bg-white text-orange-600 shadow-md scale-[1.02]' : 'text-gray-500'}`}><TruckIcon className="w-5 h-5" />ENTREGA</button>
+                                <button type="button" onClick={() => setDeliveryMethod('PICKUP')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-black text-sm transition-all ${deliveryMethod === 'PICKUP' ? 'bg-white text-orange-600 shadow-md scale-[1.02]' : 'text-gray-500'}`}><StoreIcon className="w-5 h-5" />RETIRADA</button>
+                            </div>
                         </div>
                         
                         {deliveryMethod === 'DELIVERY' && (
-                            <div className="border-t pt-4 space-y-3">
-                                <h4 className="text-sm font-bold text-gray-800">Endereço</h4>
+                            <div className="bg-white p-4 rounded-2xl border-2 border-orange-100 space-y-3 animate-fadeIn">
+                                <h4 className="text-xs font-black text-orange-800 uppercase tracking-widest">Endereço de Entrega</h4>
                                 <div className="grid grid-cols-4 gap-2">
-                                    <input name="street" placeholder="Rua" type="text" value={address.street} onChange={handleAddressChange} required className="col-span-3 p-3 border rounded-lg bg-gray-50 text-sm" />
-                                    <input name="number" placeholder="Nº" type="text" value={address.number} onChange={handleAddressChange} required className="p-3 border rounded-lg bg-gray-50 text-sm" />
+                                    <input 
+                                        name="street" 
+                                        placeholder="Rua / Avenida" 
+                                        type="text" 
+                                        value={address.street} 
+                                        onChange={handleAddressChange} 
+                                        required 
+                                        className={`col-span-3 p-3 border-2 rounded-xl bg-gray-50 text-sm font-semibold transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} 
+                                    />
+                                    <input 
+                                        name="number" 
+                                        placeholder="Nº" 
+                                        type="text" 
+                                        value={address.number} 
+                                        onChange={handleAddressChange} 
+                                        required 
+                                        className={`p-3 border-2 rounded-xl bg-gray-50 text-sm font-bold text-center transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} 
+                                    />
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <input name="neighborhood" placeholder="Bairro" type="text" value={address.neighborhood} onChange={handleAddressChange} required className="p-3 border rounded-lg bg-gray-50 text-sm" />
-                                    <input name="complement" placeholder="Obs / Ap" type="text" value={address.complement} onChange={handleAddressChange} className="p-3 border rounded-lg bg-gray-50 text-sm" />
+                                    <input 
+                                        name="neighborhood" 
+                                        placeholder="Bairro" 
+                                        type="text" 
+                                        value={address.neighborhood} 
+                                        onChange={handleAddressChange} 
+                                        required 
+                                        className={`p-3 border-2 rounded-xl bg-gray-50 text-sm font-semibold transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} 
+                                    />
+                                    <input 
+                                        name="complement" 
+                                        placeholder="Apto / Bloco / Referência" 
+                                        type="text" 
+                                        value={address.complement} 
+                                        onChange={handleAddressChange} 
+                                        className={`p-3 border-2 rounded-xl bg-gray-50 text-sm transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} 
+                                    />
                                 </div>
                             </div>
                         )}
 
                         <div className="border-t pt-4">
-                            <span className="block text-sm font-medium text-gray-700 mb-2">Pagamento</span>
-                            <div className="space-y-2">
-                                {paymentOptions.map(gateway => (
-                                     <label key={gateway} className="flex items-center p-3 border rounded-lg cursor-pointer has-[:checked]:bg-orange-50 has-[:checked]:border-orange-500">
-                                        <input type="radio" name="payment" value={gateway} checked={paymentMethod === gateway} onChange={e => setPaymentMethod(e.target.value)} className="h-4 w-4 text-orange-600" />
-                                        <div className="ml-3 flex flex-col">
-                                            <span className="text-sm font-semibold text-gray-700">{gateway}</span>
-                                            {gateway.toLowerCase().includes('cartão') && <span className="text-[10px] text-blue-600">ⓘ Maquininha na entrega.</span>}
+                            <button
+                                type="button"
+                                onClick={() => setWantsSachets(!wantsSachets)}
+                                className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all shadow-sm active:scale-[0.98] ${
+                                    wantsSachets 
+                                    ? 'bg-emerald-100 border-emerald-500 shadow-emerald-100' 
+                                    : 'bg-emerald-50/40 border-emerald-100'
+                                }`}
+                            >
+                                <div className="flex items-center gap-3 text-left">
+                                    <div className={`p-2.5 rounded-full ${wantsSachets ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-600'}`}>
+                                        <LeafIcon className="w-5 h-5" />
+                                    </div>
+                                    <div className="flex-grow">
+                                        <p className="text-sm font-black text-emerald-900 leading-tight">🌿 Reduza o lixo: Só mandamos sachês se você pedir!</p>
+                                        <p className="text-[10px] text-emerald-700 font-medium mt-1">Ajude o planeta. Peça talheres ou condimentos apenas se for realmente utilizar agora.</p>
+                                    </div>
+                                </div>
+                                <div className={`w-7 h-7 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-all ${wantsSachets ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-emerald-200'}`}>
+                                    {wantsSachets && <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                </div>
+                            </button>
+                        </div>
+
+                        <div className="border-t pt-4">
+                            <span className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-3">Forma de Pagamento</span>
+                            <div className="space-y-3">
+                                {paymentOptions.map(gateway => {
+                                    const isSelected = paymentMethod === gateway;
+                                    const isCash = gateway.toLowerCase().includes('dinheiro');
+
+                                    return (
+                                        <div key={gateway} className={`border-2 rounded-xl transition-all ${isSelected ? 'border-orange-500 bg-orange-50/30' : 'border-gray-100 hover:border-orange-200'}`}>
+                                            <label className="flex items-center p-3 cursor-pointer">
+                                                <input type="radio" name="payment" value={gateway} checked={isSelected} onChange={e => setPaymentMethod(e.target.value)} className="h-5 w-5 text-orange-600" />
+                                                <div className="ml-3 flex flex-col">
+                                                    <span className="text-sm font-bold text-gray-700">{gateway}</span>
+                                                    {gateway.toLowerCase().includes('cartão') && <span className="text-[10px] text-blue-600">ⓘ Maquininha na entrega.</span>}
+                                                </div>
+                                            </label>
+
+                                            {isSelected && isCash && (
+                                                <div className="p-3 border-t border-orange-200 bg-white/50 animate-fadeIn">
+                                                    <label htmlFor="changeFor" className="block text-[10px] font-black text-orange-800 uppercase mb-1 tracking-wider">Precisa de troco para quanto?</label>
+                                                    <div className="flex items-center bg-white border-2 border-orange-100 rounded-lg px-3 py-2 focus-within:border-orange-400 transition-colors">
+                                                        <span className="text-orange-400 mr-1 font-black">R$</span>
+                                                        <input 
+                                                            id="changeFor"
+                                                            type="number" 
+                                                            step="0.01" 
+                                                            placeholder="Ex: 50.00" 
+                                                            value={changeFor}
+                                                            onChange={(e) => setChangeFor(e.target.value)}
+                                                            className="w-full bg-transparent outline-none font-black text-gray-800 placeholder-gray-300"
+                                                        />
+                                                    </div>
+                                                    <p className="text-[9px] text-gray-400 mt-1 italic leading-tight">Deixe em branco se não precisar de troco.</p>
+                                                </div>
+                                            )}
                                         </div>
-                                    </label>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
                         
                         {hasAvailableCoupons && (
                             <div className="pt-2">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Cupom</label>
+                                <label className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-1">Cupom</label>
                                 {appliedCoupon ? (
-                                    <div className="flex justify-between items-center p-3 border rounded-lg bg-green-50 border-green-300">
+                                    <div className="flex justify-between items-center p-3 border rounded-xl bg-green-50 border-green-300 animate-fadeIn">
                                         <p className="text-green-800 text-xs font-bold">Cupom "{appliedCoupon.code}" ativo!</p>
-                                        <button type="button" onClick={handleRemoveCoupon} className="text-red-600 font-bold">&times;</button>
+                                        <button type="button" onClick={handleRemoveCoupon} className="text-red-600 font-bold p-2 active:scale-90">&times;</button>
                                     </div>
                                 ) : (
                                     <div className="flex gap-2">
-                                        <input type="text" value={couponCodeInput} onChange={e => setCouponCodeInput(e.target.value.toUpperCase())} placeholder="CÓDIGO" className="flex-grow p-3 border rounded-lg bg-gray-50 uppercase text-sm" />
-                                        <button type="button" onClick={handleApplyCoupon} disabled={isApplyingCoupon} className="bg-gray-800 text-white font-bold px-4 rounded-lg disabled:opacity-50 text-xs">{isApplyingCoupon ? '...' : 'Aplicar'}</button>
+                                        <input type="text" value={couponCodeInput} onChange={e => setCouponCodeInput(e.target.value.toUpperCase())} placeholder="CÓDIGO" className="flex-grow p-3 border-2 border-gray-100 rounded-xl bg-gray-50 uppercase text-sm font-black" />
+                                        <button type="button" onClick={handleApplyCoupon} disabled={isApplyingCoupon} className="bg-gray-800 text-white font-black px-6 rounded-xl disabled:opacity-50 text-xs active:scale-95 transition-transform uppercase">{isApplyingCoupon ? '...' : 'Aplicar'}</button>
                                     </div>
                                 )}
                             </div>
                         )}
-                        {formError && <p className="text-red-500 text-xs mt-2 font-bold">{formError}</p>}
+                        {formError && <p className="text-red-500 text-xs mt-2 font-bold animate-shake">{formError}</p>}
                     </form>
                 )}
 
-                {/* --- PIX STEP --- */}
                 {currentStep === 'PIX_PAYMENT' && (
-                    <div className="text-center flex flex-col items-center p-6">
+                    <div className="text-center flex flex-col items-center p-6 animate-fadeIn">
                         <h3 className="text-xl font-bold text-gray-800 mb-2">{isManualPix ? 'Pix Manual' : 'Pague para Confirmar'}</h3>
                         {isManualPix ? (
                             <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg w-full mb-4">
                                 <p className="text-[10px] text-orange-700 font-bold uppercase mb-1">Chave Pix</p>
                                 <div className="flex items-center justify-between gap-2 bg-white p-2 rounded border border-orange-100">
                                     <span className="text-lg font-mono font-bold text-gray-800 break-all select-all">{restaurant.manualPixKey}</span>
-                                    <button onClick={() => { navigator.clipboard.writeText(restaurant.manualPixKey || ''); addToast({ message: 'Copiado!', type: 'success' }); }} className="bg-orange-600 text-white p-2 rounded shadow-md"><ClipboardIcon className="w-5 h-5"/></button>
+                                    <button type="button" onClick={() => { navigator.clipboard.writeText(restaurant.manualPixKey || ''); addToast({ message: 'Copiado!', type: 'success' }); }} className="bg-orange-600 text-white p-2 rounded shadow-md active:scale-90 transition-transform"><ClipboardIcon className="w-5 h-5"/></button>
                                 </div>
-                                <button onClick={handleConfirmManualPix} className="mt-6 bg-green-600 text-white font-bold py-4 px-6 rounded-xl w-full shadow-lg" disabled={isSubmitting}>JÁ FIZ O PAGAMENTO</button>
+                                <button type="button" onClick={handleConfirmManualPix} className="mt-6 bg-green-600 text-white font-bold py-4 px-6 rounded-xl w-full shadow-lg active:scale-95 transition-transform" disabled={isSubmitting}>JÁ FIZ O PAGAMENTO</button>
                             </div>
                         ) : (
                             pixData ? (
                                 <>
                                     <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="PIX" className="w-48 h-48 mx-auto my-2 border-4 border-gray-700 p-1 rounded-lg" />
-                                    <button onClick={() => { navigator.clipboard.writeText(pixData.qrCode); addToast({ message: 'Copiado!', type: 'success' }); }} className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg my-2 w-full max-w-xs shadow-lg flex justify-center items-center gap-2"><ClipboardIcon className="w-5 h-5"/>Copiar Código</button>
+                                    <button type="button" onClick={() => { navigator.clipboard.writeText(pixData.qrCode); addToast({ message: 'Copiado!', type: 'success' }); }} className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg my-2 w-full max-xs shadow-lg flex justify-center items-center gap-2 active:scale-95 transition-transform"><ClipboardIcon className="w-5 h-5"/>Copiar Código</button>
                                     <p className="text-2xl font-bold text-orange-600 mt-2">R$ {finalPriceWithFee.toFixed(2)}</p>
                                     <div className="mt-4 text-[10px] font-bold text-gray-500">Tempo: {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}</div>
                                 </>
@@ -574,23 +685,51 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                     </div>
                 )}
 
-                {/* --- SUCCESS STEP --- */}
+                {/* --- TELA DE SUCESSO (SISTEMA INTELIGENTE REFORÇADO) --- */}
                 {currentStep === 'SUCCESS' && (
-                    <div className="text-center flex flex-col items-center justify-center p-8 bg-blue-50 h-full">
-                        <CheckCircleIcon className="w-20 h-20 text-green-500 mb-4 animate-bounce" />
-                        <h3 className="text-2xl font-bold text-gray-800">Pedido Confirmado!</h3>
-                        <p className="text-sm text-blue-700 mt-4 px-4">Acompanhe pelo rastreador no rodapé.</p>
-                        <button onClick={() => { window.dispatchEvent(new Event('guarafood:update-orders')); onClose(); }} className="mt-8 bg-green-600 text-white font-bold py-4 px-12 rounded-full shadow-lg">Entendi</button>
+                    <div className="text-center flex flex-col items-center justify-center p-8 bg-emerald-50 h-full animate-fadeIn min-h-[400px]">
+                        <div className="relative mb-6">
+                            <div className="absolute inset-0 bg-emerald-200 rounded-full animate-ping scale-75 opacity-20"></div>
+                            <CheckCircleIcon className="w-24 h-24 text-emerald-600 relative z-10" />
+                        </div>
+                        <h3 className="text-3xl font-black text-emerald-900 uppercase tracking-tighter">Pedido Confirmado!</h3>
+                        
+                        <div className="mt-6 bg-white p-6 rounded-3xl border-2 border-emerald-100 shadow-xl max-w-sm w-full relative">
+                            <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-black px-4 py-1 rounded-full uppercase tracking-widest shadow-md">
+                                Inovação GuaraFood
+                            </div>
+                            <p className="text-sm text-gray-700 font-bold leading-relaxed">
+                                <span className="text-emerald-600 font-black">Sistema inteligente</span>: você não precisa mais ir no whatsapp, o acompanhamento de seu pedido é todo feito por aqui mesmo!
+                            </p>
+                            <div className="mt-4 pt-4 border-t border-gray-100">
+                                <p className="text-xs text-gray-500 font-medium">
+                                    Basta clicar no botão abaixo que vamos te deixar sempre atualizado! 📱✨
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <button 
+                            type="button" 
+                            onClick={handleFinalClose} 
+                            className="mt-10 bg-emerald-600 text-white font-black py-5 px-16 rounded-full shadow-xl shadow-emerald-200 active:scale-90 transition-all text-xl uppercase tracking-widest hover:bg-emerald-700 hover:-translate-y-1"
+                        >
+                            Entendi
+                        </button>
                     </div>
                 )}
                 
-                {/* Footer Actions */}
                 {(currentStep === 'SUMMARY' || currentStep === 'DETAILS' || (currentStep === 'PIX_PAYMENT' && !isManualPix)) && (
-                    <div className="mt-auto p-4 border-t bg-gray-50 rounded-b-lg flex justify-between items-center">
-                        <button type="button" onClick={handlePrevStep} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold text-sm">{currentStep === 'SUMMARY' ? 'Fechar' : 'Voltar'}</button>
+                    <div className="mt-auto p-4 border-t bg-gray-50 rounded-b-lg flex justify-between items-center bg-white sticky bottom-0 z-10">
+                        <button type="button" onClick={handlePrevStep} className="px-5 py-2.5 rounded-lg bg-gray-200 text-gray-800 font-semibold text-sm active:scale-90 transition-transform">{currentStep === 'SUMMARY' ? 'Fechar' : 'Voltar'}</button>
                         <div className="flex flex-col items-end">
                             <span className="font-bold text-[10px] text-gray-400">Total: <span className="text-orange-600 text-lg">R$ {finalPriceWithFee.toFixed(2)}</span></span>
-                            <button onClick={currentStep === 'SUMMARY' ? handleNextStep : undefined} type={currentStep === 'DETAILS' ? 'submit' : 'button'} form={currentStep === 'DETAILS' ? 'checkout-form' : undefined} disabled={isSubmitting || (currentStep === 'SUMMARY' && !isOpenNow)} className="mt-1 bg-orange-600 text-white font-bold py-2.5 px-8 rounded-lg disabled:opacity-50 text-sm">
+                            <button 
+                                onClick={currentStep === 'SUMMARY' ? handleNextStep : undefined} 
+                                type={currentStep === 'DETAILS' ? 'submit' : 'button'} 
+                                form={currentStep === 'DETAILS' ? 'checkout-form' : undefined} 
+                                disabled={isSubmitting || (currentStep !== 'PIX_PAYMENT' && !isOpenNow)} 
+                                className="mt-1 bg-orange-600 text-white font-bold py-2.5 px-8 rounded-lg shadow-lg disabled:opacity-50 text-sm active:scale-95 transition-all"
+                            >
                                 {isSubmitting ? '...' : currentStep === 'SUMMARY' ? 'Continuar' : (paymentMethod === 'Pix' ? 'Pagar' : 'Confirmar')}
                             </button>
                         </div>

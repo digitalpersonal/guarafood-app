@@ -2,37 +2,18 @@
 import React from 'react';
 import type { Restaurant } from '../types';
 import OptimizedImage from './OptimizedImage';
+import { timeToMinutes } from '../utils/restaurantUtils';
 
 interface RestaurantCardProps {
   restaurant: Restaurant;
   onClick: (restaurant: Restaurant) => void;
   isOpen: boolean;
-  isFavorite?: boolean;
-  onToggleFavorite?: (e: React.MouseEvent) => void;
 }
-
-const CreditCardIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15A2.25 2.25 0 002.25 6.75v10.5A2.25 2.25 0 004.5 19.5z" />
-  </svg>
-);
 
 const WhatsAppIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
     <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.894 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01s-.521.074-.792.372c-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.626.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
   </svg>
-);
-
-const BookOpenIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
-    </svg>
-);
-
-const HeartIcon: React.FC<{ className?: string; filled?: boolean }> = ({ className, filled }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill={filled ? "currentColor" : "none"} viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
-    </svg>
 );
 
 const ClockIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -41,109 +22,104 @@ const ClockIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, isOpen }) => {
+  const todayIndex = new Date().getDay();
+  const todayHours = restaurant.operatingHours?.find(h => h.dayOfWeek === todayIndex);
+  const now = new Date();
+  const currentTimeMins = now.getHours() * 60 + now.getMinutes();
 
-const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, isOpen, isFavorite, onToggleFavorite }) => {
-
+  // URL WhatsApp
   const cleanedPhone = restaurant.phone.replace(/\D/g, '');
   const whatsappUrl = `https://wa.me/55${cleanedPhone}`;
   
-  const acceptsFiado = restaurant.paymentGateways?.some(pg => pg.toLowerCase() === "marcar na minha conta");
+  // Lógica de exibição de horário de hoje
+  let hoursDisplay = "Horário não disponível";
+  let statusMessage = isOpen ? "Aberto" : "Fechado";
 
-  // Determine Today's Hours Display
-  const todayIndex = new Date().getDay();
-  const todayHours = restaurant.operatingHours?.find(h => h.dayOfWeek === todayIndex);
-  
-  let hoursDisplay = "";
   if (todayHours && todayHours.isOpen) {
-      hoursDisplay = `${todayHours.opens} - ${todayHours.closes}`;
+      hoursDisplay = `${todayHours.opens} às ${todayHours.closes}`;
       if (todayHours.opens2 && todayHours.closes2) {
-          hoursDisplay += ` • ${todayHours.opens2} - ${todayHours.closes2}`;
+          hoursDisplay += ` e ${todayHours.opens2} às ${todayHours.closes2}`;
       }
+
+      if (!isOpen) {
+          const open1 = timeToMinutes(todayHours.opens);
+          const open2 = todayHours.opens2 ? timeToMinutes(todayHours.opens2) : null;
+          
+          if (currentTimeMins < open1) {
+              statusMessage = `Abre às ${todayHours.opens}`;
+          } else if (open2 && currentTimeMins < open2) {
+              statusMessage = `Abre às ${todayHours.opens2}`;
+          } else {
+              statusMessage = "Fechado por hoje";
+          }
+      }
+  } else if (todayHours && !todayHours.isOpen) {
+      statusMessage = "Fechado hoje";
   }
 
   return (
     <div 
-      className={`bg-white rounded-lg shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col relative ${!isOpen ? 'opacity-60' : ''}`}
+      className={`bg-white rounded-2xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col relative border border-gray-100 ${!isOpen ? 'grayscale opacity-70' : ''}`}
       onClick={() => onClick(restaurant)}
     >
+      {/* Badge de Status Superior */}
       {!isOpen && (
-        <div className="absolute top-0 right-0 bg-gray-700 text-white text-xs font-bold px-2 py-0.5 rounded-bl-lg z-20">
-            FECHADO
+        <div className="absolute top-0 right-0 bg-gray-900/90 backdrop-blur-sm text-white text-[10px] font-black px-3 py-1 rounded-bl-xl z-20 uppercase tracking-widest shadow-lg">
+            {statusMessage}
         </div>
       )}
       
-      {/* Botão de Favorito (Flutuante) */}
-      <button 
-        onClick={onToggleFavorite}
-        className="absolute top-2 right-2 z-30 p-2 rounded-full bg-white/80 backdrop-blur-sm shadow-sm hover:bg-white transition-all hover:scale-110 active:scale-90"
-        title={isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
-      >
-        <HeartIcon className={`w-5 h-5 ${isFavorite ? 'text-red-500 fill-red-500' : 'text-gray-400'}`} filled={isFavorite} />
-      </button>
-
-      <div className="bg-orange-600 text-white text-sm font-bold px-4 py-1 text-center">
-        {restaurant.category}
-      </div>
-      <div className="flex items-start gap-x-3 sm:gap-x-4 p-2 sm:p-3 flex-grow">
+      <div className="flex items-center gap-4 p-4 flex-grow">
         <OptimizedImage 
           src={restaurant.imageUrl} 
           alt={restaurant.name} 
-          className="w-20 h-20 rounded-md flex-shrink-0"
+          className="w-20 h-20 rounded-2xl flex-shrink-0 shadow-sm border border-gray-50"
         />
         <div className="flex-grow min-w-0">
-          <div className="flex justify-between items-start">
-              <h3 className="text-lg font-bold text-gray-800 truncate pr-6">{restaurant.name}</h3>
-          </div>
+          <h3 className="text-lg font-black text-gray-800 truncate leading-tight mb-0.5">{restaurant.name}</h3>
           
           {restaurant.description && (
-             <p className="text-xs text-gray-500 line-clamp-2 mt-0.5 mb-1 leading-tight">{restaurant.description}</p>
+             <p className="text-xs text-gray-500 line-clamp-1 mb-2 font-medium">{restaurant.description}</p>
           )}
 
-          <div className="flex items-center text-sm text-gray-500 mt-1 flex-wrap gap-y-1">
-            <span>{restaurant.deliveryTime}</span>
-            <span className="mx-2">&bull;</span>
-            <span>{restaurant.deliveryFee > 0 ? `R$ ${restaurant.deliveryFee.toFixed(2)}` : 'Grátis'}</span>
+          {/* Exibição do horário de hoje abaixo da descrição */}
+          <div className="flex items-center gap-1.5 mb-2">
+            <ClockIcon className={`w-3.5 h-3.5 ${isOpen ? 'text-green-600' : 'text-gray-400'}`} />
+            <span className={`text-[11px] font-bold ${isOpen ? 'text-gray-600' : 'text-gray-500'}`}>
+                {isOpen ? `Hoje: ${hoursDisplay}` : statusMessage}
+            </span>
           </div>
-          
-          {hoursDisplay && (
-              <div className="flex items-center text-[10px] text-gray-500 mt-1" title="Horário de hoje">
-                  <ClockIcon className="w-3 h-3 mr-1 flex-shrink-0" />
-                  <span>{hoursDisplay}</span>
-              </div>
-          )}
 
-           {acceptsFiado && (
-               <div className="mt-2 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
-                   <BookOpenIcon className="w-3 h-3 mr-1" />
-                   Aceita Fiado/Conta
-               </div>
-           )}
-
-          <div className="flex items-center justify-between mt-2">
-             {restaurant.paymentGateways && restaurant.paymentGateways.length > 0 && (
-                <div className="flex items-center text-xs text-gray-500" title={`Aceita: ${restaurant.paymentGateways.join(', ')}`}>
-                    <CreditCardIcon className="w-4 h-4 mr-1.5 flex-shrink-0" />
-                    <span className="truncate max-w-[120px]">
-                        {restaurant.paymentGateways.slice(0, 2).join(', ')}
-                        {restaurant.paymentGateways.length > 2 && '...'}
-                    </span>
-                </div>
-            )}
-            {restaurant.phone && (
-                <a
-                    href={whatsappUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="flex items-center text-xs text-green-600 group ml-auto"
-                    aria-label={`Conversar com ${restaurant.name} no WhatsApp`}
-                >
-                    <WhatsAppIcon className="w-4 h-4 mr-1 flex-shrink-0" />
-                    <span className="group-hover:underline font-semibold hidden sm:inline">WhatsApp</span>
-                </a>
-            )}
+          <div className="flex items-center text-[11px] font-bold text-gray-400 gap-2 flex-wrap">
+            <span className="text-orange-600">★ {restaurant.rating || 'Novo'}</span>
+            <span className="text-gray-300">•</span>
+            <span>{restaurant.category.split(',')[0]}</span>
+            <span className="text-gray-300">•</span>
+            <span>{restaurant.deliveryTime}</span>
           </div>
         </div>
+      </div>
+
+      <div className="px-4 py-3 bg-gray-50/50 border-t border-gray-100 flex justify-between items-center">
+        <div className="flex items-center gap-1.5">
+            <span className={`text-xs font-black ${restaurant.deliveryFee === 0 ? 'text-emerald-600' : 'text-gray-700'}`}>
+                {restaurant.deliveryFee > 0 ? `Entrega R$ ${restaurant.deliveryFee.toFixed(2)}` : 'Entrega Grátis'}
+            </span>
+        </div>
+        
+        {restaurant.phone && (
+            <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center gap-1 text-[10px] font-black text-green-600 uppercase tracking-wider"
+            >
+                <WhatsAppIcon className="w-3.5 h-3.5" />
+                Contato
+            </a>
+        )}
       </div>
     </div>
   );

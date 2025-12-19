@@ -41,7 +41,6 @@ interface OrderDetailsModalProps {
 
 const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, printerWidth = 80 }) => {
     const { text, color } = statusConfig[order.status];
-    const printableRef = useRef<HTMLDivElement>(null);
     const [isEditing, setIsEditing] = useState(false); // State to control editing modal
     const [currentOrder, setCurrentOrder] = useState<Order>(order); // Use internal state for order
 
@@ -68,44 +67,46 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
     const handleOrderUpdated = (updatedOrder: Order) => {
         setCurrentOrder(updatedOrder); // Update local state when editing modal saves
         setIsEditing(false); // Close editing modal
-        // No need to call onClose here, as user might want to see updated details
     };
 
-    // Check if the order can be edited
     const canEditOrder = ['Novo Pedido', 'Preparando'].includes(currentOrder.status);
+
+    const displayOrderNum = currentOrder.order_number 
+        ? `#${String(currentOrder.order_number).padStart(3, '0')}`
+        : `#${currentOrder.id.substring(currentOrder.id.length - 4).toUpperCase()}`;
 
     return (
         <>
             <div
-                className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4"
+                className="fixed inset-0 bg-black/60 z-[100] flex justify-center items-center p-4 backdrop-blur-sm transition-opacity duration-200"
                 onClick={onClose}
                 aria-modal="true"
                 role="dialog"
             >
                 <div
-                    className="bg-white p-4 sm:p-6 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col"
+                    className="bg-white p-4 sm:p-6 rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col transform transition-transform duration-200 scale-100"
                     onClick={(e) => e.stopPropagation()}
                 >
                     <div className="flex justify-between items-center border-b pb-3 mb-4">
                         <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Detalhes do Pedido</h2>
-                        <button onClick={onClose} className="text-gray-500 hover:text-gray-800 p-1">
-                            <XIcon className="w-6 h-6" />
+                        <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-800 p-2 -mt-2 -mr-2 transition-colors active:scale-90">
+                            <XIcon className="w-7 h-7" />
                         </button>
                     </div>
 
                     <div className="overflow-y-auto space-y-6 pr-2 -mr-2">
                         <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
                             <div>
-                                <p className="font-bold text-lg text-gray-900">Pedido #{currentOrder.id.substring(0, 6)}</p>
+                                <p className="font-black text-2xl text-orange-600">Pedido {displayOrderNum}</p>
                                 <p className="text-sm text-gray-500">{new Date(currentOrder.timestamp).toLocaleString('pt-BR')}</p>
                             </div>
-                            <span className={`px-4 py-1.5 text-sm font-semibold text-white rounded-full ${color} self-start sm:self-auto`}>{text}</span>
+                            <span className={`px-4 py-1.5 text-sm font-semibold text-white rounded-full ${color} self-start sm:self-auto shadow-sm`}>{text}</span>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-1">
                                 <h3 className="font-bold text-gray-700 border-b pb-1 mb-2">Cliente</h3>
-                                <p className="font-semibold">{currentOrder.customerName}</p>
+                                <p className="font-semibold text-gray-900">{currentOrder.customerName}</p>
                                 <p className="text-sm text-gray-600">Telefone: {currentOrder.customerPhone}</p>
                                  {currentOrder.customerAddress && (
                                     <p className="text-sm text-gray-600 mt-1">
@@ -115,27 +116,27 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                                         CEP: {currentOrder.customerAddress.zipCode}
                                     </p>
                                 )}
-                                <p className="text-sm text-gray-600">Pagamento: <span className="font-medium">{currentOrder.paymentMethod}</span></p>
+                                <p className="text-sm text-gray-600">Pagamento: <span className="font-medium text-gray-900">{currentOrder.paymentMethod}</span></p>
                             </div>
                             <div className="space-y-1">
                                 <h3 className="font-bold text-gray-700 border-b pb-1 mb-2">Restaurante</h3>
-                                <p className="font-semibold">{currentOrder.restaurantName}</p>
+                                <p className="font-semibold text-gray-900">{currentOrder.restaurantName}</p>
                                 <p className="text-sm text-gray-600">{currentOrder.restaurantAddress}</p>
                                 <p className="text-sm text-gray-600">Telefone: {currentOrder.restaurantPhone}</p>
                             </div>
                         </div>
                         
-                        {/* CONDIMENTS PREFERENCE */}
-                        <div className={`p-3 rounded-lg border flex items-center gap-3 ${currentOrder.wantsSachets ? 'bg-green-50 border-green-200' : 'bg-orange-50 border-orange-200'}`}>
-                            <div className={currentOrder.wantsSachets ? 'text-green-600' : 'text-orange-500'}>
-                                <LeafIcon className="w-5 h-5" />
+                        {/* CONDIMENTS PREFERENCE HIGHLIGHT (Sustentável) */}
+                        <div className={`p-4 rounded-xl border-2 flex items-center gap-4 transition-all shadow-sm ${currentOrder.wantsSachets ? 'bg-emerald-50 border-emerald-500' : 'bg-gray-50 border-gray-100 opacity-70'}`}>
+                            <div className={`p-3 rounded-full ${currentOrder.wantsSachets ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-200 text-gray-400'}`}>
+                                <LeafIcon className="w-6 h-6" />
                             </div>
-                            <div>
-                                <p className="text-sm font-bold text-gray-800">
-                                    {currentOrder.wantsSachets ? 'Enviar Sachês/Descartáveis' : 'NÃO Enviar Sachês/Descartáveis'}
+                            <div className="flex-grow">
+                                <p className="text-sm font-black text-gray-800 uppercase tracking-wide">
+                                    {currentOrder.wantsSachets ? '🌿 Enviar Sachês e Talheres' : '🚫 Não enviar sachês/talheres'}
                                 </p>
-                                <p className="text-xs text-gray-600">
-                                    {currentOrder.wantsSachets ? 'O cliente solicitou o envio.' : 'O cliente optou por não receber para evitar desperdício.'}
+                                <p className="text-[10px] text-gray-600 font-bold leading-tight">
+                                    {currentOrder.wantsSachets ? 'O cliente solicitou o envio dos descartáveis.' : 'Escolha sustentável: cliente optou por reduzir o lixo.'}
                                 </p>
                             </div>
                         </div>
@@ -148,7 +149,6 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                                         <div className="flex-grow">
                                             <p className="font-semibold">{item.quantity}x {item.name} {item.sizeName && `(${item.sizeName})`}</p>
                                             
-                                            {/* NEW: Show Custom Options */}
                                             {item.selectedOptions && item.selectedOptions.length > 0 && (
                                                 <ul className="text-xs text-blue-600 mt-1 pl-2 border-l-2 border-blue-200 space-y-0.5">
                                                     {item.selectedOptions.map((opt, idx) => (
@@ -206,38 +206,40 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                         </div>
                     </div>
 
-                    <div className="mt-6 pt-4 border-t flex justify-between items-center">
+                    <div className="mt-6 pt-4 border-t flex justify-between items-center bg-white sticky bottom-0">
                         <div className="flex space-x-2">
                             {canEditOrder && (
                                 <button
+                                    type="button"
                                     onClick={() => setIsEditing(true)}
-                                    className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 transition-colors"
+                                    className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 transition-all active:scale-95 shadow-md"
                                 >
                                     <EditIcon className="w-5 h-5"/>
-                                    <span>Editar Pedido</span>
+                                    <span className="hidden sm:inline">Editar</span>
                                 </button>
                             )}
                             <button
+                                type="button"
                                 onClick={handlePrint}
-                                className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gray-600 text-white font-bold hover:bg-gray-700 transition-colors"
+                                className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gray-600 text-white font-bold hover:bg-gray-700 transition-all active:scale-95 shadow-md"
                             >
                                 <PrintIcon className="w-5 h-5"/>
-                                <span>Imprimir</span>
+                                <span className="hidden sm:inline">Imprimir</span>
                             </button>
                         </div>
                         <button
+                            type="button"
                             onClick={onClose}
-                            className="px-6 py-2 rounded-lg bg-red-600 text-white font-bold hover:bg-red-700 transition-colors"
+                            className="px-6 py-2 rounded-lg bg-red-600 text-white font-bold hover:bg-red-700 transition-all active:scale-95 shadow-md"
                         >
                             Fechar
                         </button>
                     </div>
                 </div>
             </div>
-             {/* Hidden component for printing. FIX: use print:block to ensure visibility during print */}
+             {/* Hidden component for printing */}
             <div className="hidden print:block">
                 <div id="printable-order">
-                    {/* Ensure currentOrder is passed to PrintableOrder */}
                     <PrintableOrder order={currentOrder} printerWidth={printerWidth} /> 
                 </div>
             </div>

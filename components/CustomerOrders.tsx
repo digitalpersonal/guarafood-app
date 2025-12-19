@@ -1,9 +1,10 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Order, CartItem } from '../types';
 import { useCart } from '../hooks/useCart';
 import { useNotification } from '../hooks/useNotification';
 import OptimizedImage from './OptimizedImage';
+import Spinner from './Spinner';
 import { supabase } from '../services/api';
 
 const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -32,7 +33,7 @@ const ChatBubbleLeftRightIcon: React.FC<{ className?: string }> = ({ className }
 
 const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 0 0-2.09 2.134v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
     </svg>
 );
 
@@ -43,45 +44,86 @@ interface CustomerOrdersProps {
 const CustomerOrders: React.FC<CustomerOrdersProps> = ({ onBack }) => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [activeTab, setActiveTab] = useState<'ongoing' | 'history'>('ongoing');
+    const [isLoading, setIsLoading] = useState(true);
     const { addToCart, clearCart } = useCart();
     const { addToast, confirm } = useNotification();
 
-    useEffect(() => {
-        // 1. Carregar histórico inicial do LocalStorage
-        const loadInitialHistory = () => {
-            try {
-                const storedHistory = JSON.parse(localStorage.getItem('guarafood-order-history') || '[]');
-                const sorted = storedHistory.sort((a: Order, b: Order) => 
-                    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-                );
-                setOrders(sorted);
-                return sorted;
-            } catch (e) {
-                console.error("Error loading history", e);
-                return [];
+    const loadOrdersFromDB = useCallback(async () => {
+        try {
+            setIsLoading(true);
+            // 1. Pega os IDs gravados no celular
+            const storedIds = JSON.parse(localStorage.getItem('guarafood-order-history-ids') || '[]');
+            
+            // Retrocompatibilidade: Se não tiver a chave nova de IDs, tenta ler a antiga de objetos
+            if (storedIds.length === 0) {
+                const oldObjects = JSON.parse(localStorage.getItem('guarafood-order-history') || '[]');
+                if (oldObjects.length > 0) {
+                    const extractedIds = oldObjects.map((o: any) => o.id);
+                    localStorage.setItem('guarafood-order-history-ids', JSON.stringify(extractedIds));
+                    storedIds.push(...extractedIds);
+                }
             }
-        };
 
-        const initialOrders = loadInitialHistory();
+            if (storedIds.length === 0) {
+                setOrders([]);
+                return;
+            }
 
-        // 2. Configurar Realtime para atualizar os status
-        const channel = supabase.channel('customer-orders-updates')
+            // 2. Busca os dados reais do banco
+            const { data, error } = await supabase
+                .from('orders')
+                .select('*')
+                .in('id', storedIds)
+                .order('timestamp', { ascending: false });
+
+            if (error) throw error;
+
+            if (data) {
+                // Normaliza snake_case para camelCase
+                const normalized = data.map(d => ({
+                    id: d.id,
+                    order_number: d.order_number,
+                    timestamp: d.timestamp,
+                    status: d.status,
+                    customerName: d.customer_name,
+                    customerPhone: d.customer_phone,
+                    customerAddress: d.customer_address,
+                    items: d.items,
+                    totalPrice: d.total_price,
+                    restaurantId: d.restaurant_id,
+                    restaurantName: d.restaurant_name,
+                    restaurantAddress: d.restaurant_address,
+                    restaurantPhone: d.restaurant_phone,
+                    paymentMethod: d.payment_method
+                }));
+                setOrders(normalized);
+            }
+        } catch (e) {
+            console.error("Error loading order history from DB", e);
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadOrdersFromDB();
+
+        // Escuta atualizações de status em tempo real para os pedidos do usuário
+        const channel = supabase.channel('customer-history-realtime')
             .on(
                 'postgres_changes',
                 { event: 'UPDATE', schema: 'public', table: 'orders' },
                 (payload) => {
-                    const updatedOrder = payload.new as Order;
+                    const updatedOrder = payload.new;
+                    const storedIds = JSON.parse(localStorage.getItem('guarafood-order-history-ids') || '[]');
                     
-                    setOrders(prevOrders => {
-                        const orderExists = prevOrders.some(o => o.id === updatedOrder.id);
-                        
-                        if (orderExists) {
-                            const newOrders = prevOrders.map(o => o.id === updatedOrder.id ? updatedOrder : o);
-                            localStorage.setItem('guarafood-order-history', JSON.stringify(newOrders));
-                            return newOrders;
-                        }
-                        return prevOrders;
-                    });
+                    if (storedIds.includes(updatedOrder.id)) {
+                        setOrders(prev => prev.map(o => 
+                            o.id === updatedOrder.id 
+                                ? { ...o, status: updatedOrder.status } 
+                                : o
+                        ));
+                    }
                 }
             )
             .subscribe();
@@ -89,7 +131,7 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ onBack }) => {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, []);
+    }, [loadOrdersFromDB]);
 
     const filteredOrders = useMemo(() => {
         return orders.filter(order => {
@@ -124,7 +166,8 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ onBack }) => {
         });
 
         if (confirmed) {
-            localStorage.removeItem('guarafood-order-history');
+            localStorage.removeItem('guarafood-order-history-ids');
+            localStorage.removeItem('guarafood-order-history'); // Limpa antiga se houver
             localStorage.removeItem('guarafood-active-orders');
             setOrders([]);
             addToast({ message: 'Histórico limpo com sucesso!', type: 'success' });
@@ -198,7 +241,9 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ onBack }) => {
             </header>
 
             <main className="p-4 space-y-4">
-                {filteredOrders.length === 0 ? (
+                {isLoading ? (
+                    <Spinner message="Buscando pedidos..." />
+                ) : filteredOrders.length === 0 ? (
                     <div className="text-center py-16 flex flex-col items-center">
                         <div className="bg-gray-200 rounded-full w-24 h-24 flex items-center justify-center mb-4">
                             <ClockIcon className="w-12 h-12 text-gray-400" />
@@ -221,11 +266,14 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ onBack }) => {
                 ) : (
                     filteredOrders.map((order) => {
                         const safeRestaurantName = order.restaurantName || 'Restaurante';
-                        // PROTEÇÃO CONTRA VALOR NULO (toFixed error fix)
                         const safePrice = Number(order.totalPrice || 0).toFixed(2);
                         
+                        const displayOrderNum = order.order_number 
+                            ? `#${String(order.order_number).padStart(3, '0')}`
+                            : `#${order.id.substring(order.id.length - 4).toUpperCase()}`;
+
                         return (
-                            <div key={order.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                            <div key={order.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fadeIn">
                                 <div className="p-4 border-b border-gray-50 flex justify-between items-start">
                                     <div className="flex gap-3">
                                         <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center text-orange-600 font-bold text-lg flex-shrink-0">
@@ -233,8 +281,8 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ onBack }) => {
                                         </div>
                                         <div>
                                             <h3 className="font-bold text-gray-800 leading-tight">{safeRestaurantName}</h3>
-                                            <p className="text-xs text-gray-500 mt-0.5">
-                                                #{order.id.substring(0, 6)} • {new Date(order.timestamp).toLocaleDateString('pt-BR')}
+                                            <p className="text-xs text-orange-600 font-black mt-0.5">
+                                                Pedido {displayOrderNum} • {new Date(order.timestamp).toLocaleDateString('pt-BR')}
                                             </p>
                                         </div>
                                     </div>

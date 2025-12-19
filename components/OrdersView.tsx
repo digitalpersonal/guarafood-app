@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
@@ -58,6 +59,10 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
     const { text, color } = statusConfig[order.status];
     const [isExpanded, setIsExpanded] = useState(false);
 
+    const displayOrderNum = order.order_number 
+        ? `#${String(order.order_number).padStart(3, '0')}`
+        : `#${order.id.substring(order.id.length - 4).toUpperCase()}`;
+
     const isNew = useMemo(() => {
         if (order.status !== 'Novo Pedido') return false;
         const orderDate = new Date(order.timestamp);
@@ -66,7 +71,6 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
     }, [order.status, order.timestamp]);
 
     const isPixPaid = order.paymentMethod.toLowerCase().includes('pix') && order.paymentStatus === 'paid';
-    const isPendingPayment = order.paymentStatus === 'pending' && order.paymentMethod !== 'Dinheiro';
     const isPickup = !order.customerAddress || order.customerAddress.street === 'Retirada no Local';
 
     const handleConfirmAndUpdate = async (message: string, newStatus: OrderStatus) => {
@@ -137,7 +141,7 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
         >
             <div className="flex justify-between items-start mb-1">
                 <div className="flex items-center gap-1">
-                    <span className="font-mono font-bold text-gray-800 text-sm">#{order.id.substring(0, 4)}</span>
+                    <span className="font-mono font-black text-orange-600 text-sm">{displayOrderNum}</span>
                     <span className="text-[10px] text-gray-500 bg-gray-100 px-1 rounded">{timeString}</span>
                 </div>
                 <button 
@@ -155,7 +159,7 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                         PIX PAGO
                     </span>
                 )}
-                <span className="block font-bold text-sm text-orange-700">R$ {order.totalPrice.toFixed(2)}</span>
+                <span className="block font-bold text-sm text-gray-900">R$ {order.totalPrice.toFixed(2)}</span>
             </div>
 
             <div className="space-y-1 mb-1">
@@ -261,16 +265,15 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
 
     const filteredOrders = useMemo(() => {
         if (!searchTerm.trim()) return orders;
-        const lowercasedFilter = searchTerm.toLowerCase();
+        const lowerSearch = searchTerm.toLowerCase();
         return orders.filter(order =>
-            order.customerName.toLowerCase().includes(lowercasedFilter) ||
-            order.id.substring(0, 6).toLowerCase().includes(lowercasedFilter)
+            order.customerName.toLowerCase().includes(lowerSearch) ||
+            String(order.order_number).includes(lowerSearch) ||
+            order.id.toLowerCase().includes(lowerSearch)
         );
     }, [orders, searchTerm]);
 
     const { activeOrders, historyOrders, groupedActiveOrders, groupedHistoryOrders } = useMemo(() => {
-        // FILTRO CRÍTICO DE SEGURANÇA: Pedidos em 'Aguardando Pagamento' são TOTALMENTE ignorados pelo lojista nesta tela.
-        // Eles só aparecerão quando o status mudar para 'Novo Pedido' (Pagamento Confirmado ou Manual).
         const active = filteredOrders.filter(o => 
             ['Novo Pedido', 'Preparando', 'A Caminho'].includes(o.status) && 
             o.status !== 'Aguardando Pagamento'
@@ -308,7 +311,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
         <>
             {historySections.map(section => (
                 (groupedOrders[section.status] && groupedOrders[section.status]!.length > 0) ? (
-                    <div key={section.status} role="region" aria-labelledby={`section-title-${section.status}`}>
+                    <div key={section.status} role="region" aria-labelledby={`section-title-${section.status}`} className="mb-8">
                         <h2 id={`section-title-${section.status}`} className="text-xl font-bold mb-4">{section.title} ({groupedOrders[section.status]!.length})</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" role="list">
                             {groupedOrders[section.status]!.map((order: Order) => (
@@ -335,7 +338,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                      <div className="relative flex-grow">
                         <input
                             type="text"
-                            placeholder="Buscar pedido..."
+                            placeholder="Buscar cliente ou #número..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full p-2 pl-9 border rounded-lg bg-gray-50 focus:ring-2 focus:ring-orange-400 focus:outline-none text-sm"

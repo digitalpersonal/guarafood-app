@@ -1,3 +1,4 @@
+
 import type { Order, OrderStatus, CartItem } from '../types';
 import { supabase, handleSupabaseError } from './api';
 
@@ -7,6 +8,7 @@ const normalizeOrder = (data: any): Order => {
 
     return {
         id: data.id,
+        order_number: data.order_number, // MAPEIA O NOVO CAMPO SEQUENCIAL
         timestamp: data.timestamp || data.created_at,
         status: data.status,
         customerName: data.customer_name,
@@ -26,6 +28,7 @@ const normalizeOrder = (data: any): Order => {
         deliveryFee: data.delivery_fee,
         payment_id: data.payment_id,
         payment_details: data.payment_details,
+        // Se for Pix Automático e não tiver o status 'paid' no banco, consideramos pending
         paymentStatus: data.payment_status || (data.payment_method === 'Marcar na minha conta' ? 'pending' : 'paid')
     };
 };
@@ -50,7 +53,7 @@ export const subscribeToOrders = (
                 table: 'orders', 
                 filter: restaurantId ? `restaurant_id=eq.${restaurantId}` : undefined 
             },
-            (payload) => {
+            () => {
                 fetchOrders(restaurantId, { limit }).then(callback).catch(console.error);
             }
         )
@@ -128,8 +131,8 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
         discount_amount: orderData.discountAmount,
         subtotal: orderData.subtotal,
         delivery_fee: orderData.deliveryFee,
-        // IMPORTANTE:createOrder só é usado para fluxos MANUAIS (Dinheiro/Manual Pix)
-        // Por isso, aqui o status é sempre Novo Pedido para o lojista ver na hora.
+        //createOrder só é usado para fluxos MANUAIS (Dinheiro/Manual Pix/Fiado)
+        //Por isso, aqui o status é sempre 'Novo Pedido' para o lojista ver na hora.
         status: 'Novo Pedido', 
         payment_status: isDebt ? 'pending' : 'paid',
         timestamp: new Date().toISOString(),
@@ -138,7 +141,6 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
     const { data, error } = await supabase.from('orders').insert(newOrderPayload).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to create order' });
     
-    // Notifica o rastreador local
     window.dispatchEvent(new Event('guarafood:update-orders'));
     
     return normalizeOrder(data);
