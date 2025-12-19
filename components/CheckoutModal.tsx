@@ -99,6 +99,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const [knownCustomers, setKnownCustomers] = useState<Record<string, { phone: string, address: any }>>({});
     const [highlightFields, setHighlightFields] = useState(false);
+    const [stepTransitionLock, setStepTransitionLock] = useState(false);
     
     const deliveryMethodRef = useRef<HTMLDivElement>(null);
 
@@ -106,8 +107,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     useEffect(() => {
         if (isOpen) {
             const loaded: Record<string, { phone: string, address: any }> = {};
-            
-            // 1. Tentar carregar o dicionário de clientes salvos
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
                 if (key && key.startsWith('customerData-')) {
@@ -122,7 +121,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             }
             setKnownCustomers(loaded);
 
-            // 2. Tentar carregar o ÚLTIMO cliente que pediu (Preenchimento Automático Prioritário)
             const lastData = localStorage.getItem('guarafood-last-customer');
             if (lastData) {
                 try {
@@ -137,19 +135,11 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         }
     }, [isOpen]);
 
-    // Função CRÍTICA: Salvar dados do cliente AGORA
     const saveCustomerDataLocally = (name: string, phone: string, addr: any) => {
         if (!name || name.length < 3) return;
-        
         const customerPayload = { phone, address: addr, name, lastUpdated: new Date().toISOString() };
-        
-        // Salva no dicionário por nome
         localStorage.setItem(`customerData-${name.toLowerCase().trim()}`, JSON.stringify(customerPayload));
-        
-        // Salva como o "último usado" globalmente
         localStorage.setItem('guarafood-last-customer', JSON.stringify(customerPayload));
-        
-        console.log("Customer data persisted for autofill.");
     };
 
     const handleNameChange = (val: string) => {
@@ -159,11 +149,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
         if (matched) {
             setCustomerPhone(matched.phone);
-            setAddress({
-                ...matched.address,
-                zipCode: matched.address.zipCode || '37810-000'
-            });
-            
+            setAddress({ ...matched.address, zipCode: matched.address.zipCode || '37810-000' });
             setHighlightFields(true);
             setTimeout(() => setHighlightFields(false), 2000);
             addToast({ message: "Dados recuperados!", type: 'success', duration: 1000 });
@@ -188,7 +174,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const resetState = () => {
         setCurrentStep('SUMMARY');
-        // Não resetamos nome/telefone aqui para manter o autofill que o useEffect carregou
         setPaymentMethod(paymentOptions[0] || 'Pix'); 
         setChangeFor('');
         setIsSubmitting(false);
@@ -201,6 +186,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setWantsSachets(false); 
         setCountdown(300);
         setDeliveryMethod('DELIVERY');
+        setStepTransitionLock(false);
         if (countdownIntervalRef.current) {
             clearInterval(countdownIntervalRef.current);
             countdownIntervalRef.current = null;
@@ -224,10 +210,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         return c.isActive && now <= expirationDate;
                     });
                     setHasAvailableCoupons(hasActive);
-                } catch (e) {
-                    console.error("Failed to check coupons", e);
-                    setHasAvailableCoupons(false);
-                }
+                } catch (e) { console.error("Failed to check coupons", e); }
             };
             checkCoupons();
         }
@@ -235,7 +218,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const { finalPrice, discountAmount } = useMemo(() => {
         if (!appliedCoupon) return { finalPrice: totalPrice, discountAmount: 0 };
-        let discount = appliedCoupon.discountType === 'FIXED' ? appliedCoupon.discountValue : totalPrice * (appliedCoupon.discountValue / 100);
+        let discount = appliedCoupon.discountType === 'PERCENTAGE' ? totalPrice * (appliedCoupon.discountValue / 100) : appliedCoupon.discountValue;
         return { finalPrice: Math.max(0, totalPrice - discount), discountAmount: discount };
     }, [totalPrice, appliedCoupon]);
 
@@ -287,8 +270,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const handlePixPayment = async (orderData: NewOrderData) => {
         setIsSubmitting(true);
         setPixError(null);
-        
-        // Salva dados do cliente IMEDIATAMENTE (antes da resposta da rede)
         saveCustomerDataLocally(customerName, customerPhone, address);
 
         try {
@@ -346,8 +327,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const handlePayOnDelivery = async (orderData: NewOrderData) => {
         setIsSubmitting(true);
-        
-        // Salva dados do cliente IMEDIATAMENTE
         saveCustomerDataLocally(customerName, customerPhone, address);
 
         try {
@@ -381,6 +360,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const handleSubmitDetails = async (e: React.FormEvent) => {
         e.preventDefault();
+        // TRAVA DE SEGURANÇA: Só permite envio se estiver visivelmente na etapa de detalhes por pelo menos 400ms
+        if (currentStep !== 'DETAILS' || stepTransitionLock) return;
+        
         if (!isOpenNow) { addToast({ message: "O restaurante acabou de fechar.", type: 'error' }); return; }
         if (!customerName || !customerPhone || !paymentMethod) { setFormError('Preencha nome, telefone e pagamento.'); return; }
         if (deliveryMethod === 'DELIVERY' && (!address.street || !address.number || !address.neighborhood)) { setFormError('Endereço incompleto.'); return; }
@@ -416,11 +398,16 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setIsManualPix(false);
     };
 
-    const handleNextStep = () => {
+    const handleNextStep = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
         if (currentStep === 'SUMMARY') {
             if (cartItems.length === 0) return;
             if (!isOpenNow) return;
+            setStepTransitionLock(true);
             setCurrentStep('DETAILS');
+            // Bloqueia clique fantasma por 400ms ao mudar de etapa
+            setTimeout(() => setStepTransitionLock(false), 400);
         }
     };
 
@@ -454,7 +441,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                     </div>
                 )}
 
-                {/* Status Bar / Steps */}
                 {currentStep !== 'SUCCESS' && (
                     <div className="flex justify-between items-center px-4 py-3 bg-gray-50 border-b">
                         {steps.map((step, index) => {
@@ -479,7 +465,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                     </div>
                 )}
 
-                {/* --- CLOSED BANNER (BLINDAGEM) --- */}
                 {!isOpenNow && currentStep !== 'SUCCESS' && (
                     <div className="bg-red-600 text-white p-3 text-center animate-pulse">
                         <p className="text-xs font-black uppercase tracking-widest">🚨 Atenção: O Restaurante acaba de fechar!</p>
@@ -562,61 +547,20 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                             <div className="bg-white p-4 rounded-2xl border-2 border-orange-100 space-y-3 animate-fadeIn">
                                 <h4 className="text-xs font-black text-orange-800 uppercase tracking-widest">Endereço de Entrega</h4>
                                 <div className="grid grid-cols-4 gap-2">
-                                    <input 
-                                        name="street" 
-                                        placeholder="Rua / Avenida" 
-                                        type="text" 
-                                        value={address.street} 
-                                        onChange={handleAddressChange} 
-                                        required 
-                                        className={`col-span-3 p-3 border-2 rounded-xl bg-gray-50 text-sm font-semibold transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} 
-                                    />
-                                    <input 
-                                        name="number" 
-                                        placeholder="Nº" 
-                                        type="text" 
-                                        value={address.number} 
-                                        onChange={handleAddressChange} 
-                                        required 
-                                        className={`p-3 border-2 rounded-xl bg-gray-50 text-sm font-bold text-center transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} 
-                                    />
+                                    <input name="street" placeholder="Rua / Avenida" type="text" value={address.street} onChange={handleAddressChange} required className={`col-span-3 p-3 border-2 rounded-xl bg-gray-50 text-sm font-semibold transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} />
+                                    <input name="number" placeholder="Nº" type="text" value={address.number} onChange={handleAddressChange} required className={`p-3 border-2 rounded-xl bg-gray-50 text-sm font-bold text-center transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} />
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <input 
-                                        name="neighborhood" 
-                                        placeholder="Bairro" 
-                                        type="text" 
-                                        value={address.neighborhood} 
-                                        onChange={handleAddressChange} 
-                                        required 
-                                        className={`p-3 border-2 rounded-xl bg-gray-50 text-sm font-semibold transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} 
-                                    />
-                                    <input 
-                                        name="complement" 
-                                        placeholder="Apto / Bloco / Referência" 
-                                        type="text" 
-                                        value={address.complement} 
-                                        onChange={handleAddressChange} 
-                                        className={`p-3 border-2 rounded-xl bg-gray-50 text-sm transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} 
-                                    />
+                                    <input name="neighborhood" placeholder="Bairro" type="text" value={address.neighborhood} onChange={handleAddressChange} required className={`p-3 border-2 rounded-xl bg-gray-50 text-sm font-semibold transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} />
+                                    <input name="complement" placeholder="Apto / Bloco / Referência" type="text" value={address.complement} onChange={handleAddressChange} className={`p-3 border-2 rounded-xl bg-gray-50 text-sm transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} />
                                 </div>
                             </div>
                         )}
 
                         <div className="border-t pt-4">
-                            <button
-                                type="button"
-                                onClick={() => setWantsSachets(!wantsSachets)}
-                                className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all shadow-sm active:scale-[0.98] ${
-                                    wantsSachets 
-                                    ? 'bg-emerald-100 border-emerald-500 shadow-emerald-100' 
-                                    : 'bg-emerald-50/40 border-emerald-100'
-                                }`}
-                            >
+                            <button type="button" onClick={() => setWantsSachets(!wantsSachets)} className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all shadow-sm active:scale-[0.98] ${wantsSachets ? 'bg-emerald-100 border-emerald-500 shadow-emerald-100' : 'bg-emerald-50/40 border-emerald-100'}`}>
                                 <div className="flex items-center gap-3 text-left">
-                                    <div className={`p-2.5 rounded-full ${wantsSachets ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-600'}`}>
-                                        <LeafIcon className="w-5 h-5" />
-                                    </div>
+                                    <div className={`p-2.5 rounded-full ${wantsSachets ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-600'}`}><LeafIcon className="w-5 h-5" /></div>
                                     <div className="flex-grow">
                                         <p className="text-sm font-black text-emerald-900 leading-tight">🌿 Reduza o lixo: Só mandamos sachês se você pedir!</p>
                                         <p className="text-[10px] text-emerald-700 font-medium mt-1">Ajude o planeta. Peça talheres ou condimentos apenas se for realmente utilizar agora.</p>
@@ -634,7 +578,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                 {paymentOptions.map(gateway => {
                                     const isSelected = paymentMethod === gateway;
                                     const isCash = gateway.toLowerCase().includes('dinheiro');
-
                                     return (
                                         <div key={gateway} className={`border-2 rounded-xl transition-all ${isSelected ? 'border-orange-500 bg-orange-50/30' : 'border-gray-100 hover:border-orange-200'}`}>
                                             <label className="flex items-center p-3 cursor-pointer">
@@ -644,23 +587,13 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                                     {gateway.toLowerCase().includes('cartão') && <span className="text-[10px] text-blue-600">ⓘ Maquininha na entrega.</span>}
                                                 </div>
                                             </label>
-
                                             {isSelected && isCash && (
                                                 <div className="p-3 border-t border-orange-200 bg-white/50 animate-fadeIn">
                                                     <label htmlFor="changeFor" className="block text-[10px] font-black text-orange-800 uppercase mb-1 tracking-wider">Precisa de troco para quanto?</label>
                                                     <div className="flex items-center bg-white border-2 border-orange-100 rounded-lg px-3 py-2 focus-within:border-orange-400 transition-colors">
                                                         <span className="text-orange-400 mr-1 font-black">R$</span>
-                                                        <input 
-                                                            id="changeFor"
-                                                            type="number" 
-                                                            step="0.01" 
-                                                            placeholder="Ex: 50.00" 
-                                                            value={changeFor}
-                                                            onChange={(e) => setChangeFor(e.target.value)}
-                                                            className="w-full bg-transparent outline-none font-black text-gray-800 placeholder-gray-300"
-                                                        />
+                                                        <input id="changeFor" type="number" step="0.01" placeholder="Ex: 50.00" value={changeFor} onChange={(e) => setChangeFor(e.target.value)} className="w-full bg-transparent outline-none font-black text-gray-800 placeholder-gray-300"/>
                                                     </div>
-                                                    <p className="text-[9px] text-gray-400 mt-1 italic leading-tight">Deixe em branco se não precisar de troco.</p>
                                                 </div>
                                             )}
                                         </div>
@@ -668,7 +601,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                 })}
                             </div>
                         </div>
-                        
                         {hasAvailableCoupons && (
                             <div className="pt-2">
                                 <label className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-1">Cupom</label>
@@ -711,11 +643,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                 </>
                             ) : <Spinner message="Gerando Pix..." />
                         )}
-                        {pixError && <p className="text-red-500 text-xs mt-2 font-bold">{pixError}</p>}
                     </div>
                 )}
 
-                {/* --- TELA DE SUCESSO (SISTEMA INTELIGENTE REFORÇADO) --- */}
                 {currentStep === 'SUCCESS' && (
                     <div className="text-center flex flex-col items-center justify-center p-8 bg-emerald-50 h-full animate-fadeIn min-h-[400px]">
                         <div className="relative mb-6">
@@ -723,45 +653,56 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                             <CheckCircleIcon className="w-24 h-24 text-emerald-600 relative z-10" />
                         </div>
                         <h3 className="text-3xl font-black text-emerald-900 uppercase tracking-tighter">Pedido Confirmado!</h3>
-                        
                         <div className="mt-6 bg-white p-6 rounded-3xl border-2 border-emerald-100 shadow-xl max-w-sm w-full relative">
-                            <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-black px-4 py-1 rounded-full uppercase tracking-widest shadow-md">
-                                Inovação GuaraFood
-                            </div>
-                            <p className="text-sm text-gray-700 font-bold leading-relaxed">
-                                <span className="text-emerald-600 font-black">Sistema inteligente</span>: você não precisa mais ir no whatsapp, o acompanhamento de seu pedido é todo feito por aqui mesmo!
-                            </p>
-                            <div className="mt-4 pt-4 border-t border-gray-100">
-                                <p className="text-xs text-gray-500 font-medium">
-                                    Basta clicar no botão abaixo que vamos te deixar sempre atualizado! 📱✨
-                                </p>
-                            </div>
+                            <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-black px-4 py-1 rounded-full uppercase tracking-widest shadow-md">Inovação GuaraFood</div>
+                            <p className="text-sm text-gray-700 font-bold leading-relaxed"><span className="text-emerald-600 font-black">Sistema inteligente</span>: você não precisa mais ir no whatsapp, o acompanhamento de seu pedido é todo feito por aqui mesmo!</p>
                         </div>
-                        
-                        <button 
-                            type="button" 
-                            onClick={handleFinalClose} 
-                            className="mt-10 bg-emerald-600 text-white font-black py-5 px-16 rounded-full shadow-xl shadow-emerald-200 active:scale-90 transition-all text-xl uppercase tracking-widest hover:bg-emerald-700 hover:-translate-y-1"
-                        >
-                            Entendi
-                        </button>
+                        <button type="button" onClick={handleFinalClose} className="mt-10 bg-emerald-600 text-white font-black py-5 px-16 rounded-full shadow-xl shadow-emerald-200 active:scale-90 transition-all text-xl uppercase tracking-widest hover:bg-emerald-700 hover:-translate-y-1">Entendi</button>
                     </div>
                 )}
                 
+                {/* RODAPÉ DE AÇÕES COM SEPARAÇÃO DE BOTÕES FÍSICA */}
                 {(currentStep === 'SUMMARY' || currentStep === 'DETAILS' || (currentStep === 'PIX_PAYMENT' && !isManualPix)) && (
                     <div className="mt-auto p-4 border-t bg-gray-50 rounded-b-lg flex justify-between items-center bg-white sticky bottom-0 z-10">
                         <button type="button" onClick={handlePrevStep} className="px-5 py-2.5 rounded-lg bg-gray-200 text-gray-800 font-semibold text-sm active:scale-90 transition-transform">{currentStep === 'SUMMARY' ? 'Fechar' : 'Voltar'}</button>
+                        
                         <div className="flex flex-col items-end">
                             <span className="font-bold text-[10px] text-gray-400">Total: <span className="text-orange-600 text-lg">R$ {finalPriceWithFee.toFixed(2)}</span></span>
-                            <button 
-                                onClick={currentStep === 'SUMMARY' ? handleNextStep : undefined} 
-                                type={currentStep === 'DETAILS' ? 'submit' : 'button'} 
-                                form={currentStep === 'DETAILS' ? 'checkout-form' : undefined} 
-                                disabled={isSubmitting || (currentStep !== 'PIX_PAYMENT' && !isOpenNow)} 
-                                className="mt-1 bg-orange-600 text-white font-bold py-2.5 px-8 rounded-lg shadow-lg disabled:opacity-50 text-sm active:scale-95 transition-all"
-                            >
-                                {isSubmitting ? '...' : currentStep === 'SUMMARY' ? 'Continuar' : (paymentMethod === 'Pix' ? 'Pagar' : 'Confirmar')}
-                            </button>
+                            
+                            {/* BOTÃO PARA ETAPA SUMMARY */}
+                            {currentStep === 'SUMMARY' && (
+                                <button 
+                                    onClick={handleNextStep} 
+                                    type="button"
+                                    disabled={isSubmitting || cartItems.length === 0 || !isOpenNow} 
+                                    className="mt-1 bg-orange-600 text-white font-bold py-2.5 px-8 rounded-lg shadow-lg disabled:opacity-50 text-sm active:scale-95 transition-all"
+                                >
+                                    {isSubmitting ? '...' : 'Continuar'}
+                                </button>
+                            )}
+
+                            {/* BOTÃO PARA ETAPA DETAILS (SUBMISSÃO REAL) */}
+                            {currentStep === 'DETAILS' && (
+                                <button 
+                                    type="submit" 
+                                    form="checkout-form"
+                                    disabled={isSubmitting || !isOpenNow || stepTransitionLock} 
+                                    className="mt-1 bg-orange-600 text-white font-bold py-2.5 px-8 rounded-lg shadow-lg disabled:opacity-50 text-sm active:scale-95 transition-all"
+                                >
+                                    {isSubmitting ? '...' : (paymentMethod === 'Pix' ? 'Pagar Agora' : 'Confirmar Pedido')}
+                                </button>
+                            )}
+
+                            {/* BOTÃO PARA PIX PENDENTE (NÃO SUBMETER FORM DENOVO) */}
+                            {currentStep === 'PIX_PAYMENT' && !isManualPix && (
+                                <button 
+                                    onClick={() => setCurrentStep('DETAILS')} 
+                                    type="button"
+                                    className="mt-1 bg-gray-500 text-white font-bold py-2.5 px-8 rounded-lg shadow-lg text-sm active:scale-95 transition-all"
+                                >
+                                    Trocar Pagamento
+                                </button>
+                            )}
                         </div>
                     </div>
                 )}

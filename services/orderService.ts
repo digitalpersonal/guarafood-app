@@ -35,67 +35,53 @@ const normalizeOrder = (data: any): Order => {
 export const subscribeToOrders = (
     callback: (orders: Order[]) => void, 
     restaurantId?: number,
-    onStatusChange?: (status: 'SUBSCRIBED' | 'CLOSED' | 'CHANNEL_ERROR' | 'TIMED_OUT') => void,
-    limit: number = 200
+    onStatusChange?: (status: string) => void
 ): (() => void) => {
     let isMounted = true;
-    let retryTimeout: number | null = null;
 
     const refreshData = async () => {
         if (!isMounted) return;
         try {
-            const orders = await fetchOrders(restaurantId, { limit });
+            const orders = await fetchOrders(restaurantId, { limit: 200 });
             if (isMounted) callback(orders);
         } catch (e) {
-            console.error("Erro ao atualizar pedidos:", e);
+            console.error("Erro ao atualizar pedidos via polling:", e);
         }
     };
 
-    const createChannel = () => {
-        if (!isMounted) return;
+    // NOME DO CANAL ESTÁTICO: Crucial para evitar o loop de reconexão de 5s
+    const channelName = restaurantId ? `orders_store_${restaurantId}` : `orders_global_admin`;
+    
+    // Limpar canais antigos com o mesmo nome antes de começar
+    supabase.removeChannel(supabase.channel(channelName));
 
-        const channelName = restaurantId ? `orders_rest_${restaurantId}_${Date.now()}` : `orders_all_${Date.now()}`;
-        const channel = supabase.channel(channelName);
-        
-        channel
-            .on(
-                'postgres_changes',
-                { 
-                    event: '*', 
-                    schema: 'public', 
-                    table: 'orders', 
-                    filter: restaurantId ? `restaurant_id=eq.${restaurantId}` : undefined 
-                },
-                () => {
-                    refreshData();
-                }
-            )
-            .subscribe((status) => {
-                if (isMounted && onStatusChange) {
-                    onStatusChange(status as any);
-                }
-                
-                if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-                    console.warn(`Realtime status: ${status}. Tentando reconectar em 5s...`);
-                    if (retryTimeout) clearTimeout(retryTimeout);
-                    retryTimeout = window.setTimeout(() => {
-                        supabase.removeChannel(channel);
-                        createChannel();
-                        refreshData();
-                    }, 5000);
-                }
-            });
+    const channel = supabase.channel(channelName)
+        .on(
+            'postgres_changes',
+            { 
+                event: '*', 
+                schema: 'public', 
+                table: 'orders', 
+                filter: restaurantId ? `restaurant_id=eq.${restaurantId}` : undefined 
+            },
+            () => {
+                console.log("Realtime: Mudança detectada, atualizando...");
+                refreshData();
+            }
+        )
+        .subscribe((status) => {
+            console.log(`Realtime Status (${channelName}):`, status);
+            if (isMounted && onStatusChange) {
+                onStatusChange(status);
+            }
+        });
 
-        return channel;
-    };
-
+    // Carga inicial
     refreshData();
-    let currentChannel = createChannel();
 
     return () => {
         isMounted = false;
-        if (retryTimeout) clearTimeout(retryTimeout);
-        if (currentChannel) supabase.removeChannel(currentChannel);
+        supabase.removeChannel(channel);
     };
 };
 
@@ -110,7 +96,10 @@ export const fetchOrders = async (restaurantId?: number, options?: { limit?: num
     }
 
     const { data, error } = await query.order('timestamp', { ascending: false });
-    handleSupabaseError({ error, customMessage: 'Failed to fetch orders' });
+    if (error) {
+        handleSupabaseError({ error, customMessage: 'Failed to fetch orders' });
+        return [];
+    }
     
     return (data || []).map(normalizeOrder);
 };

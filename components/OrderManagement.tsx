@@ -39,6 +39,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const printedOrderIdsRef = useRef<Set<string>>(new Set());
     const pollingIntervalRef = useRef<number | null>(null);
     const heartbeatIntervalRef = useRef<number | null>(null);
+    const reconnectGraceTimeoutRef = useRef<number | null>(null);
 
     const [printerWidth, setPrinterWidth] = useState<number>(80);
 
@@ -47,14 +48,19 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         if (!currentUser?.restaurantId) return;
         try {
             const allOrders = await fetchOrders(currentUser.restaurantId, { limit: 200 });
-            processOrdersUpdate(allOrders);
+            if (allOrders.length > 0 || orders.length === 0) {
+                processOrdersUpdate(allOrders);
+            }
             lastSuccessfulSyncRef.current = Date.now();
             setConnectionStatus('CONNECTED');
+            if (reconnectGraceTimeoutRef.current) {
+                clearTimeout(reconnectGraceTimeoutRef.current);
+                reconnectGraceTimeoutRef.current = null;
+            }
         } catch (e) {
             console.warn("Sync failed, checking network...");
-            if (!navigator.onLine) setConnectionStatus('RECONNECTING');
         }
-    }, [currentUser?.restaurantId]);
+    }, [currentUser?.restaurantId, orders.length]);
 
     const processOrdersUpdate = useCallback((allOrders: Order[]) => {
         const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
@@ -103,8 +109,8 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         };
         requestWakeLock();
 
-        // Listeners de Redes e Foco
-        const handleOnline = () => { setConnectionStatus('CONNECTED'); forceSync(); };
+        // Listeners de Rede Nativa
+        const handleOnline = () => { forceSync(); };
         const handleOffline = () => setConnectionStatus('RECONNECTING');
         const handleVisibilityChange = () => { if (document.visibilityState === 'visible') forceSync(); };
 
@@ -113,14 +119,13 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         window.addEventListener('focus', forceSync);
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
-        // HEARTBEAT: Se ficar mais de 45s sem sinal, força sync
+        // HEARTBEAT DE SEGURANÇA: Se ficar mais de 30s sem sinal, força sync via HTTP
         heartbeatIntervalRef.current = window.setInterval(() => {
             const timeSinceLastSync = Date.now() - lastSuccessfulSyncRef.current;
-            if (timeSinceLastSync > 45000) {
-                console.log("Heartbeat: Detectado hiato de conexão, forçando sync...");
+            if (timeSinceLastSync > 30000) {
                 forceSync();
             }
-        }, 15000);
+        }, 10000);
 
         return () => { 
             if (wakeLock !== null) wakeLock.release(); 
@@ -129,6 +134,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             window.removeEventListener('focus', forceSync);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
+            if (reconnectGraceTimeoutRef.current) clearTimeout(reconnectGraceTimeoutRef.current);
         };
     }, [forceSync]);
 
@@ -164,17 +170,29 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     useEffect(() => {
         if (!currentUser?.restaurantId) return;
 
+        const handleRealtimeStatus = (status: string) => {
+            if (status === 'SUBSCRIBED') {
+                setConnectionStatus('CONNECTED');
+                if (reconnectGraceTimeoutRef.current) {
+                    clearTimeout(reconnectGraceTimeoutRef.current);
+                    reconnectGraceTimeoutRef.current = null;
+                }
+            } else {
+                // TOLERÂNCIA DE 10 SEGUNDOS: Só mostra erro se demorar pra voltar
+                if (!reconnectGraceTimeoutRef.current) {
+                    reconnectGraceTimeoutRef.current = window.setTimeout(() => {
+                        setConnectionStatus('RECONNECTING');
+                    }, 10000);
+                }
+            }
+        };
+
         const unsubscribe = subscribeToOrders((allOrders) => {
             processOrdersUpdate(allOrders);
-        }, currentUser.restaurantId, (status) => {
-            if (status === 'SUBSCRIBED') setConnectionStatus('CONNECTED');
-            else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-                setConnectionStatus('RECONNECTING');
-            }
-        }, 200); 
+        }, currentUser.restaurantId, handleRealtimeStatus); 
         
-        // POLLING DE SEGURANÇA (HTTP): Sempre ativo em segundo plano a cada 30s
-        pollingIntervalRef.current = window.setInterval(forceSync, 30000);
+        // POLLING DE FUNDO (HTTP): Backup inquebrável a cada 20s
+        pollingIntervalRef.current = window.setInterval(forceSync, 20000);
 
         return () => {
             unsubscribe();
@@ -207,13 +225,13 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     
     return (
         <div className="w-full min-h-screen bg-gray-50" onClick={enableAudio} onTouchStart={enableAudio}>
-            {/* BARRA DE STATUS INTELIGENTE */}
+            {/* BARRA DE STATUS ESTABILIZADA */}
             <div 
                 className={`text-white text-center text-[10px] uppercase tracking-widest font-black p-1.5 cursor-pointer flex items-center justify-center gap-2 transition-all duration-500 ${connectionStatus === 'CONNECTED' ? 'bg-green-600' : 'bg-red-600 animate-pulse'}`} 
                 onClick={forceSync}
             >
                 <div className={`w-2.5 h-2.5 rounded-full bg-white ${connectionStatus === 'CONNECTED' ? 'opacity-100' : 'animate-ping'}`}></div>
-                {connectionStatus === 'CONNECTED' ? <span>Painel Online</span> : <span>Conexão Interrompida - Recompondo...</span>}
+                {connectionStatus === 'CONNECTED' ? <span>Painel Conectado</span> : <span>Restabelecendo Conexão...</span>}
             </div>
 
             <header className="p-4 sticky top-0 bg-gray-50 z-20 border-b flex justify-between items-center gap-4">
@@ -229,7 +247,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     <button 
                         onClick={forceSync}
                         className={`p-2 rounded-lg transition-all ${connectionStatus === 'CONNECTED' ? 'text-gray-400 hover:text-orange-600' : 'text-white bg-red-500'}`}
-                        title="Sincronizar Pedidos"
+                        title="Sincronizar Manualmente"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`w-6 h-6 ${connectionStatus !== 'CONNECTED' ? 'animate-spin' : ''}`}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
