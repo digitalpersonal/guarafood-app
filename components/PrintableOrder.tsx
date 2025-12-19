@@ -9,14 +9,12 @@ interface PrintableOrderProps {
 
 const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 80 }) => {
     const paperSize = `${printerWidth}mm`;
-    // Medidas exatas solicitadas para evitar vazamento na área imprimível
     const contentWidth = printerWidth === 80 ? '70mm' : '46mm';
     
-    // Escalonamento de fontes proporcional ao tamanho da bobina
-    const baseFontSize = printerWidth === 58 ? '10px' : '13px';
-    const headerFontSize = printerWidth === 58 ? '12px' : '15px';
-    const titleFontSize = printerWidth === 58 ? '15px' : '18px';
-    const smallFontSize = printerWidth === 58 ? '9px' : '11px';
+    const baseFontSize = printerWidth === 58 ? '11px' : '14px';
+    const headerFontSize = printerWidth === 58 ? '13px' : '16px';
+    const titleFontSize = printerWidth === 58 ? '16px' : '20px';
+    const smallFontSize = printerWidth === 58 ? '10px' : '12px';
 
     const isPixPaid = order.paymentMethod.toLowerCase().includes('pix') && order.paymentStatus === 'paid';
     const isPickup = !order.customerAddress || order.customerAddress.street === 'Retirada no Local';
@@ -34,192 +32,176 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                             margin: 0 !important;
                             size: ${paperSize} auto;
                         }
-                        
                         body {
                             margin: 0 !important;
                             padding: 0 !important;
                             width: ${paperSize} !important;
                             background-color: #fff;
                         }
-
                         #thermal-receipt-container {
                             width: ${paperSize} !important;
                             margin: 0 !important;
                             padding: 0 !important;
                         }
-
-                        /* TRAVA DE SEGURANÇA FÍSICA: Conteúdo nunca encosta na serrilha */
                         #thermal-content {
                             width: ${contentWidth} !important; 
-                            margin: 0 auto !important; /* Centraliza na bobina */
-                            padding: 2mm 0 !important;
+                            margin: 0 auto !important;
+                            padding: 3mm 0 !important;
                             box-sizing: border-box !important;
                         }
                     }
 
                     #thermal-content {
                         font-family: 'Courier New', Courier, monospace; 
-                        color: #000;
-                        line-height: 1.2;
+                        color: #000 !important;
+                        line-height: 1.3;
                     }
 
                     #thermal-content * {
                         color: #000 !important;
                         word-wrap: break-word !important;
                         overflow-wrap: break-word !important;
-                        word-break: break-all !important; /* BLINDAGEM: Quebra palavras gigantes para não alargar o papel */
+                        word-break: break-all !important;
                         white-space: normal !important;
+                        font-weight: 900 !important; /* FORÇA NEGRITO MÁXIMO EM TUDO */
                     }
 
                     .receipt-header {
                         text-align: center;
-                        border-bottom: 1px dashed #000;
-                        padding-bottom: 4px;
-                        margin-bottom: 8px;
+                        border-bottom: 2px dashed #000;
+                        padding-bottom: 5px;
+                        margin-bottom: 10px;
                     }
 
                     .receipt-title {
                         font-size: ${titleFontSize};
-                        font-weight: 900;
                         text-transform: uppercase;
                     }
 
                     .section-header {
                         font-size: ${baseFontSize};
-                        font-weight: 900;
-                        border-bottom: 1.5px solid #000;
-                        margin-top: 8px;
-                        margin-bottom: 4px;
-                        padding-bottom: 1px;
+                        border-bottom: 2px solid #000;
+                        margin-top: 10px;
+                        margin-bottom: 5px;
+                        padding-bottom: 2px;
                         text-transform: uppercase;
                     }
 
-                    .address-box {
-                        border: 1px solid #000;
-                        padding: 3px;
-                        margin-top: 4px;
-                        font-size: ${headerFontSize};
-                        font-weight: 900;
-                    }
-
-                    /* PROTEÇÃO DE PREÇO: O nome do item se vira no espaço que sobrar */
                     .item-row {
                         display: flex;
                         justify-content: space-between;
                         align-items: flex-start;
                         font-size: ${baseFontSize};
-                        margin-bottom: 6px;
+                        margin-bottom: 5px;
                         width: 100%;
                     }
                     
                     .item-desc {
                         flex: 1;
-                        padding-right: 4px;
-                        font-weight: 900;
+                        padding-right: 5px;
+                        text-transform: uppercase;
                     }
 
                     .item-total-price {
-                        font-weight: 900;
                         text-align: right;
-                        white-space: nowrap !important;
-                        min-width: 65px; /* Reserva espaço inviolável pro preço na margem direita */
+                        min-width: 70px;
                     }
 
-                    .totals-section {
-                        border-top: 1px solid #000;
-                        margin-top: 8px;
-                        padding-top: 4px;
+                    /* ESTILO DOS ADICIONAIS - DESTAQUE MÁXIMO SEM FUNDO */
+                    .addon-line {
+                        font-size: ${baseFontSize};
+                        text-transform: uppercase !important;
+                        display: block;
+                        margin-top: 2px;
+                        padding-left: 2mm;
+                        border-left: 3px solid #000;
                     }
 
-                    .sub-row {
-                        display: flex;
-                        justify-content: space-between;
-                        font-size: ${baseFontSize}; 
-                        margin-bottom: 2px;
+                    .notes-line {
+                        font-size: ${baseFontSize};
+                        border: 1px solid #000;
+                        padding: 2px;
+                        margin-top: 4px;
+                        text-transform: uppercase;
                     }
 
                     .total-box {
-                        border-top: 1.5px solid #000;
-                        border-bottom: 1.5px solid #000;
+                        border-top: 3px solid #000;
+                        border-bottom: 3px solid #000;
                         display: flex;
                         justify-content: space-between;
                         font-size: ${titleFontSize};
-                        font-weight: 900;
-                        margin-top: 6px;
-                        padding: 6px 0;
+                        margin-top: 8px;
+                        padding: 8px 0;
                     }
 
                     .payment-box {
-                        border: 1.5px solid #000;
+                        border: 2px solid #000;
+                        padding: 10px;
+                        text-align: center;
+                        font-size: ${headerFontSize};
+                        margin: 10px 0;
+                        text-transform: uppercase;
+                    }
+
+                    /* NOVO BANNER DE MODO DE RECEBIMENTO - SEM FUNDO PRETO PARA MELHOR LEITURA */
+                    .mode-indicator {
+                        border: 3px solid #000;
+                        font-size: ${titleFontSize};
+                        text-align: center;
                         padding: 8px;
-                        text-align: center;
-                        font-weight: 900;
-                        font-size: ${headerFontSize};
-                        margin: 8px 0;
+                        margin: 10px 0;
                         text-transform: uppercase;
+                        letter-spacing: 1px;
                     }
-
-                    .mode-banner {
-                        background-color: #000 !important;
-                        color: #fff !important;
-                        font-size: ${headerFontSize};
-                        font-weight: 900;
-                        text-align: center;
-                        padding: 4px;
-                        margin-bottom: 8px;
-                        text-transform: uppercase;
-                    }
-
-                    .bold-extra { font-weight: 900 !important; }
-                    .center { text-align: center; }
                 `}
             </style>
 
             <div id="thermal-content">
                 <div className="receipt-header">
                     <div className="receipt-title">{order.restaurantName}</div>
-                    <div className="bold-extra">
+                    <div style={{ marginTop: '2px' }}>
                         {new Date(order.timestamp).toLocaleDateString('pt-BR')} {new Date(order.timestamp).toLocaleTimeString('pt-BR').substring(0,5)}
                     </div>
-                    <div className="bold-extra" style={{ fontSize: titleFontSize, marginTop: '3px' }}>
+                    <div style={{ fontSize: titleFontSize, marginTop: '5px' }}>
                         PEDIDO: #{displayOrderNum}
                     </div>
                 </div>
 
-                <div className="mode-banner">
-                    {isPickup ? "RETIRADA BALCÃO" : "ENTREGA EM CASA"}
+                <div className="mode-indicator">
+                    {isPickup ? ">> RETIRADA <<" : ">> ENTREGA <<"}
                 </div>
 
                 {order.wantsSachets !== undefined && (
-                    <div style={{ textAlign: 'center', border: '1px solid #000', padding: '3px', marginBottom: '8px', fontSize: baseFontSize }} className="bold-extra">
-                        {order.wantsSachets ? "[X] ENVIAR SACHÊS" : "[ ] SEM SACHÊS"}
+                    <div style={{ textAlign: 'center', border: '1px solid #000', padding: '5px', marginBottom: '10px', fontSize: baseFontSize }}>
+                        {order.wantsSachets ? "ENVIAR SACHÊS/TALHERES [SIM]" : "ENVIAR SACHÊS/TALHERES [NÃO]"}
                     </div>
                 )}
 
-                <div className="section-header">CLIENTE</div>
-                <div style={{ fontSize: headerFontSize }} className="bold-extra">{order.customerName}</div>
-                <div className="bold-extra">TEL: {order.customerPhone}</div>
+                <div className="section-header">DADOS DO CLIENTE</div>
+                <div style={{ fontSize: headerFontSize }}>{order.customerName.toUpperCase()}</div>
+                <div>FONE: {order.customerPhone}</div>
                 
                 {!isPickup && order.customerAddress && (
-                    <div className="address-box">
-                        <div>{order.customerAddress.street}, {order.customerAddress.number}</div>
-                        <div>{order.customerAddress.neighborhood}</div>
+                    <div style={{ border: '2px solid #000', padding: '5px', marginTop: '5px' }}>
+                        <div style={{ fontSize: headerFontSize }}>{order.customerAddress.street.toUpperCase()}, {order.customerAddress.number}</div>
+                        <div style={{ fontSize: headerFontSize }}>BAIRRO: {order.customerAddress.neighborhood.toUpperCase()}</div>
                         {order.customerAddress.complement && (
-                            <div style={{ marginTop: '3px', fontSize: baseFontSize, borderTop: '1px dashed #000', paddingTop: '2px' }}>
-                                OBS: {order.customerAddress.complement}
+                            <div style={{ marginTop: '5px', borderTop: '1px dashed #000', paddingTop: '3px' }}>
+                                OBS ENDEREÇO: {order.customerAddress.complement.toUpperCase()}
                             </div>
                         )}
                     </div>
                 )}
 
-                <div className="section-header" style={{ marginTop: '12px' }}>ITENS</div>
+                <div className="section-header" style={{ marginTop: '15px' }}>ITENS DO PEDIDO</div>
                 
-                <div style={{ paddingBottom: '8px' }}>
+                <div style={{ paddingBottom: '10px' }}>
                     {order.items.map((item, index) => (
-                        <div key={`${item.id}-${index}`} style={{ marginTop: '8px', borderBottom: '1px dashed #eee', paddingBottom: '4px' }}>
+                        <div key={`${item.id}-${index}`} style={{ marginTop: '12px', borderBottom: '1px dashed #000', paddingBottom: '8px' }}>
                             <div className="item-row">
                                 <div className="item-desc">
-                                    {item.quantity}x {item.name}
+                                    {item.quantity}X {item.name}
                                     {item.sizeName && ` (${item.sizeName})`}
                                 </div>
                                 <div className="item-total-price">
@@ -227,29 +209,38 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                                 </div>
                             </div>
                             
-                            {(item.notes || (item.selectedAddons && item.selectedAddons.length > 0)) && (
-                                <div style={{ paddingLeft: '10px', fontSize: smallFontSize, opacity: 0.8 }}>
-                                    {item.notes && <div>* OBS: {item.notes}</div>}
-                                    {item.selectedAddons?.map(a => <div key={a.id}>+ {a.name}</div>)}
+                            {/* ADICIONAIS - VISIBILIDADE EXTREMA */}
+                            {((item.selectedAddons && item.selectedAddons.length > 0) || item.notes) && (
+                                <div style={{ marginTop: '3px' }}>
+                                    {item.selectedAddons?.map(a => (
+                                        <div key={a.id} className="addon-line">
+                                            > {a.name}
+                                        </div>
+                                    ))}
+                                    {item.notes && (
+                                        <div className="notes-line">
+                                            OBS ITEM: {item.notes.toUpperCase()}
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
                     ))}
                 </div>
 
-                <div className="totals-section">
-                    <div className="sub-row">
+                <div style={{ marginTop: '10px' }}>
+                    <div className="item-row">
                         <span>SUBTOTAL:</span>
                         <span>R$ {order.subtotal?.toFixed(2)}</span>
                     </div>
                     {order.deliveryFee != null && order.deliveryFee > 0 && (
-                        <div className="sub-row">
-                            <span>ENTREGA:</span>
+                        <div className="item-row">
+                            <span>TAXA ENTREGA:</span>
                             <span>R$ {order.deliveryFee.toFixed(2)}</span>
                         </div>
                     )}
                     {order.discountAmount != null && order.discountAmount > 0 && (
-                        <div className="sub-row">
+                        <div className="item-row">
                             <span>DESCONTO:</span>
                             <span>- R$ {order.discountAmount.toFixed(2)}</span>
                         </div>
@@ -262,13 +253,13 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                 </div>
 
                 <div className="payment-box">
-                    PGTO: {order.paymentMethod.toUpperCase()}
-                    {isPixPaid ? ' [PAGO]' : ''}
+                    PAGAMENTO: {order.paymentMethod.toUpperCase()}
+                    {isPixPaid ? ' (PAGO ONLINE)' : ''}
                 </div>
 
-                <div className="center bold-extra" style={{ fontSize: smallFontSize, marginTop: '15px', paddingTop: '8px', borderTop: '1px solid #000' }}>
-                    GUARA-FOOD PDV
-                    <br/>.
+                <div style={{ textAlign: 'center', fontSize: smallFontSize, marginTop: '25px', borderTop: '1px solid #000', paddingTop: '10px' }}>
+                    GUARA-FOOD PDV OFICIAL
+                    <br/>TECNOLOGIA E CONFIANÇA
                     <br/>.
                 </div>
             </div>

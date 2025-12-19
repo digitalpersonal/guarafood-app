@@ -43,25 +43,6 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     const [printerWidth, setPrinterWidth] = useState<number>(80);
 
-    // Sincronização forçada (Heartbeat / Manual)
-    const forceSync = useCallback(async () => {
-        if (!currentUser?.restaurantId) return;
-        try {
-            const allOrders = await fetchOrders(currentUser.restaurantId, { limit: 200 });
-            if (allOrders.length > 0 || orders.length === 0) {
-                processOrdersUpdate(allOrders);
-            }
-            lastSuccessfulSyncRef.current = Date.now();
-            setConnectionStatus('CONNECTED');
-            if (reconnectGraceTimeoutRef.current) {
-                clearTimeout(reconnectGraceTimeoutRef.current);
-                reconnectGraceTimeoutRef.current = null;
-            }
-        } catch (e) {
-            console.warn("Sync failed, checking network...");
-        }
-    }, [currentUser?.restaurantId, orders.length]);
-
     const processOrdersUpdate = useCallback((allOrders: Order[]) => {
         const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
         
@@ -98,8 +79,20 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         lastSuccessfulSyncRef.current = Date.now();
     }, [playNotification]);
 
+    // Sincronização forçada (Manual/Heartbeat)
+    const forceSync = useCallback(async () => {
+        if (!currentUser?.restaurantId) return;
+        try {
+            const allOrders = await fetchOrders(currentUser.restaurantId, { limit: 200 });
+            processOrdersUpdate(allOrders);
+            lastSuccessfulSyncRef.current = Date.now();
+            setConnectionStatus('CONNECTED');
+        } catch (e) {
+            console.warn("Sync failed, retrying silently...");
+        }
+    }, [currentUser?.restaurantId, processOrdersUpdate]);
+
     useEffect(() => {
-        // Bloquear suspensão de tela (WakeLock)
         let wakeLock: any = null;
         const requestWakeLock = async () => {
             if ('wakeLock' in navigator) {
@@ -109,20 +102,18 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         };
         requestWakeLock();
 
-        // Listeners de Rede Nativa
-        const handleOnline = () => { forceSync(); };
-        const handleOffline = () => setConnectionStatus('RECONNECTING');
+        const handleOnline = () => forceSync();
+        const handleFocus = () => forceSync();
         const handleVisibilityChange = () => { if (document.visibilityState === 'visible') forceSync(); };
 
         window.addEventListener('online', handleOnline);
-        window.addEventListener('offline', handleOffline);
-        window.addEventListener('focus', forceSync);
+        window.addEventListener('focus', handleFocus);
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
-        // HEARTBEAT DE SEGURANÇA: Se ficar mais de 30s sem sinal, força sync via HTTP
+        // HEARTBEAT DE 15s: Se o Realtime falhar, o polling garante a atualização rápida
         heartbeatIntervalRef.current = window.setInterval(() => {
-            const timeSinceLastSync = Date.now() - lastSuccessfulSyncRef.current;
-            if (timeSinceLastSync > 30000) {
+            const idleTime = Date.now() - lastSuccessfulSyncRef.current;
+            if (idleTime > 15000) {
                 forceSync();
             }
         }, 10000);
@@ -130,8 +121,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         return () => { 
             if (wakeLock !== null) wakeLock.release(); 
             window.removeEventListener('online', handleOnline);
-            window.removeEventListener('offline', handleOffline);
-            window.removeEventListener('focus', forceSync);
+            window.removeEventListener('focus', handleFocus);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
             if (reconnectGraceTimeoutRef.current) clearTimeout(reconnectGraceTimeoutRef.current);
@@ -178,7 +168,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     reconnectGraceTimeoutRef.current = null;
                 }
             } else {
-                // TOLERÂNCIA DE 10 SEGUNDOS: Só mostra erro se demorar pra voltar
+                // TOLERÂNCIA DE 10 SEGUNDOS: Evita mensagens de erro em micro-oscilações
                 if (!reconnectGraceTimeoutRef.current) {
                     reconnectGraceTimeoutRef.current = window.setTimeout(() => {
                         setConnectionStatus('RECONNECTING');
@@ -190,15 +180,11 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         const unsubscribe = subscribeToOrders((allOrders) => {
             processOrdersUpdate(allOrders);
         }, currentUser.restaurantId, handleRealtimeStatus); 
-        
-        // POLLING DE FUNDO (HTTP): Backup inquebrável a cada 20s
-        pollingIntervalRef.current = window.setInterval(forceSync, 20000);
 
         return () => {
             unsubscribe();
-            if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
         };
-    }, [currentUser?.restaurantId, processOrdersUpdate, forceSync]);
+    }, [currentUser?.restaurantId, processOrdersUpdate]);
 
     const renderContent = () => {
         switch (activeTab) {
@@ -231,7 +217,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 onClick={forceSync}
             >
                 <div className={`w-2.5 h-2.5 rounded-full bg-white ${connectionStatus === 'CONNECTED' ? 'opacity-100' : 'animate-ping'}`}></div>
-                {connectionStatus === 'CONNECTED' ? <span>Painel Conectado</span> : <span>Restabelecendo Conexão...</span>}
+                {connectionStatus === 'CONNECTED' ? <span>Painel Conectado</span> : <span>Conectando...</span>}
             </div>
 
             <header className="p-4 sticky top-0 bg-gray-50 z-20 border-b flex justify-between items-center gap-4">

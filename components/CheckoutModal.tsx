@@ -360,7 +360,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const handleSubmitDetails = async (e: React.FormEvent) => {
         e.preventDefault();
-        // TRAVA DE SEGURANÇA: Só permite envio se estiver visivelmente na etapa de detalhes por pelo menos 400ms
+        // SEGURANÇA: Só permite envio se estiver na etapa DETAILS e sem trava ativa
         if (currentStep !== 'DETAILS' || stepTransitionLock) return;
         
         if (!isOpenNow) { addToast({ message: "O restaurante acabou de fechar.", type: 'error' }); return; }
@@ -404,10 +404,11 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         if (currentStep === 'SUMMARY') {
             if (cartItems.length === 0) return;
             if (!isOpenNow) return;
+            
+            // TRAVA DE SEGURANÇA: Bloqueia qualquer clique acidental de submissão por 500ms
             setStepTransitionLock(true);
             setCurrentStep('DETAILS');
-            // Bloqueia clique fantasma por 400ms ao mudar de etapa
-            setTimeout(() => setStepTransitionLock(false), 400);
+            setTimeout(() => setStepTransitionLock(false), 500);
         }
     };
 

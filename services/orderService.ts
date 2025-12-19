@@ -49,11 +49,12 @@ export const subscribeToOrders = (
         }
     };
 
-    // NOME DO CANAL ESTÁTICO: Crucial para evitar o loop de reconexão de 5s
+    // Canal Estático para estabilidade
     const channelName = restaurantId ? `orders_store_${restaurantId}` : `orders_global_admin`;
     
-    // Limpar canais antigos com o mesmo nome antes de começar
-    supabase.removeChannel(supabase.channel(channelName));
+    // Garantir que não existam múltiplos canais pendentes para o mesmo recurso
+    const existingChannels = supabase.getChannels().filter(ch => ch.name === channelName);
+    existingChannels.forEach(ch => supabase.removeChannel(ch));
 
     const channel = supabase.channel(channelName)
         .on(
@@ -65,18 +66,17 @@ export const subscribeToOrders = (
                 filter: restaurantId ? `restaurant_id=eq.${restaurantId}` : undefined 
             },
             () => {
-                console.log("Realtime: Mudança detectada, atualizando...");
+                // Atualização imediata ao detectar mudança
                 refreshData();
             }
         )
         .subscribe((status) => {
-            console.log(`Realtime Status (${channelName}):`, status);
             if (isMounted && onStatusChange) {
                 onStatusChange(status);
             }
         });
 
-    // Carga inicial
+    // Carga inicial rápida
     refreshData();
 
     return () => {
