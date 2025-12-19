@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../services/api';
 import { useSound } from '../hooks/useSound';
+import { useNotification } from '../hooks/useNotification';
 
 const ChevronUpIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 15.75 7.5-7.5 7.5 7.5" /></svg>
@@ -17,6 +18,11 @@ const MotorcycleIcon: React.FC<{ className?: string }> = ({ className }) => (
 const ClockIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+);
+const XMarkIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
     </svg>
 );
 
@@ -46,6 +52,7 @@ const OrderTracker: React.FC = () => {
     const pollingIntervalRef = useRef<number | null>(null);
     
     const { playNotification, initAudioContext } = useSound();
+    const { confirm, addToast } = useNotification();
 
     const loadOrders = useCallback(async () => {
         try {
@@ -67,7 +74,6 @@ const OrderTracker: React.FC = () => {
             if (data) {
                 const ongoing = data.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado');
                 
-                // Se houver novos pedidos ativos ou mudanças, tocamos a notificação
                 if (ongoing.length > 0) {
                     const hasStatusChanged = ongoing.some(current => {
                         const prev = activeOrders.find(o => o.id === current.id);
@@ -90,23 +96,18 @@ const OrderTracker: React.FC = () => {
     useEffect(() => {
         loadOrders();
         
-        // Listener infalível para abertura via Handshake (Checkout -> Tracker)
-        // Garantido em Android e iOS
         const handleHandshake = () => {
-            loadOrders(); // Força recarga imediata via HTTP para evitar delay do WebSocket
-            setIsExpanded(true); // Abre o tracker automaticamente
-            setShowTooltip(true); // Mostra balão de ajuda visual
+            loadOrders(); 
+            setIsExpanded(true); 
+            setShowTooltip(true); 
             setTimeout(() => setShowTooltip(false), 12000); 
         };
 
         window.addEventListener('guarafood:update-orders', loadOrders);
         window.addEventListener('guarafood:open-tracker', handleHandshake);
         
-        // REDUNDÂNCIA MÁXIMA PARA MOBILE: Polling de segurança
-        // Se o WebSocket do Supabase cair no 4G, o sistema busca o status via HTTP a cada 30s
         pollingIntervalRef.current = window.setInterval(loadOrders, 30000);
 
-        // Realtime Subscription (WebSocket)
         const subscription = supabase
             .channel('public:orders:customer_tracker')
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (payload) => {
@@ -114,7 +115,7 @@ const OrderTracker: React.FC = () => {
                 const storedOrderIds = JSON.parse(localStorage.getItem('guarafood-active-orders') || '[]');
                 
                 if (storedOrderIds.includes(updatedOrder.id)) {
-                    loadOrders(); // Recarrega tudo para garantir consistência visual
+                    loadOrders(); 
                 }
             })
             .subscribe();
@@ -126,6 +127,32 @@ const OrderTracker: React.FC = () => {
             supabase.removeChannel(subscription);
         };
     }, [loadOrders]);
+
+    const handleRemoveFromTracker = async (orderId: string) => {
+        const confirmed = await confirm({
+            title: 'Remover pedido?',
+            message: 'Se o seu pedido já chegou ou se você deseja parar de rastreá-lo, clique em confirmar.',
+            confirmText: 'Remover',
+            isDestructive: true
+        });
+
+        if (confirmed) {
+            try {
+                const storedOrderIds = JSON.parse(localStorage.getItem('guarafood-active-orders') || '[]');
+                const newIds = storedOrderIds.filter((id: string) => id !== orderId);
+                localStorage.setItem('guarafood-active-orders', JSON.stringify(newIds));
+                
+                setActiveOrders(prev => prev.filter(o => o.id !== orderId));
+                addToast({ message: 'Pedido removido do rastreamento.', type: 'info' });
+                
+                if (newIds.length === 0) {
+                    setIsExpanded(false);
+                }
+            } catch (e) {
+                console.error("Error removing from tracker", e);
+            }
+        }
+    };
 
     if (activeOrders.length === 0) return null;
 
@@ -144,7 +171,6 @@ const OrderTracker: React.FC = () => {
                 className="relative max-w-md mx-auto pointer-events-auto"
                 onClick={initAudioContext}
             >
-                {/* Balão de Destaque Visual (Sinalizador Inteligente) */}
                 {showTooltip && (
                     <div className="absolute -top-16 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white text-[10px] font-black py-2.5 px-5 rounded-2xl shadow-2xl animate-bounce z-20 whitespace-nowrap border-2 border-white">
                         <span className="mr-1">📱</span> Rastreie o seu pedido por aqui!
@@ -180,7 +206,6 @@ const OrderTracker: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Barra de Progresso Blindada */}
                     <div className="h-2 w-full bg-gray-200 relative">
                         <div 
                             className={`h-full transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(234,88,12,0.4)] ${isPending ? 'bg-yellow-500' : 'bg-orange-600'}`}
@@ -189,11 +214,20 @@ const OrderTracker: React.FC = () => {
                     </div>
 
                     {isExpanded && (
-                        <div className="p-6 bg-white space-y-6 animate-fadeIn">
-                            <div className="flex justify-between items-center text-sm text-gray-600 border-b pb-4">
+                        <div className="p-6 bg-white space-y-6 animate-fadeIn relative">
+                            {/* BOTÃO DE FECHAR (LIMPAR) - CRÍTICO PARA PEDIDOS TRAVADOS */}
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); handleRemoveFromTracker(mainOrder.id); }}
+                                className="absolute top-4 right-4 p-2 text-gray-300 hover:text-red-500 transition-colors"
+                                title="Remover este pedido do rastreio"
+                            >
+                                <XMarkIcon className="w-6 h-6" />
+                            </button>
+
+                            <div className="flex justify-between items-center text-sm text-gray-600 border-b pb-4 pr-8">
                                 <div className="flex flex-col">
                                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Restaurante</span>
-                                    <span className="font-black text-gray-900 uppercase tracking-tight truncate max-w-[220px]">{mainOrder.restaurant_name}</span>
+                                    <span className="font-black text-gray-900 uppercase tracking-tight truncate max-w-[200px]">{mainOrder.restaurant_name}</span>
                                 </div>
                                 <span className="font-mono bg-gray-900 text-white font-black px-3 py-1.5 rounded-xl shadow-lg text-xs">{displayOrderNum}</span>
                             </div>
@@ -237,12 +271,20 @@ const OrderTracker: React.FC = () => {
                                 <span className="font-black text-gray-900 text-lg">R$ {Number(mainOrder.total_price).toFixed(2)}</span>
                             </div>
                             
-                            <button 
-                                onClick={() => setIsExpanded(false)}
-                                className="w-full py-3 text-[10px] font-black text-gray-300 uppercase tracking-widest hover:text-gray-500 transition-colors bg-gray-50 rounded-xl"
-                            >
-                                Minimizar Painel
-                            </button>
+                            <div className="grid grid-cols-1 gap-2">
+                                <button 
+                                    onClick={() => setIsExpanded(false)}
+                                    className="w-full py-3 text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-gray-600 transition-colors bg-gray-50 rounded-xl"
+                                >
+                                    Minimizar Painel
+                                </button>
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); handleRemoveFromTracker(mainOrder.id); }}
+                                    className="w-full py-2 text-[8px] font-black text-red-300 uppercase tracking-tighter hover:text-red-500 transition-colors"
+                                >
+                                    Não quero mais rastrear este pedido
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>
