@@ -305,6 +305,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         if (pixChannelRef.current) { pixChannelRef.current.unsubscribe(); pixChannelRef.current = null; }
                         if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
                         window.dispatchEvent(new Event('guarafood:update-orders'));
+                        window.dispatchEvent(new Event('guarafood:open-tracker'));
                         setCurrentStep('SUCCESS');
                         clearCart();
                     }
@@ -333,6 +334,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             const order = await createOrder(orderData);
             persistOrderIdGlobally(order.id);
             window.dispatchEvent(new Event('guarafood:update-orders'));
+            window.dispatchEvent(new Event('guarafood:open-tracker'));
             addToast({ message: 'Pedido enviado!', type: 'success' });
             clearCart();
             setCurrentStep('SUCCESS');
@@ -628,7 +630,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                 <p className="text-[10px] text-orange-700 font-bold uppercase mb-1">Chave Pix</p>
                                 <div className="flex items-center justify-between gap-2 bg-white p-2 rounded border border-orange-100">
                                     <span className="text-lg font-mono font-bold text-gray-800 break-all select-all">{restaurant.manualPixKey}</span>
-                                    <button type="button" onClick={() => { navigator.clipboard.writeText(restaurant.manualPixKey || ''); addToast({ message: 'Copiado!', type: 'success' }); }} className="bg-orange-600 text-white p-2 rounded shadow-md active:scale-90 transition-transform"><ClipboardIcon className="w-5 h-5"/></button>
+                                    <button type="button" onClick={() => { navigator.clipboard.writeText(restaurant.manualPixKey || ''); addToast({ message: 'Chave copiada!', type: 'success' }); }} className="bg-orange-600 text-white p-2 rounded shadow-md active:scale-90 transition-transform"><ClipboardIcon className="w-5 h-5"/></button>
                                 </div>
                                 <button type="button" onClick={handleConfirmManualPix} className="mt-6 bg-green-600 text-white font-bold py-4 px-6 rounded-xl w-full shadow-lg active:scale-95 transition-transform" disabled={isSubmitting}>JÁ FIZ O PAGAMENTO</button>
                             </div>
@@ -636,9 +638,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                             pixData ? (
                                 <>
                                     <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="PIX" className="w-48 h-48 mx-auto my-2 border-4 border-gray-700 p-1 rounded-lg" />
-                                    <button type="button" onClick={() => { navigator.clipboard.writeText(pixData.qrCode); addToast({ message: 'Copiado!', type: 'success' }); }} className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg my-2 w-full max-xs shadow-lg flex justify-center items-center gap-2 active:scale-95 transition-all"><ClipboardIcon className="w-5 h-5"/>Copiar Código</button>
+                                    <button type="button" onClick={() => { navigator.clipboard.writeText(pixData.qrCode); addToast({ message: 'Código copiado!', type: 'success' }); }} className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg my-2 w-full max-xs shadow-lg flex justify-center items-center gap-2 active:scale-95 transition-all"><ClipboardIcon className="w-5 h-5"/>Copiar Código</button>
                                     <p className="text-2xl font-bold text-orange-600 mt-2">R$ {Number(finalPriceWithFee).toFixed(2)}</p>
-                                    <div className="mt-4 text-[10px] font-bold text-gray-500">Tempo: {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}</div>
+                                    <div className="mt-4 text-[10px] font-bold text-gray-500">Tempo restante: {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}</div>
                                 </>
                             ) : <Spinner message="Gerando Pix..." />
                         )}

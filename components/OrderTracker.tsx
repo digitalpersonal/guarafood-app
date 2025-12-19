@@ -25,6 +25,11 @@ const XMarkIcon: React.FC<{ className?: string }> = ({ className }) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
     </svg>
 );
+const RefreshIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+    </svg>
+);
 
 const statusSteps: Record<string, number> = {
     'Aguardando Pagamento': 0,
@@ -48,17 +53,21 @@ const OrderTracker: React.FC = () => {
     const [activeOrders, setActiveOrders] = useState<any[]>([]);
     const [isExpanded, setIsExpanded] = useState(false);
     const [showTooltip, setShowTooltip] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const previousOrderCountRef = useRef(0);
+    const activeOrdersRef = useRef<any[]>([]); // Ref para evitar clausuras estagnadas nas notificações
     const pollingIntervalRef = useRef<number | null>(null);
     
     const { playNotification, initAudioContext } = useSound();
     const { confirm, addToast } = useNotification();
 
-    const loadOrders = useCallback(async () => {
+    const loadOrders = useCallback(async (isManual = false) => {
+        if (isManual) setIsRefreshing(true);
         try {
             const storedOrderIds = JSON.parse(localStorage.getItem('guarafood-active-orders') || '[]');
             if (storedOrderIds.length === 0) {
                 setActiveOrders([]);
+                activeOrdersRef.current = [];
                 previousOrderCountRef.current = 0;
                 return;
             }
@@ -75,23 +84,31 @@ const OrderTracker: React.FC = () => {
                 const ongoing = data.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado');
                 
                 if (ongoing.length > 0) {
+                    // Verificar se o status de algum pedido mudou em relação à referência
                     const hasStatusChanged = ongoing.some(current => {
-                        const prev = activeOrders.find(o => o.id === current.id);
+                        const prev = activeOrdersRef.current.find(o => o.id === current.id);
                         return prev && prev.status !== current.status;
                     });
 
+                    // Notificar se houver mudança de status ou novos pedidos
                     if (hasStatusChanged || (ongoing.length > previousOrderCountRef.current)) {
                         playNotification();
+                        if (hasStatusChanged) {
+                             addToast({ message: 'Status do pedido atualizado!', type: 'info', duration: 3000 });
+                        }
                     }
                 }
 
                 setActiveOrders(ongoing);
+                activeOrdersRef.current = ongoing; // Sincroniza a ref
                 previousOrderCountRef.current = ongoing.length;
             }
         } catch (err) {
             console.error("Tracker Load Error:", err);
+        } finally {
+            if (isManual) setTimeout(() => setIsRefreshing(false), 500);
         }
-    }, [playNotification, activeOrders]);
+    }, [playNotification, addToast]);
 
     useEffect(() => {
         loadOrders();
@@ -103,13 +120,21 @@ const OrderTracker: React.FC = () => {
             setTimeout(() => setShowTooltip(false), 12000); 
         };
 
-        window.addEventListener('guarafood:update-orders', loadOrders);
+        const handleFocus = () => {
+            // Quando o cliente volta para o app, força um refresh
+            loadOrders();
+        };
+
+        window.addEventListener('guarafood:update-orders', () => loadOrders());
         window.addEventListener('guarafood:open-tracker', handleHandshake);
+        window.addEventListener('focus', handleFocus);
         
-        pollingIntervalRef.current = window.setInterval(loadOrders, 30000);
+        // Polling dinâmico: se houver pedidos aguardando pagamento, checa mais rápido (10s)
+        const checkInterval = activeOrders.some(o => o.status === 'Aguardando Pagamento') ? 10000 : 30000;
+        pollingIntervalRef.current = window.setInterval(() => loadOrders(), checkInterval);
 
         const subscription = supabase
-            .channel('public:orders:customer_tracker')
+            .channel('public:orders:customer_tracker_realtime')
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (payload) => {
                 const updatedOrder = payload.new;
                 const storedOrderIds = JSON.parse(localStorage.getItem('guarafood-active-orders') || '[]');
@@ -123,10 +148,11 @@ const OrderTracker: React.FC = () => {
         return () => {
             window.removeEventListener('guarafood:update-orders', loadOrders);
             window.removeEventListener('guarafood:open-tracker', handleHandshake);
+            window.removeEventListener('focus', handleFocus);
             if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
             supabase.removeChannel(subscription);
         };
-    }, [loadOrders]);
+    }, [loadOrders, activeOrders.length]); // Re-executa efeito se o polling precisar mudar de velocidade
 
     const handleRemoveFromTracker = async (orderId: string) => {
         const confirmed = await confirm({
@@ -158,7 +184,7 @@ const OrderTracker: React.FC = () => {
 
     const mainOrder = activeOrders[0];
     const currentStep = statusSteps[mainOrder.status] ?? 1;
-    const progress = currentStep === 0 ? 5 : (currentStep / 4) * 100;
+    const progress = currentStep === 0 ? 8 : (currentStep / 4) * 100;
     const isPending = mainOrder.status === 'Aguardando Pagamento';
 
     const displayOrderNum = mainOrder.order_number 
@@ -185,7 +211,7 @@ const OrderTracker: React.FC = () => {
                     >
                         <div className="flex items-center gap-4">
                             <div className={`p-3 rounded-2xl ${isPending ? 'bg-yellow-200 text-yellow-700' : 'bg-orange-100 text-orange-600'} shadow-inner border border-white`}>
-                                {isPending ? <ClockIcon className="w-6 h-6" /> : <MotorcycleIcon className="w-6 h-6 animate-pulse" />}
+                                {isPending ? <ClockIcon className="w-6 h-6 animate-pulse" /> : <MotorcycleIcon className="w-6 h-6 animate-pulse" />}
                             </div>
                             <div>
                                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1.5">Rastreamento Ativo</p>
@@ -215,7 +241,17 @@ const OrderTracker: React.FC = () => {
 
                     {isExpanded && (
                         <div className="p-6 bg-white space-y-6 animate-fadeIn relative">
-                            {/* BOTÃO DE FECHAR (LIMPAR) - CRÍTICO PARA PEDIDOS TRAVADOS */}
+                            {/* BOTÃO DE REFRESH MANUAL */}
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); loadOrders(true); }}
+                                className={`absolute top-4 right-14 p-2 text-gray-400 hover:text-orange-600 transition-all ${isRefreshing ? 'animate-spin text-orange-600' : ''}`}
+                                title="Atualizar status agora"
+                                disabled={isRefreshing}
+                            >
+                                <RefreshIcon className="w-5 h-5" />
+                            </button>
+
+                            {/* BOTÃO DE FECHAR (LIMPAR) */}
                             <button 
                                 onClick={(e) => { e.stopPropagation(); handleRemoveFromTracker(mainOrder.id); }}
                                 className="absolute top-4 right-4 p-2 text-gray-300 hover:text-red-500 transition-colors"
@@ -258,11 +294,13 @@ const OrderTracker: React.FC = () => {
                             {isPending ? (
                                 <div className="text-center text-[10px] text-yellow-800 bg-yellow-100/50 p-4 rounded-2xl border border-yellow-200 font-bold animate-pulse">
                                     ⏳ Aguardando confirmação do pagamento pelo banco...
+                                    <br/>
+                                    <span className="text-[9px] opacity-70">Assim que você pagar, o pedido aparecerá aqui como recebido.</span>
                                 </div>
                             ) : (
                                 <div className="text-center text-[9px] text-emerald-700 bg-emerald-50 p-3 rounded-2xl border border-emerald-100 font-black uppercase tracking-widest flex items-center justify-center gap-2">
                                     <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></div>
-                                    Conexão Segura Ativa: Acompanhando em Tempo Real
+                                    Acompanhando em Tempo Real
                                 </div>
                             )}
                             
@@ -282,7 +320,7 @@ const OrderTracker: React.FC = () => {
                                     onClick={(e) => { e.stopPropagation(); handleRemoveFromTracker(mainOrder.id); }}
                                     className="w-full py-2 text-[8px] font-black text-red-300 uppercase tracking-tighter hover:text-red-500 transition-colors"
                                 >
-                                    Não quero mais rastrear este pedido
+                                    Parar de rastrear este pedido
                                 </button>
                             </div>
                         </div>
