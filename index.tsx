@@ -1,4 +1,3 @@
-
 import React, { Component, ReactNode, ErrorInfo } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
@@ -12,24 +11,41 @@ interface ErrorBoundaryState {
   error: any;
 }
 
-// Fix: Use Component explicitly from named imports to ensure state and props are correctly inherited and recognized by the TypeScript compiler
+/**
+ * ErrorBoundary component to catch JavaScript errors anywhere in its child component tree,
+ * log those errors, and display a fallback UI.
+ */
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Fix: Initialize state using a class property initializer for better type inference
-  public state: ErrorBoundaryState = {
+  // Explicitly declare the props property to resolve TypeScript error if it fails to infer from React.Component.
+  // This is usually implicitly available via `extends Component<ErrorBoundaryProps, ErrorBoundaryState>`.
+  public readonly props: Readonly<ErrorBoundaryProps>;
+  // Initializing state directly as a class property (modern React/TypeScript syntax)
+  // This implicitly calls super(props) with an empty constructor if none is defined,
+  // or merges with a constructor's state if present.
+  state: ErrorBoundaryState = {
     hasError: false,
     error: null
   };
 
+  /**
+   * getDerivedStateFromError is called after an error has been thrown in a descendant component.
+   * It receives the error that was thrown as a parameter and should return a value to update state.
+   */
   public static getDerivedStateFromError(error: any): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
+  /**
+   * componentDidCatch is called after an error has been thrown in a descendant component.
+   * This is the place to log error information.
+   */
   public componentDidCatch(error: any, errorInfo: ErrorInfo) {
     console.error("GuaraFood Critical Error:", error, errorInfo);
   }
 
   public render(): ReactNode {
-    // Fix: Accessing state property inherited from Component
+    // FIX: Destructure `children` from `this.props` to resolve TypeScript error "Property 'props' does not exist on type 'ErrorBoundary'".
+    const { children } = this.props;
     if (this.state.hasError) {
       const errorMessage = this.state.error instanceof Error ? this.state.error.message : String(this.state.error);
 
@@ -52,8 +68,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
-    // Fix: Accessing props property inherited from Component ensures children is recognized on line 56
-    return this.props.children;
+    return children;
   }
 }
 

@@ -30,6 +30,12 @@ const RefreshIcon: React.FC<{ className?: string }> = ({ className }) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
     </svg>
 );
+const InformationCircleIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+    </svg>
+);
+
 
 const statusSteps: Record<string, number> = {
     'Aguardando Pagamento': 0,
@@ -303,6 +309,20 @@ const OrderTracker: React.FC = () => {
                                     Acompanhando em Tempo Real
                                 </div>
                             )}
+
+                            {/* NEW: Information for the user on how tracking works */}
+                            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-xl text-blue-900 shadow-sm animate-fadeIn">
+                                <p className="font-bold text-lg mb-1 flex items-center gap-2">
+                                    <InformationCircleIcon className="w-5 h-5" />
+                                    Como funciona?
+                                </p>
+                                <p className="text-sm leading-relaxed mb-2">
+                                    Seu pedido é atualizado em tempo real aqui! Você não precisa de WhatsApp para saber o status.
+                                </p>
+                                <p className="text-xs text-blue-700 leading-snug">
+                                    Mantenha esta janela (ou o app instalado na sua tela inicial) aberta para ver as mudanças instantaneamente. Dispositivos móveis podem pausar atualizações em segundo plano para economizar bateria. Basta abrir o GuaraFood novamente para sincronizar!
+                                </p>
+                            </div>
                             
                             <div className="flex justify-between items-center text-xs pt-4 border-t border-gray-50 text-gray-500 font-bold">
                                 <span>Total do Pedido</span>

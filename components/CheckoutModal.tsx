@@ -655,8 +655,17 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         </div>
                         <h3 className="text-3xl font-black text-emerald-900 uppercase tracking-tighter">Pedido Confirmado!</h3>
                         <div className="mt-6 bg-white p-6 rounded-3xl border-2 border-emerald-100 shadow-xl max-w-sm w-full relative">
-                            <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-black px-4 py-1 rounded-full uppercase tracking-widest shadow-md">Inovação GuaraFood</div>
-                            <p className="text-sm text-gray-700 font-bold leading-relaxed"><span className="text-emerald-600 font-black">Sistema inteligente</span>: você não precisa mais ir no whatsapp, o acompanhamento de seu pedido é todo feito por aqui mesmo!</p>
+                            {/* START: Updated content for explanation */}
+                            <h4 className="font-extrabold text-blue-800 text-base mb-2">Acompanhe seu Pedido!</h4>
+                            <p className="text-sm text-gray-700 leading-relaxed mb-4">
+                                Você não precisa mais de WhatsApp para saber o status. O acompanhamento do seu pedido
+                                é *automático e em tempo real* pelo painel laranja no canto inferior da tela.
+                            </p>
+                            <p className="text-xs text-blue-700 leading-snug">
+                                Para uma experiência ainda melhor e atualizações instantâneas,
+                                recomendamos *instalar o GuaraFood na sua tela inicial do celular!*
+                            </p>
+                            {/* END: Updated content for explanation */}
                         </div>
                         <button type="button" onClick={handleFinalClose} className="mt-10 bg-emerald-600 text-white font-black py-5 px-16 rounded-full shadow-xl shadow-emerald-200 active:scale-90 transition-all text-xl uppercase tracking-widest hover:bg-emerald-700 hover:-translate-y-1">Entendi</button>
                     </div>

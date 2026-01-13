@@ -19,11 +19,6 @@ const EditIcon: React.FC<{ className?: string }> = ({ className }) => (
 const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
 );
-const LinkIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
-    </svg>
-);
 const ClipboardIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v3.043c0 .317-.135.619-.372.83h-9.312a1.125 1.125 0 01-1.125-1.125v-3.043c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" /></svg>
 );
@@ -114,29 +109,33 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
                 <table className="w-full text-sm text-left text-gray-600">
                     <thead className="text-xs text-gray-700 uppercase bg-gray-50">
                         <tr>
+                            <th scope="col" className="px-6 py-3">Status</th>
                             <th scope="col" className="px-6 py-3">Nome</th>
                             <th scope="col" className="px-6 py-3">Categoria</th>
                             <th scope="col" className="px-6 py-3">Telefone</th>
-                            <th scope="col" className="px-6 py-3">Endereço</th>
-                            <th scope="col" className="px-6 py-3 min-w-[250px]">Link da Loja</th> {/* New column header */}
+                            <th scope="col" className="px-6 py-3 min-w-[250px]">Link da Loja</th>
                             <th scope="col" className="px-6 py-3">Ações</th>
                         </tr>
                     </thead>
                     <tbody>
                         {restaurants.map(restaurant => (
-                            <tr key={restaurant.id} className="bg-white border-b hover:bg-gray-50">
+                            <tr key={restaurant.id} className={`bg-white border-b hover:bg-gray-50 ${!restaurant.active ? 'opacity-60 grayscale-[0.5]' : ''}`}>
+                                <td className="px-6 py-4">
+                                    <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${restaurant.active ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
+                                        {restaurant.active ? 'Ativo' : 'Suspenso'}
+                                    </span>
+                                </td>
                                 <td className="px-6 py-4 font-semibold text-gray-900">{restaurant.name}</td>
                                 <td className="px-6 py-4">{restaurant.category}</td>
                                 <td className="px-6 py-4">{restaurant.phone}</td>
-                                <td className="px-6 py-4">{restaurant.address}</td>
-                                <td className="px-6 py-4 min-w-[250px]"> {/* New column for the link */}
+                                <td className="px-6 py-4 min-w-[250px]">
                                     <div className="flex items-center gap-2">
                                         <input 
                                             type="text" 
                                             readOnly 
                                             value={`${window.location.origin}?r=${restaurant.id}`} 
                                             className="flex-grow p-1 border rounded bg-gray-50 text-xs truncate"
-                                            onClick={(e) => (e.target as HTMLInputElement).select()} // Select on click
+                                            onClick={(e) => (e.target as HTMLInputElement).select()} 
                                             aria-label={`Link da loja ${restaurant.name}`}
                                         />
                                         <button 
@@ -150,7 +149,6 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
                                 </td>
                                 <td className="px-6 py-4">
                                     <div className="flex space-x-2">
-                                        {/* Removed LinkIcon as it's now in its own column */}
                                         <button onClick={() => onEditMenu(restaurant)} className="p-2 text-gray-500 hover:text-green-600" title="Gerenciar Cardápio">
                                             <MenuBookIcon className="w-5 h-5"/>
                                         </button>

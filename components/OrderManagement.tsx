@@ -67,8 +67,9 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             tag: newestOrder.id
                         });
                      } catch (e) { console.error("Notification API error", e); }
+                    // Only play sound if notifications are enabled and granted
+                    playNotification(); 
                 }
-                playNotification();
                 setOrderToPrint(newestOrder);
             }
         }

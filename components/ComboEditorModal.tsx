@@ -15,7 +15,7 @@ const ComboEditorModal: React.FC<ComboEditorModalProps> = ({ isOpen, onClose, on
     const [price, setPrice] = useState('');
     const [imageUrl, setImageUrl] = useState('');
     // FIX: Corrected useState initialization for Set
-    const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set<number>());
+    const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set());
     const [error, setError] = useState('');
 
     useEffect(() => {

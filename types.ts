@@ -44,6 +44,7 @@ export interface Restaurant {
   manualPixKey?: string;
   hasPixConfigured?: boolean;
   printerWidth?: number; // 80 or 58 (mm)
+  active?: boolean; // NEW: Field to suspend restaurant
 }
 
 export interface Addon {

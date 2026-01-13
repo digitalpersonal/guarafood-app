@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
-import type { Order, OrderStatus } from '../types';
+import type { Order, OrderStatus, CartItem } from '../types';
 import OrderDetailsModal from './OrderDetailsModal';
 import { updateOrderStatus } from '../services/orderService';
 
@@ -35,7 +35,7 @@ const MapPinIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 const PrinterIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.356-1.07 2.448-2.384 2.448H6.384C5.07 24.948 4 23.856 4 22.5c0-1.44 1.152-3.036 2.405-4.5m11.318 0c.397-1.362.63-2.826.63-4.342 0-1.44-1.152-3.036-2.405-4.5l-1.050-1.242A3.375 3.375 0 0 0 14.25 6H9.75a3.375 3.375 0 0 0-2.345 1.05L6.34 8.292c-1.253 1.464-2.405 3.06-2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.356-1.07 2.448-2.384 2.448H6.384C5.07 24.948 4 23.856 4 22.5c0-1.44 1.152-3.036 2.405-4.5m11.318 0c.397-1.362.63-2.826.63-4.342 0-1.44-1.152-3.036-2.405-4.5l-1.050-1.242A3.375 3.375 0 0 0 14.25 6H9.75a3.375 3.375 0 0 0-2.345 1.05L6.34 8.292c-1.253 1.464-2.405 3.06-2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 001.5 0Z" />
     </svg>
 );
 const StoreIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -44,6 +44,13 @@ const StoreIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+// START: Add WhatsAppIcon
+const WhatsAppIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.894 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01s-.521.074-.792.372c-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.626.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
+    </svg>
+);
+// END: Add WhatsAppIcon
 
 const statusConfig: { [key in OrderStatus]: { text: string; color: string; } } = {
     'Aguardando Pagamento': { text: 'Pgto Pendente', color: 'bg-gray-400' },
@@ -53,6 +60,65 @@ const statusConfig: { [key in OrderStatus]: { text: string; color: string; } } =
     'Entregue': { text: 'Entregue', color: 'bg-green-500' },
     'Cancelado': { text: 'Cancelado', color: 'bg-red-500' },
 };
+
+/**
+ * Formats order details into a WhatsApp-friendly string.
+ */
+const formatOrderDetailsForWhatsApp = (order: Order): string => {
+    const displayOrderNum = order.order_number 
+        ? `#${String(order.order_number).padStart(3, '0')}`
+        : `#${order.id.substring(order.id.length - 4).toUpperCase()}`;
+
+    let detailsMessage = `\n\n--- DETALHES DO PEDIDO ${displayOrderNum} ---\n`;
+
+    // Items
+    detailsMessage += `*Itens:*\n`;
+    order.items.forEach((item: CartItem) => {
+        let itemLine = `- ${item.quantity}x ${item.name}`;
+        if (item.sizeName && item.sizeName !== 'Único') itemLine += ` (${item.sizeName})`;
+        itemLine += ` (R$ ${item.price.toFixed(2)})`;
+
+        detailsMessage += `${itemLine}\n`;
+
+        if (item.selectedAddons && item.selectedAddons.length > 0) {
+            item.selectedAddons.forEach(addon => {
+                detailsMessage += `  _ + ${addon.name} ${addon.price > 0 ? `(R$ ${addon.price.toFixed(2)})` : ''}_\n`;
+            });
+        }
+        if (item.notes) {
+            detailsMessage += `  _ OBS: ${item.notes}_\n`;
+        }
+    });
+
+    // Totals
+    detailsMessage += `\n*Totais:*\n`;
+    detailsMessage += `Subtotal: R$ ${Number(order.subtotal || 0).toFixed(2)}\n`;
+    if (order.deliveryFee && Number(order.deliveryFee) > 0) {
+        detailsMessage += `Entrega: R$ ${Number(order.deliveryFee).toFixed(2)}\n`;
+    }
+    if (order.discountAmount && Number(order.discountAmount) > 0) {
+        detailsMessage += `Desconto (${order.couponCode || 'Cupom'}): - R$ ${Number(order.discountAmount).toFixed(2)}\n`;
+    }
+    detailsMessage += `*TOTAL: R$ ${order.totalPrice.toFixed(2)}*\n\n`;
+    
+    // Payment and Address
+    detailsMessage += `*Pagamento:* ${order.paymentMethod}\n`;
+    if (order.wantsSachets === false) {
+        detailsMessage += `_Cliente solicitou *NÃO ENVIAR SACHÊS/TALHERES*._\n`;
+    }
+    
+    if (order.customerAddress && order.customerAddress.street !== 'Retirada no Local') {
+        detailsMessage += `*Endereço:* ${order.customerAddress.street}, ${order.customerAddress.number}`;
+        if (order.customerAddress.complement) detailsMessage += ` - ${order.customerAddress.complement}`;
+        detailsMessage += `\nBairro: ${order.customerAddress.neighborhood}\n`;
+    } else {
+        detailsMessage += `*Retirada no Balcão.*\n`;
+    }
+
+    detailsMessage += `---------------------------------`;
+    return detailsMessage;
+};
+
 
 const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: OrderStatus) => void; onNotify: (order: Order) => void; onViewDetails: (order: Order) => void; onPrint: (order: Order) => void; }> = ({ order, onStatusUpdate, onNotify, onViewDetails, onPrint }) => {
     const { confirm } = useNotification();
@@ -100,6 +166,9 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                         <button onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate("Rejeitar pedido?", 'Cancelado'); }} className={`${btnClass} bg-red-600`}>
                             Rejeitar
                         </button>
+                        <button onClick={(e) => { e.stopPropagation(); onNotify(order); }} className={`${btnClass} bg-blue-600 flex items-center justify-center gap-1`} title="Avisar Cliente">
+                            <WhatsAppIcon className="w-3.5 h-3.5" /> Avisar
+                        </button>
                     </div>
                 );
             case 'Preparando':
@@ -111,8 +180,8 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                         >
                             {isPickup ? "Pronto p/ Retirar" : "Despachar"}
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); onNotify(order); }} className={`${btnClass} bg-blue-600`} title="Avisar Cliente">
-                            Avisar
+                        <button onClick={(e) => { e.stopPropagation(); onNotify(order); }} className={`${btnClass} bg-blue-600 flex items-center justify-center gap-1`} title="Avisar Cliente">
+                            <WhatsAppIcon className="w-3.5 h-3.5" /> Avisar
                         </button>
                     </div>
                 );
@@ -122,8 +191,8 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                         <button onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate("Marcar como Entregue/Retirado?", 'Entregue'); }} className={`${btnClass} bg-green-600 flex-grow-[2]`}>
                             {isPickup ? "Retirado" : "Entregue"}
                         </button>
-                         <button onClick={(e) => { e.stopPropagation(); onNotify(order); }} className={`${btnClass} bg-blue-600`} title="Avisar Cliente">
-                            Avisar
+                         <button onClick={(e) => { e.stopPropagation(); onNotify(order); }} className={`${btnClass} bg-blue-600 flex items-center justify-center gap-1`} title="Avisar Cliente">
+                            <WhatsAppIcon className="w-3.5 h-3.5" /> Avisar
                         </button>
                     </div>
                 );
@@ -244,22 +313,33 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
     };
 
     const handleNotify = (order: Order) => {
-        const isPickup = !order.customerAddress || order.customerAddress.street === 'Retirada no Local';
-        let message = '';
+        const customerFirstName = order.customerName.split(' ')[0];
+        let statusMessage = '';
         
-        if (order.status === 'Preparando') {
-            message = `Olá *${order.customerName.split(' ')[0]}*! Recebemos seu pedido *#${order.id.substring(0, 6)}*! 👨‍🍳\n\nJá estamos preparando. Total: R$ ${order.totalPrice.toFixed(2)}.`;
-        } else if (order.status === 'A Caminho') {
+        if (order.status === 'Novo Pedido') {
+            statusMessage = `Olá *${customerFirstName}*! Recebemos seu pedido *#${order.order_number || order.id.substring(0, 6)}*! 👨‍🍳\n\nJá estamos preparando.`;
+        } else if (order.status === 'Preparando') {
+            const isPickup = !order.customerAddress || order.customerAddress.street === 'Retirada no Local';
             if (isPickup) {
-                message = `Olá *${order.customerName.split(' ')[0]}*! \n\n✅ Seu pedido está pronto para retirada no balcão!`;
+                statusMessage = `Olá *${customerFirstName}*! \n\n✅ Seu pedido está pronto para retirada no balcão!`;
             } else {
-                message = `Olá *${order.customerName.split(' ')[0]}*! \n\n🏍️ Seu pedido saiu para entrega!\n\nLogo chega aí. Bom apetite! 😋`;
+                statusMessage = `Olá *${customerFirstName}*! \n\n🏍️ Seu pedido saiu para entrega!\n\nLogo chega aí. Bom apetite! 😋`;
+            }
+        } else if (order.status === 'A Caminho') {
+             const isPickup = !order.customerAddress || order.customerAddress.street === 'Retirada no Local';
+             if (isPickup) {
+                statusMessage = `Olá *${customerFirstName}*! \n\n✅ Seu pedido *#${order.order_number || order.id.substring(0, 6)}* foi retirado no balcão!\n\nEsperamos que goste!`;
+            } else {
+                statusMessage = `Olá *${customerFirstName}*! \n\n✅ Seu pedido *#${order.order_number || order.id.substring(0, 6)}* foi entregue!\n\nEsperamos que goste!`;
             }
         } else {
-            message = `Olá *${order.customerName.split(' ')[0]}*! Sobre seu pedido *#${order.id.substring(0, 6)}*...`;
+            statusMessage = `Olá *${customerFirstName}*! Sobre seu pedido *#${order.order_number || order.id.substring(0, 6)}*...`;
         }
 
-        const whatsappUrl = `https://wa.me/55${order.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
+        const orderDetails = formatOrderDetailsForWhatsApp(order);
+        const fullMessage = `${statusMessage}\n\n${orderDetails}`;
+
+        const whatsappUrl = `https://wa.me/55${order.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(fullMessage)}`;
         window.open(whatsappUrl, '_blank');
     };
 

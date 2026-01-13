@@ -1,7 +1,8 @@
 
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from './types';
-import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant } from './services/databaseService';
+import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant, fetchRestaurantById } from './services/databaseService';
 import { AuthProvider, useAuth } from './services/authService';
 import { getInitializationError, getErrorMessage } from './services/api';
 import { isRestaurantOpen } from './utils/restaurantUtils';
@@ -32,7 +33,7 @@ const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
 
 const FunnelIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
     </svg>
 );
 
@@ -188,12 +189,16 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
     }, []);
 
     const availableCategories = useMemo(() => {
-        const all = restaurants.flatMap(r => r.category ? r.category.split(',').map(c => c.trim()) : []);
+        const activeRestaurants = restaurants.filter(r => r.active !== false);
+        const all = activeRestaurants.flatMap(r => r.category ? r.category.split(',').map(c => c.trim()) : []);
         return ['Todos', ...Array.from(new Set(all))];
     }, [restaurants]);
 
     const filteredRestaurants = useMemo(() => {
         return restaurants.filter(restaurant => {
+            // CRITICAL: Filter out suspended restaurants for customers
+            if (restaurant.active === false) return false;
+
             const restaurantCats = restaurant.category ? restaurant.category.split(',').map(c => c.trim()) : [];
             const matchesCategory = selectedCategories.includes('Todos') || selectedCategories.some(c => restaurantCats.includes(c));
             const matchesOpen = !showOpenOnly || isRestaurantOpen(restaurant);
@@ -226,7 +231,7 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
         <main className="pb-16 bg-white min-h-screen">
             <HomePromotionalBanner onBannerClick={(type, val) => {
                 if (type === 'restaurant') {
-                    const r = restaurants.find(res => res.name === val);
+                    const r = restaurants.find(res => res.name === val && res.active !== false);
                     if (r) onSelectRestaurant(r);
                 } else { handleCategoryToggle(val); }
             }} />
@@ -289,6 +294,23 @@ const AppContent: React.FC = () => {
     const [view, setView] = useState<'customer' | 'login' | 'history'>('customer');
     const { currentUser, loading } = useAuth();
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
+
+    // Deep Link Logic: Check for restaurant ID in URL
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const restaurantIdParam = params.get('r');
+        if (restaurantIdParam) {
+            const id = parseInt(restaurantIdParam, 10);
+            if (!isNaN(id)) {
+                fetchRestaurantById(id).then(res => {
+                    // Only show if restaurant is active
+                    if (res && res.active !== false) {
+                        setSelectedRestaurant(res);
+                    }
+                }).catch(err => console.error("Deep link fetch error:", err));
+            }
+        }
+    }, []);
 
     // Remove Splash Screen on mount
     useEffect(() => {

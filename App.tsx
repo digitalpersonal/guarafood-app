@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from './types';
-import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant } from './services/databaseService';
+import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant, fetchRestaurantById } from './services/databaseService';
 import { AuthProvider, useAuth } from './services/authService';
 import { getInitializationError, getErrorMessage } from './services/api';
 import { isRestaurantOpen } from './utils/restaurantUtils';
@@ -13,7 +14,6 @@ import Cart from './components/Cart';
 import LoginScreen from './components/LoginScreen';
 import AdminDashboard from './components/AdminDashboard';
 import OrderManagement from './components/OrderManagement';
-import CouponDisplay from './components/CouponDisplay';
 import HomePromotionalBanner from './components/HomePromotionalBanner';
 import { CartProvider } from './hooks/useCart';
 import { AnimationProvider } from './hooks/useAnimation';
@@ -32,13 +32,7 @@ const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
 
 const FunnelIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
-    </svg>
-);
-
-const HeartIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
-        <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3z" />
     </svg>
 );
 
@@ -68,8 +62,7 @@ const categoryIcons: Record<string, React.ReactNode> = {
     'Pastelaria': <PastelIcon />,
     'Pastel': <PastelIcon />,
     'Supermercado': '🛒',
-    'Todos': '✨',
-    'Favoritos': '❤️'
+    'Todos': '✨'
 };
 
 const slugify = (text: string) => `category-${text.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '')}`;
@@ -183,12 +176,8 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
     const [isLoading, setIsLoading] = useState(true);
     const [selectedCategories, setSelectedCategories] = useState<string[]>(['Todos']);
     const [showOpenOnly, setShowOpenOnly] = useState(false);
-    const [favorites, setFavorites] = useState<number[]>([]);
 
     useEffect(() => {
-        const savedFavorites = localStorage.getItem('guarafood-favorites');
-        if (savedFavorites) setFavorites(JSON.parse(savedFavorites));
-
         const loadInitialData = async () => {
             try {
                 const data = await fetchRestaurants();
@@ -199,19 +188,22 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
     }, []);
 
     const availableCategories = useMemo(() => {
-        const all = restaurants.flatMap(r => r.category ? r.category.split(',').map(c => c.trim()) : []);
+        const activeRestaurants = restaurants.filter(r => r.active !== false);
+        const all = activeRestaurants.flatMap(r => r.category ? r.category.split(',').map(c => c.trim()) : []);
         return ['Todos', ...Array.from(new Set(all))];
     }, [restaurants]);
 
     const filteredRestaurants = useMemo(() => {
         return restaurants.filter(restaurant => {
+            // CRITICAL: Filter out suspended restaurants for customers
+            if (restaurant.active === false) return false;
+
             const restaurantCats = restaurant.category ? restaurant.category.split(',').map(c => c.trim()) : [];
             const matchesCategory = selectedCategories.includes('Todos') || selectedCategories.some(c => restaurantCats.includes(c));
-            const matchesFavorites = !selectedCategories.includes('Favoritos') || favorites.includes(restaurant.id);
             const matchesOpen = !showOpenOnly || isRestaurantOpen(restaurant);
-            return matchesCategory && matchesFavorites && matchesOpen;
+            return matchesCategory && matchesOpen;
         });
-    }, [restaurants, selectedCategories, favorites, showOpenOnly]);
+    }, [restaurants, selectedCategories, showOpenOnly]);
 
     const handleCategoryToggle = (category: string) => {
         if (category === 'Todos') { setSelectedCategories(['Todos']); return; }
@@ -238,7 +230,7 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
         <main className="pb-16 bg-white min-h-screen">
             <HomePromotionalBanner onBannerClick={(type, val) => {
                 if (type === 'restaurant') {
-                    const r = restaurants.find(res => res.name === val);
+                    const r = restaurants.find(res => res.name === val && res.active !== false);
                     if (r) onSelectRestaurant(r);
                 } else { handleCategoryToggle(val); }
             }} />
@@ -271,12 +263,6 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
                 >
                     <FunnelIcon className="w-3 h-3" /> Abertos agora
                 </button>
-                <button 
-                    onClick={() => handleCategoryToggle('Favoritos')} 
-                    className={`flex items-center gap-2 px-4 py-1.5 rounded-full border text-xs font-bold transition-all ${selectedCategories.includes('Favoritos') ? 'bg-red-50 text-white border-red-500' : 'bg-white text-gray-600 border-gray-300'}`}
-                >
-                    <HeartIcon className="w-3 h-3" /> Favoritos
-                </button>
             </div>
 
             <div className="p-4 pt-6">
@@ -288,13 +274,6 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
                             restaurant={restaurant} 
                             onClick={() => onSelectRestaurant(restaurant)} 
                             isOpen={isRestaurantOpen(restaurant)} 
-                            isFavorite={favorites.includes(restaurant.id)}
-                            onToggleFavorite={(e) => {
-                                e.stopPropagation();
-                                const newFaves = favorites.includes(restaurant.id) ? favorites.filter(id => id !== restaurant.id) : [...favorites, restaurant.id];
-                                setFavorites(newFaves);
-                                localStorage.setItem('guarafood-favorites', JSON.stringify(newFaves));
-                            }}
                         />
                     ))}
                 </div>
@@ -314,6 +293,23 @@ const AppContent: React.FC = () => {
     const [view, setView] = useState<'customer' | 'login' | 'history'>('customer');
     const { currentUser, loading } = useAuth();
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
+
+    // Deep Link Logic: Check for restaurant ID in URL
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const restaurantIdParam = params.get('r');
+        if (restaurantIdParam) {
+            const id = parseInt(restaurantIdParam, 10);
+            if (!isNaN(id)) {
+                fetchRestaurantById(id).then(res => {
+                    // Only show if restaurant is active
+                    if (res && res.active !== false) {
+                        setSelectedRestaurant(res);
+                    }
+                }).catch(err => console.error("Deep link fetch error:", err));
+            }
+        }
+    }, []);
 
     // Remove Splash Screen on mount
     useEffect(() => {

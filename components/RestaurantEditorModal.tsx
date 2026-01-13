@@ -76,6 +76,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         mercado_pago_credentials: { accessToken: '' },
         operatingHours: getDefaultOperatingHours(),
         manualPixKey: '',
+        active: true,
     });
     
     const [merchantEmail, setMerchantEmail] = useState('');
@@ -130,6 +131,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 mercado_pago_credentials: existingRestaurant.mercado_pago_credentials || { accessToken: '' },
                 operatingHours: opHours,
                 manualPixKey: existingRestaurant.manualPixKey || '',
+                active: existingRestaurant.active !== false
             });
             setLogoPreview(existingRestaurant.imageUrl);
             setChangeCredentials(false);
@@ -149,6 +151,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 mercado_pago_credentials: { accessToken: '' },
                 operatingHours: getDefaultOperatingHours(),
                 manualPixKey: '',
+                active: true
             });
             setShowSecondShift(Array(7).fill(false));
             setChangeCredentials(true); // Always true for new
@@ -370,6 +373,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             mercado_pago_credentials: formData.mercado_pago_credentials, 
             operating_hours: formData.operatingHours,
             manual_pix_key: formData.manualPixKey,
+            active: formData.active
         };
 
         try {
@@ -451,7 +455,19 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog">
             <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                <h2 className="text-2xl font-bold mb-4">{existingRestaurant ? 'Editar Restaurante' : 'Adicionar Novo Restaurante'}</h2>
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-2xl font-bold">{existingRestaurant ? 'Editar Restaurante' : 'Adicionar Novo Restaurante'}</h2>
+                    {/* STATUS TOGGLE */}
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-100">
+                        <span className={`text-[10px] font-black uppercase tracking-widest ${formData.active ? 'text-green-600' : 'text-red-600'}`}>
+                            {formData.active ? 'Loja Ativa' : 'Loja Suspensa'}
+                        </span>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" checked={formData.active} onChange={(e) => setFormData({...formData, active: e.target.checked})} className="sr-only peer" />
+                            <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
+                        </label>
+                    </div>
+                </div>
                 
                 <div className="overflow-y-auto space-y-4 pr-2 -mr-2">
                     {/* Image Upload */}

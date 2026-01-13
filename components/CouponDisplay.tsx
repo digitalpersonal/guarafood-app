@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Coupon } from '../types';
 // Fix: The database functions are in databaseService, not geminiService.

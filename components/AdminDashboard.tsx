@@ -6,6 +6,7 @@ import RestaurantManagement from './RestaurantManagement';
 import CategoryManagement from './CategoryManagement';
 import MarketingManagement from './MarketingManagement';
 import MenuManagement from './MenuManagement';
+import GlobalCustomerList from './GlobalCustomerList';
 
 
 // Re-usable Icons
@@ -26,7 +27,7 @@ const ArrowDownTrayIcon: React.FC<{ className?: string }> = ({ className }) => (
 const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { logout } = useAuth();
     const { addToast } = useNotification();
-    const [activeTab, setActiveTab] = useState<'restaurants' | 'categories' | 'marketing' | 'settings'>('restaurants');
+    const [activeTab, setActiveTab] = useState<'restaurants' | 'categories' | 'marketing' | 'customers' | 'settings'>('restaurants');
     const [editingMenuRestaurantId, setEditingMenuRestaurantId] = useState<number | null>(null);
 
     // Se estiver editando um cardápio específico, mostra o componente de Menu
@@ -40,13 +41,9 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     }
 
     const handleDownloadIcons = () => {
-        // Logic to draw SVG to canvas and download PNGs
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         const img = new Image();
-        
-        // CORREÇÃO CRÍTICA: Usa o caminho absoluto da origem para garantir que o vite.svg seja encontrado
-        // Adiciona um timestamp para evitar cache do navegador que possa corromper o load
         img.src = `${window.location.origin}/vite.svg?t=${new Date().getTime()}`; 
         img.crossOrigin = "Anonymous";
         
@@ -56,10 +53,8 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 canvas.width = size;
                 canvas.height = size;
                 if (ctx) {
-                    // Limpa o canvas antes de desenhar
                     ctx.clearRect(0, 0, size, size);
                     ctx.drawImage(img, 0, 0, size, size);
-                    
                     try {
                         const link = document.createElement('a');
                         link.download = `icon-${size}.png`;
@@ -75,7 +70,6 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             });
             addToast({ message: 'Ícones baixados! Verifique sua pasta de downloads.', type: 'success' });
         };
-        
         img.onerror = (e) => {
              console.error("Image load error:", e);
              addToast({ message: 'Erro ao encontrar o arquivo vite.svg na raiz do site.', type: 'error' });
@@ -85,7 +79,6 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const renderSettings = () => (
         <div className="bg-white p-6 rounded-lg shadow-md max-w-2xl mx-auto">
             <h2 className="text-xl font-bold text-gray-800 mb-4">Configurações do Sistema</h2>
-            
             <div className="border rounded-lg bg-gray-50 p-4 border-gray-200">
                 <h3 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
                     <img src="/vite.svg" alt="Icon" className="w-6 h-6" />
@@ -93,7 +86,6 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 </h3>
                 <p className="text-sm text-gray-600 mb-4">
                     Para que o aplicativo possa ser instalado no Android e iOS, é necessário ter os ícones PNG (192px e 512px).
-                    Clique abaixo para gerar esses ícones automaticamente a partir do logo atual do sistema (<code>/vite.svg</code>).
                 </p>
                 <button 
                     onClick={handleDownloadIcons} 
@@ -102,9 +94,6 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     <ArrowDownTrayIcon className="w-5 h-5" />
                     Gerar e Baixar Ícones (PNG)
                 </button>
-                <div className="mt-4 p-3 bg-blue-50 border border-blue-100 rounded text-xs text-blue-800">
-                    <strong>Instrução:</strong> Após baixar os arquivos (<code>icon-192.png</code> e <code>icon-512.png</code>), mova-os para a pasta <code>public</code> do seu código fonte e faça o deploy novamente.
-                </div>
             </div>
         </div>
     );
@@ -117,6 +106,8 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 return <CategoryManagement />;
             case 'marketing':
                 return <MarketingManagement />;
+            case 'customers':
+                return <GlobalCustomerList />;
             case 'settings':
                 return renderSettings();
             default:
@@ -132,7 +123,7 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         <button onClick={onBack} className="bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition-colors flex-shrink-0">
                             <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
                         </button>
-                        <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Painel do Administrador</h1>
+                        <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Administração GuaraFood</h1>
                     </div>
                      <button onClick={logout} className="flex items-center space-x-2 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition-colors font-semibold" title="Sair">
                         <LogoutIcon className="w-6 h-6" />
@@ -142,31 +133,12 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             </header>
             
             <nav className="p-4 border-b bg-gray-50 sticky top-[89px] z-10">
-                <div className="flex space-x-2 rounded-lg bg-gray-200 p-1 overflow-x-auto">
-                    <button 
-                        onClick={() => setActiveTab('restaurants')}
-                        className={`flex-1 min-w-[100px] text-center font-semibold p-2 rounded-md transition-colors ${activeTab === 'restaurants' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}
-                    >
-                        Restaurantes
-                    </button>
-                     <button 
-                        onClick={() => setActiveTab('categories')}
-                        className={`flex-1 min-w-[100px] text-center font-semibold p-2 rounded-md transition-colors ${activeTab === 'categories' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}
-                    >
-                        Categorias
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('marketing')}
-                        className={`flex-1 min-w-[100px] text-center font-semibold p-2 rounded-md transition-colors ${activeTab === 'marketing' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}
-                    >
-                        Marketing
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('settings')}
-                        className={`flex-1 min-w-[100px] text-center font-semibold p-2 rounded-md transition-colors ${activeTab === 'settings' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}
-                    >
-                        Configurações
-                    </button>
+                <div className="flex space-x-2 rounded-lg bg-gray-200 p-1 overflow-x-auto no-scrollbar">
+                    <button onClick={() => setActiveTab('restaurants')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'restaurants' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Restaurantes</button>
+                    <button onClick={() => setActiveTab('categories')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'categories' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Categorias</button>
+                    <button onClick={() => setActiveTab('marketing')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'marketing' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Marketing</button>
+                    <button onClick={() => setActiveTab('customers')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'customers' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Clientes</button>
+                    <button onClick={() => setActiveTab('settings')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'settings' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Config</button>
                 </div>
             </nav>
             
