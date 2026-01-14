@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import type { Restaurant, Coupon, Order } from '../types';
+import type { Restaurant, Coupon, Order, CartItem } from '../types';
 import { useCart } from '../hooks/useCart';
 import { useNotification } from '../hooks/useNotification';
 import { createOrder, type NewOrderData } from '../services/orderService';
@@ -67,6 +67,64 @@ const steps: { id: CheckoutStep; title: string; icon: React.FC<{ className?: str
     { id: 'SUCCESS', title: 'Confirmado', icon: CheckCircleIcon },
 ];
 
+const normalizeOrder = (data: any): Order => {
+    const wantsSachets = data.customer_address?.wantsSachets === true;
+    return {
+        id: data.id, order_number: data.order_number, timestamp: data.timestamp || data.created_at, status: data.status,
+        customerName: data.customer_name, customerPhone: data.customer_phone, customerAddress: data.customer_address,
+        wantsSachets: wantsSachets, items: data.items, totalPrice: data.total_price, restaurantId: data.restaurant_id,
+        restaurantName: data.restaurant_name, restaurantAddress: data.restaurant_address, restaurantPhone: data.restaurant_phone,
+        paymentMethod: data.payment_method, couponCode: data.coupon_code, discountAmount: data.discount_amount,
+        subtotal: data.subtotal, deliveryFee: data.delivery_fee, payment_id: data.payment_id,
+        payment_details: data.payment_details,
+        paymentStatus: data.payment_status || (data.payment_method === 'Marcar na minha conta' ? 'pending' : 'paid')
+    };
+};
+
+const formatOrderDetailsForWhatsApp = (order: Order): string => {
+    const displayOrderNum = order.order_number 
+        ? `#${String(order.order_number).padStart(3, '0')}`
+        : `#${order.id.substring(order.id.length - 4).toUpperCase()}`;
+    let detailsMessage = `\n\n--- DETALHES DO PEDIDO ${displayOrderNum} ---\n`;
+    detailsMessage += `*Itens:*\n`;
+    order.items.forEach((item: CartItem) => {
+        let itemLine = `- ${item.quantity}x ${item.name}`;
+        if (item.sizeName && item.sizeName !== 'Único') itemLine += ` (${item.sizeName})`;
+        itemLine += ` (R$ ${item.price.toFixed(2)})`;
+        detailsMessage += `${itemLine}\n`;
+        if (item.selectedAddons && item.selectedAddons.length > 0) {
+            item.selectedAddons.forEach(addon => {
+                detailsMessage += `  _ + ${addon.name} ${addon.price > 0 ? `(R$ ${addon.price.toFixed(2)})` : ''}_\n`;
+            });
+        }
+        if (item.notes) {
+            detailsMessage += `  _ OBS: ${item.notes}_\n`;
+        }
+    });
+    detailsMessage += `\n*Totais:*\n`;
+    detailsMessage += `Subtotal: R$ ${Number(order.subtotal || 0).toFixed(2)}\n`;
+    if (order.deliveryFee && Number(order.deliveryFee) > 0) {
+        detailsMessage += `Entrega: R$ ${Number(order.deliveryFee).toFixed(2)}\n`;
+    }
+    if (order.discountAmount && Number(order.discountAmount) > 0) {
+        detailsMessage += `Desconto (${order.couponCode || 'Cupom'}): - R$ ${Number(order.discountAmount).toFixed(2)}\n`;
+    }
+    detailsMessage += `*TOTAL: R$ ${order.totalPrice.toFixed(2)}*\n\n`;
+    detailsMessage += `*Pagamento:* ${order.paymentMethod}\n`;
+    if (order.wantsSachets === false) {
+        detailsMessage += `_Cliente solicitou *NÃO ENVIAR SACHÊS/TALHERES*._\n`;
+    }
+    if (order.customerAddress && order.customerAddress.street !== 'Retirada no Local') {
+        detailsMessage += `*Endereço:* ${order.customerAddress.street}, ${order.customerAddress.number}`;
+        if (order.customerAddress.complement) detailsMessage += ` - ${order.customerAddress.complement}`;
+        detailsMessage += `\nBairro: ${order.customerAddress.neighborhood}\n`;
+    } else {
+        detailsMessage += `*Retirada no Balcão.*\n`;
+    }
+    detailsMessage += `---------------------------------`;
+    return detailsMessage;
+};
+
 const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaurant }) => {
     const { cartItems, totalPrice, clearCart } = useCart();
     const { addToast } = useNotification();
@@ -100,6 +158,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [knownCustomers, setKnownCustomers] = useState<Record<string, { phone: string, address: any }>>({});
     const [highlightFields, setHighlightFields] = useState(false);
     const [stepTransitionLock, setStepTransitionLock] = useState(false);
+    const [successfulOrder, setSuccessfulOrder] = useState<Order | null>(null);
     
     const deliveryMethodRef = useRef<HTMLDivElement>(null);
 
@@ -186,6 +245,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setCountdown(300);
         setDeliveryMethod('DELIVERY');
         setStepTransitionLock(false);
+        setSuccessfulOrder(null);
         if (countdownIntervalRef.current) {
             clearInterval(countdownIntervalRef.current);
             countdownIntervalRef.current = null;
@@ -300,12 +360,11 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             pixChannelRef.current = channel;
             channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${orderId}` },
                 (payload) => {
-                    const updatedOrder = payload.new as Order;
+                    const updatedOrder = payload.new;
                     if (updatedOrder.status === 'Novo Pedido') {
                         if (pixChannelRef.current) { pixChannelRef.current.unsubscribe(); pixChannelRef.current = null; }
                         if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-                        window.dispatchEvent(new Event('guarafood:update-orders'));
-                        window.dispatchEvent(new Event('guarafood:open-tracker'));
+                        setSuccessfulOrder(normalizeOrder(updatedOrder));
                         setCurrentStep('SUCCESS');
                         clearCart();
                     }
@@ -332,9 +391,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
         try {
             const order = await createOrder(orderData);
+            setSuccessfulOrder(order);
             persistOrderIdGlobally(order.id);
-            window.dispatchEvent(new Event('guarafood:update-orders'));
-            window.dispatchEvent(new Event('guarafood:open-tracker'));
             addToast({ message: 'Pedido enviado!', type: 'success' });
             clearCart();
             setCurrentStep('SUCCESS');
@@ -418,7 +476,16 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         else if (currentStep === 'PIX_PAYMENT') handleBackFromPix();
     };
 
-    const handleFinalClose = () => {
+    const handleSuccessAction = () => {
+        if (successfulOrder) {
+            const customerMessage = `Olá, ${restaurant.name}! Recebi a confirmação "Seu pedido foi recebido!" no app.\n\nEstou enviando uma cópia aqui no WhatsApp para registro. Entendo que o acompanhamento oficial é 100% pelo GuaraFood.\n`;
+            const orderDetails = formatOrderDetailsForWhatsApp(successfulOrder);
+            const fullMessage = `${customerMessage}${orderDetails}`;
+            const restaurantPhone = restaurant.phone.replace(/\D/g, '');
+            const whatsappUrl = `https://wa.me/55${restaurantPhone}?text=${encodeURIComponent(fullMessage)}`;
+            window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+        }
+        
         window.dispatchEvent(new Event('guarafood:update-orders'));
         window.dispatchEvent(new Event('guarafood:open-tracker')); 
         onClose();
@@ -655,7 +722,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         </div>
                         <h3 className="text-3xl font-black text-emerald-900 uppercase tracking-tighter">Pedido Confirmado!</h3>
                         <div className="mt-6 bg-white p-6 rounded-3xl border-2 border-emerald-100 shadow-xl max-w-sm w-full relative">
-                            {/* START: Updated content for explanation */}
                             <h4 className="font-extrabold text-blue-800 text-base mb-2">Acompanhe seu Pedido!</h4>
                             <p className="text-sm text-gray-700 leading-relaxed mb-4">
                                 Você não precisa mais de WhatsApp para saber o status. O acompanhamento do seu pedido
@@ -665,9 +731,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                 Para uma experiência ainda melhor e atualizações instantâneas,
                                 recomendamos *instalar o GuaraFood na sua tela inicial do celular!*
                             </p>
-                            {/* END: Updated content for explanation */}
                         </div>
-                        <button type="button" onClick={handleFinalClose} className="mt-10 bg-emerald-600 text-white font-black py-5 px-16 rounded-full shadow-xl shadow-emerald-200 active:scale-90 transition-all text-xl uppercase tracking-widest hover:bg-emerald-700 hover:-translate-y-1">Entendi</button>
+                        <button type="button" onClick={handleSuccessAction} className="mt-10 bg-emerald-600 text-white font-black py-5 px-16 rounded-full shadow-xl shadow-emerald-200 active:scale-90 transition-all text-xl uppercase tracking-widest hover:bg-emerald-700 hover:-translate-y-1">Entendi</button>
                     </div>
                 )}
                 

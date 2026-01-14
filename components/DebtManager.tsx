@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import type { Order } from '../types';
 import { updateOrderPaymentStatus } from '../services/orderService';
@@ -92,8 +93,15 @@ const DebtManager: React.FC<DebtManagerProps> = ({ orders }) => {
 
     const handleNotifyCustomer = (phone: string, name: string, total: number) => {
         const message = `Olá *${name}*! Tudo bem? \n\nConsta em nosso sistema um débito total de *R$ ${total.toFixed(2)}* referente aos seus pedidos marcados na conta.\n\nPodemos combinar o pagamento?`;
-        const url = `https://wa.me/55${phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
-        window.open(url, '_blank');
+        
+        // SMART LINK LOGIC + REUSO DE ABA:
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const baseUrl = isMobile ? 'https://api.whatsapp.com/send' : 'https://web.whatsapp.com/send';
+        
+        const url = `${baseUrl}?phone=55${phone.replace(/\D/g, '')}&text=${encodeURIComponent(message)}`;
+        
+        // No desktop, o target fixo 'whatsapp_guarafood' reutiliza a janela se ela já existir
+        window.open(url, isMobile ? '_blank' : 'whatsapp_guarafood');
     };
 
     if (customersWithDebt.length === 0) {
@@ -111,7 +119,7 @@ const DebtManager: React.FC<DebtManagerProps> = ({ orders }) => {
             <div className="p-6 border-b bg-orange-50">
                 <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                     Contas a Receber (Fiado)
-                    <span className="bg-orange-200 text-orange-800 text-sm py-1 px-3 rounded-full">
+                    <span className="bg-orange-200 text-orange-800 text-sm font-black py-1 px-3 rounded-full">
                         Total: R$ {customersWithDebt.reduce((acc, c) => acc + c.totalDebt, 0).toFixed(2)}
                     </span>
                 </h3>
@@ -127,13 +135,13 @@ const DebtManager: React.FC<DebtManagerProps> = ({ orders }) => {
                         >
                             <div className="flex-grow">
                                 <h4 className="font-bold text-lg text-gray-800">{customer.name}</h4>
-                                <p className="text-sm text-gray-500">{customer.phone}</p>
+                                <p className="text-sm text-gray-500 font-mono">{customer.phone}</p>
                             </div>
                             <div className="flex items-center gap-4 mt-2 sm:mt-0">
-                                <span className="text-xl font-bold text-red-600">R$ {customer.totalDebt.toFixed(2)}</span>
+                                <span className="text-xl font-black text-red-600">R$ {customer.totalDebt.toFixed(2)}</span>
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); handleNotifyCustomer(customer.phone, customer.name, customer.totalDebt); }}
-                                    className="p-2 bg-green-100 text-green-700 rounded-full hover:bg-green-200"
+                                    className="p-3 bg-green-600 text-white rounded-xl shadow-lg hover:bg-green-700 active:scale-95 transition-all"
                                     title="Cobrar no WhatsApp"
                                 >
                                     <WhatsAppIcon className="w-5 h-5" />
@@ -143,9 +151,9 @@ const DebtManager: React.FC<DebtManagerProps> = ({ orders }) => {
                         </div>
 
                         {expandedCustomers.has(customer.phone) && (
-                            <div className="bg-gray-50 p-4 border-t border-b border-gray-100 pl-8">
+                            <div className="bg-gray-50 p-4 border-t border-b border-gray-100 pl-8 animate-fadeIn">
                                 <table className="w-full text-sm text-left">
-                                    <thead className="text-xs text-gray-500 uppercase">
+                                    <thead className="text-[10px] text-gray-400 uppercase font-black tracking-widest">
                                         <tr>
                                             <th className="py-2">Data</th>
                                             <th className="py-2">Pedido</th>
@@ -156,15 +164,15 @@ const DebtManager: React.FC<DebtManagerProps> = ({ orders }) => {
                                     <tbody className="divide-y divide-gray-200">
                                         {customer.orders.map(order => (
                                             <tr key={order.id}>
-                                                <td className="py-3">{new Date(order.timestamp).toLocaleDateString()}</td>
-                                                <td className="py-3 font-mono">#{order.id.substring(0, 6)}</td>
-                                                <td className="py-3 text-right font-medium">R$ {order.totalPrice.toFixed(2)}</td>
+                                                <td className="py-3 font-semibold">{new Date(order.timestamp).toLocaleDateString()}</td>
+                                                <td className="py-3 font-mono text-xs">#{order.id.substring(0, 6).toUpperCase()}</td>
+                                                <td className="py-3 text-right font-black text-gray-900">R$ {order.totalPrice.toFixed(2)}</td>
                                                 <td className="py-3 text-center">
                                                     <button 
                                                         onClick={() => handleSettleDebt(order.id)}
-                                                        className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 transition-colors"
+                                                        className="text-[10px] uppercase font-black bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 shadow-sm transition-all active:scale-90"
                                                     >
-                                                        Receber
+                                                        Quitar
                                                     </button>
                                                 </td>
                                             </tr>

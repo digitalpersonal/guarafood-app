@@ -1,5 +1,5 @@
 
-import { supabase, handleSupabaseError } from './api';
+import { supabase, supabaseAnon, handleSupabaseError } from './api';
 import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory, Expense, Order } from '../types';
 
 // ==============================================================================
@@ -168,7 +168,7 @@ const normalizeRestaurantCategory = (data: any): RestaurantCategory => data;
 // ==============================================================================
 
 export const fetchRestaurants = async (): Promise<Restaurant[]> => {
-    const { data, error } = await supabase.from('restaurants').select('*');
+    const { data, error } = await supabaseAnon.from('restaurants').select('*');
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants' });
     return (data || []).map(normalizeRestaurant);
 };
@@ -180,7 +180,7 @@ export const fetchRestaurantsSecure = async (): Promise<Restaurant[]> => {
 };
 
 export const fetchRestaurantById = async (id: number): Promise<Restaurant | null> => {
-    const { data, error } = await supabase.from('restaurants').select('*').eq('id', id).single();
+    const { data, error } = await supabaseAnon.from('restaurants').select('*').eq('id', id).single();
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurant' });
     return data ? normalizeRestaurant(data) : null;
 };
@@ -247,7 +247,7 @@ export const fetchAllOrdersAdmin = async (): Promise<Order[]> => {
 // ==============================================================================
 
 export const fetchRestaurantCategories = async (): Promise<RestaurantCategory[]> => {
-    const { data, error } = await supabase.from('restaurant_categories').select('*').order('name');
+    const { data, error } = await supabaseAnon.from('restaurant_categories').select('*').order('name');
     handleSupabaseError({ error, customMessage: 'Failed to fetch categories' });
     return (data || []).map(normalizeRestaurantCategory);
 };
@@ -273,7 +273,7 @@ export const fetchBanners = async (): Promise<Banner[]> => {
 };
 
 export const fetchActiveBanners = async (): Promise<Banner[]> => {
-    const { data, error } = await supabase.from('banners').select('*').eq('active', true);
+    const { data, error } = await supabaseAnon.from('banners').select('*').eq('active', true);
     handleSupabaseError({ error, customMessage: 'Failed to fetch active banners' });
     return (data || []).map(normalizeBanner);
 };
@@ -316,19 +316,19 @@ export const deleteBanner = async (id: number): Promise<void> => {
 // ==============================================================================
 
 export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilter = false): Promise<MenuCategory[]> => {
-    const { data: categoriesData, error: catError } = await supabase
+    const { data: categoriesData, error: catError } = await supabaseAnon
         .from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true });
     handleSupabaseError({ error: catError, customMessage: 'Failed to fetch menu categories' });
 
-    const { data: itemsData, error: itemError } = await supabase
+    const { data: itemsData, error: itemError } = await supabaseAnon
         .from('menu_items').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true });
     handleSupabaseError({ error: itemError, customMessage: 'Failed to fetch menu items' });
 
-    const { data: combosData, error: comboError } = await supabase.from('combos').select('*').eq('restaurant_id', restaurantId);
+    const { data: combosData, error: comboError } = await supabaseAnon.from('combos').select('*').eq('restaurant_id', restaurantId);
     handleSupabaseError({ error: comboError, customMessage: 'Failed to fetch combos' });
 
     const today = new Date().toISOString();
-    const { data: promosData, error: promoError } = await supabase
+    const { data: promosData, error: promoError } = await supabaseAnon
         .from('promotions').select('*').eq('restaurant_id', restaurantId).lte('start_date', today).gte('end_date', today);
 
     const promotions = (promosData || []).map(normalizePromotion);
@@ -422,7 +422,7 @@ export const updateMenuItemOrder = async (restaurantId: number, items: MenuItem[
 
 // --- ADDONS ---
 export const fetchAddonsForRestaurant = async (restaurantId: number): Promise<Addon[]> => {
-    const { data, error } = await supabase.from('addons').select('*').eq('restaurant_id', restaurantId);
+    const { data, error } = await supabaseAnon.from('addons').select('*').eq('restaurant_id', restaurantId);
     handleSupabaseError({ error, customMessage: 'Failed to fetch addons' });
     return (data || []).map(normalizeAddon);
 };

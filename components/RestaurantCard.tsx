@@ -28,9 +28,9 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, is
   const now = new Date();
   const currentTimeMins = now.getHours() * 60 + now.getMinutes();
 
-  // URL WhatsApp
+  // FIX: Using API endpoint for WhatsApp Business compatibility
   const cleanedPhone = restaurant.phone.replace(/\D/g, '');
-  const whatsappUrl = `https://wa.me/55${cleanedPhone}`;
+  const whatsappUrl = `https://api.whatsapp.com/send?phone=55${cleanedPhone}`;
   
   // Lógica de exibição de horário de hoje
   let hoursDisplay = "Horário não disponível";
@@ -111,7 +111,7 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, is
         {restaurant.phone && (
             <a
                 href={whatsappUrl}
-                target="_blank"
+                target="whatsapp_guarafood"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
                 className="flex items-center gap-1 text-[10px] font-black text-green-600 uppercase tracking-wider"

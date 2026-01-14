@@ -6,7 +6,7 @@ import Spinner from './Spinner';
 
 const SearchIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5(0) 105.196 5.196a7.5 7.5(0) 0010.607 10.607z" />
     </svg>
 );
 
@@ -77,7 +77,7 @@ const GlobalCustomerList: React.FC = () => {
                 const orderDate = new Date(order.timestamp);
                 if (orderDate > c.lastOrderDate) {
                     c.lastOrderDate = orderDate;
-                    c.name = order.customerName; // Update with latest known name
+                    c.name = order.customerName; 
                     if (order.customerAddress) {
                         c.lastAddress = `${order.customerAddress.street}, ${order.customerAddress.number} - ${order.customerAddress.neighborhood}`;
                     }
@@ -93,7 +93,6 @@ const GlobalCustomerList: React.FC = () => {
             return acc;
         }, {} as Record<string, any>);
 
-        // Calculate most ordered from
         Object.values(customerMap).forEach((c: any) => {
             const counts = c._restaurantCounts;
             c.mostOrderedFrom = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
@@ -136,6 +135,16 @@ const GlobalCustomerList: React.FC = () => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+    };
+
+    const handleWhatsAppContact = (phone: string) => {
+        // SMART LINK + REUSO DE ABA:
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const baseUrl = isMobile ? 'https://api.whatsapp.com/send' : 'https://web.whatsapp.com/send';
+        
+        const url = `${baseUrl}?phone=55${phone.replace(/\D/g, '')}`;
+        // No desktop, o target fixo 'whatsapp_guarafood' reutiliza a janela se ela já existir
+        window.open(url, isMobile ? '_blank' : 'whatsapp_guarafood');
     };
 
     if (isLoading) return <Spinner message="Compilando base de clientes..." />;
@@ -227,7 +236,7 @@ const GlobalCustomerList: React.FC = () => {
                                 </td>
                                 <td className="px-6 py-4 text-center">
                                     <button 
-                                        onClick={() => window.open(`https://wa.me/55${customer.phone.replace(/\D/g, '')}`, '_blank')} 
+                                        onClick={() => handleWhatsAppContact(customer.phone)} 
                                         className="text-green-600 hover:text-green-800 p-2 rounded-full hover:bg-green-50 transition-all active:scale-90"
                                         title="Marketing Direto"
                                     >

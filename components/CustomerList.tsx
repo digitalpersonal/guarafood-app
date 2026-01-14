@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import type { Order } from '../types';
 
@@ -73,8 +74,13 @@ const CustomerList: React.FC<CustomerListProps> = ({ orders }) => {
     }, [customers, searchTerm]);
 
     const handleWhatsApp = (phone: string) => {
-        const url = `https://wa.me/55${phone.replace(/\D/g, '')}`;
-        window.open(url, '_blank');
+        // FIX: Using official API endpoint for better reliability in native apps detection
+        const url = `https://api.whatsapp.com/send?phone=55${phone.replace(/\D/g, '')}`;
+        const link = document.createElement('a');
+        link.href = url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.click();
     };
 
     return (
@@ -112,7 +118,7 @@ const CustomerList: React.FC<CustomerListProps> = ({ orders }) => {
                                 <td className="px-6 py-4">{customer.phone}</td>
                                 <td className="px-6 py-4 truncate max-w-xs" title={customer.address}>{customer.address}</td>
                                 <td className="px-6 py-4 text-center">
-                                    <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-0.5 rounded-full">{customer.totalOrders}</span>
+                                    <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-full">{customer.totalOrders}</span>
                                 </td>
                                 <td className="px-6 py-4 text-right font-bold text-green-600">R$ {customer.totalSpent.toFixed(2)}</td>
                                 <td className="px-6 py-4">{customer.lastOrderDate.toLocaleDateString()}</td>
