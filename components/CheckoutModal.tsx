@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, Coupon, Order, CartItem } from '../types';
 import { useCart } from '../hooks/useCart';
@@ -232,7 +231,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const resetState = () => {
         setCurrentStep('SUMMARY');
-        setPaymentMethod(paymentOptions[0] || 'Pix'); 
+        setPaymentMethod(''); // FIX: Inicia vazio para forçar escolha do cliente
         setChangeFor('');
         setIsSubmitting(false);
         setCouponCodeInput('');
@@ -423,7 +422,10 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         if (currentStep !== 'DETAILS' || stepTransitionLock) return;
         
         if (!isOpenNow) { addToast({ message: "O restaurante acabou de fechar.", type: 'error' }); return; }
-        if (!customerName || !customerPhone || !paymentMethod) { setFormError('Preencha nome, telefone e pagamento.'); return; }
+        if (!customerName || !customerPhone || !paymentMethod) { 
+            setFormError('Por favor, preencha seu nome, telefone e selecione uma forma de pagamento.'); 
+            return; 
+        }
         if (deliveryMethod === 'DELIVERY' && (!address.street || !address.number || !address.neighborhood)) { setFormError('Endereço incompleto.'); return; }
         
         setFormError(null);
@@ -641,7 +643,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         </div>
 
                         <div className="border-t pt-4">
-                            <span className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-3">Forma de Pagamento</span>
+                            <span className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-3">Escolha a Forma de Pagamento</span>
                             <div className="space-y-3">
                                 {paymentOptions.map(gateway => {
                                     const isSelected = paymentMethod === gateway;
@@ -649,7 +651,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                     return (
                                         <div key={gateway} className={`border-2 rounded-xl transition-all ${isSelected ? 'border-orange-500 bg-orange-50/30' : 'border-gray-100 hover:border-orange-200'}`}>
                                             <label className="flex items-center p-3 cursor-pointer">
-                                                <input type="radio" name="payment" value={gateway} checked={isSelected} onChange={e => setPaymentMethod(e.target.value)} className="h-5 w-5 text-orange-600" />
+                                                <input type="radio" name="payment" value={gateway} checked={isSelected} onChange={e => { setPaymentMethod(e.target.value); setFormError(null); }} className="h-5 w-5 text-orange-600" />
                                                 <div className="ml-3 flex flex-col">
                                                     <span className="text-sm font-bold text-gray-700">{gateway}</span>
                                                     {gateway.toLowerCase().includes('cartão') && <span className="text-[10px] text-blue-600">ⓘ Maquininha na entrega.</span>}
@@ -758,8 +760,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                 <button 
                                     type="submit" 
                                     form="checkout-form"
-                                    disabled={isSubmitting || !isOpenNow || stepTransitionLock} 
-                                    className="mt-1 bg-orange-600 text-white font-bold py-2.5 px-8 rounded-lg shadow-lg disabled:opacity-50 text-sm active:scale-95 transition-all"
+                                    disabled={isSubmitting || !isOpenNow || stepTransitionLock || !paymentMethod} 
+                                    className={`mt-1 text-white font-bold py-2.5 px-8 rounded-lg shadow-lg text-sm active:scale-95 transition-all ${!paymentMethod ? 'bg-gray-400 cursor-not-allowed' : 'bg-orange-600 hover:bg-orange-700'}`}
                                 >
                                     {isSubmitting ? '...' : (paymentMethod === 'Pix' ? 'Pagar Agora' : 'Confirmar Pedido')}
                                 </button>
