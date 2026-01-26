@@ -1,12 +1,14 @@
-
 import type { Restaurant } from '../types';
 
 // Helper to convert "HH:MM" string to minutes from midnight
 export const timeToMinutes = (timeString: string): number => {
+    if (!timeString || !timeString.includes(':')) return 0; // Guard against invalid format
     const [hours, minutes] = timeString.split(':').map(Number);
+    if (isNaN(hours) || isNaN(minutes)) return 0;
     return hours * 60 + minutes;
 };
 
+// This function is fine as it is. The calling logic needs to be fixed.
 export const checkTimeRange = (currentTime: number, openStr: string, closeStr: string): boolean => {
     if (!openStr || !closeStr) return false;
     const openTime = timeToMinutes(openStr);
@@ -27,54 +29,77 @@ export const isRestaurantOpen = (restaurant: Restaurant): boolean => {
 
     // New logic using detailed operating hours
     if (operatingHours && operatingHours.length === 7) {
-        
-        // 1. Check Previous Day for Overnight shifts that extend into today
-        const prevDayIndex = currentDay === 0 ? 6 : currentDay - 1;
-        const prevDayHours = operatingHours[prevDayIndex];
-        
-        if (prevDayHours && prevDayHours.isOpen) {
-             // Check Shift 1 overflow
-             if (prevDayHours.closes && prevDayHours.opens) {
-                 const openMins = timeToMinutes(prevDayHours.opens);
-                 const closeMins = timeToMinutes(prevDayHours.closes);
-                 if (closeMins < openMins && currentTimeInMinutes < closeMins) {
-                     return true;
-                 }
-             }
-             // Check Shift 2 overflow
-             if (prevDayHours.closes2 && prevDayHours.opens2) {
-                 const openMins = timeToMinutes(prevDayHours.opens2);
-                 const closeMins = timeToMinutes(prevDayHours.closes2);
-                 if (closeMins < openMins && currentTimeInMinutes < closeMins) {
-                     return true;
-                 }
-             }
-        }
-
-        // 2. Check Today's Hours
-        const todayHours = operatingHours[currentDay];
-        if (!todayHours || !todayHours.isOpen) {
-            return false;
-        }
-        
         try {
-            // Check Shift 1
-            const isOpenShift1 = checkTimeRange(currentTimeInMinutes, todayHours.opens, todayHours.closes);
-            
-            // Check Shift 2 (if exists)
-            const isOpenShift2 = todayHours.opens2 && todayHours.closes2 
-                ? checkTimeRange(currentTimeInMinutes, todayHours.opens2, todayHours.closes2)
-                : false;
+            const todaySchedule = operatingHours[currentDay];
+            const yesterdayIndex = currentDay === 0 ? 6 : currentDay - 1;
+            const yesterdaySchedule = operatingHours[yesterdayIndex];
 
-            return isOpenShift1 || isOpenShift2;
+            // 1. Check if we are currently within a shift that started TODAY.
+            if (todaySchedule?.isOpen) {
+                // Check shift 1 of today
+                if (todaySchedule.opens && todaySchedule.closes) {
+                    const openTime = timeToMinutes(todaySchedule.opens);
+                    const closeTime = timeToMinutes(todaySchedule.closes);
+                    if (closeTime > openTime) { // It's a same-day shift
+                        if (currentTimeInMinutes >= openTime && currentTimeInMinutes < closeTime) {
+                            return true;
+                        }
+                    } else { // It's an overnight shift that STARTS today
+                        if (currentTimeInMinutes >= openTime) { // It's open from open time until midnight
+                            return true;
+                        }
+                    }
+                }
+                // Check shift 2 of today
+                if (todaySchedule.opens2 && todaySchedule.closes2) {
+                    const openTime = timeToMinutes(todaySchedule.opens2);
+                    const closeTime = timeToMinutes(todaySchedule.closes2);
+                    if (closeTime > openTime) { // It's a same-day shift
+                        if (currentTimeInMinutes >= openTime && currentTimeInMinutes < closeTime) {
+                            return true;
+                        }
+                    } else { // It's an overnight shift that STARTS today
+                        if (currentTimeInMinutes >= openTime) {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            // 2. Check if we are in the "spill-over" part of an overnight shift from YESTERDAY.
+            if (yesterdaySchedule?.isOpen) {
+                // Check shift 1 from yesterday
+                if (yesterdaySchedule.opens && yesterdaySchedule.closes) {
+                    const openTime = timeToMinutes(yesterdaySchedule.opens);
+                    const closeTime = timeToMinutes(yesterdaySchedule.closes);
+                    if (closeTime < openTime) { // Was it an overnight shift?
+                        if (currentTimeInMinutes < closeTime) { // Are we in the early morning hours of it?
+                            return true;
+                        }
+                    }
+                }
+                // Check shift 2 from yesterday
+                if (yesterdaySchedule.opens2 && yesterdaySchedule.closes2) {
+                    const openTime = timeToMinutes(yesterdaySchedule.opens2);
+                    const closeTime = timeToMinutes(yesterdaySchedule.closes2);
+                    if (closeTime < openTime) { // Was it an overnight shift?
+                        if (currentTimeInMinutes < closeTime) { // Are we in the early morning hours of it?
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            // If neither of the above conditions were met, the restaurant is closed.
+            return false;
 
         } catch (e) {
             console.error("Error parsing detailed restaurant hours:", restaurant.name, e);
-            return true; // Fallback to open
+            return true; // Fallback to open on error
         }
     }
 
-    // Fallback logic for old data structure
+    // Fallback logic for old data structure (this part is correct because it uses the generic checkTimeRange)
     if (!openingHours || !closingHours) {
         return true; // Assume open if data is missing
     }

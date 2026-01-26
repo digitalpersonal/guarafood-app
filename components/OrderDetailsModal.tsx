@@ -1,8 +1,10 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import type { Order, OrderStatus } from '../types';
+import type { Order, OrderStatus, PaymentEntry } from '../types';
 import PrintableOrder from './PrintableOrder';
 import OrderEditorModal from './OrderEditorModal'; // Import the new modal
+import { recordOrderPayment } from '../services/orderService';
+import { useNotification } from '../hooks/useNotification';
 
 const XIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -22,7 +24,11 @@ const LeafIcon: React.FC<{ className?: string }> = ({ className }) => (
         <path fillRule="evenodd" d="M12.963 2.286a.75.75 0 00-1.071-.136 9.742 9.742 0 00-3.539 6.177 7.547 7.547 0 01-1.705-1.715.75.75 0 00-1.152-.082A9 9 0 1015.68 4.534a7.46 7.46 0 01-2.717-2.248zM15.75 14.25a3.75 3.75 0 11-7.313-1.172c.628.465 1.35.81 2.133 1a5.99 5.99 0 011.925-3.545 3.75 3.75 0 013.255 3.717z" clipRule="evenodd" />
     </svg>
 );
-
+const StoreIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+        <path fillRule="evenodd" d="M7.5 6v.75H5.513c-.96 0-1.764.724-1.865 1.679l-1.263 12A1.875 1.875 0 004.25 22.5h15.5a1.875 1.875 0 001.865-2.071l-1.263-12a1.875 1.875 0 00-1.865-1.679H16.5V6a4.5 4.5 0 10-9 0zM12 3a3 3 0 00-3 3v.75h6V6a3 3 0 00-3-3zm-3 8.25a3 3 0 106 0v-.75a.75.75 0 011.5 0v.75a4.5 4.5 0 11-9 0v-.75a.75.75 0 011.5v.75z" clipRule="evenodd" />
+    </svg>
+);
 
 const statusConfig: { [key in OrderStatus]: { text: string; color: string; } } = {
     'Aguardando Pagamento': { text: 'Aguardando Pagamento', color: 'bg-gray-400' },
@@ -31,6 +37,7 @@ const statusConfig: { [key in OrderStatus]: { text: string; color: string; } } =
     'A Caminho': { text: 'A Caminho', color: 'bg-orange-500' },
     'Entregue': { text: 'Entregue', color: 'bg-green-500' },
     'Cancelado': { text: 'Cancelado', color: 'bg-red-500' },
+    'Mesa Aberta': { text: 'Mesa Aberta', color: 'bg-purple-600' },
 };
 
 interface OrderDetailsModalProps { 
@@ -40,6 +47,7 @@ interface OrderDetailsModalProps {
 }
 
 const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, printerWidth = 80 }) => {
+    const { addToast } = useNotification();
     const { text, color } = statusConfig[order.status];
     const [isEditing, setIsEditing] = useState(false); // State to control editing modal
     const [currentOrder, setCurrentOrder] = useState<Order>(order); // Use internal state for order
@@ -69,11 +77,13 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
         setIsEditing(false); // Close editing modal
     };
 
-    const canEditOrder = ['Novo Pedido', 'Preparando'].includes(currentOrder.status);
+    const canEditOrder = ['Novo Pedido', 'Preparando', 'Mesa Aberta'].includes(currentOrder.status);
 
     const displayOrderNum = currentOrder.order_number 
         ? `#${String(currentOrder.order_number).padStart(3, '0')}`
         : `#${currentOrder.id.substring(currentOrder.id.length - 4).toUpperCase()}`;
+
+    const totalPaid = (currentOrder.paymentHistory || []).reduce((acc, p) => acc + p.amount, 0);
 
     return (
         <>
@@ -100,7 +110,12 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                                 <p className="font-black text-2xl text-orange-600">Pedido {displayOrderNum}</p>
                                 <p className="text-sm text-gray-500">{new Date(currentOrder.timestamp).toLocaleString('pt-BR')}</p>
                             </div>
-                            <span className={`px-4 py-1.5 text-sm font-semibold text-white rounded-full ${color} self-start sm:self-auto shadow-sm`}>{text}</span>
+                            <div className="flex flex-col items-end gap-1">
+                                <span className={`px-4 py-1.5 text-sm font-semibold text-white rounded-full ${color} self-start sm:self-auto shadow-sm`}>{text}</span>
+                                {currentOrder.tableNumber && (
+                                    <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-lg text-xs font-black uppercase">Mesa {currentOrder.tableNumber}</span>
+                                )}
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -108,13 +123,18 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                                 <h3 className="font-bold text-gray-700 border-b pb-1 mb-2">Cliente</h3>
                                 <p className="font-semibold text-gray-900">{currentOrder.customerName}</p>
                                 <p className="text-sm text-gray-600">Telefone: {currentOrder.customerPhone}</p>
-                                 {currentOrder.customerAddress && (
+                                 {currentOrder.customerAddress && currentOrder.customerAddress.street !== 'Consumo Local' && (
                                     <p className="text-sm text-gray-600 mt-1">
                                         <strong>Endereço:</strong> {currentOrder.customerAddress.street}, {currentOrder.customerAddress.number} - {currentOrder.customerAddress.neighborhood}
                                         {currentOrder.customerAddress.complement && `, ${currentOrder.customerAddress.complement}`}
                                         <br/>
                                         CEP: {currentOrder.customerAddress.zipCode}
                                     </p>
+                                )}
+                                {currentOrder.tableNumber && (
+                                     <p className="text-sm text-purple-600 font-bold mt-1 flex items-center gap-1">
+                                         <StoreIcon className="w-4 h-4" /> CONSUMO LOCAL NA MESA {currentOrder.tableNumber}
+                                     </p>
                                 )}
                                 <p className="text-sm text-gray-600">Pagamento: <span className="font-medium text-gray-900">{currentOrder.paymentMethod}</span></p>
                             </div>
@@ -127,21 +147,23 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                         </div>
                         
                         {/* CONDIMENTS PREFERENCE HIGHLIGHT */}
-                        <div className={`p-4 rounded-xl border-2 flex items-center gap-4 transition-all shadow-sm ${currentOrder.wantsSachets ? 'bg-emerald-50 border-emerald-500' : 'bg-gray-50 border-gray-100 opacity-70'}`}>
-                            <div className={`p-3 rounded-full ${currentOrder.wantsSachets ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-200 text-gray-400'}`}>
-                                <LeafIcon className="w-6 h-6" />
+                        {!currentOrder.tableNumber && (
+                            <div className={`p-4 rounded-xl border-2 flex items-center gap-4 transition-all shadow-sm ${currentOrder.wantsSachets ? 'bg-emerald-50 border-emerald-500' : 'bg-gray-50 border-gray-100 opacity-70'}`}>
+                                <div className={`p-3 rounded-full ${currentOrder.wantsSachets ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-200 text-gray-400'}`}>
+                                    <LeafIcon className="w-6 h-6" />
+                                </div>
+                                <div className="flex-grow">
+                                    <p className="text-sm font-black text-gray-800 uppercase tracking-wide">
+                                        {currentOrder.wantsSachets ? '🌿 Enviar Sachês e Talheres' : '🚫 Não enviar sachês/talheres'}
+                                    </p>
+                                </div>
                             </div>
-                            <div className="flex-grow">
-                                <p className="text-sm font-black text-gray-800 uppercase tracking-wide">
-                                    {currentOrder.wantsSachets ? '🌿 Enviar Sachês e Talheres' : '🚫 Não enviar sachês/talheres'}
-                                </p>
-                            </div>
-                        </div>
+                        )}
 
                         <div>
                             <h3 className="font-bold text-gray-700 border-b pb-1 mb-3">Itens do Pedido</h3>
                             <ul className="space-y-3 text-gray-800">
-                                {currentOrder.items.map(item => (
+                                {currentOrder.items.length > 0 ? currentOrder.items.map(item => (
                                     <li key={item.id} className="flex justify-between items-start border-b border-gray-100 pb-2 last:border-0">
                                         <div className="flex-grow">
                                             <p className="font-semibold">{item.quantity}x {item.name} {item.sizeName && `(${item.sizeName})`}</p>
@@ -161,7 +183,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                                                 <p className="text-xs text-gray-500 pl-2">½ {item.halves[0].name} | ½ {item.halves[1].name}</p>
                                             )}
 
-                                            {item.selectedAddons && item.selectedAddonIds && (
+                                            {item.selectedAddons && (
                                                 <ul className="text-xs text-gray-500 pl-2 mt-1">
                                                     {item.selectedAddons.map(addon => (
                                                         <li key={addon.id}>+ {addon.name} {addon.price > 0 && `(+ R$ ${Number(addon.price).toFixed(2)})`}</li>
@@ -173,7 +195,9 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                                         </div>
                                         <p className="font-semibold ml-4 whitespace-nowrap">R$ {(Number(item.price) * item.quantity).toFixed(2)}</p>
                                     </li>
-                                ))}
+                                )) : (
+                                    <li className="text-center py-4 text-gray-400 italic">Comanda vazia</li>
+                                )}
                             </ul>
                         </div>
 
@@ -190,16 +214,30 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                                 <span>- R$ {Number(currentOrder.discountAmount).toFixed(2)}</span>
                               </div>
                             )}
-                            {currentOrder.deliveryFee != null && (
+                            {currentOrder.deliveryFee != null && Number(currentOrder.deliveryFee) > 0 && (
                                 <div className="flex justify-between text-gray-600 text-sm">
                                     <span>Taxa de Entrega</span>
                                     <span>R$ {Number(currentOrder.deliveryFee).toFixed(2)}</span>
                                 </div>
                             )}
                             <div className="flex justify-between items-center font-bold text-lg sm:text-xl text-gray-900 border-t pt-2 mt-1">
-                                <span>Total</span>
+                                <span>Total do Pedido</span>
                                 <span>R$ {Number(currentOrder.totalPrice).toFixed(2)}</span>
                             </div>
+                            
+                            {/* EXIBIÇÃO DE PAGAMENTOS PARCIAIS SE HOUVER */}
+                            {currentOrder.paymentHistory && currentOrder.paymentHistory.length > 0 && (
+                                <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-100 space-y-1 mt-4">
+                                    <div className="flex justify-between text-emerald-800 text-xs font-bold uppercase">
+                                        <span>Total Já Pago:</span>
+                                        <span>R$ {totalPaid.toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-red-600 text-sm font-black uppercase">
+                                        <span>Restante:</span>
+                                        <span>R$ {(currentOrder.totalPrice - totalPaid).toFixed(2)}</span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
 

@@ -1,5 +1,5 @@
 
-import type { Order, OrderStatus, CartItem } from '../types';
+import type { Order, OrderStatus, CartItem, PaymentEntry } from '../types';
 import { supabase, handleSupabaseError } from './api';
 
 // Mapeia do Banco (snake_case) para o App (camelCase)
@@ -28,7 +28,9 @@ const normalizeOrder = (data: any): Order => {
         deliveryFee: data.delivery_fee,
         payment_id: data.payment_id,
         payment_details: data.payment_details,
-        paymentStatus: data.payment_status || (data.payment_method === 'Marcar na minha conta' ? 'pending' : 'paid')
+        paymentStatus: data.payment_status || (data.payment_method === 'Marcar na minha conta' ? 'pending' : 'paid'),
+        tableNumber: data.table_number,
+        paymentHistory: data.payment_history || []
     };
 };
 
@@ -124,10 +126,13 @@ export interface NewOrderData {
     discountAmount?: number;
     subtotal?: number;
     deliveryFee?: number;
+    tableNumber?: string;
+    status?: OrderStatus;
 }
 
 export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
     const isDebt = orderData.paymentMethod === 'Marcar na minha conta';
+    const isTable = !!orderData.tableNumber;
     
     const addressWithSachetPreference = {
         ...orderData.customerAddress,
@@ -149,8 +154,9 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
         discount_amount: orderData.discountAmount,
         subtotal: orderData.subtotal,
         delivery_fee: orderData.deliveryFee,
-        status: 'Novo Pedido', 
-        payment_status: isDebt ? 'pending' : 'paid',
+        status: orderData.status || 'Novo Pedido', 
+        payment_status: isDebt ? 'pending' : (isTable ? 'pending' : 'paid'),
+        table_number: orderData.tableNumber,
         timestamp: new Date().toISOString(),
     };
 
@@ -168,9 +174,31 @@ export const updateOrderStatus = async (orderId: string, status: OrderStatus): P
     return normalizeOrder(data);
 };
 
-export const updateOrderPaymentStatus = async (orderId: string, paymentStatus: 'paid' | 'pending'): Promise<void> => {
+export const updateOrderPaymentStatus = async (orderId: string, paymentStatus: 'paid' | 'pending' | 'partial'): Promise<void> => {
     const { error } = await supabase.from('orders').update({ payment_status: paymentStatus }).eq('id', orderId);
     handleSupabaseError({ error, customMessage: 'Failed to update payment status' });
+};
+
+export const recordOrderPayment = async (orderId: string, payment: PaymentEntry, newTotalPaid: number, originalTotal: number): Promise<Order> => {
+    // Busca o histórico atual
+    const { data: currentOrder } = await supabase.from('orders').select('payment_history').eq('id', orderId).single();
+    const history = currentOrder?.payment_history || [];
+    const newHistory = [...history, payment];
+    
+    const isFullyPaid = newTotalPaid >= originalTotal;
+    const paymentStatus = isFullyPaid ? 'paid' : 'partial';
+
+    const { data, error } = await supabase.from('orders')
+        .update({ 
+            payment_history: newHistory,
+            payment_status: paymentStatus
+        })
+        .eq('id', orderId)
+        .select()
+        .single();
+
+    handleSupabaseError({ error, customMessage: 'Failed to record payment' });
+    return normalizeOrder(data);
 };
 
 export const updateOrderDetails = async (
@@ -187,6 +215,7 @@ export const updateOrderDetails = async (
         items: updatedDetails.items,
         total_price: updatedDetails.totalPrice,
         subtotal: updatedDetails.subtotal,
+        // FIX: corrected updatedDetails.discount_amount to updatedDetails.discountAmount
         discount_amount: updatedDetails.discountAmount,
         payment_method: updatedDetails.paymentMethod,
     };

@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from './types';
 import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant, fetchRestaurantById } from './services/databaseService';
@@ -32,7 +33,7 @@ const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
 
 const FunnelIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
     </svg>
 );
 
@@ -74,6 +75,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     const [allPizzas, setAllPizzas] = useState<MenuItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [activeCategory, setActiveCategory] = useState<string | null>(null);
+    const [categoryNameMap, setCategoryNameMap] = useState<Map<number, string>>(new Map());
 
     useEffect(() => {
         const loadMenu = async () => {
@@ -83,6 +85,10 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                     fetchMenuForRestaurant(restaurant.id, true), 
                     fetchAddonsForRestaurant(restaurant.id),
                 ]);
+
+                const newCategoryNameMap = new Map<number, string>();
+                menuData.forEach(cat => newCategoryNameMap.set(cat.id, cat.name));
+                setCategoryNameMap(newCategoryNameMap);
 
                 const now = new Date();
                 const isLunchTime = now.getHours() < 15 || (now.getHours() === 15 && now.getMinutes() <= 30);
@@ -135,7 +141,10 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                  <div className="bg-gradient-to-r from-orange-100 to-yellow-50 p-4 border-b-4 border-orange-200">
                     <h2 className="text-xl font-black text-orange-800 uppercase mb-4">Hora do Almoço</h2>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        {marmitas.map(item => <MenuItemCard key={`marmita-${item.id}`} item={item} allPizzas={allPizzas} allAddons={addons} />)}
+                        {marmitas.map(item => {
+                            const categoryName = item.categoryId ? categoryNameMap.get(item.categoryId) : (item.isMarmita ? 'Marmita' : undefined);
+                            return <MenuItemCard key={`marmita-${item.id}`} item={item} allPizzas={allPizzas} allAddons={addons} categoryName={categoryName} />
+                        })}
                     </div>
                 </div>
             )}
@@ -160,7 +169,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                                 <h2 className="text-2xl font-bold mb-4">{category.name}</h2>
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                     {category.combos?.map(combo => <ComboCard key={`combo-${combo.id}`} combo={combo} menuItems={menu.flatMap(c => c.items)} />)}
-                                    {category.items.map(item => <MenuItemCard key={item.id} item={item} allPizzas={allPizzas} allAddons={addons} />)}
+                                    {category.items.map(item => <MenuItemCard key={item.id} item={item} allPizzas={allPizzas} allAddons={addons} categoryName={category.name} />)}
                                 </div>
                             </div>
                         ))}

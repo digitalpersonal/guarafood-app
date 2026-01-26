@@ -8,16 +8,45 @@ import AcaiCustomizationModal from './AcaiCustomizationModal';
 import GenericCustomizationModal from './GenericCustomizationModal';
 import OptimizedImage from './OptimizedImage';
 
+// Mapa de imagens genéricas por categoria
+const genericImages: Record<string, string> = {
+  'Pastel': 'https://images.pexels.com/photos/1230931/pexels-photo-1230931.jpeg?auto=compress&cs=tinysrgb&w=400',
+  'Pastelaria': 'https://images.pexels.com/photos/1230931/pexels-photo-1230931.jpeg?auto=compress&cs=tinysrgb&w=400',
+  'Lanches': 'https://images.pexels.com/photos/1633578/pexels-photo-1633578.jpeg?auto=compress&cs=tinysrgb&w=400',
+  'Sanduíche': 'https://images.pexels.com/photos/1633578/pexels-photo-1633578.jpeg?auto=compress&cs=tinysrgb&w=400',
+  'Pizza': 'https://images.pexels.com/photos/1146760/pexels-photo-1146760.jpeg?auto=compress&cs=tinysrgb&w=400',
+  'Bebidas': 'https://images.pexels.com/photos/4021983/pexels-photo-4021983.jpeg?auto=compress&cs=tinysrgb&w=400',
+  'Açaí': 'https://images.pexels.com/photos/5945763/pexels-photo-5945763.jpeg?auto=compress&cs=tinysrgb&w=400',
+  'Japonesa': 'https://images.pexels.com/photos/1148043/pexels-photo-1148043.jpeg?auto=compress&cs=tinysrgb&w=400',
+  'Marmita': 'https://images.pexels.com/photos/10775799/pexels-photo-10775799.jpeg?auto=compress&cs=tinysrgb&w=400',
+  'Brasileira': 'https://images.pexels.com/photos/10775799/pexels-photo-10775799.jpeg?auto=compress&cs=tinysrgb&w=400',
+  'Doces': 'https://images.pexels.com/photos/1099680/pexels-photo-1099680.jpeg?auto=compress&cs=tinysrgb&w=400'
+};
+
+// Função para encontrar a imagem genérica correspondente
+const getGenericImageUrl = (category?: string): string | undefined => {
+    if (!category) return undefined;
+    // Itera sobre as chaves do mapa para encontrar uma correspondência parcial
+    for (const key in genericImages) {
+        if (category.toLowerCase().includes(key.toLowerCase())) {
+            return genericImages[key];
+        }
+    }
+    return undefined;
+};
+
+
 interface MenuItemCardProps {
   item: MenuItem;
   allPizzas: MenuItem[];
   allAddons: Addon[];
-  isOpen?: boolean; // Propriedade para saber se o restaurante está aberto
+  isOpen?: boolean;
+  categoryName?: string;
 }
 
 const StarIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
-    <path fillRule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.007 5.404.433c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.433 2.082-5.006z" clipRule="evenodd" />
+    <path fillRule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.007 5.404.433c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404.433 2.082-5.006z" clipRule="evenodd" />
   </svg>
 );
 
@@ -29,7 +58,7 @@ const CalendarDaysIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 
 
-const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons, isOpen = true }) => {
+const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons, isOpen = true, categoryName }) => {
   const { addToCart } = useCart();
   const { addFlyingItem } = useAnimation();
   const { addToast } = useNotification();
@@ -37,6 +66,8 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
   const [isAcaiModalOpen, setIsAcaiModalOpen] = useState(false);
   const [isGenericModalOpen, setIsGenericModalOpen] = useState(false);
 
+  // Lógica para determinar a URL da imagem final
+  const finalImageUrl = item.imageUrl || getGenericImageUrl(categoryName) || '';
 
   const handleAddToCartClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (!isOpen) {
@@ -55,7 +86,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
     }
     else {
       const rect = event.currentTarget.getBoundingClientRect();
-      addFlyingItem(item.imageUrl, rect);
+      addFlyingItem(finalImageUrl, rect);
       addToCart(item);
     }
   };
@@ -145,7 +176,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
         </div>
 
         <div className="flex-shrink-0 relative w-24 h-24 self-center">
-          <OptimizedImage src={item.imageUrl} alt={item.name} className={`w-full h-full rounded-md shadow-sm ${!isOpen ? 'grayscale' : ''}`} />
+          <OptimizedImage src={finalImageUrl} alt={item.name} className={`w-full h-full rounded-md shadow-sm ${!isOpen ? 'grayscale' : ''}`} />
           <button 
             onClick={handleAddToCartClick}
             className={`absolute -bottom-2 -right-2 rounded-full w-9 h-9 flex items-center justify-center text-xl font-bold shadow-lg transition-all z-10 transform ${isOpen ? 'bg-gray-800 text-white hover:bg-orange-600 group-hover:scale-110' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}

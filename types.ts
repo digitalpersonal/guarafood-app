@@ -160,7 +160,13 @@ export interface CartItem {
   selectedOptions?: { groupTitle: string; optionName: string; price: number }[]; // Generic customization options
 }
 
-export type OrderStatus = 'Aguardando Pagamento' | 'Novo Pedido' | 'Preparando' | 'A Caminho' | 'Entregue' | 'Cancelado';
+export type OrderStatus = 'Aguardando Pagamento' | 'Novo Pedido' | 'Preparando' | 'A Caminho' | 'Entregue' | 'Cancelado' | 'Mesa Aberta';
+
+export interface PaymentEntry {
+    amount: number;
+    method: string;
+    timestamp: string;
+}
 
 export interface Order {
   id: string;
@@ -190,7 +196,9 @@ export interface Order {
   deliveryFee?: number;
   payment_id?: string;
   payment_details?: any;
-  paymentStatus?: 'paid' | 'pending';
+  paymentStatus?: 'paid' | 'pending' | 'partial';
+  tableNumber?: string; // NEW: Para atendimento local
+  paymentHistory?: PaymentEntry[]; // NEW: Para pagamentos fracionados
 }
 
 export type Role = 'admin' | 'merchant';

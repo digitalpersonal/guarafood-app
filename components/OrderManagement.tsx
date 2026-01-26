@@ -8,6 +8,7 @@ import MenuManagement from './MenuManagement';
 import RestaurantSettings from './RestaurantSettings';
 import PrintableOrder from './PrintableOrder';
 import DebtManager from './DebtManager';
+import TableManagement from './TableManagement';
 import { useSound } from '../hooks/useSound';
 
 const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -27,7 +28,7 @@ const CustomerList = React.lazy(() => import('./CustomerList'));
 
 const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { currentUser, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState<'orders' | 'menu' | 'settings' | 'financial' | 'customers' | 'debt'>('orders');
+    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'debt'>('orders');
     const [orders, setOrders] = useState<Order[]>([]);
     const [orderToPrint, setOrderToPrint] = useState<Order | null>(null);
     const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'RECONNECTING'>('CONNECTED');
@@ -37,7 +38,6 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const previousOrdersStatusRef = useRef<Map<string, string>>(new Map());
     const isFirstLoadRef = useRef(true);
     const printedOrderIdsRef = useRef<Set<string>>(new Set());
-    const pollingIntervalRef = useRef<number | null>(null);
     const heartbeatIntervalRef = useRef<number | null>(null);
     const reconnectGraceTimeoutRef = useRef<number | null>(null);
 
@@ -67,7 +67,6 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             tag: newestOrder.id
                         });
                      } catch (e) { console.error("Notification API error", e); }
-                    // Only play sound if notifications are enabled and granted
                     playNotification(); 
                 }
                 setOrderToPrint(newestOrder);
@@ -110,7 +109,6 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         window.addEventListener('focus', handleFocus);
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
-        // HEARTBEAT DE 10s: Garante que mudanças de status apareçam instantaneamente
         heartbeatIntervalRef.current = window.setInterval(() => {
             const idleTime = Date.now() - lastSuccessfulSyncRef.current;
             if (idleTime > 10000) {
@@ -189,6 +187,8 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         switch (activeTab) {
             case 'orders':
                 return <OrdersView orders={orders} printerWidth={printerWidth} onPrint={handleManualPrint} />;
+            case 'tables':
+                return <TableManagement orders={orders} />;
             case 'menu': return <MenuManagement />;
             case 'financial':
                 return (
@@ -246,9 +246,9 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
              <nav className="p-4 border-b sticky top-[95px] bg-gray-50 z-10 overflow-x-auto no-scrollbar">
                 <div className="flex space-x-2 rounded-xl bg-gray-200 p-1 min-w-max">
-                    {(['orders', 'menu', 'debt', 'financial', 'customers', 'settings'] as const).map((tab) => {
+                    {(['orders', 'tables', 'menu', 'debt', 'financial', 'customers', 'settings'] as const).map((tab) => {
                         const labels: Record<string, string> = { 
-                            orders: 'Pedidos', menu: 'Cardápio', debt: 'Fiados', 
+                            orders: 'Pedidos', tables: 'Mesas', menu: 'Cardápio', debt: 'Fiados', 
                             financial: 'Financeiro', customers: 'Clientes', settings: 'Config' 
                         };
                         return (

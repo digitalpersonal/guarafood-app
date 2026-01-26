@@ -57,6 +57,8 @@ const statusConfig: { [key in OrderStatus]: { text: string; color: string; } } =
     'A Caminho': { text: 'Entrega', color: 'bg-orange-500' },
     'Entregue': { text: 'Entregue', color: 'bg-green-500' },
     'Cancelado': { text: 'Cancelado', color: 'bg-red-500' },
+    // FIX: Added missing 'Mesa Aberta' property to statusConfig to satisfy TypeScript requirement for exhaustiveness or matching type interface.
+    'Mesa Aberta': { text: 'Mesa Aberta', color: 'bg-purple-600' },
 };
 
 /**

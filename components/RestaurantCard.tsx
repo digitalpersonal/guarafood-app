@@ -24,38 +24,73 @@ const ClockIcon: React.FC<{ className?: string }> = ({ className }) => (
 
 const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, isOpen }) => {
   const todayIndex = new Date().getDay();
+  const yesterdayIndex = todayIndex === 0 ? 6 : todayIndex - 1;
+  
   const todayHours = restaurant.operatingHours?.find(h => h.dayOfWeek === todayIndex);
+  const yesterdayHours = restaurant.operatingHours?.find(h => h.dayOfWeek === yesterdayIndex);
+  
   const now = new Date();
   const currentTimeMins = now.getHours() * 60 + now.getMinutes();
 
-  // FIX: Using API endpoint for WhatsApp Business compatibility
   const cleanedPhone = restaurant.phone.replace(/\D/g, '');
   const whatsappUrl = `https://api.whatsapp.com/send?phone=55${cleanedPhone}`;
   
-  // Lógica de exibição de horário de hoje
-  let hoursDisplay = "Horário não disponível";
+  let hoursDisplay = "";
   let statusMessage = isOpen ? "Aberto" : "Fechado";
 
-  if (todayHours && todayHours.isOpen) {
-      hoursDisplay = `${todayHours.opens} às ${todayHours.closes}`;
-      if (todayHours.opens2 && todayHours.closes2) {
-          hoursDisplay += ` e ${todayHours.opens2} às ${todayHours.closes2}`;
+  // LOGICA PARA TURNO QUE VIRA A MADRUGADA (CASO ATUAL DO USUÁRIO)
+  if (isOpen) {
+      // Se está aberto mas hoje está "fechado" ou ainda não abriu turno de hoje, 
+      // então o motivo de estar aberto é o turno de ONTEM que ainda não acabou.
+      const isShiftFromYesterday = !todayHours?.isOpen || (currentTimeMins < timeToMinutes(todayHours.opens));
+      
+      if (isShiftFromYesterday && yesterdayHours?.isOpen) {
+          // Verifica qual turno de ontem virou a madrugada
+          const close1 = timeToMinutes(yesterdayHours.closes);
+          const close2 = yesterdayHours.closes2 ? timeToMinutes(yesterdayHours.closes2) : 0;
+          
+          if (close1 < timeToMinutes(yesterdayHours.opens)) {
+              hoursDisplay = `Até às ${yesterdayHours.closes}`;
+          } else if (yesterdayHours.opens2 && close2 < timeToMinutes(yesterdayHours.opens2)) {
+              hoursDisplay = `Até às ${yesterdayHours.closes2}`;
+          } else {
+              hoursDisplay = "Aberto";
+          }
+      } else if (todayHours?.isOpen) {
+          // Caso padrão: Aberto hoje
+          hoursDisplay = `${todayHours.opens} às ${todayHours.closes}`;
+          if (todayHours.opens2 && todayHours.closes2) {
+              hoursDisplay += ` e ${todayHours.opens2} às ${todayHours.closes2}`;
+          }
+      } else {
+          hoursDisplay = "Aberto";
       }
-
-      if (!isOpen) {
+  } else {
+      // LOGICA PARA QUANDO ESTÁ FECHADO
+      if (todayHours && todayHours.isOpen) {
           const open1 = timeToMinutes(todayHours.opens);
           const open2 = todayHours.opens2 ? timeToMinutes(todayHours.opens2) : null;
           
           if (currentTimeMins < open1) {
               statusMessage = `Abre às ${todayHours.opens}`;
+              hoursDisplay = `Hoje: ${todayHours.opens} às ${todayHours.closes}`;
           } else if (open2 && currentTimeMins < open2) {
               statusMessage = `Abre às ${todayHours.opens2}`;
+              hoursDisplay = `Hoje: ${todayHours.opens2} às ${todayHours.closes2}`;
           } else {
               statusMessage = "Fechado por hoje";
+              hoursDisplay = "Fechado por hoje";
           }
+      } else if (restaurant.openingHours && restaurant.closingHours) {
+          statusMessage = `Abre às ${restaurant.openingHours}`;
+          hoursDisplay = `${restaurant.openingHours} às ${restaurant.closingHours}`;
+      } else if (todayHours && !todayHours.isOpen) {
+          statusMessage = "Fechado hoje";
+          hoursDisplay = "Fechado hoje";
+      } else {
+          statusMessage = "Fechado";
+          hoursDisplay = "Horário não disponível";
       }
-  } else if (todayHours && !todayHours.isOpen) {
-      statusMessage = "Fechado hoje";
   }
 
   return (
@@ -83,11 +118,11 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, is
              <p className="text-xs text-gray-500 line-clamp-1 mb-2 font-medium">{restaurant.description}</p>
           )}
 
-          {/* Exibição do horário de hoje abaixo da descrição */}
+          {/* Exibição do horário dinâmico */}
           <div className="flex items-center gap-1.5 mb-2">
             <ClockIcon className={`w-3.5 h-3.5 ${isOpen ? 'text-green-600' : 'text-gray-400'}`} />
-            <span className={`text-[11px] font-bold ${isOpen ? 'text-gray-600' : 'text-gray-500'}`}>
-                {isOpen ? `Hoje: ${hoursDisplay}` : statusMessage}
+            <span className={`text-[11px] font-bold ${isOpen ? 'text-green-600' : 'text-gray-500'}`}>
+                {isOpen ? hoursDisplay : statusMessage}
             </span>
           </div>
 
