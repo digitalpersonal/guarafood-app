@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -19,22 +18,20 @@ serve(async (req: Request) => {
     const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!serviceRoleKey) {
-        throw new Error("Erro Crítico: SERVICE_ROLE_KEY não configurada no servidor.");
+        throw new Error("Configuração ausente: SERVICE_ROLE_KEY.");
     }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
-
     const { restaurantData, userData } = await req.json()
     const { email, password } = userData
 
+    // 1. Gerenciar Restaurante (Criar ou Atualizar)
     let restaurantId;
-    
-    // 1. Gerenciar Restaurante
     const { data: existingRest } = await supabaseAdmin
         .from('restaurants')
         .select('id')
         .eq('name', restaurantData.name)
-        .single();
+        .maybeSingle();
 
     if (existingRest) {
         restaurantId = existingRest.id;
@@ -46,34 +43,23 @@ serve(async (req: Request) => {
             .select()
             .single()
         
-        if (createError) throw new Error("Erro ao criar restaurante: " + createError.message);
+        if (createError) throw createError;
         restaurantId = newRest.id;
     }
 
-    // 2. Gerenciar Usuário (Nova Lógica: Buscar antes de Criar)
+    // 2. Gerenciar Usuário (Auth Admin API)
     if (email && password) {
-        // Busca se o e-mail já existe na base do Auth
+        const emailLower = email.toLowerCase().trim();
+        
+        // Verifica se usuário já existe via Admin API (mais confiável)
         const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
         if (listError) throw listError;
 
-        const existingUser = users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
+        const existingUser = users?.find(u => u.email?.toLowerCase() === emailLower);
 
         if (existingUser) {
-            // Se já existe, apenas atualiza a senha e o metadado (vínculo)
+            // Atualiza usuário existente
             const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
-                password: password,
-                user_metadata: {
-                    role: 'merchant',
-                    name: restaurantData.name,
-                    restaurantId: restaurantId
-                }
-            });
-
-            if (updateError) throw new Error("Erro ao atualizar login existente: " + updateError.message);
-        } else {
-            // Se não existe, cria do zero
-            const { error: userError } = await supabaseAdmin.auth.admin.createUser({
-                email: email,
                 password: password,
                 email_confirm: true,
                 user_metadata: {
@@ -82,8 +68,23 @@ serve(async (req: Request) => {
                     restaurantId: restaurantId
                 }
             });
-
-            if (userError) throw new Error("Erro ao criar novo login: " + userError.message);
+            if (updateError) throw updateError;
+        } else {
+            // Cria novo usuário
+            const { error: userError } = await supabaseAdmin.auth.admin.createUser({
+                email: emailLower,
+                password: password,
+                email_confirm: true,
+                user_metadata: {
+                    role: 'merchant',
+                    name: restaurantData.name,
+                    restaurantId: restaurantId
+                }
+            });
+            if (userError) {
+                // Se der erro aqui, provavelmente é um ID órfão na tabela 'profiles' que o SQL acima resolve
+                throw new Error(`Erro ao criar login: ${userError.message}. Tente rodar o script de limpeza SQL.`);
+            }
         }
     }
 
@@ -93,7 +94,6 @@ serve(async (req: Request) => {
     )
 
   } catch (error: any) {
-    console.error("Erro na função create-restaurant:", error.message);
     return new Response(
       JSON.stringify({ error: error.message }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
