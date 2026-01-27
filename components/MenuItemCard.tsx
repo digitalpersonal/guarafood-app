@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import type { MenuItem, Addon, CartItem } from '../types';
 import { useCart } from '../hooks/useCart';
@@ -162,15 +163,9 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
               </div>
           ) : (
             <div className="mt-2">
-                {item.sizes && item.sizes.length > 0 ? (
-                    <p className="font-bold text-orange-600 text-md">
-                        A partir de R$ {item.price.toFixed(2)}
-                    </p>
-                ) : (
-                    <p className="font-bold text-orange-600 text-md">
-                        R$ {item.price.toFixed(2)}
-                    </p>
-                )}
+                <p className="font-bold text-orange-600 text-md">
+                    R$ {item.price.toFixed(2)}
+                </p>
             </div>
           )}
         </div>
