@@ -39,9 +39,23 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const isFirstLoadRef = useRef(true);
     const printedOrderIdsRef = useRef<Set<string>>(new Set());
     const heartbeatIntervalRef = useRef<number | null>(null);
-    const reconnectGraceTimeoutRef = useRef<number | null>(null);
+    const wakeLockRef = useRef<any>(null);
 
     const [printerWidth, setPrinterWidth] = useState<number>(80);
+
+    const requestWakeLock = async () => {
+        if ('wakeLock' in navigator) {
+            try {
+                // Tenta liberar um existente antes de pedir novo
+                if (wakeLockRef.current) await wakeLockRef.current.release();
+                wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+                console.log("WakeLock ativo!");
+            } catch (err: any) {
+                // Silencia erros de permissão política (comum em iframes/sandboxes)
+                console.warn("WakeLock indisponível por política de segurança:", err.name);
+            }
+        }
+    };
 
     const processOrdersUpdate = useCallback((allOrders: Order[]) => {
         const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
@@ -92,18 +106,17 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     }, [currentUser?.restaurantId, processOrdersUpdate]);
 
     useEffect(() => {
-        let wakeLock: any = null;
-        const requestWakeLock = async () => {
-            if ('wakeLock' in navigator) {
-                try { wakeLock = await (navigator as any).wakeLock.request('screen'); } 
-                catch (err: any) { console.error(`${err.name}, ${err.message}`); }
+        const handleOnline = () => forceSync();
+        const handleFocus = () => {
+            forceSync();
+            requestWakeLock(); // Tenta reativar ao voltar foco
+        };
+        const handleVisibilityChange = () => { 
+            if (document.visibilityState === 'visible') {
+                forceSync();
+                requestWakeLock();
             }
         };
-        requestWakeLock();
-
-        const handleOnline = () => forceSync();
-        const handleFocus = () => forceSync();
-        const handleVisibilityChange = () => { if (document.visibilityState === 'visible') forceSync(); };
 
         window.addEventListener('online', handleOnline);
         window.addEventListener('focus', handleFocus);
@@ -117,12 +130,11 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }, 8000);
 
         return () => { 
-            if (wakeLock !== null) wakeLock.release(); 
+            if (wakeLockRef.current !== null) wakeLockRef.current.release(); 
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('focus', handleFocus);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
-            if (reconnectGraceTimeoutRef.current) clearTimeout(reconnectGraceTimeoutRef.current);
         };
     }, [forceSync]);
 
@@ -131,7 +143,10 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         if (savedWidth) setPrinterWidth(parseInt(savedWidth, 10));
     }, []);
 
-    const enableAudio = useCallback(() => { initAudioContext(); }, [initAudioContext]);
+    const handleDashboardInteraction = useCallback(() => {
+        initAudioContext();
+        requestWakeLock(); // Solicita o bloqueio de tela sob gesto do usuário
+    }, [initAudioContext]);
 
     useEffect(() => {
         if (orderToPrint) {
@@ -158,29 +173,13 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     useEffect(() => {
         if (!currentUser?.restaurantId) return;
 
-        const handleRealtimeStatus = (status: string) => {
-            if (status === 'SUBSCRIBED') {
-                setConnectionStatus('CONNECTED');
-                if (reconnectGraceTimeoutRef.current) {
-                    clearTimeout(reconnectGraceTimeoutRef.current);
-                    reconnectGraceTimeoutRef.current = null;
-                }
-            } else {
-                if (!reconnectGraceTimeoutRef.current) {
-                    reconnectGraceTimeoutRef.current = window.setTimeout(() => {
-                        setConnectionStatus('RECONNECTING');
-                    }, 10000);
-                }
-            }
-        };
-
         const unsubscribe = subscribeToOrders((allOrders) => {
             processOrdersUpdate(allOrders);
-        }, currentUser.restaurantId, handleRealtimeStatus); 
+        }, currentUser.restaurantId, (status) => {
+            if (status === 'SUBSCRIBED') setConnectionStatus('CONNECTED');
+        }); 
 
-        return () => {
-            unsubscribe();
-        };
+        return () => unsubscribe();
     }, [currentUser?.restaurantId, processOrdersUpdate]);
 
     const renderContent = () => {
@@ -209,7 +208,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     }
     
     return (
-        <div className="w-full min-h-screen bg-gray-50" onClick={enableAudio} onTouchStart={enableAudio}>
+        <div className="w-full min-h-screen bg-gray-50" onClick={handleDashboardInteraction} onTouchStart={handleDashboardInteraction}>
             <div 
                 className={`text-white text-center text-[10px] uppercase tracking-widest font-black p-1.5 cursor-pointer flex items-center justify-center gap-2 transition-all duration-500 ${connectionStatus === 'CONNECTED' ? 'bg-green-600' : 'bg-red-600 animate-pulse'}`} 
                 onClick={forceSync}

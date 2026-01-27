@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from './types';
 import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant, fetchRestaurantById } from './services/databaseService';
@@ -75,7 +74,6 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     const [allPizzas, setAllPizzas] = useState<MenuItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [activeCategory, setActiveCategory] = useState<string | null>(null);
-    const [categoryNameMap, setCategoryNameMap] = useState<Map<number, string>>(new Map());
 
     useEffect(() => {
         const loadMenu = async () => {
@@ -85,10 +83,6 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                     fetchMenuForRestaurant(restaurant.id, true), 
                     fetchAddonsForRestaurant(restaurant.id),
                 ]);
-
-                const newCategoryNameMap = new Map<number, string>();
-                menuData.forEach(cat => newCategoryNameMap.set(cat.id, cat.name));
-                setCategoryNameMap(newCategoryNameMap);
 
                 const now = new Date();
                 const isLunchTime = now.getHours() < 15 || (now.getHours() === 15 && now.getMinutes() <= 30);
@@ -120,7 +114,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     };
 
     return (
-        <div className="w-full">
+        <div className="w-full pb-16">
             <div className="relative h-40 sm:h-52 bg-gradient-to-br from-gray-800 to-gray-900 overflow-hidden">
                 <div className="absolute inset-0 flex items-center justify-center z-10 p-4">
                     <div className="relative w-28 h-28 sm:w-32 sm:h-32 bg-white rounded-full shadow-2xl p-1 flex-shrink-0 overflow-hidden">
@@ -141,10 +135,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                  <div className="bg-gradient-to-r from-orange-100 to-yellow-50 p-4 border-b-4 border-orange-200">
                     <h2 className="text-xl font-black text-orange-800 uppercase mb-4">Hora do Almoço</h2>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        {marmitas.map(item => {
-                            const categoryName = item.categoryId ? categoryNameMap.get(item.categoryId) : (item.isMarmita ? 'Marmita' : undefined);
-                            return <MenuItemCard key={`marmita-${item.id}`} item={item} allPizzas={allPizzas} allAddons={addons} categoryName={categoryName} />
-                        })}
+                        {marmitas.map(item => <MenuItemCard key={`marmita-${item.id}`} item={item} allPizzas={allPizzas} allAddons={addons} />)}
                     </div>
                 </div>
             )}
@@ -169,7 +160,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                                 <h2 className="text-2xl font-bold mb-4">{category.name}</h2>
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                     {category.combos?.map(combo => <ComboCard key={`combo-${combo.id}`} combo={combo} menuItems={menu.flatMap(c => c.items)} />)}
-                                    {category.items.map(item => <MenuItemCard key={item.id} item={item} allPizzas={allPizzas} allAddons={addons} categoryName={category.name} />)}
+                                    {category.items.map(item => <MenuItemCard key={item.id} item={item} allPizzas={allPizzas} allAddons={addons} />)}
                                 </div>
                             </div>
                         ))}
@@ -199,14 +190,12 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
     const availableCategories = useMemo(() => {
         const activeRestaurants = restaurants.filter(r => r.active !== false);
         const all = activeRestaurants.flatMap(r => r.category ? r.category.split(',').map(c => c.trim()) : []);
-        return ['Todos', ...Array.from(new Set(all))];
+        return Array.from(new Set(all));
     }, [restaurants]);
 
     const filteredRestaurants = useMemo(() => {
         return restaurants.filter(restaurant => {
-            // CRITICAL: Filter out suspended restaurants for customers
             if (restaurant.active === false) return false;
-
             const restaurantCats = restaurant.category ? restaurant.category.split(',').map(c => c.trim()) : [];
             const matchesCategory = selectedCategories.includes('Todos') || selectedCategories.some(c => restaurantCats.includes(c));
             const matchesOpen = !showOpenOnly || isRestaurantOpen(restaurant);
@@ -247,6 +236,15 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
             <div className="p-4 overflow-hidden">
                 <h2 className="text-lg font-bold text-gray-800 mb-4 ml-1">O que você quer comer hoje?</h2>
                 <div className="flex space-x-6 overflow-x-auto pb-4 no-scrollbar">
+                    <button 
+                        onClick={() => handleCategoryToggle('Todos')}
+                        className="flex flex-col items-center space-y-2 min-w-[70px] transition-transform active:scale-95"
+                    >
+                        <div className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl shadow-md border-2 transition-all ${selectedCategories.includes('Todos') ? 'bg-orange-50 border-orange-500' : 'bg-white border-transparent'}`}>
+                            ✨
+                        </div>
+                        <span className={`text-xs font-bold whitespace-nowrap ${selectedCategories.includes('Todos') ? 'text-orange-600' : 'text-gray-600'}`}>Início</span>
+                    </button>
                     {availableCategories.map(category => {
                         const isSelected = selectedCategories.includes(category);
                         return (
@@ -275,7 +273,7 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
             </div>
 
             <div className="p-4 pt-6">
-                <h2 className="text-xl font-black text-gray-800 mb-6">Escolha o lugar e faça seu pedido!</h2>
+                <h2 className="text-xl font-black text-gray-800 mb-6 text-center">Escolha o lugar e faça seu pedido!</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredRestaurants.map(restaurant => (
                         <RestaurantCard 
@@ -286,12 +284,6 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
                         />
                     ))}
                 </div>
-                {filteredRestaurants.length === 0 && (
-                    <div className="text-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
-                        <p className="text-gray-400 font-bold">Nenhum restaurante encontrado.</p>
-                        <button onClick={() => { setSelectedCategories(['Todos']); setShowOpenOnly(false); }} className="mt-4 text-orange-600 font-black underline">Limpar Filtros</button>
-                    </div>
-                )}
             </div>
             <Cart restaurant={selectedRestaurant} />
         </main>
@@ -303,32 +295,6 @@ const AppContent: React.FC = () => {
     const { currentUser, loading } = useAuth();
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
 
-    // Deep Link Logic: Check for restaurant ID in URL
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        const restaurantIdParam = params.get('r');
-        if (restaurantIdParam) {
-            const id = parseInt(restaurantIdParam, 10);
-            if (!isNaN(id)) {
-                fetchRestaurantById(id).then(res => {
-                    // Only show if restaurant is active
-                    if (res && res.active !== false) {
-                        setSelectedRestaurant(res);
-                    }
-                }).catch(err => console.error("Deep link fetch error:", err));
-            }
-        }
-    }, []);
-
-    // Remove Splash Screen on mount
-    useEffect(() => {
-        const splash = document.getElementById('splash-screen');
-        if (splash) {
-            splash.style.opacity = '0';
-            setTimeout(() => splash.remove(), 500);
-        }
-    }, []);
-
     const renderContent = () => {
         if (loading) return <div className="h-screen flex items-center justify-center"><Spinner /></div>;
         if (currentUser?.role === 'admin') return <AdminDashboard onBack={() => setView('customer')} />;
@@ -339,12 +305,12 @@ const AppContent: React.FC = () => {
     };
 
     return (
-        <div className="container mx-auto max-w-7xl bg-white min-h-screen flex flex-col shadow-xl overflow-x-hidden">
+        <div className="container mx-auto max-w-7xl bg-white min-h-screen flex flex-col shadow-xl overflow-x-hidden relative">
             <HeaderGlobal 
                 onOrdersClick={() => setView('history')} 
                 onHomeClick={() => { setView('customer'); setSelectedRestaurant(null); }} 
             />
-            <div className="flex-grow relative print-container">
+            <div className="flex-grow relative">
                 {renderContent()}
             </div>
             <OrderTracker />
@@ -355,7 +321,7 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
     const supabaseError = getInitializationError();
-    if (supabaseError) return <div className="h-screen flex items-center justify-center p-4 text-center">Erro crítico de configuração do banco de dados.</div>;
+    if (supabaseError) return <div className="h-screen flex items-center justify-center p-4 text-center">Erro crítico no banco de dados.</div>;
     return (
         <NotificationProvider>
             <AnimationProvider>
