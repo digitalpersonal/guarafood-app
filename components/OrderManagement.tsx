@@ -39,30 +39,9 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const isFirstLoadRef = useRef(true);
     const printedOrderIdsRef = useRef<Set<string>>(new Set());
     const heartbeatIntervalRef = useRef<number | null>(null);
-    const wakeLockRef = useRef<any>(null);
+    const reconnectGraceTimeoutRef = useRef<number | null>(null);
 
     const [printerWidth, setPrinterWidth] = useState<number>(80);
-
-    const requestWakeLock = async () => {
-        // Verifica suporte e se já não existe um bloqueio ativo
-        if ('wakeLock' in navigator && !wakeLockRef.current) {
-            try {
-                wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-                console.debug("WakeLock: Tela mantida ativa.");
-                
-                // Adiciona listener para reativar se o bloqueio for liberado (ex: minimização)
-                wakeLockRef.current.addEventListener('release', () => {
-                    wakeLockRef.current = null;
-                });
-            } catch (err: any) {
-                // Silencia NotAllowedError e SecurityError que ocorrem em ambientes restritos (iframes/sandboxes)
-                if (err.name !== 'NotAllowedError' && err.name !== 'SecurityError') {
-                    console.warn("WakeLock Error:", err.name, err.message);
-                }
-                wakeLockRef.current = null;
-            }
-        }
-    };
 
     const processOrdersUpdate = useCallback((allOrders: Order[]) => {
         const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
@@ -113,17 +92,18 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     }, [currentUser?.restaurantId, processOrdersUpdate]);
 
     useEffect(() => {
-        const handleOnline = () => forceSync();
-        const handleFocus = () => {
-            forceSync();
-            requestWakeLock(); 
-        };
-        const handleVisibilityChange = () => { 
-            if (document.visibilityState === 'visible') {
-                forceSync();
-                requestWakeLock();
+        let wakeLock: any = null;
+        const requestWakeLock = async () => {
+            if ('wakeLock' in navigator) {
+                try { wakeLock = await (navigator as any).wakeLock.request('screen'); } 
+                catch (err: any) { console.error(`${err.name}, ${err.message}`); }
             }
         };
+        requestWakeLock();
+
+        const handleOnline = () => forceSync();
+        const handleFocus = () => forceSync();
+        const handleVisibilityChange = () => { if (document.visibilityState === 'visible') forceSync(); };
 
         window.addEventListener('online', handleOnline);
         window.addEventListener('focus', handleFocus);
@@ -137,14 +117,12 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }, 8000);
 
         return () => { 
-            if (wakeLockRef.current !== null) {
-                try { wakeLockRef.current.release(); } catch(e) {}
-                wakeLockRef.current = null;
-            }
+            if (wakeLock !== null) wakeLock.release(); 
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('focus', handleFocus);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
+            if (reconnectGraceTimeoutRef.current) clearTimeout(reconnectGraceTimeoutRef.current);
         };
     }, [forceSync]);
 
@@ -153,10 +131,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         if (savedWidth) setPrinterWidth(parseInt(savedWidth, 10));
     }, []);
 
-    const handleDashboardInteraction = useCallback(() => {
-        initAudioContext();
-        requestWakeLock();
-    }, [initAudioContext]);
+    const enableAudio = useCallback(() => { initAudioContext(); }, [initAudioContext]);
 
     useEffect(() => {
         if (orderToPrint) {
@@ -183,13 +158,29 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     useEffect(() => {
         if (!currentUser?.restaurantId) return;
 
+        const handleRealtimeStatus = (status: string) => {
+            if (status === 'SUBSCRIBED') {
+                setConnectionStatus('CONNECTED');
+                if (reconnectGraceTimeoutRef.current) {
+                    clearTimeout(reconnectGraceTimeoutRef.current);
+                    reconnectGraceTimeoutRef.current = null;
+                }
+            } else {
+                if (!reconnectGraceTimeoutRef.current) {
+                    reconnectGraceTimeoutRef.current = window.setTimeout(() => {
+                        setConnectionStatus('RECONNECTING');
+                    }, 10000);
+                }
+            }
+        };
+
         const unsubscribe = subscribeToOrders((allOrders) => {
             processOrdersUpdate(allOrders);
-        }, currentUser.restaurantId, (status) => {
-            if (status === 'SUBSCRIBED') setConnectionStatus('CONNECTED');
-        }); 
+        }, currentUser.restaurantId, handleRealtimeStatus); 
 
-        return () => unsubscribe();
+        return () => {
+            unsubscribe();
+        };
     }, [currentUser?.restaurantId, processOrdersUpdate]);
 
     const renderContent = () => {
@@ -218,7 +209,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     }
     
     return (
-        <div className="w-full min-h-screen bg-gray-50" onClick={handleDashboardInteraction} onTouchStart={handleDashboardInteraction}>
+        <div className="w-full min-h-screen bg-gray-50" onClick={enableAudio} onTouchStart={enableAudio}>
             <div 
                 className={`text-white text-center text-[10px] uppercase tracking-widest font-black p-1.5 cursor-pointer flex items-center justify-center gap-2 transition-all duration-500 ${connectionStatus === 'CONNECTED' ? 'bg-green-600' : 'bg-red-600 animate-pulse'}`} 
                 onClick={forceSync}

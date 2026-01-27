@@ -29,17 +29,16 @@ serve(async (req: Request) => {
 
     let restaurantId;
     
-    // 1. Verificar ou Criar Restaurante
+    // Verifica se o restaurante já existe
     const { data: existingRest } = await supabaseAdmin
         .from('restaurants')
         .select('id')
         .eq('name', restaurantData.name)
-        .maybeSingle();
+        .single();
 
     if (existingRest) {
         restaurantId = existingRest.id;
-        const { error: updateRestError } = await supabaseAdmin.from('restaurants').update(restaurantData).eq('id', restaurantId);
-        if (updateRestError) throw new Error("Erro ao atualizar dados do restaurante: " + updateRestError.message);
+        await supabaseAdmin.from('restaurants').update(restaurantData).eq('id', restaurantId);
     } else {
         const { data: newRest, error: createError } = await supabaseAdmin
             .from('restaurants')
@@ -53,72 +52,25 @@ serve(async (req: Request) => {
 
     // 2. Criar ou Atualizar Usuário no Auth
     if (email && password) {
-        const cleanEmail = email.toLowerCase().trim();
-        
-        // Verifica se o email já existe na tabela de perfis (mais rápido que listar todos no Auth)
-        const { data: existingProfile } = await supabaseAdmin
-            .from('profiles')
-            .select('id')
-            .eq('email', cleanEmail)
-            .maybeSingle();
-
-        let userId = existingProfile?.id;
-
-        // Se não achou no perfil, tenta listar no Auth (backup para usuários sem perfil)
-        if (!userId) {
-            const { data: { users } } = await supabaseAdmin.auth.admin.listUsers();
-            const foundUser = users.find(u => u.email?.toLowerCase() === cleanEmail);
-            userId = foundUser?.id;
-        }
-
-        if (userId) {
-            // USUÁRIO JÁ EXISTE: APENAS ATUALIZA
-            const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-                password: password,
-                user_metadata: {
-                    role: 'merchant',
-                    name: restaurantData.name,
-                    restaurantId: restaurantId
-                }
-            });
-            
-            if (updateAuthError) {
-                return new Response(
-                    JSON.stringify({ 
-                        restaurantId, 
-                        warning: "Restaurante salvo. Mas não foi possível atualizar a senha do usuário existente: " + updateAuthError.message 
-                    }),
-                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-                );
+        const { data: user, error: userError } = await supabaseAdmin.auth.admin.createUser({
+            email: email,
+            password: password,
+            email_confirm: true,
+            user_metadata: {
+                role: 'merchant',
+                name: restaurantData.name,
+                restaurantId: restaurantId
             }
-        } else {
-            // USUÁRIO NÃO EXISTE: CRIA NOVO
-            const { data: user, error: userError } = await supabaseAdmin.auth.admin.createUser({
-                email: cleanEmail,
-                password: password,
-                email_confirm: true,
-                user_metadata: {
-                    role: 'merchant',
-                    name: restaurantData.name,
-                    restaurantId: restaurantId
-                }
-            });
+        })
 
-            if (userError) {
-                // Se der "Database error", o usuário pode ter sido criado no Auth mas o trigger de Profile falhou
-                // Tentamos uma atualização forçada como último recurso
-                if (userError.message.includes('Database error') || userError.message.includes('already registered')) {
-                     return new Response(
-                        JSON.stringify({ 
-                            restaurantId, 
-                            warning: "Restaurante salvo, mas houve um conflito no banco ao criar o acesso (o email já pode estar em uso em outra conta). Verifique a tabela de Usuários." 
-                        }),
-                        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-                    );
-                }
-                
-                throw new Error("Erro ao criar lojista: " + userError.message);
-            }
+        if (userError) {
+            return new Response(
+                JSON.stringify({ 
+                    restaurantId, 
+                    warning: "Restaurante salvo, mas o usuário já existia ou houve erro no Auth: " + userError.message 
+                }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+            )
         }
     }
 
@@ -128,7 +80,7 @@ serve(async (req: Request) => {
     )
 
   } catch (error: any) {
-    console.error("Edge Function Error:", error);
+    // Retorna 200 com erro JSON para o frontend exibir
     return new Response(
       JSON.stringify({ error: error.message }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }

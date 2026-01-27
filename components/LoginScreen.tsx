@@ -49,28 +49,18 @@ const LoginScreen: React.FC<{ onLoginSuccess: () => void; onBack: () => void; }>
         setIsSubmitting(true);
         setError('');
 
-        const cleanEmail = email.trim().toLowerCase();
-        const cleanPassword = password.trim();
-
-        if (cleanPassword.length < 6) {
+        if (password.length < 6) {
             setError('A senha deve ter pelo menos 6 caracteres.');
             setIsSubmitting(false);
             return;
         }
 
         try {
-            await login(cleanEmail, cleanPassword);
+            await login(email, password);
             onLoginSuccess();
         } catch (err: any) {
-            const msg = err.message || '';
-            if (msg.includes('Invalid login credentials')) {
-                setError('E-mail ou senha incorretos. Tente novamente.');
-            } else if (msg.includes('Email not confirmed')) {
-                setError('E-mail ainda não confirmado. Verifique sua caixa de entrada.');
-            } else {
-                setError('Falha no acesso. Verifique sua conexão e tente novamente.');
-            }
-            console.error("Login failed:", err);
+            setError('Falha no login. Verifique seu e-mail e senha.');
+            console.error(err);
         } finally {
             setIsSubmitting(false);
         }
@@ -78,6 +68,7 @@ const LoginScreen: React.FC<{ onLoginSuccess: () => void; onBack: () => void; }>
     
     return (
         <div className="min-h-screen flex flex-col justify-center items-center p-4 relative overflow-hidden">
+            {/* Background Image with Overlay */}
             <div 
                 className="absolute inset-0 z-0 bg-cover bg-center"
                 style={{ 
@@ -90,6 +81,7 @@ const LoginScreen: React.FC<{ onLoginSuccess: () => void; onBack: () => void; }>
              <button 
                 onClick={onBack} 
                 className="absolute top-4 left-4 flex items-center space-x-2 text-sm font-semibold text-white/80 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors z-20"
+                aria-label="Voltar para a página inicial"
             >
                 <ArrowLeftIcon className="w-5 h-5" />
                 <span>Voltar à Loja</span>
@@ -109,7 +101,7 @@ const LoginScreen: React.FC<{ onLoginSuccess: () => void; onBack: () => void; }>
 
                     <form onSubmit={handleLogin} className="space-y-5">
                         <div>
-                            <label htmlFor="email_login" className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1">Email</label>
+                            <label htmlFor="email_login" className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1">Email Profissional</label>
                             <div className="relative">
                                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                     <EnvelopeIcon className="h-5 w-5 text-gray-400" />
@@ -120,7 +112,7 @@ const LoginScreen: React.FC<{ onLoginSuccess: () => void; onBack: () => void; }>
                                     value={email} 
                                     onChange={(e) => setEmail(e.target.value)} 
                                     required 
-                                    className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-900 focus:ring-2 focus:ring-orange-500 outline-none" 
+                                    className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all" 
                                     placeholder="restaurante@exemplo.com" 
                                 />
                             </div>
@@ -138,13 +130,14 @@ const LoginScreen: React.FC<{ onLoginSuccess: () => void; onBack: () => void; }>
                                     value={password} 
                                     onChange={(e) => setPassword(e.target.value)} 
                                     required 
-                                    className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-900 focus:ring-2 focus:ring-orange-500 outline-none" 
+                                    className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all" 
                                     placeholder="••••••••" 
                                 />
                                 <button 
                                     type="button" 
                                     onClick={() => setShowPassword(!showPassword)} 
-                                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                                    title={showPassword ? "Esconder senha" : "Mostrar senha"}
                                 >
                                     {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
                                 </button>
@@ -154,7 +147,7 @@ const LoginScreen: React.FC<{ onLoginSuccess: () => void; onBack: () => void; }>
                         <button 
                             type="submit" 
                             disabled={isSubmitting} 
-                            className="w-full flex justify-center py-3 px-4 rounded-lg shadow-lg text-sm font-bold text-white bg-orange-600 hover:bg-orange-700 transition-all transform active:scale-95 disabled:opacity-70"
+                            className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-lg text-sm font-bold text-white bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition-all transform active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
                         >
                             {isSubmitting ? <Spinner message="Autenticando..." /> : 'Acessar Painel'}
                         </button>
@@ -167,6 +160,15 @@ const LoginScreen: React.FC<{ onLoginSuccess: () => void; onBack: () => void; }>
                         </div>
                     )}
                 </div>
+                <div className="bg-gray-50 p-4 text-center border-t border-gray-100">
+                    <p className="text-xs text-gray-500">
+                        Esqueceu sua senha? <a href="mailto:suporte@guarafood.com" className="text-orange-600 hover:text-orange-800 font-semibold transition-colors">Contate o suporte</a>
+                    </p>
+                </div>
+            </div>
+            
+            <div className="absolute bottom-4 text-center z-10 text-white/40 text-xs">
+                &copy; {new Date().getFullYear()} GuaraFood Enterprise. Sistema Seguro.
             </div>
         </div>
     );
