@@ -49,7 +49,7 @@ const LoginScreen: React.FC<{ onLoginSuccess: () => void; onBack: () => void; }>
         setIsSubmitting(true);
         setError('');
 
-        const cleanEmail = email.trim();
+        const cleanEmail = email.trim().toLowerCase();
         const cleanPassword = password.trim();
 
         if (cleanPassword.length < 6) {
@@ -62,8 +62,15 @@ const LoginScreen: React.FC<{ onLoginSuccess: () => void; onBack: () => void; }>
             await login(cleanEmail, cleanPassword);
             onLoginSuccess();
         } catch (err: any) {
-            setError('Falha no login. Verifique seu e-mail e senha.');
-            console.error(err);
+            const msg = err.message || '';
+            if (msg.includes('Invalid login credentials')) {
+                setError('E-mail ou senha incorretos. Tente novamente.');
+            } else if (msg.includes('Email not confirmed')) {
+                setError('E-mail ainda não confirmado. Verifique sua caixa de entrada.');
+            } else {
+                setError('Falha no acesso. Verifique sua conexão e tente novamente.');
+            }
+            console.error("Login failed:", err);
         } finally {
             setIsSubmitting(false);
         }

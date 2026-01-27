@@ -29,16 +29,17 @@ serve(async (req: Request) => {
 
     let restaurantId;
     
-    // Verifica se o restaurante já existe
+    // 1. Verificar ou Criar Restaurante
     const { data: existingRest } = await supabaseAdmin
         .from('restaurants')
         .select('id')
         .eq('name', restaurantData.name)
-        .single();
+        .maybeSingle();
 
     if (existingRest) {
         restaurantId = existingRest.id;
-        await supabaseAdmin.from('restaurants').update(restaurantData).eq('id', restaurantId);
+        const { error: updateRestError } = await supabaseAdmin.from('restaurants').update(restaurantData).eq('id', restaurantId);
+        if (updateRestError) throw new Error("Erro ao atualizar dados do restaurante: " + updateRestError.message);
     } else {
         const { data: newRest, error: createError } = await supabaseAdmin
             .from('restaurants')
@@ -52,25 +53,54 @@ serve(async (req: Request) => {
 
     // 2. Criar ou Atualizar Usuário no Auth
     if (email && password) {
-        const { data: user, error: userError } = await supabaseAdmin.auth.admin.createUser({
-            email: email,
-            password: password,
-            email_confirm: true,
-            user_metadata: {
-                role: 'merchant',
-                name: restaurantData.name,
-                restaurantId: restaurantId
-            }
-        })
+        // Tenta buscar se o usuário já existe no auth.users
+        const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+        const existingUser = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
 
-        if (userError) {
-            return new Response(
-                JSON.stringify({ 
-                    restaurantId, 
-                    warning: "Restaurante salvo, mas o usuário já existia ou houve erro no Auth: " + userError.message 
-                }),
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-            )
+        if (existingUser) {
+            // Atualiza os metadados do usuário existente
+            const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+                password: password,
+                user_metadata: {
+                    role: 'merchant',
+                    name: restaurantData.name,
+                    restaurantId: restaurantId
+                }
+            });
+            
+            if (updateAuthError) {
+                return new Response(
+                    JSON.stringify({ 
+                        restaurantId, 
+                        warning: "Restaurante salvo. Houve um problema ao atualizar o acesso do lojista: " + updateAuthError.message 
+                    }),
+                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+                );
+            }
+        } else {
+            // Cria novo usuário
+            const { data: user, error: userError } = await supabaseAdmin.auth.admin.createUser({
+                email: email,
+                password: password,
+                email_confirm: true,
+                user_metadata: {
+                    role: 'merchant',
+                    name: restaurantData.name,
+                    restaurantId: restaurantId
+                }
+            });
+
+            if (userError) {
+                // Se o erro for "Database error", pode ser o trigger de profiles.
+                // Retornamos um aviso mas mantemos o restaurante salvo.
+                return new Response(
+                    JSON.stringify({ 
+                        restaurantId, 
+                        warning: "Restaurante criado, mas falhou ao criar o acesso do lojista (Erro de Banco de Dados ou usuário existente). Verifique a tabela 'profiles'." 
+                    }),
+                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+                );
+            }
         }
     }
 
@@ -80,7 +110,7 @@ serve(async (req: Request) => {
     )
 
   } catch (error: any) {
-    // Retorna 200 com erro JSON para o frontend exibir
+    console.error("Edge Function Error:", error);
     return new Response(
       JSON.stringify({ error: error.message }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }

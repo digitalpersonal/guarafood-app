@@ -44,15 +44,22 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [printerWidth, setPrinterWidth] = useState<number>(80);
 
     const requestWakeLock = async () => {
-        if ('wakeLock' in navigator) {
+        // Verifica suporte e se já não existe um bloqueio ativo
+        if ('wakeLock' in navigator && !wakeLockRef.current) {
             try {
-                // Tenta liberar um existente antes de pedir novo
-                if (wakeLockRef.current) await wakeLockRef.current.release();
                 wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-                console.log("WakeLock ativo!");
+                console.debug("WakeLock: Tela mantida ativa.");
+                
+                // Adiciona listener para reativar se o bloqueio for liberado (ex: minimização)
+                wakeLockRef.current.addEventListener('release', () => {
+                    wakeLockRef.current = null;
+                });
             } catch (err: any) {
-                // Silencia erros de permissão política (comum em iframes/sandboxes)
-                console.warn("WakeLock indisponível por política de segurança:", err.name);
+                // Silencia NotAllowedError e SecurityError que ocorrem em ambientes restritos (iframes/sandboxes)
+                if (err.name !== 'NotAllowedError' && err.name !== 'SecurityError') {
+                    console.warn("WakeLock Error:", err.name, err.message);
+                }
+                wakeLockRef.current = null;
             }
         }
     };
@@ -109,7 +116,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         const handleOnline = () => forceSync();
         const handleFocus = () => {
             forceSync();
-            requestWakeLock(); // Tenta reativar ao voltar foco
+            requestWakeLock(); 
         };
         const handleVisibilityChange = () => { 
             if (document.visibilityState === 'visible') {
@@ -130,7 +137,10 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }, 8000);
 
         return () => { 
-            if (wakeLockRef.current !== null) wakeLockRef.current.release(); 
+            if (wakeLockRef.current !== null) {
+                try { wakeLockRef.current.release(); } catch(e) {}
+                wakeLockRef.current = null;
+            }
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('focus', handleFocus);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -145,7 +155,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     const handleDashboardInteraction = useCallback(() => {
         initAudioContext();
-        requestWakeLock(); // Solicita o bloqueio de tela sob gesto do usuário
+        requestWakeLock();
     }, [initAudioContext]);
 
     useEffect(() => {
