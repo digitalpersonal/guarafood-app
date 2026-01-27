@@ -53,13 +53,27 @@ serve(async (req: Request) => {
 
     // 2. Criar ou Atualizar Usuário no Auth
     if (email && password) {
-        // Tenta buscar se o usuário já existe no auth.users
-        const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
-        const existingUser = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+        const cleanEmail = email.toLowerCase().trim();
+        
+        // Verifica se o email já existe na tabela de perfis (mais rápido que listar todos no Auth)
+        const { data: existingProfile } = await supabaseAdmin
+            .from('profiles')
+            .select('id')
+            .eq('email', cleanEmail)
+            .maybeSingle();
 
-        if (existingUser) {
-            // Atualiza os metadados do usuário existente
-            const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+        let userId = existingProfile?.id;
+
+        // Se não achou no perfil, tenta listar no Auth (backup para usuários sem perfil)
+        if (!userId) {
+            const { data: { users } } = await supabaseAdmin.auth.admin.listUsers();
+            const foundUser = users.find(u => u.email?.toLowerCase() === cleanEmail);
+            userId = foundUser?.id;
+        }
+
+        if (userId) {
+            // USUÁRIO JÁ EXISTE: APENAS ATUALIZA
+            const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
                 password: password,
                 user_metadata: {
                     role: 'merchant',
@@ -72,15 +86,15 @@ serve(async (req: Request) => {
                 return new Response(
                     JSON.stringify({ 
                         restaurantId, 
-                        warning: "Restaurante salvo. Houve um problema ao atualizar o acesso do lojista: " + updateAuthError.message 
+                        warning: "Restaurante salvo. Mas não foi possível atualizar a senha do usuário existente: " + updateAuthError.message 
                     }),
                     { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
                 );
             }
         } else {
-            // Cria novo usuário
+            // USUÁRIO NÃO EXISTE: CRIA NOVO
             const { data: user, error: userError } = await supabaseAdmin.auth.admin.createUser({
-                email: email,
+                email: cleanEmail,
                 password: password,
                 email_confirm: true,
                 user_metadata: {
@@ -91,15 +105,19 @@ serve(async (req: Request) => {
             });
 
             if (userError) {
-                // Se o erro for "Database error", pode ser o trigger de profiles.
-                // Retornamos um aviso mas mantemos o restaurante salvo.
-                return new Response(
-                    JSON.stringify({ 
-                        restaurantId, 
-                        warning: "Restaurante criado, mas falhou ao criar o acesso do lojista (Erro de Banco de Dados ou usuário existente). Verifique a tabela 'profiles'." 
-                    }),
-                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-                );
+                // Se der "Database error", o usuário pode ter sido criado no Auth mas o trigger de Profile falhou
+                // Tentamos uma atualização forçada como último recurso
+                if (userError.message.includes('Database error') || userError.message.includes('already registered')) {
+                     return new Response(
+                        JSON.stringify({ 
+                            restaurantId, 
+                            warning: "Restaurante salvo, mas houve um conflito no banco ao criar o acesso (o email já pode estar em uso em outra conta). Verifique a tabela de Usuários." 
+                        }),
+                        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+                    );
+                }
+                
+                throw new Error("Erro ao criar lojista: " + userError.message);
             }
         }
     }
