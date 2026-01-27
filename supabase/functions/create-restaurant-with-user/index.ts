@@ -29,7 +29,7 @@ serve(async (req: Request) => {
 
     let restaurantId;
     
-    // 1. Verifica se o restaurante já existe ou cria um novo
+    // 1. Gerenciar Restaurante
     const { data: existingRest } = await supabaseAdmin
         .from('restaurants')
         .select('id')
@@ -50,62 +50,40 @@ serve(async (req: Request) => {
         restaurantId = newRest.id;
     }
 
-    // 2. Criar ou Atualizar Usuário no Auth
+    // 2. Gerenciar Usuário (Nova Lógica: Buscar antes de Criar)
     if (email && password) {
-        // Tenta criar o usuário
-        const { data: newUser, error: userError } = await supabaseAdmin.auth.admin.createUser({
-            email: email,
-            password: password,
-            email_confirm: true,
-            user_metadata: {
-                role: 'merchant',
-                name: restaurantData.name,
-                restaurantId: restaurantId
-            }
-        });
+        // Busca se o e-mail já existe na base do Auth
+        const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+        if (listError) throw listError;
 
-        // Se o erro for que o usuário já existe, vamos encontrá-lo e atualizar os dados
-        if (userError && userError.message.toLowerCase().includes('already registered')) {
-            // Busca o usuário na lista (filtro básico por email)
-            const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
-            const existingUser = users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
+        const existingUser = users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
 
-            if (existingUser) {
-                const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
-                    password: password,
-                    user_metadata: {
-                        role: 'merchant',
-                        name: restaurantData.name,
-                        restaurantId: restaurantId
-                    }
-                });
-
-                if (updateError) {
-                    return new Response(
-                        JSON.stringify({ 
-                            restaurantId, 
-                            warning: "Restaurante salvo, mas não foi possível atualizar a senha do usuário existente: " + updateError.message 
-                        }),
-                        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-                    );
+        if (existingUser) {
+            // Se já existe, apenas atualiza a senha e o metadado (vínculo)
+            const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+                password: password,
+                user_metadata: {
+                    role: 'merchant',
+                    name: restaurantData.name,
+                    restaurantId: restaurantId
                 }
-            } else {
-                return new Response(
-                    JSON.stringify({ 
-                        restaurantId, 
-                        warning: "O e-mail já está em uso por outro tipo de conta e não pôde ser vinculado." 
-                    }),
-                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-                );
-            }
-        } else if (userError) {
-            return new Response(
-                JSON.stringify({ 
-                    restaurantId, 
-                    error: "Erro ao gerenciar acesso do lojista: " + userError.message 
-                }),
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-            );
+            });
+
+            if (updateError) throw new Error("Erro ao atualizar login existente: " + updateError.message);
+        } else {
+            // Se não existe, cria do zero
+            const { error: userError } = await supabaseAdmin.auth.admin.createUser({
+                email: email,
+                password: password,
+                email_confirm: true,
+                user_metadata: {
+                    role: 'merchant',
+                    name: restaurantData.name,
+                    restaurantId: restaurantId
+                }
+            });
+
+            if (userError) throw new Error("Erro ao criar novo login: " + userError.message);
         }
     }
 
@@ -115,6 +93,7 @@ serve(async (req: Request) => {
     )
 
   } catch (error: any) {
+    console.error("Erro na função create-restaurant:", error.message);
     return new Response(
       JSON.stringify({ error: error.message }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
