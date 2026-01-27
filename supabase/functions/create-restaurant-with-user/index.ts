@@ -29,7 +29,7 @@ serve(async (req: Request) => {
 
     let restaurantId;
     
-    // Verifica se o restaurante já existe
+    // 1. Verifica se o restaurante já existe ou cria um novo
     const { data: existingRest } = await supabaseAdmin
         .from('restaurants')
         .select('id')
@@ -52,7 +52,8 @@ serve(async (req: Request) => {
 
     // 2. Criar ou Atualizar Usuário no Auth
     if (email && password) {
-        const { data: user, error: userError } = await supabaseAdmin.auth.admin.createUser({
+        // Tenta criar o usuário
+        const { data: newUser, error: userError } = await supabaseAdmin.auth.admin.createUser({
             email: email,
             password: password,
             email_confirm: true,
@@ -61,16 +62,50 @@ serve(async (req: Request) => {
                 name: restaurantData.name,
                 restaurantId: restaurantId
             }
-        })
+        });
 
-        if (userError) {
+        // Se o erro for que o usuário já existe, vamos encontrá-lo e atualizar os dados
+        if (userError && userError.message.toLowerCase().includes('already registered')) {
+            // Busca o usuário na lista (filtro básico por email)
+            const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+            const existingUser = users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
+
+            if (existingUser) {
+                const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+                    password: password,
+                    user_metadata: {
+                        role: 'merchant',
+                        name: restaurantData.name,
+                        restaurantId: restaurantId
+                    }
+                });
+
+                if (updateError) {
+                    return new Response(
+                        JSON.stringify({ 
+                            restaurantId, 
+                            warning: "Restaurante salvo, mas não foi possível atualizar a senha do usuário existente: " + updateError.message 
+                        }),
+                        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+                    );
+                }
+            } else {
+                return new Response(
+                    JSON.stringify({ 
+                        restaurantId, 
+                        warning: "O e-mail já está em uso por outro tipo de conta e não pôde ser vinculado." 
+                    }),
+                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+                );
+            }
+        } else if (userError) {
             return new Response(
                 JSON.stringify({ 
                     restaurantId, 
-                    warning: "Restaurante salvo, mas o usuário já existia ou houve erro no Auth: " + userError.message 
+                    error: "Erro ao gerenciar acesso do lojista: " + userError.message 
                 }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-            )
+            );
         }
     }
 
@@ -80,7 +115,6 @@ serve(async (req: Request) => {
     )
 
   } catch (error: any) {
-    // Retorna 200 com erro JSON para o frontend exibir
     return new Response(
       JSON.stringify({ error: error.message }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
