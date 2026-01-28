@@ -10,12 +10,6 @@ import PrintableOrder from './PrintableOrder';
 
 // --- COMPONENTS AUXILIARES ---
 
-const ClipboardIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v3.043c0 .317-.135.619-.372.83h-9.312a1.125 1.125 0 01-1.125-1.125v-3.043c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
-    </svg>
-);
-
 const NotificationSettings: React.FC = () => {
     const { addToast } = useNotification();
     const [notificationsEnabled, setNotificationsEnabled] = useState(false);
@@ -152,6 +146,38 @@ const PrinterSettings: React.FC<{ onTestPrint: (width: number) => void }> = ({ o
                     </svg>
                     Imprimir Teste ({printerWidth}mm)
                 </button>
+
+                <div className="bg-blue-50 border-l-4 border-blue-500 p-5 rounded-r-xl shadow-sm">
+                    <h4 className="font-extrabold text-blue-900 flex items-center gap-2 mb-2">
+                         🚀 IMPRESSÃO AUTOMÁTICA PROFISSIONAL
+                    </h4>
+                    <p className="text-sm text-blue-800 leading-relaxed mb-4">
+                        Se o Windows der erro de "Destino Não é Válido", é porque o Chrome está em uma pasta diferente. Tente estes dois códigos no final do campo <strong>Destino</strong> do seu atalho (sempre dê um espaço após o <code>.exe"</code>):
+                    </p>
+                    
+                    <div className="space-y-5">
+                        <div>
+                            <p className="text-xs font-bold text-blue-900 uppercase mb-1">Opção A (Versão 64 bits - Padrão):</p>
+                            <div className="bg-gray-900 text-green-400 p-3 rounded-md font-mono text-[11px] break-all select-all shadow-inner">
+                                --kiosk-printing --user-data-dir="C:\GuaraFoodPDV"
+                            </div>
+                        </div>
+
+                        <div className="border-t border-blue-200 pt-3">
+                            <p className="text-xs font-bold text-blue-900 uppercase mb-1">Opção B (Versão 32 bits - Program Files x86):</p>
+                            <p className="text-[10px] text-blue-700 mb-2 italic">Use esta se a primeira der erro:</p>
+                            <div className="bg-gray-900 text-yellow-400 p-3 rounded-md font-mono text-[11px] break-all select-all shadow-inner">
+                                --kiosk-printing --user-data-dir="C:\GuaraFoodPDV_x86"
+                            </div>
+                        </div>
+
+                        <div className="bg-blue-100/50 p-3 rounded-lg border border-blue-200">
+                             <p className="text-xs text-blue-800 leading-tight">
+                                💡 <strong>Dica:</strong> Não apague o que já está no campo Destino. Apenas vá até o final do texto, dê <strong>um espaço</strong> e cole o código acima.
+                             </p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     );
@@ -262,12 +288,29 @@ const RestaurantSettings: React.FC = () => {
                 };
             });
 
-            addToast({ message: 'Configurações salvas!', type: 'success' });
+            const savedToken = savedData.mercado_pago_credentials?.accessToken || '';
+            const isTokenSaved = savedToken === mercadoPagoToken;
+            const savedHoursStr = JSON.stringify(savedData.operatingHours);
+            const sentHoursStr = JSON.stringify(operatingHours);
+            const isHoursSaved = savedHoursStr === sentHoursStr;
+
+            if (!isTokenSaved || !isHoursSaved) {
+                setShowFixModal(true); 
+                addToast({ message: 'Salvo localmente!', type: 'warning', duration: 6000 });
+            } else {
+                addToast({ message: 'Configurações salvas com sucesso!', type: 'success' });
+            }
             
         } catch (err: any) {
             console.error(err);
-            setError(`FALHA AO SALVAR: ${err.message}`);
-            addToast({ message: "Erro ao salvar.", type: 'error' });
+            const msg = err.message || JSON.stringify(err);
+            setError(`FALHA AO SALVAR: ${msg}`);
+            
+            if (msg.includes('operating_hours') || msg.includes('mercado_pago_credentials')) {
+                setShowFixModal(true);
+            }
+            
+            addToast({ message: "Erro ao salvar. Tente rodar a correção de banco.", type: 'error', duration: 5000 });
         } finally {
             setIsSaving(false);
         }
@@ -324,6 +367,37 @@ const RestaurantSettings: React.FC = () => {
             addToast({ message: 'Link copiado!', type: 'success' });
         }
     };
+    
+    const handleWhatsappShare = () => {
+        if (restaurantId && restaurant) {
+            const url = `${window.location.origin}?r=${restaurantId}`;
+            const text = `Peça agora no *${restaurant.name}* pelo nosso app: ${url}`;
+            const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+            window.open(whatsappUrl, '_blank');
+        }
+    };
+
+    const handleResetData = async () => {
+        const confirmed = await confirm({
+            title: '⚠️ ZERAR DADOS DE TESTE?',
+            message: 'Esta ação irá apagar TODOS os pedidos e despesas anteriores para você começar a operação real hoje. O cardápio NÃO será afetado.',
+            confirmText: 'Sim, desejo zerar',
+            isDestructive: true
+        });
+
+        if (confirmed) {
+            // Instruções de SQL para o Supabase
+            const sql = `
+-- LIMPEZA DE PRODUÇÃO PARA O RESTAURANTE ID: ${restaurantId}
+DELETE FROM public.orders WHERE restaurant_id = ${restaurantId};
+DELETE FROM public.expenses WHERE restaurant_id = ${restaurantId};
+            `.trim();
+            
+            navigator.clipboard.writeText(sql);
+            addToast({ message: 'Script SQL copiado! Cole no Supabase e rode.', type: 'info', duration: 10000 });
+            window.open('https://supabase.com/dashboard/project/_/sql/new', '_blank');
+        }
+    };
 
     const webhookUrl = restaurantId ? `${SUPABASE_URL}/functions/v1/payment-webhook?restaurantId=${restaurantId}` : 'Carregando...';
 
@@ -334,75 +408,41 @@ const RestaurantSettings: React.FC = () => {
     return (
         <main className="p-4 space-y-8">
             <div className="bg-white rounded-2xl shadow-md p-6 max-w-2xl mx-auto">
-                <h2 className="text-2xl font-bold text-gray-800 border-b pb-4 mb-6">Configurações da Loja</h2>
+                <h2 className="text-2xl font-bold text-gray-800 border-b pb-4 mb-6">Painel de Controle</h2>
                 
-                <div className="space-y-8">
-                    {/* MERCADO PAGO SECTION - DESTAQUE TOTAL */}
-                    <div className="bg-blue-50 p-6 rounded-2xl border-2 border-blue-200 shadow-sm space-y-6">
-                        <div className="flex items-center gap-3 border-b border-blue-100 pb-3">
-                            <div className="bg-blue-600 p-2 rounded-lg text-white">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
-                                    <path d="M4.5 3.75a3 3 0 0 0-3 3v10.5a3 3 0 0 0 3 3h15a3 3 0 0 0 3-3V6.75a3 3 0 0 0-3-3h-15Z" />
-                                    <path fillRule="evenodd" d="M3.75 6.75a.75.75 0 0 1 .75-.75h15a.75.75 0 0 1 0 1.5h-15a.75.75 0 0 1-.75-.75Zm0 10.5a.75.75 0 0 1 .75-.75h15a.75.75 0 0 1 0 1.5h-15a.75.75 0 0 1-.75-.75ZM12 9.75a2.25 2.25 0 1 0 0 4.5 2.25 2.25 0 0 0 0-4.5Z" clipRule="evenodd" />
-                                </svg>
-                            </div>
-                            <div>
-                                <h3 className="text-lg font-black text-blue-900 uppercase">Automação Mercado Pago</h3>
-                                <p className="text-xs text-blue-700">Receba via Pix e libere o pedido automaticamente.</p>
-                            </div>
-                        </div>
+                {error && (
+                    <div className="mb-6 p-4 bg-red-100 border-l-4 border-red-500 rounded-r-xl text-red-900 shadow-sm">
+                        <p className="font-bold text-lg mb-1">⚠️ Problema Detectado</p>
+                        <p className="text-sm whitespace-pre-wrap">{error}</p>
+                        <button 
+                            onClick={() => setShowFixModal(true)}
+                            className="mt-3 bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition-colors shadow-md"
+                        >
+                            Corrigir Banco de Dados
+                        </button>
+                    </div>
+                )}
 
-                        <div>
-                            <label htmlFor="mercadoPagoToken" className="block text-[10px] font-black text-blue-900 uppercase mb-1 tracking-widest">
-                                1. Seu Access Token (Produção):
-                            </label>
-                            <input
-                                id="mercadoPagoToken"
-                                type="password"
-                                placeholder="APP_USR-..."
-                                value={mercadoPagoToken}
-                                onChange={(e) => setMercadoPagoToken(e.target.value)}
-                                className="w-full p-3 border-2 border-blue-200 rounded-xl bg-white focus:border-blue-600 outline-none font-mono text-sm shadow-inner"
+                <div className="space-y-8">
+                    {/* STORE LINK SECTION */}
+                    <div className="bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 p-5 rounded-2xl shadow-inner">
+                        <h3 className="text-lg font-bold text-orange-900 mb-2">Divulgação da Loja</h3>
+                        <p className="text-sm text-orange-800/80 mb-4">Seu cardápio está online! Envie o link para os clientes ou coloque na bio do Instagram.</p>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                            <input 
+                                type="text" 
+                                readOnly 
+                                value={`${window.location.origin}?r=${restaurant.id}`} 
+                                className="flex-grow p-3 border-2 border-orange-200 rounded-xl bg-white text-gray-700 text-sm font-medium"
                             />
-                            <a href="https://www.mercadopago.com.br/developers/panel/credentials" target="_blank" rel="noreferrer" className="text-[10px] text-blue-600 underline font-bold mt-1 inline-block">Onde encontro meu token?</a>
-                        </div>
-                        
-                        <div className="pt-4 border-t border-blue-100">
-                            <label className="block text-[10px] font-black text-blue-900 uppercase tracking-widest mb-1">
-                                2. Sua URL de Webhook:
-                            </label>
                             <div className="flex gap-2">
-                                <div className="flex-grow bg-white p-3 rounded-xl border-2 border-blue-100 text-[10px] font-mono text-blue-900 break-all shadow-inner">
-                                    {webhookUrl}
-                                </div>
-                                <button 
-                                    onClick={() => { navigator.clipboard.writeText(webhookUrl); addToast({message: 'Copiado!', type:'success'}); }} 
-                                    className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 active:scale-95 transition-all shadow-md"
-                                    title="Copiar URL"
-                                >
-                                    <ClipboardIcon className="w-5 h-5" />
+                                <button onClick={handleCopyStoreLink} className="flex-1 sm:flex-none bg-orange-600 text-white font-bold px-5 py-3 rounded-xl hover:bg-orange-700 transition-all shadow-md active:scale-95">
+                                    Copiar
+                                </button>
+                                <button onClick={handleWhatsappShare} className="flex-1 sm:flex-none bg-green-600 text-white font-bold px-5 py-3 rounded-xl hover:bg-green-700 transition-all shadow-md active:scale-95">
+                                    WhatsApp
                                 </button>
                             </div>
-                            <div className="mt-3 p-3 bg-blue-100/50 rounded-xl border border-blue-200">
-                                <p className="text-[10px] text-blue-900 leading-tight">
-                                    💡 <strong>IMPORTANTE:</strong> Vá em <i>Mercado Pago -> Seu App -> Notificações de IPN</i>, cole esta URL acima e marque a opção <strong>Pagamentos (payments)</strong>.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="border-t pt-8">
-                         <h3 className="text-lg font-semibold text-gray-700 mb-2">Chave Pix Manual (Segurança)</h3>
-                         <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200">
-                             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">CPF, CNPJ ou Celular</label>
-                             <input 
-                                type="text" 
-                                placeholder="Digite sua chave pix principal..." 
-                                value={manualPixKey} 
-                                onChange={(e) => setManualPixKey(e.target.value)} 
-                                className="w-full p-3 border-2 border-gray-200 rounded-xl bg-white focus:border-orange-500 outline-none font-mono font-bold"
-                            />
-                            <p className="text-[10px] text-gray-400 mt-2">Usada se o Pix automático falhar.</p>
                         </div>
                     </div>
 
@@ -411,31 +451,163 @@ const RestaurantSettings: React.FC = () => {
 
                      <div className="border-t pt-8">
                         <h3 className="text-lg font-semibold text-gray-700 mb-3">Horário de Funcionamento</h3>
+                        <p className="text-sm text-gray-500 mb-4">Controle quando sua loja aparece como "Aberta" no aplicativo.</p>
                         <div className="space-y-2">
                             {operatingHours.map((day, index) => (
                                 <div key={index} className="grid grid-cols-12 gap-2 items-center p-3 rounded-xl bg-gray-50 border border-gray-100">
                                     <div className="col-span-5 flex items-center">
-                                        <input type="checkbox" id={`isopen-merchant-${index}`} checked={day.isOpen} onChange={(e) => handleOperatingHoursChange(index, 'isOpen', e.target.checked)} className="h-5 w-5 rounded border-gray-300 text-orange-600 mr-3" />
+                                        <input 
+                                            type="checkbox" 
+                                            id={`isopen-merchant-${index}`}
+                                            checked={day.isOpen}
+                                            onChange={(e) => handleOperatingHoursChange(index, 'isOpen', e.target.checked)}
+                                            className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 mr-3"
+                                        />
                                         <label htmlFor={`isopen-merchant-${index}`} className="font-bold text-sm text-gray-700">{daysOfWeek[index]}</label>
                                     </div>
-                                    <div className="col-span-3"><input type="time" value={day.opens} onChange={(e) => handleOperatingHoursChange(index, 'opens', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-sm disabled:bg-gray-200" /></div>
+                                    <div className="col-span-3">
+                                        <input 
+                                            type="time" 
+                                            value={day.opens}
+                                            onChange={(e) => handleOperatingHoursChange(index, 'opens', e.target.value)}
+                                            disabled={!day.isOpen}
+                                            className="w-full p-2 border rounded-lg text-sm disabled:bg-gray-200 disabled:text-gray-400"
+                                        />
+                                    </div>
                                     <div className="col-span-1 text-center text-gray-400">às</div>
-                                    <div className="col-span-3"><input type="time" value={day.closes} onChange={(e) => handleOperatingHoursChange(index, 'closes', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-sm disabled:bg-gray-200" /></div>
+                                    <div className="col-span-3">
+                                        <input 
+                                            type="time" 
+                                            value={day.closes}
+                                            onChange={(e) => handleOperatingHoursChange(index, 'closes', e.target.value)}
+                                            disabled={!day.isOpen}
+                                            className="w-full p-2 border rounded-lg text-sm disabled:bg-gray-200 disabled:text-gray-400"
+                                        />
+                                    </div>
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    <button
-                        onClick={handleSaveChanges}
-                        disabled={isSaving}
-                        className="w-full bg-orange-600 text-white font-black py-4 px-12 rounded-2xl hover:bg-orange-700 transition-all disabled:bg-orange-300 shadow-xl shadow-orange-200 text-lg active:scale-95"
-                    >
-                        {isSaving ? 'Salvando...' : 'Salvar Todas Alterações'}
-                    </button>
+                    <div className="border-t pt-8">
+                         <h3 className="text-lg font-semibold text-gray-700 mb-2">Chave Pix Manual</h3>
+                         <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200">
+                             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">CPF, CNPJ, Email ou Celular</label>
+                             <input 
+                                type="text" 
+                                placeholder="Digite aqui sua chave pix..." 
+                                value={manualPixKey} 
+                                onChange={(e) => setManualPixKey(e.target.value)} 
+                                className="w-full p-3 border-2 border-gray-200 rounded-xl bg-white focus:border-orange-500 focus:ring-0 transition-all font-mono font-bold"
+                            />
+                            <p className="text-[10px] text-gray-400 mt-2">Esta chave será exibida para o cliente caso o Pix Automático não esteja disponível ou falhe.</p>
+                        </div>
+                    </div>
+
+                     <div className="border-t pt-8">
+                        <h3 className="text-lg font-semibold text-gray-700 mb-3">Pix Automático (Mercado Pago)</h3>
+                        
+                        <div className="space-y-6">
+                            <div className="bg-blue-50 p-5 rounded-2xl border border-blue-200 shadow-sm">
+                                <h4 className="font-bold text-blue-900 mb-4 flex items-center gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                                        <path fillRule="evenodd" d="M12 1.5a5.25 5.25 0 00-5.25 5.25v3a3 3 0 00-3 3v6.75a3 3 0 003 3h10.5a3 3 0 003-3v-6.75a3 3 0 00-3-3v-3c0-2.9-2.35-5.25-5.25-5.25zm3.75 8.25v-3a3.75 3.75 0 10-7.5 0v3h7.5z" clipRule="evenodd" />
+                                    </svg>
+                                    Credenciais de Automação
+                                </h4>
+                                <label htmlFor="mercadoPagoToken" className="block text-xs font-bold text-blue-800 uppercase mb-1">
+                                    Access Token de Produção:
+                                </label>
+                                <input
+                                    id="mercadoPagoToken"
+                                    type="password"
+                                    placeholder="APP_USR-..."
+                                    value={mercadoPagoToken}
+                                    onChange={(e) => setMercadoPagoToken(e.target.value)}
+                                    className="w-full p-3 border-2 border-blue-100 rounded-xl bg-white focus:border-blue-500 transition-all font-mono"
+                                />
+                                
+                                <div className="mt-5 pt-5 border-t border-blue-200/50">
+                                    <label className="block text-[10px] font-black text-blue-900 uppercase tracking-widest mb-1">URL de Webhook (Configurar no Mercado Pago):</label>
+                                    <div className="flex gap-2">
+                                         <code className="block flex-grow bg-white/80 p-3 rounded-lg border border-blue-200 text-xs text-blue-900 break-all select-all cursor-text font-mono shadow-inner">
+                                            {webhookUrl}
+                                        </code>
+                                    </div>
+                                    <p className="text-[10px] text-blue-700/70 mt-2 leading-tight">
+                                        O Webhook é o que avisa o GuaraFood que o Pix foi pago para liberar o pedido automaticamente.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div className="border-t pt-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <button 
+                            onClick={handleResetData}
+                            className="text-red-500 hover:text-red-700 text-xs font-bold uppercase tracking-widest flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-red-50 transition-colors"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 0 0-2.09 2.134v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                            </svg>
+                            Zerar Dados de Teste
+                        </button>
+                        <button
+                            onClick={handleSaveChanges}
+                            disabled={isSaving}
+                            className="w-full sm:w-auto bg-orange-600 text-white font-black py-4 px-12 rounded-2xl hover:bg-orange-700 transition-all disabled:bg-orange-300 shadow-xl shadow-orange-200 text-lg active:scale-95"
+                        >
+                            {isSaving ? 'Salvando...' : 'Salvar Todas Alterações'}
+                        </button>
+                    </div>
                 </div>
             </div>
             
+            {/* Modal de Correção de Banco de Dados */}
+            {showFixModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center p-4 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-lg w-full border-t-8 border-red-600">
+                        <h3 className="text-2xl font-black text-red-600 mb-4">🚨 Ação Necessária</h3>
+                        
+                        <p className="text-gray-800 mb-6 text-sm leading-relaxed">
+                            O Banco de Dados precisa reconhecer as novas funções de horário e pagamento. <strong>Não se preocupe</strong>, é um processo simples de um clique.
+                        </p>
+                        
+                        <div className="bg-gray-100 p-4 rounded-xl mb-6 border border-gray-200">
+                            <p className="font-bold text-gray-800 text-xs uppercase mb-3">Passo 1: Copie o comando abaixo:</p>
+                            <code className="block bg-black text-green-400 p-4 rounded-lg text-xs overflow-x-auto font-mono select-all shadow-inner">
+                                NOTIFY pgrst, 'reload schema';
+                            </code>
+                        </div>
+
+                        <div className="space-y-4">
+                            <p className="text-gray-700 text-sm font-medium">
+                                <strong>Passo 2:</strong> Clique no botão azul abaixo para abrir o editor de SQL do seu banco.
+                            </p>
+                            <p className="text-gray-700 text-sm font-medium">
+                                <strong>Passo 3:</strong> Cole o código e aperte <strong>RUN</strong>. Volte aqui e salve novamente.
+                            </p>
+                        </div>
+
+                        <div className="mt-8 flex flex-col sm:flex-row gap-3">
+                             <button 
+                                onClick={() => window.open('https://supabase.com/dashboard/project/_/sql/new', '_blank')}
+                                className="flex-1 bg-blue-600 text-white rounded-xl py-4 font-black hover:bg-blue-700 transition-all shadow-lg active:scale-95"
+                            >
+                                ABRIR SQL EDITOR
+                            </button>
+                            <button 
+                                onClick={() => setShowFixModal(false)}
+                                className="flex-1 px-4 py-4 text-gray-500 hover:text-gray-800 rounded-xl font-bold transition-colors"
+                            >
+                                Ignorar por enquanto
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Hidden Print Area. FIX: use print:block */}
             <div className="hidden print:block">
                 <div id="printable-order">
                     {testOrder && <PrintableOrder order={testOrder} printerWidth={testPrinterWidth} />}

@@ -211,106 +211,79 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose}>
             <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                <div className="flex justify-between items-center mb-4 border-b pb-3">
-                    <h2 className="text-2xl font-bold text-gray-800">{existingRestaurant ? 'Editar' : 'Novo'} Restaurante</h2>
-                    <button onClick={onClose} className="text-gray-400 text-3xl">&times;</button>
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-2xl font-bold">{existingRestaurant ? 'Editar' : 'Novo'} Restaurante</h2>
                 </div>
                 
                 <div className="overflow-y-auto space-y-6 pr-2">
-                    {/* SEÇÃO MERCADO PAGO - AGORA NO TOPO DAS CONFIGS TÉCNICAS */}
-                    <div className="p-4 bg-blue-50 rounded-xl border-2 border-blue-200 space-y-3 shadow-inner">
-                        <h3 className="text-sm font-black text-blue-900 uppercase flex items-center gap-2">
-                            <span className="w-2 h-2 bg-blue-600 rounded-full"></span>
-                            Configuração Mercado Pago
-                        </h3>
+                    <div className="flex gap-4 items-center">
+                        <img src={logoPreview || ''} className="w-20 h-20 bg-gray-100 rounded border object-cover" />
+                        <input type="file" accept="image/*" onChange={async e => {
+                            if(e.target.files?.[0]) {
+                                const comp = await compressLogo(e.target.files[0]);
+                                setLogoFile(comp); setLogoPreview(URL.createObjectURL(comp));
+                            }
+                        }} className="text-xs" />
+                    </div>
+
+                    <input name="name" value={formData.name} onChange={handleChange} placeholder="Nome" className="w-full p-2 border rounded" />
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                        <input name="phone" value={formData.phone} onChange={handleChange} placeholder="Telefone" className="p-2 border rounded" />
+                        <input name="deliveryFee" type="number" value={formData.deliveryFee} onChange={handleChange} placeholder="Taxa Entrega" className="p-2 border rounded" />
+                    </div>
+
+                    {/* SEÇÃO MERCADO PAGO - ADICIONADA */}
+                    <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 space-y-3">
+                        <h3 className="text-sm font-black text-blue-900 uppercase">Configuração Mercado Pago</h3>
                         <div>
-                            <label className="text-[10px] font-black text-blue-700 uppercase tracking-tighter">Access Token (Produção):</label>
+                            <label className="text-[10px] font-bold text-blue-700">ACCESS TOKEN (PRODUÇÃO)</label>
                             <input 
                                 type="password" 
                                 value={formData.mercado_pago_credentials?.accessToken || ''} 
                                 onChange={handleCredentialsChange}
                                 placeholder="APP_USR-..."
-                                className="w-full p-2 border-2 border-blue-100 rounded-lg text-xs font-mono shadow-sm" 
+                                className="w-full p-2 border border-blue-200 rounded text-sm font-mono" 
                             />
                         </div>
                         <div>
-                            <label className="text-[10px] font-black text-blue-700 uppercase tracking-tighter">URL Webhook (Para o Painel MP):</label>
+                            <label className="text-[10px] font-bold text-blue-700">WEBHOOK URL (PARA O MP)</label>
                             <div className="flex gap-2">
-                                <div className="flex-grow p-2 text-[9px] bg-white border border-blue-200 rounded font-mono truncate shadow-inner">{webhookUrl}</div>
-                                <button onClick={() => { navigator.clipboard.writeText(webhookUrl); addToast({message: 'Copiado!', type:'success'}); }} className="p-2 bg-blue-600 text-white rounded-lg shadow active:scale-90 transition-all"><ClipboardIcon className="w-4 h-4"/></button>
+                                <input readOnly value={webhookUrl} className="flex-grow p-2 text-[10px] bg-white border border-blue-200 rounded font-mono truncate" />
+                                <button onClick={() => { navigator.clipboard.writeText(webhookUrl); addToast({message: 'Copiado!', type:'success'}); }} className="p-2 bg-blue-600 text-white rounded"><ClipboardIcon className="w-4 h-4"/></button>
                             </div>
                         </div>
-                    </div>
-
-                    <div className="flex gap-4 items-center p-3 bg-gray-50 rounded-xl border">
-                        <img src={logoPreview || ''} className="w-20 h-20 bg-gray-100 rounded-lg border object-cover shadow-sm" />
-                        <div>
-                            <p className="text-xs font-bold text-gray-500 mb-1">Logomarca do Estabelecimento</p>
-                            <input type="file" accept="image/*" onChange={async e => {
-                                if(e.target.files?.[0]) {
-                                    const comp = await compressLogo(e.target.files[0]);
-                                    setLogoFile(comp); setLogoPreview(URL.createObjectURL(comp));
-                                }
-                            }} className="text-xs file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:bg-orange-50 file:text-orange-700" />
-                        </div>
-                    </div>
-
-                    <div className="space-y-3">
-                        <input name="name" value={formData.name} onChange={handleChange} placeholder="Nome do Restaurante" className="w-full p-3 border rounded-xl bg-gray-50 font-bold" />
-                        
-                        <div className="grid grid-cols-2 gap-4">
-                            <input name="phone" value={formData.phone} onChange={handleChange} placeholder="WhatsApp (ex: 359...)" className="p-3 border rounded-xl bg-gray-50" />
-                            <input name="deliveryFee" type="number" value={formData.deliveryFee} onChange={handleChange} placeholder="Taxa de Entrega R$" className="p-3 border rounded-xl bg-gray-50" />
-                        </div>
-
-                         <div className="p-3 border rounded-xl bg-gray-50">
-                             <p className="text-[10px] font-black text-gray-400 uppercase mb-2">Chave Pix de Backup (Manual)</p>
-                             <input name="manualPixKey" value={formData.manualPixKey || ''} onChange={handleChange} placeholder="Chave Pix..." className="w-full p-2 border rounded-lg text-sm font-mono" />
-                         </div>
                     </div>
 
                     <div className="border-t pt-4">
-                        <h3 className="font-black text-xs text-gray-400 uppercase tracking-widest mb-3">Horários Operacionais</h3>
-                        <div className="grid grid-cols-1 gap-2">
-                            {formData.operatingHours?.map((day, i) => (
-                                <div key={i} className="flex items-center justify-between p-2 rounded-lg border bg-gray-50/50">
-                                    <div className="flex items-center gap-2">
-                                        <input type="checkbox" checked={day.isOpen} onChange={e => handleOperatingHoursChange(i, 'isOpen', e.target.checked)} className="h-4 w-4 text-orange-600 rounded" />
-                                        <span className="text-xs font-bold w-20">{daysOfWeek[i]}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <input type="time" value={day.opens} onChange={e => handleOperatingHoursChange(i, 'opens', e.target.value)} disabled={!day.isOpen} className="border rounded px-1 py-0.5 text-xs font-mono disabled:opacity-30" />
-                                        <span className="text-[10px] text-gray-400">às</span>
-                                        <input type="time" value={day.closes} onChange={e => handleOperatingHoursChange(i, 'closes', e.target.value)} disabled={!day.isOpen} className="border rounded px-1 py-0.5 text-xs font-mono disabled:opacity-30" />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+                        <h3 className="font-bold mb-2">Funcionamento</h3>
+                        {formData.operatingHours?.map((day, i) => (
+                            <div key={i} className="flex items-center gap-2 mb-1 text-xs">
+                                <input type="checkbox" checked={day.isOpen} onChange={e => handleOperatingHoursChange(i, 'isOpen', e.target.checked)} />
+                                <span className="w-20">{daysOfWeek[i]}</span>
+                                <input type="time" value={day.opens} onChange={e => handleOperatingHoursChange(i, 'opens', e.target.value)} disabled={!day.isOpen} className="border rounded p-1" />
+                                <input type="time" value={day.closes} onChange={e => handleOperatingHoursChange(i, 'closes', e.target.value)} disabled={!day.isOpen} className="border rounded p-1" />
+                            </div>
+                        ))}
                     </div>
 
-                    <div className="p-4 bg-gray-900 rounded-2xl shadow-xl">
-                        <h3 className="text-xs font-black text-orange-500 uppercase tracking-widest mb-3">Credenciais de Acesso</h3>
+                    <div className="p-4 bg-gray-100 rounded">
+                        <h3 className="font-bold text-sm mb-2">Acesso</h3>
                         {!existingRestaurant || changeCredentials ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <input type="email" placeholder="Email do Lojista" value={merchantEmail} onChange={e => setMerchantEmail(e.target.value)} className="p-3 border-none rounded-xl bg-white/10 text-white text-sm outline-none focus:ring-1 focus:ring-orange-500" />
-                                <input type="password" placeholder="Senha Temporária" value={merchantPassword} onChange={e => setMerchantPassword(e.target.value)} className="p-3 border-none rounded-xl bg-white/10 text-white text-sm outline-none focus:ring-1 focus:ring-orange-500" />
+                            <div className="grid grid-cols-2 gap-2">
+                                <input type="email" placeholder="Email" value={merchantEmail} onChange={e => setMerchantEmail(e.target.value)} className="p-2 border rounded bg-white" />
+                                <input type="password" placeholder="Senha" value={merchantPassword} onChange={e => setMerchantPassword(e.target.value)} className="p-2 border rounded bg-white" />
                             </div>
                         ) : (
-                            <div className="flex justify-between items-center">
-                                <span className="text-xs text-gray-400 font-bold italic">Acesso já configurado.</span>
-                                <button onClick={() => setChangeCredentials(true)} className="text-[10px] font-black uppercase text-orange-500 hover:underline">Resetar Senha</button>
-                            </div>
+                            <button onClick={() => setChangeCredentials(true)} className="text-xs text-blue-600 font-bold underline">Alterar Login/Senha</button>
                         )}
                     </div>
                 </div>
 
-                {error && <div className="bg-red-50 text-red-700 p-3 rounded-xl text-xs mt-4 font-bold border border-red-100">{error}</div>}
-                
-                <div className="mt-6 flex justify-end gap-3 border-t pt-4">
-                    <button onClick={onClose} className="px-6 py-2 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-colors">Cancelar</button>
-                    <button onClick={handleSubmit} disabled={isSaving} className="px-8 py-2 bg-orange-600 text-white rounded-xl font-black shadow-lg shadow-orange-100 active:scale-95 transition-all hover:bg-orange-700">
-                        {isSaving ? 'Processando...' : 'Salvar Loja'}
-                    </button>
+                {error && <div className="text-red-500 text-xs mt-2">{error}</div>}
+                <div className="mt-4 flex justify-end gap-2">
+                    <button onClick={onClose} className="p-2 bg-gray-200 rounded">Cancelar</button>
+                    <button onClick={handleSubmit} disabled={isSaving} className="p-2 bg-orange-600 text-white rounded font-bold">{isSaving ? '...' : 'Salvar'}</button>
                 </div>
             </div>
         </div>
