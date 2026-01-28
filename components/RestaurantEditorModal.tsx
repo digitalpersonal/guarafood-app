@@ -94,7 +94,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
     const [categories, setCategories] = useState<RestaurantCategory[]>([]);
     const [loadingCategories, setLoadingCategories] = useState(false);
     
-    // UI state to toggle second shift view per day
     const [showSecondShift, setShowSecondShift] = useState<boolean[]>(Array(7).fill(false));
 
 
@@ -115,6 +114,56 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         }
     }, [isOpen]);
 
+    // --- COMPRESSÃO DE LOGO ---
+    const compressLogo = async (file: File): Promise<File> => {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.src = URL.createObjectURL(file);
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    URL.revokeObjectURL(img.src);
+                    reject(new Error("Erro ao processar imagem."));
+                    return;
+                }
+
+                const MAX_SIZE = 400; // Logos podem ser pequenas
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > MAX_SIZE) {
+                        height *= MAX_SIZE / width;
+                        width = MAX_SIZE;
+                    }
+                } else {
+                    if (height > MAX_SIZE) {
+                        width *= MAX_SIZE / height;
+                        height = MAX_SIZE;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+
+                canvas.toBlob((blob) => {
+                    URL.revokeObjectURL(img.src);
+                    if (blob) {
+                        const compressedFile = new File([blob], "logo.jpg", {
+                            type: 'image/jpeg',
+                            lastModified: Date.now(),
+                        });
+                        resolve(compressedFile);
+                    } else {
+                        reject(new Error("Falha na compressão."));
+                    }
+                }, 'image/jpeg', 0.5); // Qualidade 50%
+            };
+            img.onerror = () => reject(new Error("Erro ao carregar imagem."));
+        });
+    };
 
     useEffect(() => {
         if (existingRestaurant) {
@@ -122,7 +171,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 ? existingRestaurant.operatingHours 
                 : getDefaultOperatingHours();
             
-            // Determine which days have a second shift active to show UI
             const hasShift2 = opHours.map(d => !!(d.opens2 || d.closes2));
             setShowSecondShift(hasShift2);
 
@@ -154,7 +202,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 active: true
             });
             setShowSecondShift(Array(7).fill(false));
-            setChangeCredentials(true); // Always true for new
+            setChangeCredentials(true); 
             setLogoPreview(null);
         }
         setMerchantEmail('');
@@ -177,7 +225,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         setFormData(prev => ({ ...prev, [name]: (name === 'deliveryFee') ? parseFloat(value) : value }));
     };
     
-    // Handle Multi-select Category
     const toggleCategory = (categoryName: string) => {
         setFormData(prev => {
             const currentCategories = prev.category ? prev.category.split(',').map(c => c.trim()) : [];
@@ -196,14 +243,19 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         });
     };
     
-    const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
-            setLogoFile(file);
-            if (logoPreview && logoPreview.startsWith('blob:')) {
-                URL.revokeObjectURL(logoPreview);
+            try {
+                const compressed = await compressLogo(file);
+                setLogoFile(compressed);
+                if (logoPreview && logoPreview.startsWith('blob:')) {
+                    URL.revokeObjectURL(logoPreview);
+                }
+                setLogoPreview(URL.createObjectURL(compressed));
+            } catch (err) {
+                setError("Erro ao processar logo.");
             }
-            setLogoPreview(URL.createObjectURL(file));
         }
     };
 
@@ -232,7 +284,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             return newState;
         });
         
-        // If enabling, set default times if empty
         if (!showSecondShift[dayIndex]) {
              setFormData(prev => {
                 const newHours = [...(prev.operatingHours || getDefaultOperatingHours())];
@@ -299,41 +350,24 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             return;
         }
 
-        // Validate Merchant User Data if creating new or if checkbox is checked
         if ((!existingRestaurant || changeCredentials) && (!merchantEmail || !merchantPassword)) {
             if (!existingRestaurant) {
-                setError('Email e Senha para o lojista são obrigatórios ao criar um novo restaurante.');
+                setError('Email e Senha para o lojista são obrigatórios.');
                 return;
             }
         }
         
-        if ((!existingRestaurant || changeCredentials) && merchantPassword && merchantPassword.length < 6) {
-             setError('A senha do lojista deve ter pelo menos 6 caracteres.');
-            return;
-        }
-
         setIsSaving(true);
         let finalImageUrl = existingRestaurant?.imageUrl || '';
 
         if (logoFile) {
             try {
-                const fileExt = logoFile.name.split('.').pop();
-                const filePath = `public/${crypto.randomUUID()}.${fileExt}`;
-
-                if (existingRestaurant?.imageUrl) {
-                    try {
-                        const oldFilePath = new URL(existingRestaurant.imageUrl).pathname.split('/restaurant-logos/')[1];
-                        if (oldFilePath) {
-                           await supabase.storage.from('restaurant-logos').remove([oldFilePath]);
-                        }
-                    } catch (e) {
-                        console.warn("Could not parse or remove old logo.", e);
-                    }
-                }
+                const fileName = `${crypto.randomUUID()}.jpg`;
+                const filePath = `public/${fileName}`;
 
                 const { error: uploadError } = await supabase.storage
                     .from('restaurant-logos')
-                    .upload(filePath, logoFile);
+                    .upload(filePath, logoFile, { contentType: 'image/jpeg' });
 
                 if (uploadError) throw uploadError;
 
@@ -343,7 +377,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
 
                 finalImageUrl = data.publicUrl;
             } catch (uploadError: any) {
-                setError(`Erro no upload da imagem: ${uploadError.message}`);
+                setError(`Erro no upload: ${uploadError.message}`);
                 setIsSaving(false);
                 return;
             }
@@ -353,7 +387,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         const openingHoursSummary = openDays.length > 0 ? openDays[0].opens : '';
         const closingHoursSummary = openDays.length > 0 ? openDays[0].closes : '';
 
-        // Safely parse delivery fee
         const deliveryFeeValue = formData.deliveryFee !== undefined && formData.deliveryFee !== '' 
             ? parseFloat(String(formData.deliveryFee)) 
             : 0;
@@ -377,68 +410,25 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         };
 
         try {
-            // Se estamos criando NOVO ou ALTERANDO CREDENCIAIS de um existente
             if (!existingRestaurant || changeCredentials) {
-                try {
-                    const { data, error: functionError } = await supabase.functions.invoke('create-restaurant-with-user', {
-                        body: {
-                            restaurantData: dbPayload, 
-                            userData: { email: merchantEmail, password: merchantPassword }
-                        },
-                    });
-
-                    if (functionError) throw functionError;
-                    
-                    if (data?.warning) {
-                        addToast({ message: data.warning, type: 'info', duration: 8000 });
-                    } else if (data?.success) {
-                        addToast({ message: 'Restaurante e acesso salvos com sucesso!', type: 'success' });
-                    }
-                } catch (invokeError: any) {
-                    console.warn("Edge Function failed or missing, attempting direct SQL fallback...", invokeError);
-                    
-                    if (existingRestaurant) {
-                        const { error: updateError } = await supabase.from('restaurants').update(dbPayload).eq('id', existingRestaurant.id);
-                        if (updateError) throw updateError;
-                        
-                        addToast({ 
-                            message: 'Dados do restaurante atualizados! (Erro ao atualizar senha do lojista: Função não disponível)', 
-                            type: 'warning', 
-                            duration: 8000 
-                        });
-                    } else {
-                        const { data: restData, error: restError } = await supabase.from('restaurants').insert(dbPayload).select().single();
-                        
-                        if (restError) throw restError;
-                        
-                        addToast({ 
-                            message: 'Restaurante criado via Modo de Segurança! (Atenção: O login do lojista NÃO foi criado. Crie manualmente no Supabase Auth)', 
-                            type: 'warning', 
-                            duration: 12000 
-                        });
-                    }
-                }
-
+                const { data, error: functionError } = await supabase.functions.invoke('create-restaurant-with-user', {
+                    body: {
+                        restaurantData: dbPayload, 
+                        userData: { email: merchantEmail, password: merchantPassword }
+                    },
+                });
+                if (functionError) throw functionError;
+                addToast({ message: 'Salvo com sucesso!', type: 'success' });
             } else {
                 const { error: updateError } = await supabase.from('restaurants').update(dbPayload).eq('id', existingRestaurant.id);
                 if (updateError) throw updateError;
-                addToast({ message: 'Restaurante atualizado com sucesso!', type: 'success' });
+                addToast({ message: 'Restaurante atualizado!', type: 'success' });
             }
             
             onSaveSuccess();
             onClose();
         } catch (err: any) {
-            console.error("Failed to save restaurant:", err);
-            let msg = `Erro ao salvar: ${err.message || JSON.stringify(err)}`;
-            
-            if (msg.includes('delivery_fee')) {
-                msg = "ERRO DE BANCO: Coluna 'delivery_fee' ausente. Rode o script de correção.";
-            } else if (msg.includes('manual_pix_key')) {
-                 msg = "ERRO DE BANCO: Coluna 'manual_pix_key' ausente. Rode o script de correção.";
-            }
-            
-            setError(msg);
-            addToast({ message: "Erro ao salvar. Veja detalhes.", type: 'error', duration: 5000 });
+            setError(`Erro ao salvar: ${err.message}`);
         } finally {
             setIsSaving(false);
         }
@@ -456,11 +446,10 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog">
             <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-2xl font-bold">{existingRestaurant ? 'Editar Restaurante' : 'Adicionar Novo Restaurante'}</h2>
-                    {/* STATUS TOGGLE */}
+                    <h2 className="text-2xl font-bold">{existingRestaurant ? 'Editar Restaurante' : 'Novo Restaurante'}</h2>
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-100">
                         <span className={`text-[10px] font-black uppercase tracking-widest ${formData.active ? 'text-green-600' : 'text-red-600'}`}>
-                            {formData.active ? 'Loja Ativa' : 'Loja Suspensa'}
+                            {formData.active ? 'Ativo' : 'Suspenso'}
                         </span>
                         <label className="relative inline-flex items-center cursor-pointer">
                             <input type="checkbox" checked={formData.active} onChange={(e) => setFormData({...formData, active: e.target.checked})} className="sr-only peer" />
@@ -470,7 +459,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 </div>
                 
                 <div className="overflow-y-auto space-y-4 pr-2 -mr-2">
-                    {/* Image Upload */}
                     <div className="flex flex-col md:flex-row items-start gap-4">
                         <div className="flex-shrink-0">
                             {logoPreview ? (
@@ -480,44 +468,34 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                             )}
                         </div>
                         <div className="flex-grow">
-                             <label htmlFor="logoUpload" className="block text-sm font-medium text-gray-700 mb-1">Logomarca</label>
+                             <label htmlFor="logoUpload" className="block text-sm font-medium text-gray-700 mb-1">Logomarca (App irá comprimir)</label>
                             <input id="logoUpload" type="file" accept="image/*" onChange={handleLogoChange} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"/>
                         </div>
                     </div>
 
-                    {/* Basic Info */}
                     <div>
                         <input name="name" value={formData.name} onChange={handleChange} placeholder="Nome do Restaurante" className="w-full p-3 border rounded-lg bg-gray-50 mb-3"/>
                         
                         <div className="border rounded-lg bg-gray-50 p-3">
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Categorias (Selecione uma ou mais)</label>
-                            {loadingCategories ? (
-                                <div className="p-2 text-sm text-gray-500">Carregando categorias...</div>
-                            ) : (
-                                <div className="flex flex-wrap gap-2">
-                                    {categories.map(cat => {
-                                        const isSelected = isCategorySelected(cat.name);
-                                        return (
-                                            <button
-                                                key={cat.id}
-                                                onClick={() => toggleCategory(cat.name)}
-                                                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors border ${
-                                                    isSelected 
-                                                        ? 'bg-orange-600 text-white border-orange-600' 
-                                                        : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'
-                                                }`}
-                                            >
-                                                {isSelected ? '✓ ' : '+ '} {cat.name}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                            {categories.length === 0 && !loadingCategories && (
-                                <p className="text-xs text-red-500 mt-1">Nenhuma categoria cadastrada. Vá em "Categorias" no painel para criar.</p>
-                            )}
-                            <input type="hidden" name="category" value={formData.category} />
-                            {formData.category && <p className="text-xs text-gray-500 mt-2">Selecionadas: {formData.category}</p>}
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Categorias</label>
+                            <div className="flex flex-wrap gap-2">
+                                {categories.map(cat => {
+                                    const isSelected = isCategorySelected(cat.name);
+                                    return (
+                                        <button
+                                            key={cat.id}
+                                            onClick={() => toggleCategory(cat.name)}
+                                            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors border ${
+                                                isSelected 
+                                                    ? 'bg-orange-600 text-white border-orange-600' 
+                                                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'
+                                            }`}
+                                        >
+                                            {isSelected ? '✓ ' : '+ '} {cat.name}
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
                     </div>
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -525,33 +503,17 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                         <input name="address" value={formData.address} onChange={handleChange} placeholder="Endereço" className="w-full p-3 border rounded-lg bg-gray-50"/>
                     </div>
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <input name="deliveryTime" value={formData.deliveryTime} onChange={handleChange} placeholder="Tempo Entrega (ex: 40-50 min)" className="w-full p-3 border rounded-lg bg-gray-50"/>
+                        <input name="deliveryTime" value={formData.deliveryTime} onChange={handleChange} placeholder="Tempo Entrega" className="w-full p-3 border rounded-lg bg-gray-50"/>
                          <div>
                             <label className="text-xs text-gray-500">Taxa de Entrega (R$)</label>
                             <input name="deliveryFee" type="number" value={formData.deliveryFee} onChange={handleChange} min="0" step="0.50" className="w-full p-2 border rounded-lg bg-gray-50"/>
                          </div>
                     </div>
                     
-                    {/* Operating Hours */}
                     <div className="border-t pt-4">
-                        <h3 className="text-lg font-semibold text-gray-700 mb-2">Horário de Funcionamento (Turnos)</h3>
-                        <p className="text-xs text-gray-500 mb-2">
-                            Use o botão "+" para adicionar um segundo turno. Ideal para quem serve <strong>Almoço (Marmita)</strong> e <strong>Jantar (Lanches)</strong>.
-                        </p>
+                        <h3 className="text-lg font-semibold text-gray-700 mb-2">Funcionamento</h3>
                         <div className="space-y-3">
-                            {(formData.operatingHours || []).map((day, index) => {
-                                const checkOvernight = (o: string, c: string) => {
-                                    if (!o || !c) return false;
-                                    const openParts = o.split(':').map(Number);
-                                    const closeParts = c.split(':').map(Number);
-                                    const openMins = openParts[0] * 60 + openParts[1];
-                                    const closeMins = closeParts[0] * 60 + closeParts[1];
-                                    return closeMins < openMins;
-                                };
-                                const isOvernight1 = day.isOpen ? checkOvernight(day.opens, day.closes) : false;
-                                const isOvernight2 = day.isOpen && showSecondShift[index] ? checkOvernight(day.opens2 || '', day.closes2 || '') : false;
-
-                                return (
+                            {(formData.operatingHours || []).map((day, index) => (
                                 <div key={index} className="p-2 rounded-lg bg-gray-50 border">
                                     <div className="grid grid-cols-12 gap-2 items-center">
                                         <div className="col-span-4 flex items-center">
@@ -561,156 +523,60 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                                         <div className="col-span-3">
                                             <input type="time" value={day.opens} onChange={(e) => handleOperatingHoursChange(index, 'opens', e.target.value)} disabled={!day.isOpen} className="w-full p-1 border rounded text-sm disabled:bg-gray-200"/>
                                         </div>
-                                        <div className="col-span-3 relative">
+                                        <div className="col-span-3">
                                             <input type="time" value={day.closes} onChange={(e) => handleOperatingHoursChange(index, 'closes', e.target.value)} disabled={!day.isOpen} className="w-full p-1 border rounded text-sm disabled:bg-gray-200"/>
-                                            {isOvernight1 && <span className="absolute -bottom-4 right-0 text-[10px] text-orange-600 font-bold bg-orange-100 px-1 rounded whitespace-nowrap">(+1 dia)</span>}
                                         </div>
                                         <div className="col-span-2 text-right">
-                                            <button 
-                                                type="button" 
-                                                onClick={() => toggleSecondShift(index)} 
-                                                className={`p-1 rounded hover:bg-gray-200 ${showSecondShift[index] ? 'text-orange-600' : 'text-gray-400'}`}
-                                                title={showSecondShift[index] ? "Remover 2º Turno" : "Adicionar 2º Turno (Almoço/Jantar)"}
-                                            >
-                                                <PlusIcon className="w-5 h-5"/>
-                                            </button>
+                                            <button type="button" onClick={() => toggleSecondShift(index)} className={`p-1 rounded ${showSecondShift[index] ? 'text-orange-600' : 'text-gray-400'}`}><PlusIcon className="w-5 h-5"/></button>
                                         </div>
                                     </div>
-                                    
-                                    {/* Second Shift Row */}
                                     {day.isOpen && showSecondShift[index] && (
-                                        <div className="grid grid-cols-12 gap-2 items-center mt-2 pt-2 border-t border-gray-200">
-                                            <div className="col-span-4 text-right">
-                                                <span className="text-xs text-orange-600 font-bold mr-2">2º Turno (Almoço/Jantar):</span>
-                                            </div>
-                                            <div className="col-span-3">
-                                                <input type="time" value={day.opens2 || ''} onChange={(e) => handleOperatingHoursChange(index, 'opens2', e.target.value)} className="w-full p-1 border rounded text-sm"/>
-                                            </div>
-                                            <div className="col-span-3 relative">
-                                                <input type="time" value={day.closes2 || ''} onChange={(e) => handleOperatingHoursChange(index, 'closes2', e.target.value)} className="w-full p-1 border rounded text-sm"/>
-                                                {isOvernight2 && <span className="absolute -bottom-4 right-0 text-[10px] text-orange-600 font-bold bg-orange-100 px-1 rounded whitespace-nowrap">(+1 dia)</span>}
-                                            </div>
+                                        <div className="grid grid-cols-12 gap-2 items-center mt-2 pt-2 border-t">
+                                            <div className="col-span-4 text-right"><span className="text-[10px] font-bold">Turno 2:</span></div>
+                                            <div className="col-span-3"><input type="time" value={day.opens2 || ''} onChange={(e) => handleOperatingHoursChange(index, 'opens2', e.target.value)} className="w-full p-1 border rounded text-sm"/></div>
+                                            <div className="col-span-3"><input type="time" value={day.closes2 || ''} onChange={(e) => handleOperatingHoursChange(index, 'closes2', e.target.value)} className="w-full p-1 border rounded text-sm"/></div>
                                         </div>
                                     )}
                                 </div>
-                            )})}
+                            ))}
                         </div>
                     </div>
 
-                    {/* Merchant User Config */}
                     <div className="border-t pt-4 space-y-3">
                          <div className="flex items-center justify-between">
-                             <h3 className="text-lg font-semibold text-gray-700">Acesso do Lojista</h3>
+                             <h3 className="text-lg font-semibold text-gray-700">Acesso Lojista</h3>
                              {existingRestaurant && (
                                 <label className="flex items-center space-x-2 text-sm text-blue-600 cursor-pointer">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={changeCredentials} 
-                                        onChange={(e) => setChangeCredentials(e.target.checked)}
-                                        className="h-4 w-4 text-blue-600"
-                                    />
-                                    <span>{changeCredentials ? 'Cancelar edição' : 'Criar/Alterar Login'}</span>
+                                    <input type="checkbox" checked={changeCredentials} onChange={(e) => setChangeCredentials(e.target.checked)} className="h-4 w-4 text-blue-600"/>
+                                    <span>Alterar Login</span>
                                 </label>
                              )}
                          </div>
-                         
                          {(changeCredentials || !existingRestaurant) && (
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-blue-50 p-3 rounded-lg border border-blue-100">
-                                <input type="email" placeholder="Email do Lojista" value={merchantEmail} onChange={(e) => setMerchantEmail(e.target.value)} className="w-full p-3 border rounded-lg bg-white"/>
-                                <div className="relative">
-                                    <input 
-                                        type={showPassword ? "text" : "password"} 
-                                        placeholder="Senha" 
-                                        value={merchantPassword} 
-                                        onChange={(e) => setMerchantPassword(e.target.value)} 
-                                        className="w-full p-3 border rounded-lg bg-white pr-10"
-                                    />
-                                    <button 
-                                        type="button" 
-                                        onClick={() => setShowPassword(!showPassword)} 
-                                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700"
-                                        title={showPassword ? "Ocultar senha" : "Mostrar senha"}
-                                    >
-                                        {showPassword ? <EyeSlashIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
-                                    </button>
-                                </div>
-                                <p className="col-span-full text-xs text-blue-600">
-                                    Preencha para criar um novo usuário ou vincular um existente a este restaurante.
-                                </p>
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-blue-50 p-3 rounded-lg">
+                                <input type="email" placeholder="Email" value={merchantEmail} onChange={(e) => setMerchantEmail(e.target.value)} className="w-full p-3 border rounded-lg bg-white"/>
+                                <input type="password" placeholder="Senha" value={merchantPassword} onChange={(e) => setMerchantPassword(e.target.value)} className="w-full p-3 border rounded-lg bg-white"/>
                              </div>
                          )}
                     </div>
 
-                    {/* Payment Methods */}
                     <div className="border-t pt-4">
                         <label className="block text-sm font-medium text-gray-700 mb-2">Formas de Pagamento</label>
                          <div className="p-3 border rounded-lg bg-gray-50 space-y-3">
-                             <div className="flex flex-wrap gap-2 mb-3">
+                             <div className="flex flex-wrap gap-2">
                                  {PREDEFINED_PAYMENT_METHODS.map(method => (
-                                     <button key={method} onClick={() => togglePredefinedGateway(method)} className={`px-3 py-1 text-xs font-bold rounded-full border transition-colors ${formData.paymentGateways.includes(method) ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}>
-                                         {formData.paymentGateways.includes(method) ? '✓ ' : '+ '} {method}
-                                     </button>
+                                     <button key={method} onClick={() => togglePredefinedGateway(method)} className={`px-3 py-1 text-xs font-bold rounded-full border ${formData.paymentGateways.includes(method) ? 'bg-orange-600 text-white' : 'bg-white text-gray-600'}`}>{method}</button>
                                  ))}
-                             </div>
-                             <div className="flex gap-2">
-                                <input type="text" value={newGateway} onChange={(e) => setNewGateway(e.target.value)} placeholder="Outra forma..." className="flex-grow p-2 border rounded-md bg-white"/>
-                                <button type="button" onClick={handleAddGateway} className="bg-blue-600 text-white font-semibold px-4 rounded-md hover:bg-blue-700">Adicionar</button>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    {/* Manual Pix Key */}
-                    <div className="border-t pt-4">
-                         <label className="block text-sm font-medium text-gray-700 mb-1">Chave Pix Manual (Modo Simplificado)</label>
-                         <input 
-                            type="text" 
-                            placeholder="CPF, CNPJ, Email ou Celular (exibe para o cliente pagar)" 
-                            value={formData.manualPixKey || ''} 
-                            onChange={(e) => setFormData(prev => ({ ...prev, manualPixKey: e.target.value }))} 
-                            className="w-full p-3 border rounded-lg bg-gray-50"
-                        />
-                    </div>
-
-                    {/* Mercado Pago Automático */}
-                     <div className="border-t pt-4 bg-blue-50 p-4 rounded-lg">
-                        <h3 className="text-sm font-bold text-blue-800 mb-2">Automação com Mercado Pago (Opcional)</h3>
-                        <div className="mb-3">
-                            <label className="block text-xs font-bold text-gray-700 mb-1">Passo 1: Access Token</label>
-                            <input type="password" placeholder="Cole o Access Token aqui..." value={formData.mercado_pago_credentials?.accessToken || ''} onChange={handleCredentialsChange} className="w-full p-2 border rounded-lg bg-white text-sm"/>
-                        </div>
-                        
-                        <div>
-                             <label className="block text-xs font-bold text-gray-700 mb-1">Passo 2: URL de Webhook</label>
-                             <div className="flex gap-2">
-                                <input 
-                                    type="text" 
-                                    readOnly 
-                                    value={existingRestaurant ? `${SUPABASE_URL}/functions/v1/payment-webhook?restaurantId=${existingRestaurant.id}` : 'Salve o restaurante primeiro para gerar este link.'} 
-                                    className="w-full p-2 border rounded-lg bg-gray-200 text-gray-600 text-xs font-mono"
-                                />
-                                <button 
-                                    type="button" 
-                                    onClick={handleCopyWebhook} 
-                                    disabled={!existingRestaurant}
-                                    className="bg-blue-600 text-white font-bold px-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 text-xs flex items-center"
-                                    title="Copiar URL"
-                                >
-                                    <ClipboardIcon className="w-4 h-4"/>
-                                </button>
                              </div>
                         </div>
                     </div>
                 </div>
 
-                {error && (
-                    <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700 whitespace-pre-wrap">
-                        {error}
-                    </div>
-                )}
+                {error && <div className="mt-4 p-3 bg-red-50 text-red-700 text-sm rounded">{error}</div>}
                 
                 <div className="mt-6 pt-4 border-t flex justify-end space-x-3">
-                    <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300" disabled={isSaving}>Cancelar</button>
-                    <button onClick={handleSubmit} className="px-6 py-2 rounded-lg bg-orange-600 text-white font-bold hover:bg-orange-700 disabled:bg-orange-300" disabled={isSaving}>{isSaving ? 'Salvando...' : 'Salvar'}</button>
+                    <button onClick={onClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded" disabled={isSaving}>Cancelar</button>
+                    <button onClick={handleSubmit} className="px-6 py-2 bg-orange-600 text-white rounded font-bold" disabled={isSaving}>{isSaving ? 'Salvando...' : 'Salvar'}</button>
                 </div>
             </div>
         </div>

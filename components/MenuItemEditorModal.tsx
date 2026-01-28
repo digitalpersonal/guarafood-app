@@ -180,7 +180,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
         };
     }, [imagePreview]);
 
-    // --- COMPRESSÃO DE IMAGEM ---
+    // --- COMPRESSÃO DE IMAGEM ULTRA LEVE ---
     const compressImage = async (file: File): Promise<File> => {
         return new Promise((resolve, reject) => {
             const img = new Image();
@@ -194,13 +194,12 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                     return;
                 }
 
-                // Configurações de otimização
-                const MAX_WIDTH = 800;
-                const MAX_HEIGHT = 800;
+                // Configurações de otimização AGRESSIVA (Foco em mobile)
+                const MAX_WIDTH = 600; 
+                const MAX_HEIGHT = 600;
                 let width = img.width;
                 let height = img.height;
 
-                // Redimensionar mantendo proporção
                 if (width > height) {
                     if (width > MAX_WIDTH) {
                         height *= MAX_WIDTH / width;
@@ -217,7 +216,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                 canvas.height = height;
                 ctx.drawImage(img, 0, 0, width, height);
 
-                // Converter para Blob (JPEG com 70% de qualidade)
+                // JPEG 50% de qualidade - Extremamente leve para listas de comida
                 canvas.toBlob((blob) => {
                     URL.revokeObjectURL(img.src);
                     if (blob) {
@@ -225,12 +224,11 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                             type: 'image/jpeg',
                             lastModified: Date.now(),
                         });
-                        console.log(`Imagem comprimida: ${file.size} -> ${compressedFile.size} bytes`);
                         resolve(compressedFile);
                     } else {
-                        reject(new Error("Falha na compressão da imagem."));
+                        reject(new Error("Falha na compressão."));
                     }
-                }, 'image/jpeg', 0.7); // 0.7 = 70% quality (Bom balanço tamanho/qualidade)
+                }, 'image/jpeg', 0.5); 
             };
             img.onerror = (err) => {
                 URL.revokeObjectURL(img.src);
@@ -244,7 +242,6 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
         if (e.target.files && e.target.files[0]) {
             const originalFile = e.target.files[0];
             try {
-                // Comprimir imagem antes de setar no estado
                 const compressedFile = await compressImage(originalFile);
                 setImageFile(compressedFile);
                 
@@ -260,7 +257,6 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
     };
 
     const handlePriceChange = (value: string, setter: React.Dispatch<React.SetStateAction<string>>) => {
-        // Substitui vírgula por ponto para garantir formato numérico correto
         setter(value.replace(',', '.'));
     };
 
@@ -269,7 +265,6 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
         let processedValue: string | number = value;
         
         if (field === 'price') {
-             // Sanitização de preço em tamanhos
              processedValue = parseFloat(value.replace(',', '.'));
         } else if (field === 'freeAddonCount') {
              processedValue = parseInt(value, 10);
@@ -338,7 +333,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             return;
         }
         if (!restaurantId) {
-             setError('ID do restaurante não encontrado. Não é possível salvar a imagem.');
+             setError('ID do restaurante não encontrado.');
              return;
         }
 
@@ -348,8 +343,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
         try {
             if (imageFile) {
                 try {
-                    // Sanitização e caminho robusto
-                    const fileExt = 'jpg'; // We force jpg compression
+                    const fileExt = 'jpg'; 
                     const fileName = `${crypto.randomUUID()}.${fileExt}`;
                     const filePath = `${restaurantId}/${fileName}`;
 
@@ -358,7 +352,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                         .upload(filePath, imageFile, {
                             contentType: 'image/jpeg',
                             cacheControl: '3600',
-                            upsert: false // Evita sobrescrever se o UUID colidir (impossível, mas boa prática)
+                            upsert: false
                         });
 
                     if (uploadError) throw uploadError;
@@ -369,8 +363,8 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
 
                     finalImageUrl = data.publicUrl;
                 } catch (uploadError: any) {
-                    setError(`Erro no upload da imagem: ${uploadError.message}`);
-                    return; // Exit here, let the outer finally handle setIsSaving(false)
+                    setError(`Erro no upload: ${uploadError.message}`);
+                    return; 
                 }
             }
 
@@ -392,14 +386,11 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                 sizes: hasSizes ? sizes : undefined,
                 availableAddonIds: Array.from(selectedAddonIds),
             }, category);
-            // If onSave succeeds, close modal.
-            // Moved closing logic to onSave prop callback in MenuManagement.tsx
-            // setIsItemModalOpen(false); // This is handled by parent's onSave callback.
         } catch (err: any) {
-            console.error("Failed to save menu item in modal:", err);
-            setError(`Erro ao salvar item no cardápio: ${err.message || String(err)}`);
+            console.error("Failed to save:", err);
+            setError(`Erro: ${err.message || String(err)}`);
         } finally {
-            setIsSaving(false); // Ensure saving state is reset in all cases.
+            setIsSaving(false);
         }
     };
 
@@ -410,7 +401,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="menuitem-editor-modal-title">
             <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                <h2 id="menuitem-editor-modal-title" className="text-2xl font-bold mb-4">{existingItem ? 'Editar Item do Cardápio' : 'Adicionar Novo Item'}</h2>
+                <h2 id="menuitem-editor-modal-title" className="text-2xl font-bold mb-4">{existingItem ? 'Editar Item' : 'Adicionar Item'}</h2>
                 
                 <div className="overflow-y-auto space-y-4 pr-2 -mr-2">
                     <div className="flex flex-col md:flex-row items-start gap-4">
@@ -425,12 +416,12 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                         </div>
                         <div className="flex-grow">
                              <label htmlFor="imageUpload" className="block text-sm font-medium text-gray-700 mb-1">
-                                Imagem do Produto
+                                Foto do Produto
                             </label>
                             <input
                                 id="imageUpload"
                                 type="file"
-                                accept="image/png, image/jpeg, image/webp"
+                                accept="image/*"
                                 onChange={handleImageChange}
                                 className="block w-full text-sm text-gray-500
                                     file:mr-4 file:py-2 file:px-4
@@ -439,7 +430,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                                     file:bg-orange-50 file:text-orange-700
                                     hover:file:bg-orange-100"
                             />
-                            <p className="text-xs text-gray-500 mt-1">Envie uma imagem do seu dispositivo. Imagens serão otimizadas automaticamente para celular.</p>
+                            <p className="text-[10px] text-orange-600 font-bold mt-1 uppercase tracking-tighter">O App reduzirá o peso da foto automaticamente para economizar espaço.</p>
                         </div>
                     </div>
 
@@ -454,7 +445,6 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                             value={originalPrice}
                             onChange={(e) => handlePriceChange(e.target.value, setOriginalPrice)}
                             className="w-full p-3 border rounded-lg bg-gray-50"
-                            title="Preço 'de'. Deixe em branco se não for uma promoção."
                         />
                         <input
                             type="text"
@@ -463,7 +453,6 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                             onChange={(e) => handlePriceChange(e.target.value, setPrice)}
                             className="w-full p-3 border rounded-lg bg-gray-50 disabled:bg-gray-200"
                             disabled={hasSizes}
-                            title="Preço 'por'. Este é o preço que o cliente paga."
                         />
                     </div>
                     
@@ -475,12 +464,10 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                                 <input type="text" placeholder="Nome (ex: 500ml)" value={size.name} onChange={(e) => handleSizeChange(index, 'name', e.target.value)} className="col-span-5 p-2 border rounded-md"/>
                                 <input type="number" placeholder="Preço" value={size.price} onChange={(e) => handleSizeChange(index, 'price', e.target.value)} className="col-span-3 p-2 border rounded-md"/>
                                 
-                                {/* New Logic: Conditional Input for Free Addons */}
                                 {isAcai ? (
                                     <input 
                                         type="number" 
                                         placeholder="Grátis" 
-                                        title="Qtd. de adicionais grátis para este tamanho" 
                                         value={size.freeAddonCount || ''} 
                                         onChange={(e) => handleSizeChange(index, 'freeAddonCount', e.target.value)} 
                                         className="col-span-3 p-2 border rounded-md bg-white border-purple-300 focus:ring-purple-500"
@@ -501,7 +488,6 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                     {allAddons.length > 0 && (
                         <div className="p-3 bg-gray-50 rounded-lg border">
                             <h3 className="font-bold text-gray-700 mb-2">Adicionais Disponíveis</h3>
-                            <p className="text-xs text-gray-500 mb-3">Selecione quais adicionais podem ser escolhidos com este item.</p>
                             <input
                                 type="text"
                                 placeholder="Buscar adicional..."
@@ -521,15 +507,13 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                                         <span>{addon.name} (+ R$ {addon.price.toFixed(2)})</span>
                                     </label>
                                 ))}
-                                {filteredAddons.length === 0 && <p className="text-sm text-gray-500 col-span-full text-center p-2">Nenhum adicional encontrado.</p>}
                             </div>
                         </div>
                     )}
 
                     {/* --- WEEKDAY AVAILABILITY --- */}
                     <div className="p-3 bg-gray-50 rounded-lg border">
-                        <h3 className="font-bold text-gray-700 mb-2">Disponibilidade Semanal (Menu do Dia)</h3>
-                        <p className="text-xs text-gray-500 mb-3">Selecione os dias em que este item estará disponível. Deixe todos desmarcados para que esteja disponível todos os dias.</p>
+                        <h3 className="font-bold text-gray-700 mb-2">Menu do Dia (Visibilidade)</h3>
                         <div className="flex justify-around">
                             {dayAbbreviations.map((day, index) => (
                                 <button
@@ -541,7 +525,6 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                                             ? 'bg-orange-600 text-white'
                                             : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
                                     }`}
-                                    title={daysOfWeek[index]}
                                 >
                                     {day}
                                 </button>
@@ -553,74 +536,41 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                          <div className="flex flex-col p-3 bg-gray-100 rounded-lg">
                             <div className="flex items-center space-x-3">
                                 <input type="checkbox" id="is-marmita-toggle" checked={isMarmita} onChange={(e) => setIsMarmita(e.target.checked)} className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500"/>
-                                <label htmlFor="is-marmita-toggle" className="font-semibold text-gray-700">É uma marmita / Prato do Dia?</label>
+                                <label htmlFor="is-marmita-toggle" className="font-semibold text-gray-700">É Prato do Dia?</label>
                             </div>
                              {isMarmita && (
                                 <div className="mt-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg animate-fadeIn">
-                                    <div className="flex justify-between items-center mb-3">
-                                        <label className="block text-sm font-bold text-yellow-800">
-                                            Composição do Prato (Opções)
-                                        </label>
-                                        <span className="text-xs text-yellow-600 bg-yellow-100 px-2 py-1 rounded-full">
-                                            {marmitaOptions.length} opções
-                                        </span>
-                                    </div>
-                                    
                                     <div className="space-y-2 mb-3">
                                         {marmitaOptions.map((option, index) => (
                                             <div key={index} className="flex items-center gap-2 group">
-                                                <span className="text-xs font-bold text-yellow-700 w-6 text-center">{index + 1}.</span>
                                                 <input
                                                     type="text"
-                                                    placeholder={`Ex: Arroz, Feijão e Bife (Opção ${index + 1})`}
+                                                    placeholder={`Opção ${index + 1}`}
                                                     value={option}
                                                     onChange={(e) => handleMarmitaOptionChange(index, e.target.value)}
-                                                    className="flex-grow p-2 text-sm border border-yellow-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 outline-none transition-all"
-                                                    autoFocus={option === '' && index === marmitaOptions.length - 1} // Auto-focus new empty items
+                                                    className="flex-grow p-2 text-sm border border-yellow-300 rounded-md"
                                                 />
-                                                <button 
-                                                    type="button" 
-                                                    onClick={() => removeMarmitaOption(index)} 
-                                                    className="p-2 text-yellow-600 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors opacity-70 group-hover:opacity-100"
-                                                    title="Remover opção"
-                                                >
-                                                    <TrashIcon className="w-4 h-4"/>
-                                                </button>
+                                                <button type="button" onClick={() => removeMarmitaOption(index)} className="p-2 text-red-500"><TrashIcon className="w-4 h-4"/></button>
                                             </div>
                                         ))}
                                     </div>
-
-                                    <button 
-                                        type="button" 
-                                        onClick={addMarmitaOption} 
-                                        className="w-full py-2 flex items-center justify-center gap-2 text-sm font-bold text-yellow-700 bg-yellow-100 hover:bg-yellow-200 border border-yellow-300 rounded-md transition-colors"
-                                    >
-                                        <PlusIcon className="w-4 h-4" />
-                                        Adicionar Nova Opção
-                                    </button>
-                                    <p className="text-[10px] text-yellow-600 mt-2 text-center">
-                                        Estas opções aparecerão listadas no card do item para o cliente saber o que vem hoje.
-                                    </p>
+                                    <button type="button" onClick={addMarmitaOption} className="w-full py-2 text-sm font-bold text-yellow-700 bg-yellow-100 rounded-md">+ Add Opção</button>
                                 </div>
                             )}
                         </div>
                          <div className="flex items-center space-x-3 p-3 bg-purple-100 rounded-lg">
                             <input type="checkbox" id="is-acai-toggle" checked={isAcai} onChange={(e) => setIsAcai(e.target.checked)} className="h-5 w-5 rounded border-purple-300 text-purple-600 focus:ring-purple-500"/>
-                            <label htmlFor="is-acai-toggle" className="font-semibold text-purple-700">É um item de Açaí (Montar Copo)?</label>
+                            <label htmlFor="is-acai-toggle" className="font-semibold text-purple-700">Açaí (Montar Copo)?</label>
                         </div>
                          <div className="flex items-center space-x-3 p-3 bg-gray-100 rounded-lg">
                             <input type="checkbox" id="is-daily-special-toggle" checked={isDailySpecial} onChange={(e) => setIsDailySpecial(e.target.checked)} className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500"/>
-                            <label htmlFor="is-daily-special-toggle" className="font-semibold text-gray-700">É um "Destaque do Dia"?</label>
-                        </div>
-                         <div className="flex items-center space-x-3 p-3 bg-gray-100 rounded-lg">
-                            <input type="checkbox" id="is-weekly-special-toggle" checked={isWeeklySpecial} onChange={(e) => setIsWeeklySpecial(e.target.checked)} className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500"/>
-                            <label htmlFor="is-weekly-special-toggle" className="font-semibold text-gray-700">É uma "Promoção da Semana" (para supermercados)?</label>
+                            <label htmlFor="is-daily-special-toggle" className="font-semibold text-gray-700">É Destaque?</label>
                         </div>
                     </div>
 
                     <div>
-                        <label htmlFor="category-input" className="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
-                        <Combobox options={restaurantCategories} value={category} onChange={setCategory} placeholder="Selecione ou crie uma categoria"/>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
+                        <Combobox options={restaurantCategories} value={category} onChange={setCategory} placeholder="Selecione..."/>
                     </div>
                 </div>
 
@@ -629,7 +579,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                 <div className="mt-6 pt-4 border-t flex justify-end space-x-3">
                     <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300" disabled={isSaving}>Cancelar</button>
                     <button onClick={handleSubmit} className="px-6 py-2 rounded-lg bg-orange-600 text-white font-bold hover:bg-orange-700 disabled:bg-orange-300" disabled={isSaving}>
-                        {isSaving ? 'Salvando...' : 'Salvar Item'}
+                        {isSaving ? 'Salvando...' : 'Salvar'}
                     </button>
                 </div>
             </div>
