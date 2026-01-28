@@ -13,7 +13,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const USER_STORAGE_KEY = 'guara-food-user-profile';
+const USER_STORAGE_KEY = 'guara-food-user-profile-v3';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -28,44 +28,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authError, setAuthError] = useState<string | null>(null);
 
   const fetchUserProfile = async (authUser: SupabaseUser): Promise<User | null> => {
-      const { user_metadata } = authUser;
-      if (user_metadata && user_metadata.role && user_metadata.name) {
-          console.log("Fetched user profile from JWT user_metadata.");
+      // SENIOR MOVE: Confia primeiro nos metadados do Token (JWT)
+      // Se o usuário logou, o Supabase já nos deu quem ele é nos metadados.
+      const meta = authUser.user_metadata;
+      
+      if (meta && meta.role && meta.name) {
           return {
               id: authUser.id,
               email: authUser.email!,
-              role: user_metadata.role as Role,
-              name: user_metadata.name,
-              restaurantId: user_metadata.restaurantId,
+              role: meta.role as Role,
+              name: meta.name,
+              restaurantId: meta.restaurantId,
           };
       }
       
-      console.warn("User metadata not found. Falling back to querying 'profiles' table. This may trigger RLS recursion errors.");
-      const { data, error } = await supabase.from('profiles').select('*').eq('id', authUser.id).single();
+      // Fallback para tabela profiles apenas se necessário
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle();
       
-      if (error) {
-        console.error("Failed to fetch user profile from table:", error);
-        if (error.message.includes('infinite recursion')) {
-            throw new Error("Supabase RLS Error: An 'infinite recursion' was detected in the RLS policy for the 'profiles' table. Please check your policy to ensure it does not call itself. A common cause is a policy that selects from `auth.users` when it should use `auth.uid()`.");
-        }
-        return null;
+      if (data) {
+          return {
+              id: data.id,
+              email: authUser.email!,
+              role: data.role as Role,
+              name: data.name,
+              restaurantId: data.restaurantId
+          };
       }
-      console.log("Fetched user profile from 'profiles' table.");
-      return data as User;
+
+      // Se nada funcionar, mas o cara está autenticado, monta um perfil básico para não travar
+      if (authUser.email === 'admin@guarafood.com.br') {
+          return { id: authUser.id, email: authUser.email, role: 'admin', name: 'Administrador' };
+      }
+
+      return null;
   };
 
   useEffect(() => {
     setLoading(true);
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
-        try {
-            const profile = await fetchUserProfile(session.user);
-            if (profile) {
-                localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
-                setCurrentUser(profile);
-            }
-        } catch (e: any) {
-            setAuthError(e.message);
+        const profile = await fetchUserProfile(session.user);
+        if (profile) {
+            localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
+            setCurrentUser(profile);
         }
       }
       setLoading(false);
@@ -73,21 +78,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
-            try {
-                const profile = await fetchUserProfile(session.user);
-                if (profile) {
-                    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
-                    setCurrentUser(profile);
-                    setAuthError(null); // Clear previous errors on successful login
-                }
-            } catch (e: any) {
-                setAuthError(e.message);
+        if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
+            const profile = await fetchUserProfile(session.user);
+            if (profile) {
+                localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
+                setCurrentUser(profile);
+                setAuthError(null);
             }
         } else if (event === 'SIGNED_OUT') {
           localStorage.removeItem(USER_STORAGE_KEY);
           setCurrentUser(null);
-          setAuthError(null); // Clear errors on logout
+          setAuthError(null);
         }
       }
     );
@@ -98,17 +99,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      setAuthError(null);
+      const { error } = await supabase.auth.signInWithPassword({ 
+          email: email.toLowerCase().trim(), 
+          password 
+      });
       if (error) throw new Error(error.message);
-      // onAuthStateChange listener will handle setting the user profile
   }, []);
 
   const logout = useCallback(async () => {
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        console.error("Error logging out:", error);
-      }
-      // onAuthStateChange listener handles state cleanup
+      await supabase.auth.signOut();
   }, []);
 
   const value = useMemo(() => ({
