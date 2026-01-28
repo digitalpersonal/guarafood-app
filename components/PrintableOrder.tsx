@@ -9,15 +9,15 @@ interface PrintableOrderProps {
 
 const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 80 }) => {
     const paperSize = `${printerWidth}mm`;
-    const contentWidth = printerWidth === 80 ? '70mm' : '46mm';
+    const contentWidth = printerWidth === 80 ? '72mm' : '48mm';
     
     const baseFontSize = printerWidth === 58 ? '11px' : '14px';
     const headerFontSize = printerWidth === 58 ? '13px' : '16px';
-    const titleFontSize = printerWidth === 58 ? '16px' : '20px';
-    const smallFontSize = printerWidth === 58 ? '10px' : '12px';
+    const titleFontSize = printerWidth === 58 ? '18px' : '22px';
+    const smallFontSize = printerWidth === 58 ? '9px' : '11px';
 
     const isPixPaid = order.paymentMethod.toLowerCase().includes('pix') && order.paymentStatus === 'paid';
-    const isPickup = !order.customerAddress || order.customerAddress.street === 'Retirada no Local';
+    const isPickup = !order.customerAddress || order.customerAddress.street === 'Retirada no Local' || order.customerAddress.street === 'Consumo Local';
 
     const displayOrderNum = order.order_number 
         ? `${String(order.order_number).padStart(3, '0')}`
@@ -37,6 +37,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                             padding: 0 !important;
                             width: ${paperSize} !important;
                             background-color: #fff !important;
+                            -webkit-print-color-adjust: exact !important;
                         }
                         #thermal-receipt-container {
                             width: ${paperSize} !important;
@@ -46,7 +47,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         #thermal-content {
                             width: ${contentWidth} !important; 
                             margin: 0 auto !important;
-                            padding: 3mm 0 !important;
+                            padding: 5mm 0 !important;
                             box-sizing: border-box !important;
                         }
                     }
@@ -54,14 +55,14 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                     #thermal-content {
                         font-family: 'Courier New', Courier, monospace; 
                         color: #000 !important;
-                        line-height: 1.3;
+                        line-height: 1.2;
                     }
 
                     #thermal-content * {
                         color: #000 !important;
                         word-wrap: break-word !important;
                         overflow-wrap: break-word !important;
-                        word-break: break-all !important;
+                        word-break: break-word !important;
                         white-space: normal !important;
                         font-weight: 900 !important;
                     }
@@ -69,22 +70,32 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                     .receipt-header {
                         text-align: center;
                         border-bottom: 2px dashed #000;
-                        padding-bottom: 5px;
+                        padding-bottom: 8px;
                         margin-bottom: 10px;
                     }
 
                     .receipt-title {
-                        font-size: ${titleFontSize};
+                        font-size: ${headerFontSize};
                         text-transform: uppercase;
+                        margin-bottom: 2px;
+                    }
+
+                    .order-number-box {
+                        font-size: ${titleFontSize};
+                        border: 3px solid #000;
+                        display: inline-block;
+                        padding: 4px 12px;
+                        margin: 8px 0;
                     }
 
                     .section-header {
                         font-size: ${baseFontSize};
-                        border-bottom: 2px solid #000;
-                        margin-top: 10px;
-                        margin-bottom: 5px;
+                        border-bottom: 1px solid #000;
+                        margin-top: 12px;
+                        margin-bottom: 6px;
                         padding-bottom: 2px;
                         text-transform: uppercase;
+                        text-align: center;
                     }
 
                     .item-row {
@@ -92,19 +103,19 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         justify-content: space-between;
                         align-items: flex-start;
                         font-size: ${baseFontSize};
-                        margin-bottom: 5px;
+                        margin-bottom: 4px;
                         width: 100%;
                     }
                     
                     .item-desc {
                         flex: 1;
-                        padding-right: 5px;
+                        padding-right: 4px;
                         text-transform: uppercase;
                     }
 
                     .item-total-price {
                         text-align: right;
-                        min-width: 70px;
+                        min-width: 75px;
                         font-size: ${baseFontSize};
                     }
 
@@ -112,47 +123,60 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         font-size: ${baseFontSize};
                         text-transform: uppercase !important;
                         display: block;
-                        margin-top: 2px;
-                        padding-left: 2mm;
-                        border-left: 4px solid #000;
+                        margin-top: 1px;
+                        padding-left: 3mm;
+                        border-left: 3px solid #000;
                         margin-left: 1mm;
+                        margin-bottom: 2px;
                     }
 
                     .notes-line {
                         font-size: ${baseFontSize};
-                        border: 2px solid #000;
-                        padding: 3px;
-                        margin-top: 4px;
+                        background-color: #000 !important;
+                        color: #fff !important;
+                        padding: 2px 4px;
+                        margin-top: 5px;
                         text-transform: uppercase;
                     }
 
                     .total-box {
-                        border-top: 3px solid #000;
-                        border-bottom: 3px solid #000;
+                        border-top: 2px dashed #000;
+                        border-bottom: 2px dashed #000;
+                        margin-top: 10px;
+                        padding: 8px 0;
+                    }
+
+                    .total-row {
                         display: flex;
                         justify-content: space-between;
+                        font-size: ${baseFontSize};
+                        margin-bottom: 2px;
+                    }
+
+                    .final-price {
                         font-size: ${titleFontSize};
-                        margin-top: 8px;
-                        padding: 8px 0;
+                        display: flex;
+                        justify-content: space-between;
+                        margin-top: 4px;
                     }
 
                     .payment-box {
                         border: 2px solid #000;
-                        padding: 10px;
+                        padding: 8px;
                         text-align: center;
                         font-size: ${headerFontSize};
-                        margin: 10px 0;
+                        margin: 12px 0;
                         text-transform: uppercase;
                     }
 
                     .mode-indicator {
-                        border: 4px double #000;
-                        font-size: ${titleFontSize};
+                        background-color: #000 !important;
+                        color: #fff !important;
+                        font-size: ${headerFontSize};
                         text-align: center;
-                        padding: 10px;
-                        margin: 12px 0;
+                        padding: 6px;
+                        margin: 10px 0;
                         text-transform: uppercase;
-                        letter-spacing: 1px;
                     }
                 `}
             </style>
@@ -160,92 +184,95 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
             <div id="thermal-content">
                 <div className="receipt-header">
                     <div className="receipt-title">{order.restaurantName}</div>
-                    <div style={{ marginTop: '2px' }}>
-                        {new Date(order.timestamp).toLocaleDateString('pt-BR')} {new Date(order.timestamp).toLocaleTimeString('pt-BR').substring(0,5)}
+                    <div style={{ fontSize: smallFontSize }}>
+                        {new Date(order.timestamp).toLocaleDateString('pt-BR')} - {new Date(order.timestamp).toLocaleTimeString('pt-BR').substring(0,5)}
                     </div>
-                    <div style={{ fontSize: titleFontSize, marginTop: '5px' }}>
-                        PEDIDO: #{displayOrderNum}
+                    <div className="order-number-box">
+                        PEDIDO: {displayOrderNum}
                     </div>
                 </div>
 
                 <div className="mode-indicator">
-                    {isPickup ? ">> RETIRADA <<" : ">> ENTREGA <<"}
+                    {order.tableNumber ? `>> MESA ${order.tableNumber} <<` : isPickup ? ">> RETIRADA NO BALCÃO <<" : ">> ENTREGA EM DOMICÍLIO <<"}
                 </div>
 
-                {order.wantsSachets !== undefined && (
-                    <div style={{ textAlign: 'center', border: '1px solid #000', padding: '5px', marginBottom: '10px', fontSize: baseFontSize }}>
-                        {order.wantsSachets ? "ENVIAR SACHÊS/TALHERES: SIM" : "ENVIAR SACHÊS/TALHERES: NÃO"}
+                {order.wantsSachets !== undefined && !order.tableNumber && (
+                    <div style={{ textAlign: 'center', border: '1px dashed #000', padding: '4px', marginBottom: '8px', fontSize: smallFontSize }}>
+                        {order.wantsSachets ? "SOLICITOU: SACHÊS E TALHERES" : "NÃO ENVIAR: SACHÊS/TALHERES"}
                     </div>
                 )}
 
-                <div className="section-header">DADOS DO CLIENTE</div>
+                <div className="section-header">CLIENTE / DESTINO</div>
                 <div style={{ fontSize: headerFontSize }}>{order.customerName.toUpperCase()}</div>
-                <div>FONE: {order.customerPhone}</div>
+                <div>TEL: {order.customerPhone}</div>
                 
                 {!isPickup && order.customerAddress && (
-                    <div style={{ border: '2px solid #000', padding: '5px', marginTop: '5px' }}>
-                        <div style={{ fontSize: headerFontSize }}>{order.customerAddress.street.toUpperCase()}, {order.customerAddress.number}</div>
-                        <div style={{ fontSize: headerFontSize }}>BAIRRO: {order.customerAddress.neighborhood.toUpperCase()}</div>
+                    <div style={{ marginTop: '5px' }}>
+                        <div style={{ fontSize: baseFontSize }}>{order.customerAddress.street.toUpperCase()}, {order.customerAddress.number}</div>
+                        <div style={{ fontSize: baseFontSize }}>BAIRRO: {order.customerAddress.neighborhood.toUpperCase()}</div>
                         {order.customerAddress.complement && (
-                            <div style={{ marginTop: '5px', borderTop: '1px dashed #000', paddingTop: '3px' }}>
-                                OBS END: {order.customerAddress.complement.toUpperCase()}
+                            <div style={{ marginTop: '3px', fontStyle: 'italic', fontSize: smallFontSize }}>
+                                REF: {order.customerAddress.complement.toUpperCase()}
                             </div>
                         )}
                     </div>
                 )}
 
-                <div className="section-header" style={{ marginTop: '15px' }}>ITENS DO PEDIDO</div>
+                <div className="section-header">ITENS DO PEDIDO</div>
                 
-                <div style={{ paddingBottom: '10px' }}>
+                <div style={{ paddingBottom: '5px' }}>
                     {order.items.map((item, index) => (
-                        <div key={`${item.id}-${index}`} style={{ marginTop: '12px', borderBottom: '1.5px dashed #000', paddingBottom: '8px' }}>
+                        <div key={`${item.id}-${index}`} style={{ marginTop: '10px', borderBottom: '1px dotted #ccc', paddingBottom: '6px' }}>
                             <div className="item-row">
                                 <div className="item-desc">
                                     {item.quantity}X {item.name}
-                                    {item.sizeName && ` (${item.sizeName})`}
+                                    {item.sizeName && item.sizeName !== 'Único' && ` (${item.sizeName})`}
                                 </div>
                                 <div className="item-total-price">
                                     R$ {(Number(item.price) * item.quantity).toFixed(2)}
                                 </div>
                             </div>
                             
-                            {((item.selectedAddons && item.selectedAddons.length > 0) || item.notes) && (
-                                <div style={{ marginTop: '3px' }}>
-                                    {item.selectedAddons?.map(a => (
-                                        <div key={a.id} className="addon-line">
-                                            {`>> ${a.name.toUpperCase()} (+R$ ${Number(a.price).toFixed(2)})`}
-                                        </div>
-                                    ))}
-                                    {item.notes && (
-                                        <div className="notes-line">
-                                            {`OBS: ${item.notes.toUpperCase()}`}
-                                        </div>
-                                    )}
+                            {item.selectedOptions?.map((opt, i) => (
+                                <div key={i} className="addon-line">
+                                    {`+ ${opt.groupTitle}: ${opt.optionName}`.toUpperCase()}
+                                </div>
+                            ))}
+
+                            {item.selectedAddons?.map(a => (
+                                <div key={a.id} className="addon-line">
+                                    {`+ ${a.name} (R$${Number(a.price).toFixed(2)})`.toUpperCase()}
+                                </div>
+                            ))}
+
+                            {item.notes && (
+                                <div className="notes-line">
+                                    {`OBS: ${item.notes.toUpperCase()}`}
                                 </div>
                             )}
                         </div>
                     ))}
                 </div>
 
-                <div style={{ marginTop: '10px' }}>
-                    <div className="item-row">
+                <div className="total-box">
+                    <div className="total-row">
                         <span>SUBTOTAL:</span>
                         <span>R$ {Number(order.subtotal || 0).toFixed(2)}</span>
                     </div>
                     {order.deliveryFee != null && Number(order.deliveryFee) > 0 && (
-                        <div className="item-row">
+                        <div className="total-row">
                             <span>TAXA ENTREGA:</span>
                             <span>R$ {Number(order.deliveryFee).toFixed(2)}</span>
                         </div>
                     )}
                     {order.discountAmount != null && Number(order.discountAmount) > 0 && (
-                        <div className="item-row">
+                        <div className="total-row" style={{ color: '#000' }}>
                             <span>DESCONTO:</span>
                             <span>- R$ {Number(order.discountAmount).toFixed(2)}</span>
                         </div>
                     )}
                     
-                    <div className="total-box">
+                    <div className="final-price">
                         <span>TOTAL:</span>
                         <span>R$ {Number(order.totalPrice).toFixed(2)}</span>
                     </div>
@@ -253,12 +280,12 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
 
                 <div className="payment-box">
                     PAGTO: {order.paymentMethod.toUpperCase()}
-                    {isPixPaid ? ' (PAGO ONLINE)' : ''}
+                    {isPixPaid ? '\n(PAGO VIA PIX APP)' : ''}
                 </div>
 
-                <div style={{ textAlign: 'center', fontSize: smallFontSize, marginTop: '25px', borderTop: '1px solid #000', paddingTop: '10px' }}>
-                    GUARA-FOOD PDV OFICIAL
-                    <br/>IMPRESSO EM {new Date().toLocaleTimeString()}
+                <div style={{ textAlign: 'center', fontSize: smallFontSize, marginTop: '20px', borderTop: '1px solid #000', paddingTop: '8px' }}>
+                    GUARA-FOOD - PDV OFICIAL
+                    <br/>OBRIGADO PELA PREFERENCIA!
                     <br/>.
                 </div>
             </div>
