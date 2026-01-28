@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useAuth } from '../services/authService';
 import Spinner from './Spinner';
@@ -59,8 +58,15 @@ const LoginScreen: React.FC<{ onLoginSuccess: () => void; onBack: () => void; }>
             await login(email, password);
             onLoginSuccess();
         } catch (err: any) {
-            setError('Falha no login. Verifique seu e-mail e senha.');
-            console.error(err);
+            const msg = err.message || '';
+            if (msg.includes('Invalid login credentials')) {
+                setError('E-mail ou senha incorretos.');
+            } else if (msg.includes('Email not confirmed')) {
+                setError('Este e-mail ainda não foi confirmado.');
+            } else {
+                setError('Falha no login: ' + msg);
+            }
+            console.error("Login attempt failed:", err);
         } finally {
             setIsSubmitting(false);
         }
@@ -68,7 +74,6 @@ const LoginScreen: React.FC<{ onLoginSuccess: () => void; onBack: () => void; }>
     
     return (
         <div className="min-h-screen flex flex-col justify-center items-center p-4 relative overflow-hidden">
-            {/* Background Image with Overlay */}
             <div 
                 className="absolute inset-0 z-0 bg-cover bg-center"
                 style={{ 

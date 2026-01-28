@@ -27,7 +27,7 @@ serve(async (req: Request) => {
     const { email, password } = userData
     const emailLower = email.toLowerCase().trim();
 
-    // 1. Localizar ou Atualizar o Restaurante
+    // 1. GARANTIR RESTAURANTE
     let restaurantId;
     const { data: existingRest } = await supabaseAdmin
         .from('restaurants')
@@ -48,11 +48,11 @@ serve(async (req: Request) => {
         restaurantId = newRest.id;
     }
 
-    // 2. LIMPEZA PREVENTIVA (Foco no Nome)
-    // Deleta o perfil órfão que trava o Trigger do Supabase
+    // 2. LIMPEZA ATÔMICA (A solução definitiva)
+    // Remove qualquer perfil órfão que use o mesmo nome para evitar 'Database Error' no trigger
     await supabaseAdmin.from('profiles').delete().eq('name', restaurantData.name);
 
-    // 3. Gerenciamento de Usuário no Auth
+    // 3. GERENCIAMENTO DE USUÁRIO AUTH
     const { data: { users } } = await supabaseAdmin.auth.admin.listUsers();
     const userFound = users.find(u => u.email?.toLowerCase() === emailLower);
 
@@ -62,45 +62,45 @@ serve(async (req: Request) => {
         restaurantId: restaurantId
     };
 
+    let userId;
+
     if (userFound) {
-        // Se o usuário existe no Auth, apenas atualizamos a senha e o vínculo
-        await supabaseAdmin.auth.admin.updateUserById(userFound.id, {
+        userId = userFound.id;
+        // Atualiza usuário existente
+        const { error: updErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
             password: password,
             user_metadata: userMetadata,
             email_confirm: true
         });
-        
-        // Upsert manual no perfil (sem a coluna email que não existe)
-        await supabaseAdmin.from('profiles').upsert({ 
-            id: userFound.id, 
-            name: userMetadata.name,
-            role: userMetadata.role,
-            restaurantId: userMetadata.restaurantId
-        });
+        if (updErr) throw updErr;
     } else {
-        // Criar novo usuário do zero
+        // Cria novo usuário
         const { data: newUser, error: userError } = await supabaseAdmin.auth.admin.createUser({
             email: emailLower,
             password: password,
             email_confirm: true,
             user_metadata: userMetadata
         });
-
-        if (userError) {
-            // Caso ocorra conflito de última hora, tentamos limpar pelo nome novamente
-            await supabaseAdmin.from('profiles').delete().eq('name', restaurantData.name);
-            throw new Error(`Falha ao criar acesso: ${userError.message}`);
-        }
         
-        // Backup: Garante o registro em profiles caso o trigger automático falhe
-        if (newUser.user) {
-            await supabaseAdmin.from('profiles').upsert({ 
-                id: newUser.user.id, 
-                name: userMetadata.name,
-                role: userMetadata.role,
-                restaurantId: userMetadata.restaurantId
-            });
+        // Se der erro de banco aqui, é porque o trigger do Supabase tentou inserir algo duplicado
+        if (userError) {
+            console.error("Auth Create Error:", userError);
+            throw new Error(`Erro Crítico de Banco: ${userError.message}. Tente rodar o script SQL de limpeza.`);
         }
+        userId = newUser.user?.id;
+    }
+
+    // 4. SINCRONIZAÇÃO DE PERFIL
+    if (userId) {
+        // Força a inserção/atualização do perfil lojista
+        const { error: profileError } = await supabaseAdmin.from('profiles').upsert({ 
+            id: userId, 
+            name: restaurantData.name,
+            role: 'merchant',
+            "restaurantId": restaurantId
+        }, { onConflict: 'id' });
+        
+        if (profileError) throw profileError;
     }
 
     return new Response(
@@ -109,7 +109,7 @@ serve(async (req: Request) => {
     )
 
   } catch (error: any) {
-    console.error("Function Error:", error);
+    console.error("Fatal Error in Edge Function:", error);
     return new Response(
       JSON.stringify({ error: error.message }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
