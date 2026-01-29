@@ -9,16 +9,18 @@ interface PrintableOrderProps {
 
 const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 80 }) => {
     const paperSize = `${printerWidth}mm`;
-    const contentWidth = printerWidth === 80 ? '72mm' : '48mm';
     
-    const baseFontSize = printerWidth === 58 ? '11px' : '14px';
-    const headerFontSize = printerWidth === 58 ? '13px' : '16px';
-    const titleFontSize = printerWidth === 58 ? '18px' : '22px';
-    const smallFontSize = printerWidth === 58 ? '9px' : '11px';
+    // Ajuste de largura útil para garantir que nada corte à direita
+    // 67mm para papel de 80mm deixa uma margem de segurança confortável
+    const contentWidth = printerWidth === 80 ? '67mm' : '44mm';
+    
+    const baseFontSize = printerWidth === 58 ? '10px' : '13px';
+    const headerFontSize = printerWidth === 58 ? '12px' : '15px';
+    const titleFontSize = printerWidth === 58 ? '16px' : '20px';
+    const smallFontSize = printerWidth === 58 ? '8px' : '10px';
 
     const isPixPaid = order.paymentMethod.toLowerCase().includes('pix') && order.paymentStatus === 'paid';
     
-    // Lógica refinada para detectar entrega vs retirada
     const isPickup = !order.customerAddress || 
                      !order.customerAddress.street ||
                      order.customerAddress.street.includes('Retirada') || 
@@ -42,69 +44,69 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                             margin: 0 !important;
                             padding: 0 !important;
                             width: ${paperSize} !important;
-                            background-color: #fff !important;
+                            background: #fff !important;
                             -webkit-print-color-adjust: exact !important;
+                            print-color-adjust: exact !important;
                         }
                         #thermal-receipt-container {
                             width: ${paperSize} !important;
                             margin: 0 !important;
                             padding: 0 !important;
+                            background: #fff !important;
                         }
                         #thermal-content {
                             width: ${contentWidth} !important; 
-                            margin: 0 auto !important;
+                            margin-left: 1mm !important; /* Margem mínima à esquerda */
                             padding: 5mm 0 !important;
                             box-sizing: border-box !important;
+                            background: #fff !important;
                         }
                     }
 
                     #thermal-content {
                         font-family: 'Courier New', Courier, monospace; 
                         color: #000 !important;
-                        line-height: 1.2;
+                        line-height: 1.1;
                     }
 
                     #thermal-content * {
                         color: #000 !important;
+                        background: transparent !important;
                         word-wrap: break-word !important;
                         overflow-wrap: break-word !important;
-                        word-break: break-word !important;
                         white-space: normal !important;
                         font-weight: 900 !important;
                     }
 
                     .receipt-header {
                         text-align: center;
-                        border-bottom: 2px dashed #000;
-                        padding-bottom: 8px;
-                        margin-bottom: 10px;
+                        border-bottom: 1px dashed #000;
+                        padding-bottom: 6px;
+                        margin-bottom: 8px;
                     }
 
                     .receipt-title {
                         font-size: ${headerFontSize};
                         text-transform: uppercase;
-                        margin-bottom: 2px;
-                        letter-spacing: 1px;
+                        margin-bottom: 1px;
                     }
 
                     .order-number-box {
                         font-size: ${titleFontSize};
-                        border: 3px solid #000;
+                        border: 2px solid #000;
                         display: inline-block;
-                        padding: 6px 15px;
-                        margin: 10px 0;
-                        font-weight: 900 !important;
+                        padding: 3px 10px;
+                        margin: 5px 0;
                     }
 
                     .section-header {
                         font-size: ${baseFontSize};
                         border-bottom: 1px solid #000;
-                        margin-top: 15px;
-                        margin-bottom: 8px;
-                        padding-bottom: 2px;
+                        margin-top: 10px;
+                        margin-bottom: 4px;
+                        padding-bottom: 1px;
                         text-transform: uppercase;
                         text-align: center;
-                        letter-spacing: 1px;
                     }
 
                     .item-row {
@@ -112,19 +114,19 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         justify-content: space-between;
                         align-items: flex-start;
                         font-size: ${baseFontSize};
-                        margin-bottom: 5px;
+                        margin-bottom: 3px;
                         width: 100%;
                     }
                     
                     .item-desc {
                         flex: 1;
-                        padding-right: 4px;
+                        padding-right: 2mm;
                         text-transform: uppercase;
                     }
 
                     .item-total-price {
                         text-align: right;
-                        min-width: 75px;
+                        min-width: 60px;
                         font-size: ${baseFontSize};
                     }
 
@@ -132,66 +134,59 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         font-size: ${baseFontSize};
                         text-transform: uppercase !important;
                         display: block;
-                        margin-top: 1px;
-                        padding-left: 3mm;
-                        border-left: 3px solid #000;
+                        padding-left: 2mm;
+                        border-left: 2px solid #000;
                         margin-left: 1mm;
-                        margin-bottom: 3px;
-                        opacity: 0.9;
+                        margin-bottom: 1px;
                     }
 
                     .notes-line {
                         font-size: ${baseFontSize};
                         border: 1px solid #000;
-                        padding: 4px;
-                        margin-top: 6px;
+                        padding: 2px;
+                        margin: 4px 0;
                         text-transform: uppercase;
                         text-align: center;
-                        background: transparent;
                     }
 
                     .total-box {
-                        border-top: 2px dashed #000;
-                        border-bottom: 2px dashed #000;
-                        margin-top: 15px;
-                        padding: 10px 0;
+                        border-top: 1px dashed #000;
+                        border-bottom: 1px dashed #000;
+                        margin-top: 8px;
+                        padding: 6px 0;
                     }
 
                     .total-row {
                         display: flex;
                         justify-content: space-between;
                         font-size: ${baseFontSize};
-                        margin-bottom: 3px;
                     }
 
                     .final-price {
                         font-size: ${titleFontSize};
                         display: flex;
                         justify-content: space-between;
-                        margin-top: 5px;
-                        font-weight: 900 !important;
+                        margin-top: 2px;
                     }
 
                     .payment-box {
-                        border: 2px solid #000;
-                        padding: 10px;
+                        border: 1px solid #000;
+                        padding: 6px;
                         text-align: center;
-                        font-size: ${headerFontSize};
-                        margin: 15px 0;
+                        font-size: ${baseFontSize};
+                        margin: 8px 0;
                         text-transform: uppercase;
-                        font-weight: 900 !important;
                     }
 
                     .mode-indicator {
-                        border: 4px solid #000;
-                        color: #000 !important;
                         font-size: ${headerFontSize};
                         font-weight: 900 !important;
                         text-align: center;
-                        padding: 10px 5px;
-                        margin: 12px 0;
+                        padding: 5px 0;
+                        margin: 5px 0;
                         text-transform: uppercase;
-                        display: block !important;
+                        border-top: 2px solid #000;
+                        border-bottom: 2px solid #000;
                     }
                 `}
             </style>
@@ -208,43 +203,43 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                 </div>
 
                 <div className="mode-indicator">
-                    {order.tableNumber ? `>> MESA ${order.tableNumber} <<` : isPickup ? ">> RETIRADA NO BALCÃO <<" : ">> ENTREGA EM DOMICÍLIO <<"}
+                    {order.tableNumber ? `MESA ${order.tableNumber}` : isPickup ? ">> RETIRADA NO BALCÃO <<" : ">> ENTREGA EM DOMICÍLIO <<"}
                 </div>
 
                 {order.wantsSachets !== undefined && !order.tableNumber && (
-                    <div style={{ textAlign: 'center', border: '1px dashed #000', padding: '5px', marginBottom: '10px', fontSize: smallFontSize }}>
-                        {order.wantsSachets ? "SOLICITOU: SACHÊS E TALHERES" : "NÃO ENVIAR: SACHÊS/TALHERES"}
+                    <div style={{ textAlign: 'center', border: '1px dotted #000', padding: '2px', marginBottom: '6px', fontSize: smallFontSize }}>
+                        {order.wantsSachets ? "ENVIAR SACHÊS/TALHERES" : "NÃO ENVIAR SACHÊS"}
                     </div>
                 )}
 
                 <div className="section-header">CLIENTE / DESTINO</div>
-                <div style={{ fontSize: headerFontSize, fontWeight: 900 }}>{order.customerName.toUpperCase()}</div>
-                <div>TEL: {order.customerPhone}</div>
+                <div style={{ fontSize: baseFontSize }}>{order.customerName.toUpperCase()}</div>
+                <div style={{ fontSize: baseFontSize }}>TEL: {order.customerPhone}</div>
                 
                 {!isPickup && order.customerAddress && (
-                    <div style={{ marginTop: '6px' }}>
+                    <div style={{ marginTop: '3px' }}>
                         <div style={{ fontSize: baseFontSize }}>{order.customerAddress.street.toUpperCase()}, {order.customerAddress.number}</div>
                         <div style={{ fontSize: baseFontSize }}>BAIRRO: {order.customerAddress.neighborhood.toUpperCase()}</div>
                         {order.customerAddress.complement && (
-                            <div style={{ marginTop: '4px', fontStyle: 'italic', fontSize: smallFontSize }}>
+                            <div style={{ marginTop: '1px', fontSize: smallFontSize }}>
                                 REF: {order.customerAddress.complement.toUpperCase()}
                             </div>
                         )}
                     </div>
                 )}
 
-                <div className="section-header">ITENS DO PEDIDO</div>
+                <div className="section-header">ITENS</div>
                 
-                <div style={{ paddingBottom: '5px' }}>
+                <div style={{ paddingBottom: '3px' }}>
                     {order.items.map((item, index) => (
-                        <div key={`${item.id}-${index}`} style={{ marginTop: '12px', borderBottom: '1px dotted #000', paddingBottom: '8px' }}>
+                        <div key={`${item.id}-${index}`} style={{ marginTop: '6px', borderBottom: '1px dotted #eee', paddingBottom: '3px' }}>
                             <div className="item-row">
                                 <div className="item-desc">
                                     {item.quantity}X {item.name}
                                     {item.sizeName && item.sizeName !== 'Único' && ` (${item.sizeName})`}
                                 </div>
                                 <div className="item-total-price">
-                                    R$ {(Number(item.price) * item.quantity).toFixed(2)}
+                                    {(Number(item.price) * item.quantity).toFixed(2)}
                                 </div>
                             </div>
                             
@@ -294,12 +289,12 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                 </div>
 
                 <div className="payment-box">
-                    PAGTO: {order.paymentMethod.toUpperCase()}
-                    {isPixPaid ? '\n(PAGO VIA PIX APP)' : ''}
+                    PGTO: {order.paymentMethod.toUpperCase()}
+                    {isPixPaid ? '\n(PAGO NO APP)' : ''}
                 </div>
 
-                <div style={{ textAlign: 'center', fontSize: smallFontSize, marginTop: '25px', borderTop: '1px solid #000', paddingTop: '10px' }}>
-                    GUARA-FOOD - PDV OFICIAL
+                <div style={{ textAlign: 'center', fontSize: smallFontSize, marginTop: '10px', borderTop: '1px solid #000', paddingTop: '4px' }}>
+                    GUARA-FOOD PDV
                     <br/>OBRIGADO PELA PREFERENCIA!
                     <br/>.
                 </div>
