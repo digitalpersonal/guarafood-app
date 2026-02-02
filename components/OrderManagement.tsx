@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { subscribeToOrders, fetchOrders } from '../services/orderService';
 import { useAuth } from '../services/authService'; 
+import { fetchRestaurantByIdSecure } from '../services/databaseService';
 import type { Order } from '../types';
 import OrdersView from './OrdersView';
 import MenuManagement from './MenuManagement';
@@ -42,6 +43,28 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const reconnectGraceTimeoutRef = useRef<number | null>(null);
 
     const [printerWidth, setPrinterWidth] = useState<number>(80);
+
+    // Carrega configuração de impressora do Banco de Dados para garantir consistência total (Jerê/Renovação)
+    useEffect(() => {
+        if (!currentUser?.restaurantId) return;
+        
+        const loadConfig = async () => {
+            try {
+                const rest = await fetchRestaurantByIdSecure(currentUser.restaurantId);
+                if (rest && rest.printerWidth) {
+                    setPrinterWidth(rest.printerWidth);
+                    localStorage.setItem('guarafood-printer-width', rest.printerWidth.toString());
+                } else {
+                    const saved = localStorage.getItem('guarafood-printer-width');
+                    if (saved) setPrinterWidth(parseInt(saved, 10));
+                }
+            } catch (e) {
+                const saved = localStorage.getItem('guarafood-printer-width');
+                if (saved) setPrinterWidth(parseInt(saved, 10));
+            }
+        };
+        loadConfig();
+    }, [currentUser, activeTab]);
 
     const processOrdersUpdate = useCallback((allOrders: Order[]) => {
         const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
@@ -125,11 +148,6 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             if (reconnectGraceTimeoutRef.current) clearTimeout(reconnectGraceTimeoutRef.current);
         };
     }, [forceSync]);
-
-    useEffect(() => {
-        const savedWidth = localStorage.getItem('guarafood-printer-width');
-        if (savedWidth) setPrinterWidth(parseInt(savedWidth, 10));
-    }, []);
 
     const enableAudio = useCallback(() => { initAudioContext(); }, [initAudioContext]);
 
@@ -223,9 +241,12 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     <button onClick={onBack} className="bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition-colors flex-shrink-0">
                         <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
                     </button>
-                    <h1 className="text-xl sm:text-2xl font-black text-gray-800 truncate">
-                        {currentUser?.name || 'Painel Lojista'}
-                    </h1>
+                    <div className="flex flex-col">
+                        <h1 className="text-xl sm:text-2xl font-black text-gray-800 truncate">
+                            {currentUser?.name || 'Painel Lojista'}
+                        </h1>
+                        <span className="text-[9px] font-black text-orange-600 uppercase tracking-widest leading-none">Padrão Jerê Ativo</span>
+                    </div>
                 </div>
                 <div className="flex items-center gap-2">
                     <button 

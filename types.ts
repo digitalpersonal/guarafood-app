@@ -43,7 +43,7 @@ export interface Restaurant {
   operatingHours?: OperatingHours[]; // The new detailed structure
   manualPixKey?: string;
   hasPixConfigured?: boolean;
-  printerWidth?: number; // 80 or 58 (mm)
+  printerWidth?: number; // 80 or 58 (mm) - AGORA NO BANCO
   active?: boolean; // NEW: Field to suspend restaurant
 }
 
