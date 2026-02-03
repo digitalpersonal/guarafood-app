@@ -8,24 +8,17 @@ interface PrintableOrderProps {
 }
 
 const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 80 }) => {
-    // Configurações de largura baseadas no papel selecionado
     const paperSize = `${printerWidth}mm`;
+    const contentWidth = printerWidth === 80 ? '72mm' : '52mm';
     
-    // ÁREAS ÚTEIS (Padrão Jerê): 
-    // Deixamos uma margem de segurança para os preços não cortarem na direita
-    const contentWidth = printerWidth === 80 ? '68mm' : '48mm';
-    
-    const baseFontSize = printerWidth === 58 ? '11px' : '13px';
-    const headerFontSize = printerWidth === 58 ? '12px' : '15px';
-    const titleFontSize = printerWidth === 58 ? '18px' : '22px';
-    const smallFontSize = printerWidth === 58 ? '9px' : '11px';
+    // Escalonamento de fontes para parecerem idênticas à foto
+    const baseFontSize = printerWidth === 58 ? '12px' : '14px';
+    const titleFontSize = printerWidth === 58 ? '22px' : '28px';
+    const smallFontSize = printerWidth === 58 ? '10px' : '11px';
 
-    const isPixPaid = order.paymentMethod.toLowerCase().includes('pix') && order.paymentStatus === 'paid';
-    
     const isPickup = !order.customerAddress || 
                      !order.customerAddress.street ||
                      order.customerAddress.street.includes('Retirada') || 
-                     order.customerAddress.street.includes('Consumo Local') ||
                      order.tableNumber !== undefined;
 
     const displayOrderNum = order.order_number 
@@ -37,166 +30,128 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
             <style>
                 {`
                     @media print {
-                        @page {
-                            margin: 0 !important;
-                            size: ${paperSize} auto;
-                        }
-                        body {
-                            margin: 0 !important;
-                            padding: 0 !important;
-                            width: ${paperSize} !important;
-                            background: #fff !important;
-                            -webkit-print-color-adjust: exact !important;
-                            print-color-adjust: exact !important;
-                        }
-                        #thermal-receipt-container {
-                            width: ${paperSize} !important;
-                            margin: 0 !important;
-                            padding: 0 !important;
-                            background: #fff !important;
-                            display: flex;
-                            justify-content: center;
-                        }
-                        #thermal-content {
-                            width: ${contentWidth} !important; 
-                            margin: 0 auto !important;
-                            padding: 5mm 0 !important;
-                            box-sizing: border-box !important;
-                        }
+                        @page { margin: 0 !important; size: ${paperSize} auto; }
+                        body { margin: 0 !important; padding: 0 !important; width: ${paperSize} !important; background: #fff !important; }
+                        #thermal-receipt-container { width: ${paperSize} !important; display: flex; justify-content: center; }
+                        #thermal-content { width: ${contentWidth} !important; padding: 5mm 0 !important; }
                     }
 
                     #thermal-content {
                         font-family: 'Courier New', Courier, monospace !important; 
                         color: #000 !important;
-                        line-height: 1.1;
-                        background: #fff !important;
+                        line-height: 1.2;
                     }
 
                     #thermal-content * {
                         color: #000 !important;
-                        background: #fff !important;
-                        word-wrap: break-word !important;
-                        overflow-wrap: break-word !important;
-                        white-space: normal !important;
-                        font-weight: 900 !important; /* Negrito ultra forte como na foto */
+                        font-weight: 900 !important; 
                         text-transform: uppercase !important;
+                        letter-spacing: -0.5px;
                     }
 
-                    .receipt-header {
-                        text-align: center;
-                        margin-bottom: 4px;
-                    }
+                    .text-center { text-align: center; }
+                    .text-right { text-align: right; }
 
-                    .order-box {
-                        font-size: ${titleFontSize};
-                        border: 2.5px solid #000;
+                    /* O Box do Pedido idêntico ao Jerê */
+                    .pedido-box {
+                        border: 2px solid #000;
+                        padding: 5px 15px;
                         display: inline-block;
-                        padding: 4px 12px;
-                        margin: 6px 0;
-                        line-height: 1;
+                        margin: 10px 0;
+                    }
+                    .pedido-label { font-size: ${baseFontSize}; }
+                    .pedido-numero { font-size: ${titleFontSize}; }
+
+                    /* Divisores de linha dupla do Jerê */
+                    .double-line {
+                        border-top: 1px solid #000;
+                        border-bottom: 1px solid #000;
+                        height: 3px;
+                        margin: 8px 0;
                     }
 
-                    .delivery-mode {
-                        font-size: ${headerFontSize};
-                        text-align: center;
-                        padding: 6px 0;
-                        margin: 2px 0;
-                        border-top: 1.5px solid #000;
-                        border-bottom: 1.5px solid #000;
-                        display: block;
-                        width: 100%;
-                    }
-
-                    .sachet-warning {
+                    /* Box de Saches e Labels de Seção */
+                    .label-box {
                         border: 1px solid #000;
-                        padding: 3px;
-                        text-align: center;
-                        margin: 4px 0;
+                        padding: 2px 10px;
                         font-size: ${smallFontSize};
+                        display: inline-block;
+                        margin-bottom: 5px;
                     }
 
-                    .section-label {
-                        text-align: center;
-                        font-size: ${smallFontSize};
-                        letter-spacing: 2px;
-                        padding: 2px 0;
-                        border-bottom: 1.5px solid #000;
-                        margin-bottom: 4px;
-                    }
-
+                    /* Alinhamento de Itens: Nome na Esquerda, Preço na Direita */
                     .item-row {
                         display: flex;
                         justify-content: space-between;
                         align-items: flex-start;
                         width: 100%;
-                        margin-bottom: 3px;
+                        margin-bottom: 8px;
                     }
+                    .item-main { flex: 1; padding-right: 5px; }
+                    .item-price { white-space: nowrap; text-align: right; min-width: 80px; }
 
-                    .price-col {
-                        text-align: right;
-                        min-width: ${printerWidth === 58 ? '50px' : '70px'};
-                        margin-left: 1mm;
-                    }
-
-                    .totals-section {
-                        margin-top: 6px;
-                        border-top: 1.5px solid #000;
-                        padding-top: 4px;
-                    }
-
-                    .payment-method-box {
-                        border: 2px solid #000;
-                        padding: 5px;
-                        text-align: center;
-                        margin-top: 8px;
-                        font-size: ${baseFontSize};
-                    }
-
-                    .footer-info {
-                        text-align: center;
-                        font-size: ${smallFontSize};
+                    /* Box de Pagamento do Jerê */
+                    .pgto-box {
+                        border: 1px solid #000;
+                        padding: 8px;
                         margin-top: 15px;
-                        border-top: 1px dashed #000;
-                        padding-top: 5px;
+                        font-size: ${baseFontSize};
+                        text-align: center;
+                    }
+
+                    /* Destaque do Total */
+                    .total-row {
+                        font-size: ${titleFontSize};
+                        display: flex;
+                        justify-content: space-between;
+                        margin-top: 5px;
                     }
                 `}
             </style>
 
             <div id="thermal-content">
-                {/* TOPO IDENTICO AO JERE */}
-                <div className="receipt-header">
-                    <div style={{ fontSize: headerFontSize }}>{order.restaurantName}</div>
+                {/* CABEÇALHO JERÊ STYLE */}
+                <div className="text-center">
+                    <div style={{ fontSize: baseFontSize, marginBottom: '2px' }}>{order.restaurantName}</div>
                     <div style={{ fontSize: smallFontSize }}>
                         {new Date(order.timestamp).toLocaleDateString('pt-BR')} - {new Date(order.timestamp).toLocaleTimeString('pt-BR').substring(0,5)}
                     </div>
-                    <div className="order-box">
-                        PEDIDO: {displayOrderNum}
+                    
+                    <div className="pedido-box">
+                        <span className="pedido-label">PEDIDO: </span>
+                        <span className="pedido-numero">{displayOrderNum}</span>
                     </div>
                 </div>
 
-                {/* INDICADOR DE ENTREGA COM SETAS */}
-                <div className="delivery-mode">
+                {/* MODO DE ENTREGA */}
+                <div className="double-line"></div>
+                <div className="text-center" style={{ fontSize: baseFontSize, margin: '2px 0' }}>
                     {order.tableNumber 
-                        ? `>> CONSUMO MESA ${order.tableNumber} <<` 
+                        ? `>> CONSUMO LOCAL - MESA ${order.tableNumber} <<` 
                         : isPickup 
                             ? ">> RETIRADA NO BALCÃO <<" 
                             : ">> ENTREGA EM DOMICÍLIO <<"}
                 </div>
+                <div className="double-line"></div>
 
-                {/* BOX DE SACHES */}
-                <div className="sachet-warning">
-                    {order.wantsSachets !== false ? "ENVIAR SACHÊS/TALHERES" : "NÃO ENVIAR SACHÊS/TALHERES"}
+                {/* SACHÊS */}
+                <div className="text-center">
+                    <div className="label-box">
+                        {order.wantsSachets !== false ? "ENVIAR SACHÊS/TALHERES" : "NÃO ENVIAR SACHÊS/TALHERES"}
+                    </div>
                 </div>
 
-                {/* CLIENTE / DESTINO */}
-                <div className="section-label">CLIENTE / DESTINO</div>
-                <div style={{ fontSize: baseFontSize, marginBottom: '8px' }}>
-                    <div style={{ fontWeight: '900' }}>{order.customerName}</div>
+                {/* CLIENTE */}
+                <div className="text-center">
+                    <div className="label-box" style={{ border: 'none', textDecoration: 'underline' }}>CLIENTE / DESTINO</div>
+                </div>
+                
+                <div style={{ fontSize: baseFontSize, marginBottom: '15px' }}>
+                    <div>{order.customerName}</div>
                     <div>TEL: {order.customerPhone}</div>
-                    
                     {!isPickup && order.customerAddress && (
                         <>
-                            <div>{order.customerAddress.street}, {order.customerAddress.number}</div>
+                            <div>{order.customerAddress.street} , {order.customerAddress.number}</div>
                             <div>BAIRRO: {order.customerAddress.neighborhood}</div>
                             {order.customerAddress.complement && (
                                 <div style={{ fontSize: smallFontSize }}>REF: {order.customerAddress.complement}</div>
@@ -206,67 +161,65 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                 </div>
 
                 {/* ITENS */}
-                <div className="section-label">ITENS</div>
-                <div style={{ width: '100%' }}>
+                <div className="text-center">
+                    <div className="label-box" style={{ border: 'none', textDecoration: 'underline' }}>ITENS</div>
+                </div>
+
+                <div style={{ width: '100%', marginBottom: '10px' }}>
                     {order.items.map((item, index) => (
-                        <div key={index} style={{ marginBottom: '5px' }}>
+                        <div key={index} style={{ marginBottom: '10px' }}>
                             <div className="item-row">
-                                <div style={{ flex: 1, fontSize: baseFontSize }}>
+                                <div className="item-main">
                                     {item.quantity}X {item.name} {item.sizeName && `(${item.sizeName})`}
                                 </div>
-                                <div className="price-col" style={{ fontSize: baseFontSize }}>
+                                <div className="item-price">
                                     {(Number(item.price) * item.quantity).toFixed(2)}
                                 </div>
                             </div>
                             
-                            {/* DETALHES DE ADICIONAIS */}
+                            {/* ADICIONAIS RECUADOS PARA NÃO QUEBRAR O LAYOUT */}
                             {item.selectedOptions?.map((opt, i) => (
-                                <div key={i} style={{ fontSize: smallFontSize, paddingLeft: '4mm' }}>+ {opt.optionName}</div>
+                                <div key={i} style={{ fontSize: smallFontSize, marginLeft: '20px' }}>+ {opt.optionName}</div>
                             ))}
                             {item.selectedAddons?.map((a, i) => (
-                                <div key={i} style={{ fontSize: smallFontSize, paddingLeft: '4mm' }}>+ {a.name}</div>
+                                <div key={i} style={{ fontSize: smallFontSize, marginLeft: '20px' }}>+ {a.name}</div>
                             ))}
-                            {item.notes && (
-                                <div style={{ fontSize: smallFontSize, backgroundColor: '#eee', padding: '2px', marginTop: '2px' }}>
-                                    OBS: {item.notes}
-                                </div>
-                            )}
                         </div>
                     ))}
                 </div>
 
-                {/* TOTAIS EXATAMENTE COMO NO MODELO */}
-                <div className="totals-section">
+                {/* TOTAIS */}
+                <div style={{ borderTop: '1px dashed #000', paddingTop: '5px' }}>
                     <div className="item-row" style={{ fontSize: baseFontSize }}>
                         <span>SUBTOTAL:</span>
-                        <span className="price-col">R$ {Number(order.subtotal || 0).toFixed(2)}</span>
+                        <span>R$ {Number(order.subtotal || 0).toFixed(2)}</span>
                     </div>
                     {!isPickup && (
                         <div className="item-row" style={{ fontSize: baseFontSize }}>
                             <span>TAXA ENTREGA:</span>
-                            <span className="price-col">R$ {Number(order.deliveryFee || 0).toFixed(2)}</span>
+                            <span>R$ {Number(order.deliveryFee || 0).toFixed(2)}</span>
                         </div>
                     )}
                     {Number(order.discountAmount || 0) > 0 && (
                         <div className="item-row" style={{ fontSize: baseFontSize }}>
                             <span>DESCONTO:</span>
-                            <span className="price-col">- R$ {Number(order.discountAmount).toFixed(2)}</span>
+                            <span>- R$ {Number(order.discountAmount).toFixed(2)}</span>
                         </div>
                     )}
-                    <div className="item-row" style={{ fontSize: titleFontSize, marginTop: '2px', borderTop: '2px solid #000', paddingTop: '2px' }}>
+                    
+                    <div className="total-row">
                         <span>TOTAL:</span>
-                        <span className="price-col">R$ {Number(order.totalPrice).toFixed(2)}</span>
+                        <span>R$ {Number(order.totalPrice).toFixed(2)}</span>
                     </div>
                 </div>
 
-                {/* FORMA DE PAGAMENTO EM BOX */}
-                <div className="payment-method-box">
+                {/* PAGAMENTO */}
+                <div className="pgto-box">
                     PGTO: {order.paymentMethod}
-                    {isPixPaid && <div style={{ fontSize: '10px' }}>(PAGO PELO APP)</div>}
                 </div>
 
                 {/* RODAPÉ */}
-                <div className="footer-info">
+                <div className="text-center" style={{ fontSize: smallFontSize, marginTop: '20px' }}>
                     GUARA-FOOD PDV
                     <br/>OBRIGADO PELA PREFERENCIA!
                     <br/>.
