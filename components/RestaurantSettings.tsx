@@ -6,6 +6,7 @@ import { fetchRestaurantByIdSecure, updateRestaurant } from '../services/databas
 import type { Restaurant, OperatingHours, Order } from '../types';
 import Spinner from './Spinner';
 import PrintableOrder from './PrintableOrder';
+import { getErrorMessage } from '../services/api';
 
 const NotificationSettings: React.FC = () => {
     const { addToast } = useNotification();
@@ -131,7 +132,8 @@ const RestaurantSettings: React.FC = () => {
             localStorage.setItem('guarafood-printer-width', printerWidth.toString());
             addToast({ message: 'Configurações salvas e sincronizadas!', type: 'success' });
         } catch (err: any) {
-            addToast({ message: 'Erro ao salvar.', type: 'error' });
+            console.error("Save Error:", err);
+            addToast({ message: `Erro ao salvar: ${getErrorMessage(err)}`, type: 'error' });
         } finally { setIsSaving(false); }
     };
     

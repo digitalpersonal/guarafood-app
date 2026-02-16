@@ -57,7 +57,8 @@ const normalizeRestaurant = (data: any): Restaurant => {
         mercado_pago_credentials: { accessToken: hasMpToken ? "PROTECTED" : "" },
         manualPixKey: data.manual_pix_key,
         hasPixConfigured: hasMpToken,
-        active: data.active !== false
+        active: data.active !== false,
+        printerWidth: data.printer_width
     };
 };
 
@@ -84,7 +85,8 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         mercado_pago_credentials: data.mercado_pago_credentials || { accessToken: '' },
         manualPixKey: data.manual_pix_key,
         hasPixConfigured: hasMpToken,
-        active: data.active !== false
+        active: data.active !== false,
+        printerWidth: data.printer_width
     };
 };
 
@@ -193,31 +195,33 @@ export const fetchRestaurantByIdSecure = async (id: number): Promise<Restaurant 
 };
 
 export const updateRestaurant = async (id: number, updates: Partial<Restaurant>): Promise<Restaurant> => {
+    // SENIOR FIX: Mapping all camelCase fields to snake_case for DB
     const dbUpdates: any = { ...updates };
-    if (updates.deliveryTime) dbUpdates.delivery_time = updates.deliveryTime;
-    if (updates.imageUrl) dbUpdates.image_url = updates.imageUrl;
-    if (updates.paymentGateways) dbUpdates.payment_gateways = updates.paymentGateways;
-    if (updates.openingHours) dbUpdates.opening_hours = updates.openingHours;
-    if (updates.closingHours) dbUpdates.closing_hours = updates.closingHours;
-    if (updates.deliveryFee) dbUpdates.delivery_fee = updates.deliveryFee;
-    if (updates.mercado_pago_credentials) dbUpdates.mercado_pago_credentials = updates.mercado_pago_credentials;
-    if (updates.operatingHours) dbUpdates.operating_hours = updates.operatingHours;
-    if (updates.manualPixKey) dbUpdates.manual_pix_key = updates.manualPixKey;
-    if (updates.active !== undefined) dbUpdates.active = updates.active;
+    
+    if (updates.deliveryTime !== undefined) dbUpdates.delivery_time = updates.deliveryTime;
+    if (updates.imageUrl !== undefined) dbUpdates.image_url = updates.imageUrl;
+    if (updates.paymentGateways !== undefined) dbUpdates.payment_gateways = updates.paymentGateways;
+    if (updates.openingHours !== undefined) dbUpdates.opening_hours = updates.openingHours;
+    if (updates.closingHours !== undefined) dbUpdates.closing_hours = updates.closingHours;
+    if (updates.deliveryFee !== undefined) dbUpdates.delivery_fee = updates.deliveryFee;
+    if (updates.operatingHours !== undefined) dbUpdates.operating_hours = updates.operatingHours;
+    if (updates.manualPixKey !== undefined) dbUpdates.manual_pix_key = updates.manualPixKey;
+    if (updates.printerWidth !== undefined) dbUpdates.printer_width = updates.printerWidth;
 
-    delete dbUpdates.deliveryTime;
-    delete dbUpdates.imageUrl;
-    delete dbUpdates.paymentGateways;
-    delete dbUpdates.openingHours;
-    delete dbUpdates.closingHours;
-    delete dbUpdates.deliveryFee;
-    delete dbUpdates.operatingHours;
-    delete dbUpdates.manualPixKey;
-    delete dbUpdates.hasPixConfigured;
+    // Clean up all camelCase keys to prevent Supabase "column does not exist" errors
+    const keysToRemove = [
+        'deliveryTime', 'imageUrl', 'paymentGateways', 'openingHours', 
+        'closingHours', 'deliveryFee', 'operatingHours', 'manualPixKey', 
+        'hasPixConfigured', 'printerWidth'
+    ];
+    keysToRemove.forEach(key => delete dbUpdates[key]);
 
     const { data, error } = await supabase.from('restaurants').update(dbUpdates).eq('id', id).select().single();
-    if (error && error.code === '42501') throw new Error("Permissão negada.");
-    handleSupabaseError({ error, customMessage: 'Failed to update restaurant' });
+    
+    if (error) {
+        handleSupabaseError({ error, customMessage: 'Erro ao atualizar dados do restaurante no banco' });
+    }
+    
     return normalizeRestaurantSecure(data);
 };
 
