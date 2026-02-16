@@ -44,7 +44,8 @@ export const subscribeToOrders = (
     const refreshData = async () => {
         if (!isMounted) return;
         try {
-            const orders = await fetchOrders(restaurantId, { limit: 200 });
+            // Aumentado limite no polling também para consistência
+            const orders = await fetchOrders(restaurantId, { limit: 1000 });
             if (isMounted) callback(orders);
         } catch (e) {
             console.error("Erro ao atualizar pedidos via polling:", e);
@@ -91,9 +92,9 @@ export const fetchOrders = async (restaurantId?: number, options?: { limit?: num
         query = query.eq('restaurant_id', restaurantId);
     }
     
-    if (options?.limit) {
-        query = query.limit(options.limit);
-    }
+    // Se não houver limite definido, usamos 5000 como segurança alta, mas limitando para evitar crash.
+    const finalLimit = options?.limit || 5000;
+    query = query.limit(finalLimit);
 
     const { data, error } = await query.order('timestamp', { ascending: false });
     if (error) {
@@ -215,7 +216,6 @@ export const updateOrderDetails = async (
         items: updatedDetails.items,
         total_price: updatedDetails.totalPrice,
         subtotal: updatedDetails.subtotal,
-        // FIX: corrected updatedDetails.discount_amount to updatedDetails.discountAmount
         discount_amount: updatedDetails.discountAmount,
         payment_method: updatedDetails.paymentMethod,
     };

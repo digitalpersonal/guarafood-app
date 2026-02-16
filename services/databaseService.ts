@@ -110,7 +110,8 @@ const normalizeItem = (data: any): MenuItem => ({
     isDailySpecial: data.is_daily_special,
     isWeeklySpecial: data.is_weekly_special,
     availableDays: data.available_days,
-    displayOrder: data.display_order
+    displayOrder: data.display_order,
+    available: data.available !== false // Assume true if null
 });
 
 const normalizeCombo = (data: any): Combo => ({
@@ -390,7 +391,8 @@ export const createMenuItem = async (restaurantId: number, item: any): Promise<v
         restaurant_id: restaurantId, category_id: catData.id, name: item.name, description: item.description, price: item.price,
         original_price: item.originalPrice, image_url: item.imageUrl, is_pizza: item.isPizza, is_acai: item.isAcai,
         is_marmita: item.isMarmita, marmita_options: item.marmitaOptions, available_addon_ids: item.availableAddonIds,
-        sizes: item.sizes, is_daily_special: item.isDailySpecial, is_weekly_special: item.isWeeklySpecial, available_days: item.availableDays
+        sizes: item.sizes, is_daily_special: item.isDailySpecial, is_weekly_special: item.isWeeklySpecial, available_days: item.availableDays,
+        available: item.available !== false
     };
     const { error } = await supabase.from('menu_items').insert(payload);
     handleSupabaseError({ error, customMessage: 'Failed to create item' });
@@ -403,7 +405,8 @@ export const updateMenuItem = async (restaurantId: number, id: number, item: any
         category_id: catData.id, name: item.name, description: item.description, price: item.price, original_price: item.originalPrice,
         image_url: item.imageUrl, is_pizza: item.isPizza, is_acai: item.isAcai, is_marmita: item.isMarmita,
         marmita_options: item.marmitaOptions, available_addon_ids: item.availableAddonIds, sizes: item.sizes,
-        is_daily_special: item.isDailySpecial, is_weekly_special: item.isWeeklySpecial, available_days: item.availableDays
+        is_daily_special: item.isDailySpecial, is_weekly_special: item.isWeeklySpecial, available_days: item.availableDays,
+        available: item.available !== false
     };
     const { error } = await supabase.from('menu_items').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
     handleSupabaseError({ error, customMessage: 'Failed to update item' });
@@ -475,7 +478,7 @@ export const createPromotion = async (restaurantId: number, promo: any): Promise
 
 export const updatePromotion = async (restaurantId: number, id: number, promo: any): Promise<void> => {
     const payload = { name: promo.name, description: promo.description, discount_type: promo.discountType, discount_value: promo.discountValue, target_type: promo.targetType, target_ids: promo.targetIds, start_date: promo.startDate, end_date: promo.endDate };
-    const { error } = await supabase.from('promotions').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
+    const { error = null } = await supabase.from('promotions').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
     handleSupabaseError({ error, customMessage: 'Failed to update promotion' });
 };
 

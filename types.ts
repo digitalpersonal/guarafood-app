@@ -82,6 +82,7 @@ export interface MenuItem {
   isWeeklySpecial?: boolean; // For supermarket "Promoções da Semana"
   availableDays?: number[]; // For "Prato do Dia". 0=Sun, 1=Mon, etc.
   displayOrder?: number; // Added for item reordering
+  available?: boolean; // NEW: Field to mark item as out of stock
 }
 
 export interface Combo {

@@ -70,9 +70,16 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
   // Lógica para determinar a URL da imagem final
   const finalImageUrl = item.imageUrl || getGenericImageUrl(categoryName) || '';
 
+  const isAvailable = item.available !== false;
+  const canPurchase = isOpen && isAvailable;
+
   const handleAddToCartClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (!isOpen) {
         addToast({ message: "Este restaurante está fechado agora.", type: 'warning' });
+        return;
+    }
+    if (!isAvailable) {
+        addToast({ message: "Este item está esgotado no momento.", type: 'warning' });
         return;
     }
 
@@ -105,10 +112,17 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
 
   return (
     <>
-      <div className={`${containerClasses} rounded-lg overflow-hidden flex p-3 space-x-4 relative transition-all duration-300 group ${!isOpen ? 'opacity-75' : ''}`}>
+      <div className={`${containerClasses} rounded-lg overflow-hidden flex p-3 space-x-4 relative transition-all duration-300 group ${!canPurchase ? 'grayscale opacity-75' : ''}`}>
           
+          {/* Badge: Esgotado */}
+          {!isAvailable && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/40 pointer-events-none">
+                <span className="bg-gray-800 text-white text-xs font-black px-4 py-2 rounded-full shadow-xl uppercase tracking-widest border-2 border-white">Esgotado</span>
+            </div>
+          )}
+
           {/* Badge: Destaque do Dia */}
-          {item.isDailySpecial && (
+          {item.isDailySpecial && isAvailable && (
             <div className="absolute top-0 left-0 bg-yellow-500 text-white text-[10px] font-extrabold px-2 py-1 rounded-br-lg z-10 flex items-center gap-1 shadow-sm">
                 <StarIcon className="w-3 h-3 text-white" />
                 <span>DESTAQUE</span>
@@ -116,14 +130,14 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
           )}
 
           {/* Badge: Promoção */}
-          {item.activePromotion && !item.isDailySpecial && (
+          {item.activePromotion && !item.isDailySpecial && isAvailable && (
             <div className="absolute top-0 left-0 bg-orange-600 text-white text-[10px] font-bold px-2 py-1 rounded-br-lg z-10">
                 PROMO
             </div>
           )}
 
           {/* Badge: Menu do Dia (Disponibilidade Limitada) */}
-          {item.availableDays && item.availableDays.length > 0 && !item.isDailySpecial && (
+          {item.availableDays && item.availableDays.length > 0 && !item.isDailySpecial && isAvailable && (
              <div className="absolute top-0 left-0 bg-purple-600 text-white text-[10px] font-bold px-2 py-1 rounded-br-lg z-10 flex items-center gap-1">
                 <CalendarDaysIcon className="w-3 h-3" />
                 <span>HOJE</span>
@@ -171,13 +185,14 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
         </div>
 
         <div className="flex-shrink-0 relative w-24 h-24 self-center">
-          <OptimizedImage src={finalImageUrl} alt={item.name} className={`w-full h-full rounded-md shadow-sm ${!isOpen ? 'grayscale' : ''}`} />
+          <OptimizedImage src={finalImageUrl} alt={item.name} className={`w-full h-full rounded-md shadow-sm ${!canPurchase ? 'grayscale' : ''}`} />
           <button 
             onClick={handleAddToCartClick}
-            className={`absolute -bottom-2 -right-2 rounded-full w-9 h-9 flex items-center justify-center text-xl font-bold shadow-lg transition-all z-10 transform ${isOpen ? 'bg-gray-800 text-white hover:bg-orange-600 group-hover:scale-110' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
-            title={isOpen ? "Adicionar" : "Restaurante Fechado"}
+            disabled={!canPurchase}
+            className={`absolute -bottom-2 -right-2 rounded-full w-9 h-9 flex items-center justify-center text-xl font-bold shadow-lg transition-all z-10 transform ${canPurchase ? 'bg-gray-800 text-white hover:bg-orange-600 group-hover:scale-110' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+            title={canPurchase ? "Adicionar" : !isAvailable ? "Item Esgotado" : "Restaurante Fechado"}
           >
-            {isOpen ? '+' : '×'}
+            {canPurchase ? '+' : !isAvailable ? '!' : '×'}
           </button>
         </div>
       </div>

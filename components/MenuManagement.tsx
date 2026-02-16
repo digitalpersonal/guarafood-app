@@ -778,13 +778,14 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                                                 <tr className="border-b bg-gray-50 text-xs text-gray-500 uppercase">
                                                     <th className="px-4 py-2 w-16 text-center">Ord.</th>
                                                     <th className="px-4 py-2">Item</th>
+                                                    <th className="px-4 py-2 text-center">Status</th>
                                                     <th className="px-4 py-2 text-right">Preço</th>
                                                     <th className="px-4 py-2 text-right">Ações</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {category.items.map((item, itemIndex) => (
-                                                    <tr key={item.id} className="border-b hover:bg-gray-50">
+                                                    <tr key={item.id} className={`border-b hover:bg-gray-50 ${item.available === false ? 'bg-gray-50 opacity-60' : ''}`}>
                                                         <td className="p-2 text-center">
                                                             <div className="flex flex-col items-center">
                                                                 <button 
@@ -806,6 +807,11 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                                                         <td className="p-4">
                                                             <div className="font-semibold text-gray-900">{item.name}</div>
                                                             <div className="text-xs text-gray-500 line-clamp-1">{item.description}</div>
+                                                        </td>
+                                                        <td className="p-4 text-center">
+                                                            <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${item.available !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                {item.available !== false ? 'Em Estoque' : 'Esgotado'}
+                                                            </span>
                                                         </td>
                                                         <td className="p-4 font-semibold text-right whitespace-nowrap">R$ {item.price.toFixed(2)}</td>
                                                         <td className="p-4">

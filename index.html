@@ -83,8 +83,9 @@
 
       @media print {
         body * { visibility: hidden; }
-        #printable-order, #printable-order * { visibility: visible; }
-        #printable-order { position: absolute; left: 0; top: 0; width: 100%; }
+        /* Adicionado #thermal-report-closing para permitir impressão do fechamento */
+        #printable-order, #printable-order *, #thermal-report-closing, #thermal-report-closing * { visibility: visible; }
+        #printable-order, #thermal-report-closing { position: absolute; left: 0; top: 0; width: 100%; }
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       }
     </style>

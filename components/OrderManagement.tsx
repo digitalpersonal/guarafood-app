@@ -118,8 +118,14 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         let wakeLock: any = null;
         const requestWakeLock = async () => {
             if ('wakeLock' in navigator) {
-                try { wakeLock = await (navigator as any).wakeLock.request('screen'); } 
-                catch (err: any) { console.error(`${err.name}, ${err.message}`); }
+                try { 
+                    wakeLock = await (navigator as any).wakeLock.request('screen'); 
+                } catch (err: any) { 
+                    // Silenciamos o erro de permissão (NotAllowedError) que ocorre em iframes restritos
+                    if (err.name !== 'NotAllowedError') {
+                        console.warn(`WakeLock request failed: ${err.name}, ${err.message}`); 
+                    }
+                }
             }
         };
         requestWakeLock();

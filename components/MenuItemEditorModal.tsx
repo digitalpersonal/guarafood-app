@@ -126,6 +126,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
     const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
     const [addonSearchTerm, setAddonSearchTerm] = useState('');
     const [error, setError] = useState('');
+    const [available, setAvailable] = useState(true);
 
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -148,6 +149,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             setSizes(existingItem.sizes || []);
             setAvailableDays(existingItem.availableDays || []);
             setSelectedAddonIds(new Set(existingItem.availableAddonIds || []));
+            setAvailable(existingItem.available !== false);
         } else {
             // Reset form for new item
             setName('');
@@ -164,6 +166,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             setSizes([]);
             setAvailableDays([]);
             setSelectedAddonIds(new Set());
+            setAvailable(true);
         }
         setAddonSearchTerm('');
         setImageFile(null);
@@ -385,6 +388,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                 availableDays,
                 sizes: hasSizes ? sizes : undefined,
                 availableAddonIds: Array.from(selectedAddonIds),
+                available: available
             }, category);
         } catch (err: any) {
             console.error("Failed to save:", err);
@@ -404,6 +408,22 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                 <h2 id="menuitem-editor-modal-title" className="text-2xl font-bold mb-4">{existingItem ? 'Editar Item' : 'Adicionar Item'}</h2>
                 
                 <div className="overflow-y-auto space-y-4 pr-2 -mr-2">
+                    
+                    {/* DISPONIBILIDADE (ESTOQUE) */}
+                    <div className="p-4 bg-orange-50 border-2 border-orange-100 rounded-xl flex items-center justify-between">
+                         <div className="flex items-center gap-3">
+                            <div className={`w-3 h-3 rounded-full ${available ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                            <div>
+                                <p className="text-sm font-black text-gray-800 uppercase tracking-tight">Status de Venda</p>
+                                <p className="text-[10px] text-gray-500 font-bold uppercase">{available ? 'Disponível no cardápio' : 'Esgotado / Pausado'}</p>
+                            </div>
+                         </div>
+                         <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" checked={available} onChange={(e) => setAvailable(e.target.checked)} className="sr-only peer" />
+                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
+                        </label>
+                    </div>
+
                     <div className="flex flex-col md:flex-row items-start gap-4">
                          <div className="flex-shrink-0">
                             {imagePreview ? (

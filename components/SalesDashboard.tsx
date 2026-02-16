@@ -72,7 +72,6 @@ const SalesDashboard: React.FC = () => {
         const start = new Date(date);
         const end = new Date(date);
         
-        // Lógica de Janela Operacional para o relatório diário
         if (type === 'day') {
             const dayOfWeek = start.getDay();
             const config = restaurant?.operatingHours?.find(h => h.dayOfWeek === dayOfWeek);
@@ -83,7 +82,6 @@ const SalesDashboard: React.FC = () => {
                 
                 start.setHours(oH, oM, 0, 0);
                 
-                // Se o fechamento for menor que a abertura, o turno cruza a meia-noite
                 const openMins = oH * 60 + oM;
                 const closeMins = cH * 60 + cM;
                 
@@ -92,7 +90,6 @@ const SalesDashboard: React.FC = () => {
                 }
                 end.setHours(cH, cM, 59, 999);
             } else {
-                // Fallback padrão se não houver configuração
                 start.setHours(0, 0, 0, 0); 
                 end.setHours(23, 59, 59, 999);
             }
@@ -228,9 +225,6 @@ const SalesDashboard: React.FC = () => {
                         <button onClick={() => handleNavigate(1)} className="p-2 hover:bg-orange-50 text-orange-600 rounded-full border border-orange-100"><ChevronRightIcon className="w-6 h-6" /></button>
                     </div>
                 )}
-                {activePeriod === 'day' && (
-                    <p className="text-[10px] text-center text-gray-400 italic">Fechamento baseado no horário de funcionamento configurado.</p>
-                )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -309,20 +303,23 @@ const SalesDashboard: React.FC = () => {
                 </form>
             </div>
 
+            {/* BOTÃO PRINCIPAL DE FECHAMENTO E IMPRESSÃO */}
             <button 
                 onClick={() => window.print()} 
-                className="w-full flex items-center justify-center gap-3 p-5 bg-white border-2 border-gray-900 text-gray-900 font-black rounded-3xl hover:bg-gray-900 hover:text-white transition-all shadow-md active:scale-95"
+                className="w-full flex items-center justify-center gap-3 p-6 bg-orange-600 text-white font-black rounded-3xl hover:bg-orange-700 transition-all shadow-xl shadow-orange-200 active:scale-95"
             >
-                <PrinterIcon className="w-6 h-6" /> 
-                <span className="uppercase tracking-widest text-sm">Imprimir Fechamento de Turno</span>
+                <PrinterIcon className="w-8 h-8" /> 
+                <div className="text-left">
+                    <span className="block text-[10px] uppercase tracking-widest opacity-80">Finalizar e Imprimir</span>
+                    <span className="text-lg uppercase tracking-tight">Imprimir Fechamento de Turno</span>
+                </div>
             </button>
 
-            {/* VIEW DE IMPRESSÃO TÉRMICA DE FECHAMENTO */}
             <div className="hidden print:block text-black font-mono">
                 <style>{`
                     @media print {
                         @page { margin: 0 !important; size: ${printerWidth}mm auto; }
-                        body { margin: 0 !important; padding: 0 !important; width: ${printerWidth}mm !important; background: #fff; }
+                        body { margin: 0 !important; padding: 0 !important; width: ${printerWidth}mm !important; background: #fff !important; }
                         #thermal-report-closing { 
                             width: ${printableWidth} !important; 
                             margin: 0 auto !important; 
@@ -331,6 +328,8 @@ const SalesDashboard: React.FC = () => {
                             line-height: 1.2; 
                             display: block !important; 
                             box-sizing: border-box !important;
+                            background: #fff !important;
+                            color: #000 !important;
                         }
                         .thermal-header { text-align: center; border-bottom: 1.5px dashed black; padding-bottom: 4px; margin-bottom: 8px; }
                         .thermal-row { display: flex; justify-content: space-between; margin-bottom: 4px; width: 100%; align-items: flex-start; }
@@ -340,13 +339,6 @@ const SalesDashboard: React.FC = () => {
                         .thermal-left { flex: 1; padding-right: 4px; }
                         .thermal-right { white-space: nowrap !important; min-width: 70px; text-align: right; }
                         .thermal-footer { text-align: center; margin-top: 20px; font-size: 10px; border-top: 1px solid black; padding-top: 6px; }
-                        
-                        #thermal-report-closing * {
-                            word-wrap: break-word !important;
-                            overflow-wrap: break-word !important;
-                            word-break: break-all !important;
-                            white-space: normal !important;
-                        }
                     }
                 `}</style>
                 <div id="thermal-report-closing">
@@ -384,19 +376,6 @@ const SalesDashboard: React.FC = () => {
                             <span className="thermal-right thermal-bold">R$ {Number(v).toFixed(2)}</span>
                         </div>
                     ))}
-
-                    <div className="thermal-divider"></div>
-                    <div className="thermal-bold" style={{ marginBottom: '6px' }}>TOP 5 PRODUTOS</div>
-                    {dashboardData.bestSellers.slice(0, 5).map((item, i) => (
-                        <div key={i} className="thermal-row">
-                            <span className="thermal-left">{i+1}. {item.name}</span>
-                            <span className="thermal-right">{item.qty} un</span>
-                        </div>
-                    ))}
-
-                    <div className="thermal-divider"></div>
-                    <div className="thermal-row"><span>CANCELADOS:</span><span>{dashboardData.stats.cancelledCount}</span></div>
-                    <div className="thermal-row"><span>PIX PENDENTES:</span><span>{dashboardData.stats.pendingPixCount}</span></div>
 
                     <div className="thermal-footer">
                         Impresso em: {new Date().toLocaleString('pt-BR')}
