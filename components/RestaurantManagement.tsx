@@ -24,6 +24,17 @@ const ClipboardIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 
 
+const LockIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+    </svg>
+);
+const UnlockIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+    </svg>
+);
+
 interface RestaurantManagementProps {
     onEditMenu: (restaurant: Restaurant) => void;
 }
@@ -39,10 +50,9 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
     const loadRestaurants = useCallback(async () => {
         try {
             setIsLoading(true);
-            // Use the secure fetch to ensure admin can see credentials if needed for editing
             const data = await fetchRestaurantsSecure();
             setRestaurants(data);
-            setError(null); // Clear previous errors on successful load
+            setError(null);
         } catch (err) {
             console.error("Failed to load restaurants:", err);
             setError(`Falha ao carregar restaurantes: ${getErrorMessage(err)}`);
@@ -54,6 +64,29 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
     useEffect(() => {
         loadRestaurants();
     }, [loadRestaurants]);
+
+    const handleToggleStatus = async (restaurant: Restaurant) => {
+        const newStatus = !restaurant.active;
+        const action = newStatus ? 'Ativar' : 'Suspender';
+        
+        const confirmed = await confirm({
+            title: `${action} Restaurante`,
+            message: `Deseja realmente ${action.toLowerCase()} o restaurante "${restaurant.name}"?`,
+            confirmText: action,
+            isDestructive: !newStatus,
+        });
+
+        if (confirmed) {
+            try {
+                const { error: uErr } = await supabase.from('restaurants').update({ active: newStatus }).eq('id', restaurant.id);
+                if (uErr) throw uErr;
+                addToast({ message: `Restaurante ${newStatus ? 'ativado' : 'suspenso'} com sucesso!`, type: 'success' });
+                await loadRestaurants();
+            } catch (err: any) {
+                addToast({ message: `Erro ao alterar status: ${getErrorMessage(err)}`, type: 'error' });
+            }
+        }
+    };
 
     const handleOpenEditor = (restaurant: Restaurant | null) => {
         setEditingRestaurant(restaurant);
@@ -76,7 +109,7 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
         if (confirmed) {
             try {
                 await deleteRestaurant(restaurantId);
-                addToast({ message: 'Restaurante excluído.', type: 'info' });
+                addToast({ message: 'Restaurante excluído com sucesso.', type: 'success' });
                 await loadRestaurants();
             } catch (err: any) {
                 console.error("Failed to delete restaurant", err);
@@ -149,6 +182,9 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
                                 </td>
                                 <td className="px-6 py-4">
                                     <div className="flex space-x-2">
+                                        <button onClick={() => handleToggleStatus(restaurant)} className={`p-2 ${restaurant.active ? 'text-gray-500 hover:text-red-600' : 'text-gray-500 hover:text-green-600'}`} title={restaurant.active ? 'Suspender Restaurante' : 'Ativar Restaurante'}>
+                                            {restaurant.active ? <LockIcon className="w-5 h-5"/> : <UnlockIcon className="w-5 h-5"/>}
+                                        </button>
                                         <button onClick={() => onEditMenu(restaurant)} className="p-2 text-gray-500 hover:text-green-600" title="Gerenciar Cardápio">
                                             <MenuBookIcon className="w-5 h-5"/>
                                         </button>
