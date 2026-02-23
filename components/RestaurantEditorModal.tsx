@@ -73,6 +73,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
     const [error, setError] = useState('');
     const [isSaving, setIsSaving] = useState(false);
+    const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
     const [categories, setCategories] = useState<RestaurantCategory[]>([]);
     const [showSecondShift, setShowSecondShift] = useState<boolean[]>(Array(7).fill(false));
 
@@ -122,6 +123,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 manualPixKey: existingRestaurant.manualPixKey || '',
                 active: existingRestaurant.active !== false
             });
+            setSelectedCategories(existingRestaurant.category ? existingRestaurant.category.split(',').map(c => c.trim()) : []);
             setLogoPreview(existingRestaurant.imageUrl);
             setChangeCredentials(false);
         } else {
@@ -131,6 +133,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 mercado_pago_credentials: { accessToken: '' }, operatingHours: getDefaultOperatingHours(),
                 manualPixKey: '', active: true
             });
+            setSelectedCategories([]);
             setShowSecondShift(Array(7).fill(false));
             setChangeCredentials(true); 
             setLogoPreview(null);
@@ -141,6 +144,21 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: (name === 'deliveryFee') ? parseFloat(value) : value }));
+    };
+
+    const handleCategoryToggle = (catName: string) => {
+        setSelectedCategories(prev => 
+            prev.includes(catName) ? prev.filter(c => c !== catName) : [...prev, catName]
+        );
+    };
+
+    const handlePaymentToggle = (method: string) => {
+        setFormData(prev => ({
+            ...prev,
+            paymentGateways: prev.paymentGateways.includes(method)
+                ? prev.paymentGateways.filter(m => m !== method)
+                : [...prev.paymentGateways, method]
+        }));
     };
 
     const handleCredentialsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -160,8 +178,8 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
     };
 
     const handleSubmit = async () => {
-        if (!formData.name || !formData.category || !formData.address || !formData.phone) {
-            setError('Campos obrigatórios faltando.'); return;
+        if (!formData.name || selectedCategories.length === 0 || !formData.address || !formData.phone) {
+            setError('Campos obrigatórios faltando (Nome, Categorias, Endereço, Telefone).'); return;
         }
         setIsSaving(true);
         let finalImageUrl = existingRestaurant?.imageUrl || '';
@@ -177,9 +195,14 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
 
         const openDays = formData.operatingHours?.filter(d => d.isOpen) || [];
         const dbPayload = {
-            name: formData.name, category: formData.category, delivery_time: formData.deliveryTime,
-            rating: formData.rating, image_url: finalImageUrl, payment_gateways: formData.paymentGateways,
-            address: formData.address, phone: formData.phone, 
+            name: formData.name, 
+            category: selectedCategories.join(', '), 
+            delivery_time: formData.deliveryTime,
+            rating: formData.rating, 
+            image_url: finalImageUrl, 
+            payment_gateways: formData.paymentGateways,
+            address: formData.address, 
+            phone: formData.phone, 
             opening_hours: openDays.length > 0 ? openDays[0].opens : '',
             closing_hours: openDays.length > 0 ? openDays[0].closes : '',
             delivery_fee: formData.deliveryFee || 0,
@@ -226,16 +249,77 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                         }} className="text-xs" />
                     </div>
 
-                    <input name="name" value={formData.name} onChange={handleChange} placeholder="Nome" className="w-full p-2 border rounded" />
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                        <input name="phone" value={formData.phone} onChange={handleChange} placeholder="Telefone" className="p-2 border rounded" />
-                        <input name="deliveryFee" type="number" value={formData.deliveryFee} onChange={handleChange} placeholder="Taxa Entrega" className="p-2 border rounded" />
+                    <div className="space-y-4">
+                        <input name="name" value={formData.name} onChange={handleChange} placeholder="Nome do Restaurante" className="w-full p-2 border rounded" />
+                        <input name="address" value={formData.address} onChange={handleChange} placeholder="Endereço Completo" className="w-full p-2 border rounded" />
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                            <input name="phone" value={formData.phone} onChange={handleChange} placeholder="Telefone/WhatsApp" className="p-2 border rounded" />
+                            <input name="deliveryFee" type="number" value={formData.deliveryFee} onChange={handleChange} placeholder="Taxa de Entrega (R$)" className="p-2 border rounded" />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <input name="deliveryTime" value={formData.deliveryTime} onChange={handleChange} placeholder="Tempo de Entrega (ex: 30-45 min)" className="p-2 border rounded" />
+                            <input name="rating" type="number" step="0.1" value={formData.rating} onChange={handleChange} placeholder="Avaliação (0-5)" className="p-2 border rounded" />
+                        </div>
                     </div>
 
-                    {/* SEÇÃO MERCADO PAGO - ADICIONADA */}
+                    {/* SEÇÃO CATEGORIAS */}
+                    <div className="border-t pt-4">
+                        <h3 className="font-bold text-sm mb-2 uppercase text-gray-500">Categorias</h3>
+                        <div className="flex flex-wrap gap-2">
+                            {categories.map(cat => (
+                                <button
+                                    key={cat.id}
+                                    onClick={() => handleCategoryToggle(cat.name)}
+                                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+                                        selectedCategories.includes(cat.name)
+                                            ? 'bg-orange-600 text-white'
+                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                    }`}
+                                >
+                                    {cat.name}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* SEÇÃO FORMAS DE PAGAMENTO */}
+                    <div className="border-t pt-4">
+                        <h3 className="font-bold text-sm mb-2 uppercase text-gray-500">Formas de Pagamento Aceitas</h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {PREDEFINED_PAYMENT_METHODS.map(method => (
+                                <label key={method} className="flex items-center gap-2 text-xs cursor-pointer p-2 border rounded hover:bg-gray-50">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.paymentGateways.includes(method)}
+                                        onChange={() => handlePaymentToggle(method)}
+                                        className="rounded text-orange-600 focus:ring-orange-500"
+                                    />
+                                    <span>{method}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* SEÇÃO PIX MANUAL */}
+                    <div className="p-4 bg-green-50 rounded-xl border border-green-100 space-y-3">
+                        <h3 className="text-sm font-black text-green-900 uppercase">Chave PIX (Recebimento Direto)</h3>
+                        <div>
+                            <label className="text-[10px] font-bold text-green-700">CHAVE PIX PARA EXIBIÇÃO NO CHECKOUT</label>
+                            <input 
+                                name="manualPixKey"
+                                value={formData.manualPixKey} 
+                                onChange={handleChange}
+                                placeholder="CPF, CNPJ, Email ou Aleatória"
+                                className="w-full p-2 border border-green-200 rounded text-sm font-mono" 
+                            />
+                        </div>
+                    </div>
+
+                    {/* SEÇÃO MERCADO PAGO */}
                     <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 space-y-3">
-                        <h3 className="text-sm font-black text-blue-900 uppercase">Configuração Mercado Pago</h3>
+                        <h3 className="text-sm font-black text-blue-900 uppercase">Configuração Mercado Pago (Opcional)</h3>
                         <div>
                             <label className="text-[10px] font-bold text-blue-700">ACCESS TOKEN (PRODUÇÃO)</label>
                             <input 
@@ -268,7 +352,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                     </div>
 
                     <div className="p-4 bg-gray-100 rounded">
-                        <h3 className="font-bold text-sm mb-2">Acesso</h3>
+                        <h3 className="font-bold text-sm mb-2">Acesso Administrativo</h3>
                         {!existingRestaurant || changeCredentials ? (
                             <div className="grid grid-cols-2 gap-2">
                                 <input type="email" placeholder="Email" value={merchantEmail} onChange={e => setMerchantEmail(e.target.value)} className="p-2 border rounded bg-white" />
@@ -289,4 +373,5 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         </div>
     );
 };
+
 export default RestaurantEditorModal;
