@@ -55,26 +55,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const handleSession = useCallback(async (session: import('@supabase/supabase-js').Session | null) => {
-      if (session?.user) {
-          try {
+      try {
+          if (session?.user) {
               const profile = await fetchUserProfile(session.user);
               if (profile) {
                   localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
                   setCurrentUser(profile);
               } else {
-                  // Se o perfil não for encontrado, força o logout para evitar estado inconsistente
+                  // Perfil não encontrado, um estado inválido. Força o logout.
                   await supabase.auth.signOut();
               }
-          } catch (error) {
-              console.error("Erro ao buscar perfil, forçando logout:", error);
-              await supabase.auth.signOut(); // Força o logout em caso de erro
+          } else {
+              // Nenhuma sessão, limpa o estado local.
+              localStorage.removeItem(USER_STORAGE_KEY);
+              setCurrentUser(null);
           }
-      } else {
-          // Garante que tudo seja limpo se não houver sessão
+      } catch (error) {
+          console.error("Erro crítico ao processar sessão, limpando estado local:", error);
+          // Em caso de erro, apenas limpa o estado local para evitar loops de logout.
           localStorage.removeItem(USER_STORAGE_KEY);
           setCurrentUser(null);
+      } finally {
+          // Garante que o estado de carregamento seja SEMPRE finalizado.
+          setLoading(false);
       }
-      setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -94,14 +98,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        // Mostra o spinner durante o login e atualização de token para buscar o perfil
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-            setLoading(true);
-        }
+        // Sempre define como carregando quando o estado de autenticação muda.
+        // A lógica robusta em `handleSession` garantirá que `setLoading(false)` seja chamado.
+        setLoading(true);
         await handleSession(session);
-        if (event === 'SIGNED_OUT') {
-            setLoading(false);
-        }
       }
     );
 
