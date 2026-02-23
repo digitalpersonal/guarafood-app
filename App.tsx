@@ -1,8 +1,8 @@
 
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from './types';
-import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant, fetchRestaurantById } from './services/databaseService';
+import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion, RestaurantCategory } from './types';
+import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant, fetchRestaurantById, fetchRestaurantCategories } from './services/databaseService';
 import { AuthProvider, useAuth } from './services/authService';
 import { getInitializationError, getErrorMessage } from './services/api';
 import { isRestaurantOpen } from './utils/restaurantUtils';
@@ -182,6 +182,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
 
 const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRestaurant: (r: Restaurant | null) => void }> = ({ selectedRestaurant, onSelectRestaurant }) => {
     const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+    const [categories, setCategories] = useState<RestaurantCategory[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedCategories, setSelectedCategories] = useState<string[]>(['Todos']);
     const [showOpenOnly, setShowOpenOnly] = useState(false);
@@ -189,8 +190,12 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
     useEffect(() => {
         const loadInitialData = async () => {
             try {
-                const data = await fetchRestaurants();
-                setRestaurants(data);
+                const [restData, catData] = await Promise.all([
+                    fetchRestaurants(),
+                    fetchRestaurantCategories()
+                ]);
+                setRestaurants(restData);
+                setCategories(catData);
             } catch (err) { console.error(err); } finally { setIsLoading(false); }
         };
         loadInitialData();
@@ -198,9 +203,19 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
 
     const availableCategories = useMemo(() => {
         const activeRestaurants = restaurants.filter(r => r.active !== false);
-        const all = activeRestaurants.flatMap(r => r.category ? r.category.split(',').map(c => c.trim()) : []);
-        return ['Todos', ...Array.from(new Set(all))];
-    }, [restaurants]);
+        const allNames = activeRestaurants.flatMap(r => r.category ? r.category.split(',').map(c => c.trim()) : []);
+        const uniqueNames = Array.from(new Set(allNames));
+        
+        // Map names to their category objects to get icons
+        return ['Todos', ...uniqueNames].map(name => {
+            if (name === 'Todos') return { name: 'Todos', icon: '✨' };
+            const catObj = categories.find(c => c.name === name);
+            return {
+                name,
+                icon: catObj?.icon || categoryIcons[name] || '🍽️'
+            };
+        });
+    }, [restaurants, categories]);
 
     const filteredRestaurants = useMemo(() => {
         return restaurants.filter(restaurant => {
@@ -247,18 +262,18 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
             <div className="p-4 overflow-hidden">
                 <h2 className="text-lg font-bold text-gray-800 mb-4 ml-1">O que você quer comer hoje?</h2>
                 <div className="flex space-x-6 overflow-x-auto pb-4 no-scrollbar">
-                    {availableCategories.map(category => {
-                        const isSelected = selectedCategories.includes(category);
+                    {availableCategories.map(cat => {
+                        const isSelected = selectedCategories.includes(cat.name);
                         return (
                             <button 
-                                key={category} 
-                                onClick={() => handleCategoryToggle(category)} 
+                                key={cat.name} 
+                                onClick={() => handleCategoryToggle(cat.name)} 
                                 className="flex flex-col items-center space-y-2 min-w-[70px] transition-transform active:scale-95"
                             >
                                 <div className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl shadow-md border-2 transition-all ${isSelected ? 'bg-orange-50 border-orange-500' : 'bg-white border-transparent'}`}>
-                                    {categoryIcons[category] || '🍽️'}
+                                    {cat.icon}
                                 </div>
-                                <span className={`text-xs font-bold whitespace-nowrap ${isSelected ? 'text-orange-600' : 'text-gray-600'}`}>{category}</span>
+                                <span className={`text-xs font-bold whitespace-nowrap ${isSelected ? 'text-orange-600' : 'text-gray-600'}`}>{cat.name}</span>
                             </button>
                         );
                     })}
@@ -300,6 +315,13 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
 
 const AppContent: React.FC = () => {
     const [view, setView] = useState<'customer' | 'login' | 'history'>('customer');
+
+    const handleLoginSuccess = () => {
+        // O login foi bem-sucedido. O authService agora está atualizando o contexto em segundo plano.
+        // Apenas precisamos garantir que a visualização saia da tela de login.
+        // A lógica em `renderContent` mostrará um spinner ou o painel correto assim que o `currentUser` for atualizado.
+        setView('customer');
+    };
     const { currentUser, loading } = useAuth();
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
 
@@ -333,7 +355,7 @@ const AppContent: React.FC = () => {
         if (loading) return <div className="h-screen flex items-center justify-center"><Spinner /></div>;
         if (currentUser?.role === 'admin') return <AdminDashboard onBack={() => setView('customer')} />;
         if (currentUser?.role === 'merchant') return <OrderManagement onBack={() => setView('customer')} />;
-        if (view === 'login') return <LoginScreen onLoginSuccess={() => setView('customer')} onBack={() => setView('customer')} />;
+        if (view === 'login') return <LoginScreen onLoginSuccess={handleLoginSuccess} onBack={() => setView('customer')} />;
         if (view === 'history') return <CustomerOrders onBack={() => setView('customer')} />;
         return <CustomerView selectedRestaurant={selectedRestaurant} onSelectRestaurant={setSelectedRestaurant} />;
     };

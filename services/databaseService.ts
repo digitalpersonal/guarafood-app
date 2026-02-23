@@ -177,7 +177,9 @@ export const fetchRestaurants = async (): Promise<Restaurant[]> => {
 };
 
 export const fetchRestaurantsSecure = async (): Promise<Restaurant[]> => {
-    const { data, error } = await supabase.from('restaurants').select('*');
+    // A consulta direta foi substituída por uma chamada à função RPC 'get_restaurants_secure'.
+    // Isso evita o erro de recursão da RLS, pois a função é executada com 'SECURITY DEFINER'.
+    const { data, error } = await supabase.rpc('get_restaurants_secure');
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants (secure)' });
     return (data || []).map(normalizeRestaurantSecure);
 };
@@ -189,7 +191,9 @@ export const fetchRestaurantById = async (id: number): Promise<Restaurant | null
 };
 
 export const fetchRestaurantByIdSecure = async (id: number): Promise<Restaurant | null> => {
-    const { data, error } = await supabase.from('restaurants').select('*').eq('id', id).single();
+    // A consulta direta foi substituída pela chamada à função RPC 'get_restaurant_by_id_secure'.
+    // Esta é a correção final para o erro de recursão ao carregar os detalhes de um restaurante.
+    const { data, error } = await supabase.rpc('get_restaurant_by_id_secure', { p_id: id }).single();
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurant details' });
     return data ? normalizeRestaurantSecure(data) : null;
 };
@@ -227,31 +231,23 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
 
 export const deleteRestaurant = async (id: number): Promise<void> => {
     // Tenta usar a Edge Function para deletar restaurante + usuário do Auth
-    const { data, error } = await supabase.functions.invoke('delete-restaurant-and-user', { body: { restaurantId: id } });
+    // A função 'delete-restaurant-and-user' foi desativada para corrigir um erro de recursão.
+    // A exclusão agora é feita manualmente no banco de dados, o que é mais seguro e estável.
     
-    // SENIOR FIX: A Edge Function retorna 200 mesmo em caso de erro interno, 
-    // então precisamos verificar se há um objeto 'error' no corpo da resposta (data).
-    if (error || (data && data.error)) {
-        const errorMessage = error?.message || data?.error;
-        console.warn("Edge function failed, falling back to manual DB deletion:", errorMessage);
-        
-        // Se a função falhar, tentamos deletar manualmente no banco (Cascata manual)
-        // Deletamos todos os dados vinculados para evitar erros de FK
-        await supabase.from('menu_items').delete().eq('restaurant_id', id);
-        await supabase.from('menu_categories').delete().eq('restaurant_id', id);
-        await supabase.from('addons').delete().eq('restaurant_id', id);
-        await supabase.from('combos').delete().eq('restaurant_id', id);
-        await supabase.from('promotions').delete().eq('restaurant_id', id);
-        await supabase.from('coupons').delete().eq('restaurant_id', id);
-        await supabase.from('expenses').delete().eq('restaurant_id', id);
-        await supabase.from('orders').delete().eq('restaurant_id', id);
-        
-        // Também tentamos limpar perfis vinculados (embora sem a edge function o usuário Auth permaneça)
-        await supabase.from('profiles').delete().eq('restaurant_id', id);
+    // Cascata de exclusão manual para garantir a integridade dos dados.
+    await supabase.from('menu_items').delete().eq('restaurant_id', id);
+    await supabase.from('menu_categories').delete().eq('restaurant_id', id);
+    await supabase.from('addons').delete().eq('restaurant_id', id);
+    await supabase.from('combos').delete().eq('restaurant_id', id);
+    await supabase.from('promotions').delete().eq('restaurant_id', id);
+    await supabase.from('coupons').delete().eq('restaurant_id', id);
+    await supabase.from('expenses').delete().eq('restaurant_id', id);
+    await supabase.from('orders').delete().eq('restaurant_id', id);
+    await supabase.from('profiles').delete().eq('restaurant_id', id);
 
-        const { error: dbError } = await supabase.from('restaurants').delete().eq('id', id);
-        handleSupabaseError({ error: dbError, customMessage: 'Falha ao excluir restaurante manualmente' });
-    }
+    // Exclusão final do restaurante.
+    const { error: dbError } = await supabase.from('restaurants').delete().eq('id', id);
+    handleSupabaseError({ error: dbError, customMessage: 'Falha ao excluir restaurante' });
 };
 
 // ==============================================================================
@@ -278,8 +274,8 @@ export const fetchRestaurantCategories = async (): Promise<RestaurantCategory[]>
     return (data || []).map(normalizeRestaurantCategory);
 };
 
-export const createRestaurantCategory = async (name: string): Promise<void> => {
-    const { error } = await supabase.from('restaurant_categories').insert({ name });
+export const createRestaurantCategory = async (name: string, icon?: string): Promise<void> => {
+    const { error } = await supabase.from('restaurant_categories').insert({ name, icon });
     handleSupabaseError({ error, customMessage: 'Failed to create category' });
 };
 

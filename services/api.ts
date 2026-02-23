@@ -101,12 +101,8 @@ export const handleSupabaseError = ({ error, customMessage, tableName }: { error
         const fullErrorMessageLower = errorMessage.toLowerCase();
         let enhancedMessage = `${customMessage}: ${errorMessage}`;
 
-        // Check for Infinite Recursion (RLS Policy Loop)
-        if (fullErrorMessageLower.includes('infinite recursion')) {
-            enhancedMessage = `Erro Crítico de Banco de Dados: Recursão infinita detectada nas políticas de segurança (RLS).\n\nSOLUÇÃO: Vá ao SQL Editor do Supabase e execute o script 'fix_recursion.sql' fornecido para resetar as políticas.`;
-        }
         // Check for 'column does not exist' error (PostgreSQL error code 42703 for undefined_column)
-        else if (error?.code === '42703') { 
+        if (error?.code === '42703') { 
             // Fix for 'promotions' table
             if (tableName === 'promotions' || errorMessage.includes('promotions')) {
                 let sqlCommands = '';

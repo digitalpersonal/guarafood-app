@@ -270,8 +270,15 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 
                 <div className="overflow-y-auto space-y-6 pr-2">
                     <div className="flex gap-4 items-center">
-                        <img src={logoPreview || ''} className="w-20 h-20 bg-gray-100 rounded border object-cover" />
-                        <input type="file" accept="image/*" onChange={async e => {
+                        {logoPreview ? (
+                            <img src={logoPreview} className="w-20 h-20 bg-gray-100 rounded border object-cover" />
+                        ) : (
+                            <div className="w-20 h-20 bg-gray-100 rounded border flex items-center justify-center text-[10px] text-gray-400 font-bold uppercase text-center p-2">Sem Logo</div>
+                        )}
+                        <input 
+                            type="file" 
+                            accept="image/*" 
+                            onChange={async e => {
                             if(e.target.files?.[0]) {
                                 const comp = await compressLogo(e.target.files[0]);
                                 setLogoFile(comp); setLogoPreview(URL.createObjectURL(comp));
@@ -331,12 +338,13 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                                         type="button"
                                         key={cat.id}
                                         onClick={() => handleCategoryToggle(cat.name)}
-                                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+                                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 border ${
                                         selectedCategories.includes(cat.name)
-                                            ? 'bg-orange-600 text-white'
-                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                            ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
+                                            : 'bg-white text-gray-600 border-gray-200 hover:border-orange-300'
                                     }`}
                                 >
+                                    <span>{cat.icon || '🍽️'}</span>
                                     {cat.name}
                                 </button>
                             ))}
