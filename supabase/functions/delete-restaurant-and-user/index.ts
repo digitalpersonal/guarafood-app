@@ -34,7 +34,7 @@ serve(async (req: Request) => {
     const { data: profiles, error: profileError } = await supabaseAdmin
         .from('profiles')
         .select('id')
-        .eq('restaurantId', restaurantId)
+        .eq('restaurant_id', restaurantId)
 
     if (profileError) throw new Error("Erro ao buscar perfis de usuário associados: " + profileError.message);
 

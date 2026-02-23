@@ -51,7 +51,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               email: authUser.email!,
               role: data.role as Role,
               name: data.name,
-              restaurantId: data.restaurantId
+              restaurantId: data.restaurant_id
           };
       }
 

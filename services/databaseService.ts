@@ -212,7 +212,7 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     const keysToRemove = [
         'deliveryTime', 'imageUrl', 'paymentGateways', 'openingHours', 
         'closingHours', 'deliveryFee', 'operatingHours', 'manualPixKey', 
-        'hasPixConfigured', 'printerWidth'
+        'hasPixConfigured', 'printerWidth', 'restaurantId'
     ];
     keysToRemove.forEach(key => delete dbUpdates[key]);
 
@@ -247,7 +247,7 @@ export const deleteRestaurant = async (id: number): Promise<void> => {
         await supabase.from('orders').delete().eq('restaurant_id', id);
         
         // Também tentamos limpar perfis vinculados (embora sem a edge function o usuário Auth permaneça)
-        await supabase.from('profiles').delete().eq('restaurantId', id);
+        await supabase.from('profiles').delete().eq('restaurant_id', id);
 
         const { error: dbError } = await supabase.from('restaurants').delete().eq('id', id);
         handleSupabaseError({ error: dbError, customMessage: 'Falha ao excluir restaurante manualmente' });

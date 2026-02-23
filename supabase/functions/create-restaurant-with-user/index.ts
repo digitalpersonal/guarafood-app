@@ -97,7 +97,7 @@ serve(async (req: Request) => {
             id: userId, 
             name: restaurantData.name,
             role: 'merchant',
-            "restaurantId": restaurantId
+            restaurant_id: restaurantId
         }, { onConflict: 'id' });
         
         if (profileError) throw profileError;
