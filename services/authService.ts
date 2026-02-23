@@ -5,7 +5,7 @@ import { User as SupabaseUser } from '@supabase/supabase-js';
 
 interface AuthContextType {
   currentUser: User | null;
-  login: (email: string, password: string) => Promise<void>; // Retorna void, não mais o usuário
+  login: (email: string, password: string) => Promise<User>;
   logout: () => void;
   loading: boolean;
   authError: string | null;
@@ -110,21 +110,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const login = useCallback(async (email: string, password: string): Promise<void> => {
+  const login = useCallback(async (email: string, password: string): Promise<User> => {
       setAuthError(null);
-
-      const { error } = await supabase.auth.signInWithPassword({
-          email: email.toLowerCase().trim(),
-          password
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ 
+          email: email.toLowerCase().trim(), 
+          password 
       });
 
-      if (error) {
-          // O erro será capturado no LoginScreen para exibir a mensagem correta.
-          throw error;
+      if (signInError) {
+          throw new Error(signInError.message);
       }
 
-      // Sucesso. O listener onAuthStateChange agora é a única fonte da verdade
-      // para buscar o perfil e atualizar o estado, eliminando a race condition.
+      if (signInData.user) {
+          const profile = await fetchUserProfile(signInData.user);
+          if (profile) {
+              localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
+              setCurrentUser(profile);
+              return profile;
+          } else {
+              // Força o logout se o perfil não for encontrado, para evitar um estado quebrado.
+              await supabase.auth.signOut();
+              throw new Error('Seu perfil de usuário não foi encontrado. O acesso foi revogado por segurança.');
+          }
+      } else {
+          throw new Error('O processo de login falhou em retornar um usuário.');
+      }
   }, []);
 
   const logout = useCallback(async () => {

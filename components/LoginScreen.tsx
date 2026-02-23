@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { User } from '../types';
 
 import { useAuth } from '../services/authService';
 import Spinner from './Spinner';
@@ -35,7 +36,7 @@ const EyeSlashIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
-const LoginScreen: React.FC<{ onLoginSuccess: () => void; onBack: () => void; }> = ({ onLoginSuccess, onBack }) => {
+const LoginScreen: React.FC<{ onLoginSuccess: (user: User) => void; onBack: () => void; }> = ({ onLoginSuccess, onBack }) => {
     const { login } = useAuth();
     
     const [email, setEmail] = useState('');
@@ -56,8 +57,8 @@ const LoginScreen: React.FC<{ onLoginSuccess: () => void; onBack: () => void; }>
         }
 
         try {
-            await login(email, password);
-            onLoginSuccess();
+            const user = await login(email, password);
+            onLoginSuccess(user);
         } catch (err: any) {
             const msg = err.message || '';
             if (msg.includes('Invalid login credentials')) {

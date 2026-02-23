@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { Restaurant } from '../types';
 // Import fetchRestaurantsSecure instead of fetchRestaurants
-import { fetchRestaurantsSecure, deleteRestaurant } from '../services/databaseService';
+import { fetchRestaurants, deleteRestaurant } from '../services/databaseService';
 import { useNotification } from '../hooks/useNotification';
 import Spinner from './Spinner';
 import { supabase, getErrorMessage } from '../services/api';
@@ -50,7 +50,7 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
     const loadRestaurants = useCallback(async () => {
         try {
             setIsLoading(true);
-            const data = await fetchRestaurantsSecure();
+            const data = await fetchRestaurants();
             setRestaurants(data);
             setError(null);
         } catch (err) {

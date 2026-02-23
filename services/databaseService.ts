@@ -1,5 +1,5 @@
 
-import { supabase, supabaseAnon, handleSupabaseError } from './api';
+import { supabase, handleSupabaseError } from './api';
 import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory, Expense, Order } from '../types';
 
 // ==============================================================================
@@ -171,29 +171,25 @@ const normalizeRestaurantCategory = (data: any): RestaurantCategory => data;
 // ==============================================================================
 
 export const fetchRestaurants = async (): Promise<Restaurant[]> => {
-    const { data, error } = await supabaseAnon.from('restaurants').select('*');
+    const { data, error } = await supabase.from('restaurants').select('*');
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants' });
     return (data || []).map(normalizeRestaurant);
 };
 
 export const fetchRestaurantsSecure = async (): Promise<Restaurant[]> => {
-    // A consulta direta foi substituída por uma chamada à função RPC 'get_restaurants_secure'.
-    // Isso evita o erro de recursão da RLS, pois a função é executada com 'SECURITY DEFINER'.
-    const { data, error } = await supabase.rpc('get_restaurants_secure');
+    const { data, error } = await supabase.from('restaurants').select('*');
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants (secure)' });
     return (data || []).map(normalizeRestaurantSecure);
 };
 
 export const fetchRestaurantById = async (id: number): Promise<Restaurant | null> => {
-    const { data, error } = await supabaseAnon.from('restaurants').select('*').eq('id', id).single();
+    const { data, error } = await supabase.from('restaurants').select('*').eq('id', id).single();
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurant' });
     return data ? normalizeRestaurant(data) : null;
 };
 
 export const fetchRestaurantByIdSecure = async (id: number): Promise<Restaurant | null> => {
-    // A consulta direta foi substituída pela chamada à função RPC 'get_restaurant_by_id_secure'.
-    // Esta é a correção final para o erro de recursão ao carregar os detalhes de um restaurante.
-    const { data, error } = await supabase.rpc('get_restaurant_by_id_secure', { p_id: id }).single();
+    const { data, error } = await supabase.from('restaurants').select('*').eq('id', id).single();
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurant details' });
     return data ? normalizeRestaurantSecure(data) : null;
 };
@@ -216,7 +212,7 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     const keysToRemove = [
         'deliveryTime', 'imageUrl', 'paymentGateways', 'openingHours', 
         'closingHours', 'deliveryFee', 'operatingHours', 'manualPixKey', 
-        'hasPixConfigured', 'printerWidth', 'restaurantId'
+        'hasPixConfigured', 'printerWidth'
     ];
     keysToRemove.forEach(key => delete dbUpdates[key]);
 
@@ -230,24 +226,11 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
 };
 
 export const deleteRestaurant = async (id: number): Promise<void> => {
-    // Tenta usar a Edge Function para deletar restaurante + usuário do Auth
-    // A função 'delete-restaurant-and-user' foi desativada para corrigir um erro de recursão.
-    // A exclusão agora é feita manualmente no banco de dados, o que é mais seguro e estável.
-    
-    // Cascata de exclusão manual para garantir a integridade dos dados.
-    await supabase.from('menu_items').delete().eq('restaurant_id', id);
-    await supabase.from('menu_categories').delete().eq('restaurant_id', id);
-    await supabase.from('addons').delete().eq('restaurant_id', id);
-    await supabase.from('combos').delete().eq('restaurant_id', id);
-    await supabase.from('promotions').delete().eq('restaurant_id', id);
-    await supabase.from('coupons').delete().eq('restaurant_id', id);
-    await supabase.from('expenses').delete().eq('restaurant_id', id);
-    await supabase.from('orders').delete().eq('restaurant_id', id);
-    await supabase.from('profiles').delete().eq('restaurant_id', id);
-
-    // Exclusão final do restaurante.
-    const { error: dbError } = await supabase.from('restaurants').delete().eq('id', id);
-    handleSupabaseError({ error: dbError, customMessage: 'Falha ao excluir restaurante' });
+    const { error } = await supabase.functions.invoke('delete-restaurant-and-user', { body: { restaurantId: id } });
+    if (error) {
+        const { error: dbError } = await supabase.from('restaurants').delete().eq('id', id);
+        handleSupabaseError({ error: dbError, customMessage: 'Failed to delete restaurant' });
+    }
 };
 
 // ==============================================================================
@@ -269,13 +252,13 @@ export const fetchAllOrdersAdmin = async (): Promise<Order[]> => {
 // ==============================================================================
 
 export const fetchRestaurantCategories = async (): Promise<RestaurantCategory[]> => {
-    const { data, error } = await supabaseAnon.from('restaurant_categories').select('*').order('name');
+    const { data, error } = await supabase.from('restaurant_categories').select('*').order('name');
     handleSupabaseError({ error, customMessage: 'Failed to fetch categories' });
     return (data || []).map(normalizeRestaurantCategory);
 };
 
-export const createRestaurantCategory = async (name: string, icon?: string): Promise<void> => {
-    const { error } = await supabase.from('restaurant_categories').insert({ name, icon });
+export const createRestaurantCategory = async (name: string): Promise<void> => {
+    const { error } = await supabase.from('restaurant_categories').insert({ name });
     handleSupabaseError({ error, customMessage: 'Failed to create category' });
 };
 
@@ -295,7 +278,7 @@ export const fetchBanners = async (): Promise<Banner[]> => {
 };
 
 export const fetchActiveBanners = async (): Promise<Banner[]> => {
-    const { data, error } = await supabaseAnon.from('banners').select('*').eq('active', true);
+    const { data, error } = await supabase.from('banners').select('*').eq('active', true);
     handleSupabaseError({ error, customMessage: 'Failed to fetch active banners' });
     return (data || []).map(normalizeBanner);
 };
@@ -338,19 +321,19 @@ export const deleteBanner = async (id: number): Promise<void> => {
 // ==============================================================================
 
 export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilter = false): Promise<MenuCategory[]> => {
-    const { data: categoriesData, error: catError } = await supabaseAnon
+    const { data: categoriesData, error: catError } = await supabase
         .from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true });
     handleSupabaseError({ error: catError, customMessage: 'Failed to fetch menu categories' });
 
-    const { data: itemsData, error: itemError } = await supabaseAnon
+    const { data: itemsData, error: itemError } = await supabase
         .from('menu_items').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true });
     handleSupabaseError({ error: itemError, customMessage: 'Failed to fetch menu items' });
 
-    const { data: combosData, error: comboError } = await supabaseAnon.from('combos').select('*').eq('restaurant_id', restaurantId);
+    const { data: combosData, error: comboError } = await supabase.from('combos').select('*').eq('restaurant_id', restaurantId);
     handleSupabaseError({ error: comboError, customMessage: 'Failed to fetch combos' });
 
     const today = new Date().toISOString();
-    const { data: promosData, error: promoError } = await supabaseAnon
+    const { data: promosData, error: promoError } = await supabase
         .from('promotions').select('*').eq('restaurant_id', restaurantId).lte('start_date', today).gte('end_date', today);
 
     const promotions = (promosData || []).map(normalizePromotion);
@@ -446,7 +429,7 @@ export const updateMenuItemOrder = async (restaurantId: number, items: MenuItem[
 
 // --- ADDONS ---
 export const fetchAddonsForRestaurant = async (restaurantId: number): Promise<Addon[]> => {
-    const { data, error } = await supabaseAnon.from('addons').select('*').eq('restaurant_id', restaurantId);
+    const { data, error } = await supabase.from('addons').select('*').eq('restaurant_id', restaurantId);
     handleSupabaseError({ error, customMessage: 'Failed to fetch addons' });
     return (data || []).map(normalizeAddon);
 };

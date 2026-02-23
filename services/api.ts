@@ -5,64 +5,11 @@ const supabaseUrl = SUPABASE_URL;
 const supabaseKey = SUPABASE_ANON_KEY;
 
 
-let supabaseInstance: SupabaseClient;
-let supabaseAnonInstance: SupabaseClient;
-let initializationError: Error | null = null;
-
-
-try {
-  // Add checks for missing configuration in config.ts.
-  if (!supabaseUrl || supabaseUrl.includes('your-project-id')) {
-    throw new Error("A variável SUPABASE_URL não foi configurada corretamente no arquivo config.ts. Por favor, adicione o URL do seu projeto Supabase.");
-  }
-  if (!supabaseKey || supabaseKey.includes('your-public-anon-key')) {
-      throw new Error("A variável SUPABASE_ANON_KEY não foi configurada corretamente no arquivo config.ts. Por favor, adicione a chave 'public (anon)' do seu projeto Supabase.");
-  }
-
-  // This is the standard client that will manage user sessions for authenticated actions.
-  supabaseInstance = createClient(supabaseUrl, supabaseKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-      // SENIOR FIX: Desativa o LockManager para evitar o erro de timeout "lock:sb-..."
-      // Isso é comum em ambientes de iframe ou quando múltiplas abas estão abertas.
-      storageKey: 'guara-food-auth-key',
-    }
-  });
-  
-  // This is a completely stateless client for fetching public data anonymously.
-  supabaseAnonInstance = createClient(supabaseUrl, supabaseKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    }
-  });
-  
-
-} catch (error: any) {
-  initializationError = error instanceof Error ? error : new Error(String(error));
-  // This dummy client is a fallback to prevent the app from crashing entirely
-  // if initialization fails. It will not be functional.
-  if (!supabaseInstance) {
-    const dummyClient = {
-      from: () => { throw initializationError; },
-      auth: {
-          getSession: () => Promise.resolve({ data: { session: null }, error: initializationError }),
-          onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
-      },
-      // Mock other methods as needed to prevent crashes
-    } as any;
-    supabaseInstance = dummyClient;
-    supabaseAnonInstance = dummyClient;
-  }
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Supabase URL ou Anon Key não configuradas.');
 }
 
-export const supabase = supabaseInstance;
-export const supabaseAnon = supabaseAnonInstance;
-
-export const getInitializationError = () => initializationError;
+export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
 
 /**
  * Extrai uma mensagem de string compreensível de qualquer objeto de erro.
@@ -101,8 +48,12 @@ export const handleSupabaseError = ({ error, customMessage, tableName }: { error
         const fullErrorMessageLower = errorMessage.toLowerCase();
         let enhancedMessage = `${customMessage}: ${errorMessage}`;
 
+        // Check for Infinite Recursion (RLS Policy Loop)
+        if (fullErrorMessageLower.includes('infinite recursion')) {
+            enhancedMessage = `Erro Crítico de Banco de Dados: Recursão infinita detectada nas políticas de segurança (RLS).\n\nSOLUÇÃO: Vá ao SQL Editor do Supabase e execute o script 'fix_recursion.sql' fornecido para resetar as políticas.`;
+        }
         // Check for 'column does not exist' error (PostgreSQL error code 42703 for undefined_column)
-        if (error?.code === '42703') { 
+        else if (error?.code === '42703') { 
             // Fix for 'promotions' table
             if (tableName === 'promotions' || errorMessage.includes('promotions')) {
                 let sqlCommands = '';
