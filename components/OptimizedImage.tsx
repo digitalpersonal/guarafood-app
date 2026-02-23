@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 
 interface OptimizedImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
-  src: string | null | undefined;
+  src: string;
   alt: string;
   className?: string;
   priority?: boolean;
@@ -11,7 +11,7 @@ interface OptimizedImageProps extends React.ImgHTMLAttributes<HTMLImageElement> 
 
 const OptimizedImage: React.FC<OptimizedImageProps> = ({ src, alt, className = '', priority = false, objectFit = 'cover', ...props }) => {
   const [isLoaded, setIsLoaded] = useState(false);
-  const [hasError, setHasError] = useState(!src); // Start with error if no src
+  const [hasError, setHasError] = useState(false);
 
   const objectFitClass = objectFit === 'contain' ? 'object-contain' : objectFit === 'fill' ? 'object-fill' : 'object-cover';
 
@@ -33,20 +33,18 @@ const OptimizedImage: React.FC<OptimizedImageProps> = ({ src, alt, className = '
       )}
 
       {/* The Image */}
-      {src && (
-        <img
-          src={src}
-          alt={alt}
-          loading={priority ? "eager" : "lazy"}
-          // @ts-ignore - fetchPriority is standard in newer React/Browsers but TS might complain depending on version
-          fetchPriority={priority ? "high" : "auto"}
-          decoding="async"
-          onLoad={() => setIsLoaded(true)}
-          onError={() => setHasError(true)}
-          className={`w-full h-full ${objectFitClass} transition-opacity duration-500 ease-in-out ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-          {...props}
-        />
-      )}
+      <img
+        src={src}
+        alt={alt}
+        loading={priority ? "eager" : "lazy"}
+        // @ts-ignore - fetchPriority is standard in newer React/Browsers but TS might complain depending on version
+        fetchPriority={priority ? "high" : "auto"}
+        decoding="async"
+        onLoad={() => setIsLoaded(true)}
+        onError={() => setHasError(true)}
+        className={`w-full h-full ${objectFitClass} transition-opacity duration-500 ease-in-out ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+        {...props}
+      />
     </div>
   );
 };

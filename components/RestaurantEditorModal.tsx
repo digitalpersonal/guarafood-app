@@ -270,15 +270,8 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 
                 <div className="overflow-y-auto space-y-6 pr-2">
                     <div className="flex gap-4 items-center">
-                        {logoPreview ? (
-                            <img src={logoPreview} className="w-20 h-20 bg-gray-100 rounded border object-cover" />
-                        ) : (
-                            <div className="w-20 h-20 bg-gray-100 rounded border flex items-center justify-center text-[10px] text-gray-400 font-bold uppercase text-center p-2">Sem Logo</div>
-                        )}
-                        <input 
-                            type="file" 
-                            accept="image/*" 
-                            onChange={async e => {
+                        <img src={logoPreview || ''} className="w-20 h-20 bg-gray-100 rounded border object-cover" />
+                        <input type="file" accept="image/*" onChange={async e => {
                             if(e.target.files?.[0]) {
                                 const comp = await compressLogo(e.target.files[0]);
                                 setLogoFile(comp); setLogoPreview(URL.createObjectURL(comp));
