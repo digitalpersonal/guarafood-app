@@ -124,86 +124,95 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
         addToast({ message: 'Link copiado para a área de transferência!', type: 'success' });
     };
 
-    if (isLoading) return <Spinner message="Carregando restaurantes..." />;
-    if (error) return <p className="text-center text-red-500 p-8 bg-red-50 rounded-lg">{error}</p>;
-
     return (
-        <div className="bg-white p-4 rounded-lg shadow-md">
-            <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold text-gray-800">Gerenciar Restaurantes</h2>
-                <button
-                    onClick={() => handleOpenEditor(null)}
-                    className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 transition-colors"
-                >
-                    Adicionar Novo Restaurante
-                </button>
-            </div>
-            <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left text-gray-600">
-                    <thead className="text-xs text-gray-700 uppercase bg-gray-50">
-                        <tr>
-                            <th scope="col" className="px-6 py-3">Status</th>
-                            <th scope="col" className="px-6 py-3">Nome</th>
-                            <th scope="col" className="px-6 py-3">Categoria</th>
-                            <th scope="col" className="px-6 py-3">Telefone</th>
-                            <th scope="col" className="px-6 py-3 min-w-[250px]">Link da Loja</th>
-                            <th scope="col" className="px-6 py-3">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {restaurants.map(restaurant => (
-                            <tr key={restaurant.id} className={`bg-white border-b hover:bg-gray-50 ${!restaurant.active ? 'opacity-60 grayscale-[0.5]' : ''}`}>
-                                <td className="px-6 py-4">
-                                    <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${restaurant.active ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
-                                        {restaurant.active ? 'Ativo' : 'Suspenso'}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4 font-semibold text-gray-900">{restaurant.name}</td>
-                                <td className="px-6 py-4">{restaurant.category}</td>
-                                <td className="px-6 py-4">{restaurant.phone}</td>
-                                <td className="px-6 py-4 min-w-[250px]">
-                                    <div className="flex items-center gap-2">
-                                        <input 
-                                            type="text" 
-                                            readOnly 
-                                            value={`${window.location.origin}?r=${restaurant.id}`} 
-                                            className="flex-grow p-1 border rounded bg-gray-50 text-xs truncate"
-                                            onClick={(e) => (e.target as HTMLInputElement).select()} 
-                                            aria-label={`Link da loja ${restaurant.name}`}
-                                        />
-                                        <button 
-                                            onClick={() => handleCopyLink(restaurant.id)} 
-                                            className="p-1.5 text-gray-500 hover:text-orange-600" 
-                                            title="Copiar Link"
-                                        >
-                                            <ClipboardIcon className="w-4 h-4"/>
-                                        </button>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <div className="flex space-x-2">
-                                        <button onClick={() => handleToggleStatus(restaurant)} className={`p-2 ${restaurant.active ? 'text-gray-500 hover:text-red-600' : 'text-gray-500 hover:text-green-600'}`} title={restaurant.active ? 'Suspender Restaurante' : 'Ativar Restaurante'}>
-                                            {restaurant.active ? <LockIcon className="w-5 h-5"/> : <UnlockIcon className="w-5 h-5"/>}
-                                        </button>
-                                        <button onClick={() => onEditMenu(restaurant)} className="p-2 text-gray-500 hover:text-green-600" title="Gerenciar Cardápio">
-                                            <MenuBookIcon className="w-5 h-5"/>
-                                        </button>
-                                        <button onClick={() => handleOpenEditor(restaurant)} className="p-2 text-gray-500 hover:text-blue-600" title="Editar Restaurante"><EditIcon className="w-5 h-5"/></button>
-                                        <button onClick={() => handleDeleteRestaurant(restaurant.id)} className="p-2 text-gray-500 hover:text-red-600" title="Excluir Restaurante"><TrashIcon className="w-5 h-5"/></button>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-             {isEditorOpen && (
+        <div className="bg-white p-4 rounded-lg shadow-md relative">
+            {/* SENIOR FIX: Modal renderizado no topo para nunca ser desmontado pelo estado de loading do pai */}
+            {isEditorOpen && (
                 <RestaurantEditorModal
                     isOpen={isEditorOpen}
                     onClose={handleCloseEditor}
                     onSaveSuccess={loadRestaurants}
                     existingRestaurant={editingRestaurant}
                 />
+            )}
+
+            {isLoading && restaurants.length === 0 ? (
+                <div className="p-12 flex justify-center">
+                    <Spinner message="Carregando restaurantes..." />
+                </div>
+            ) : error ? (
+                <p className="text-center text-red-500 p-8 bg-red-50 rounded-lg">{error}</p>
+            ) : (
+                <>
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-xl font-bold text-gray-800">Gerenciar Restaurantes</h2>
+                        <button
+                            onClick={() => handleOpenEditor(null)}
+                            className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 transition-colors"
+                        >
+                            Adicionar Novo Restaurante
+                        </button>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left text-gray-600">
+                            <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                                <tr>
+                                    <th scope="col" className="px-6 py-3">Status</th>
+                                    <th scope="col" className="px-6 py-3">Nome</th>
+                                    <th scope="col" className="px-6 py-3">Categoria</th>
+                                    <th scope="col" className="px-6 py-3">Telefone</th>
+                                    <th scope="col" className="px-6 py-3 min-w-[250px]">Link da Loja</th>
+                                    <th scope="col" className="px-6 py-3">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {restaurants.map(restaurant => (
+                                    <tr key={restaurant.id} className={`bg-white border-b hover:bg-gray-50 ${!restaurant.active ? 'opacity-60 grayscale-[0.5]' : ''}`}>
+                                        <td className="px-6 py-4">
+                                            <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${restaurant.active ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
+                                                {restaurant.active ? 'Ativo' : 'Suspenso'}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 font-semibold text-gray-900">{restaurant.name}</td>
+                                        <td className="px-6 py-4">{restaurant.category}</td>
+                                        <td className="px-6 py-4">{restaurant.phone}</td>
+                                        <td className="px-6 py-4 min-w-[250px]">
+                                            <div className="flex items-center gap-2">
+                                                <input 
+                                                    type="text" 
+                                                    readOnly 
+                                                    value={`${window.location.origin}?r=${restaurant.id}`} 
+                                                    className="flex-grow p-1 border rounded bg-gray-50 text-xs truncate"
+                                                    onClick={(e) => (e.target as HTMLInputElement).select()} 
+                                                    aria-label={`Link da loja ${restaurant.name}`}
+                                                />
+                                                <button 
+                                                    onClick={() => handleCopyLink(restaurant.id)} 
+                                                    className="p-1.5 text-gray-500 hover:text-orange-600" 
+                                                    title="Copiar Link"
+                                                >
+                                                    <ClipboardIcon className="w-4 h-4"/>
+                                                </button>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex space-x-2">
+                                                <button onClick={() => handleToggleStatus(restaurant)} className={`p-2 ${restaurant.active ? 'text-gray-500 hover:text-red-600' : 'text-gray-500 hover:text-green-600'}`} title={restaurant.active ? 'Suspender Restaurante' : 'Ativar Restaurante'}>
+                                                    {restaurant.active ? <LockIcon className="w-5 h-5"/> : <UnlockIcon className="w-5 h-5"/>}
+                                                </button>
+                                                <button onClick={() => onEditMenu(restaurant)} className="p-2 text-gray-500 hover:text-green-600" title="Gerenciar Cardápio">
+                                                    <MenuBookIcon className="w-5 h-5"/>
+                                                </button>
+                                                <button onClick={() => handleOpenEditor(restaurant)} className="p-2 text-gray-500 hover:text-blue-600" title="Editar Restaurante"><EditIcon className="w-5 h-5"/></button>
+                                                <button onClick={() => handleDeleteRestaurant(restaurant.id)} className="p-2 text-gray-500 hover:text-red-600" title="Excluir Restaurante"><TrashIcon className="w-5 h-5"/></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </>
             )}
         </div>
     );

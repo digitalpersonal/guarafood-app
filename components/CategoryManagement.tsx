@@ -43,10 +43,16 @@ const CategoryManagement: React.FC = () => {
         });
 
         if (name && name.trim()) {
+            const icon = await prompt({
+                title: "Ícone da Categoria",
+                message: "Digite um emoji para representar esta categoria (opcional):",
+                placeholder: "Ex: 🌮"
+            });
+
             try {
-                await createRestaurantCategory(name.trim());
+                await createRestaurantCategory(name.trim(), icon?.trim() || undefined);
                 addToast({ message: 'Categoria criada com sucesso!', type: 'success' });
-                loadCategories();
+                await loadCategories();
             } catch (error: any) {
                 addToast({ message: `Erro ao criar: ${getErrorMessage(error)}`, type: 'error' });
             }
@@ -56,31 +62,41 @@ const CategoryManagement: React.FC = () => {
     const handleDeleteCategory = async (id: number, name: string) => {
         const confirmed = await confirm({
             title: 'Excluir Categoria',
-            message: `Tem certeza que deseja excluir a categoria "${name}"?`,
-            confirmText: 'Excluir',
+            message: `Tem certeza que deseja excluir a categoria "${name}"? Esta ação não pode ser desfeita.`,
+            confirmText: 'Excluir Definitivamente',
             isDestructive: true
         });
 
         if (confirmed) {
             try {
+                // SENIOR FIX: Forçamos a atualização imediata do estado local para feedback visual instantâneo
+                setCategories(prev => prev.filter(c => c.id !== id));
+                
                 await deleteRestaurantCategory(id);
-                addToast({ message: 'Categoria excluída.', type: 'info' });
-                loadCategories();
+                addToast({ message: `Categoria "${name}" excluída com sucesso.`, type: 'success' });
+                
+                // Recarregamos do banco para garantir sincronia
+                await loadCategories();
             } catch (error: any) {
                 addToast({ message: `Erro ao excluir: ${getErrorMessage(error)}`, type: 'error' });
+                // Se falhar, recarregamos para restaurar o item na lista
+                await loadCategories();
             }
         }
     };
 
-    if (isLoading) return <Spinner message="Carregando categorias..." />;
+    if (isLoading && categories.length === 0) return <Spinner message="Carregando categorias..." />;
 
     return (
         <div className="bg-white p-6 rounded-lg shadow-md">
             <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold text-gray-800">Categorias de Estabelecimentos</h2>
+                <div>
+                    <h2 className="text-xl font-bold text-gray-800">Categorias de Estabelecimentos</h2>
+                    <p className="text-xs text-gray-500 mt-1">Gerencie as categorias globais que aparecem no filtro da página inicial.</p>
+                </div>
                 <button 
                     onClick={handleAddCategory}
-                    className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 transition-colors"
+                    className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 transition-colors shadow-sm active:scale-95"
                 >
                     + Nova Categoria
                 </button>
@@ -88,11 +104,16 @@ const CategoryManagement: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 {categories.map(cat => (
-                    <div key={cat.id} className="flex justify-between items-center p-4 bg-gray-50 border rounded-lg hover:bg-gray-100 transition-colors">
-                        <span className="font-semibold text-gray-700">{cat.name}</span>
+                    <div key={cat.id} className="flex justify-between items-center p-4 bg-gray-50 border rounded-xl hover:bg-gray-100 transition-all group">
+                        <div className="flex items-center gap-3">
+                            <span className="text-2xl bg-white w-10 h-10 flex items-center justify-center rounded-full shadow-sm border border-gray-100">
+                                {cat.icon || '🍽️'}
+                            </span>
+                            <span className="font-bold text-gray-700">{cat.name}</span>
+                        </div>
                         <button 
                             onClick={() => handleDeleteCategory(cat.id, cat.name)}
-                            className="text-gray-400 hover:text-red-600 p-2 rounded-full hover:bg-white"
+                            className="text-gray-400 hover:text-red-600 p-2 rounded-full hover:bg-white transition-colors"
                             title="Excluir"
                         >
                             <TrashIcon className="w-5 h-5" />
