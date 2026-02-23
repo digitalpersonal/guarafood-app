@@ -56,7 +56,7 @@ export const subscribeToOrders = (
     const channelName = restaurantId ? `orders_store_${restaurantId}` : `orders_global_admin`;
     
     // Garantir que não existam múltiplos canais pendentes
-    const existingChannels = supabase.getChannels().filter((ch: any) => ch.name === channelName);
+    const existingChannels = supabase.getChannels().filter(ch => ch.name === channelName);
     existingChannels.forEach(ch => supabase.removeChannel(ch));
 
     const channel = supabase.channel(channelName)

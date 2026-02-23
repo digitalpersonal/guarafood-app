@@ -5,11 +5,56 @@ const supabaseUrl = SUPABASE_URL;
 const supabaseKey = SUPABASE_ANON_KEY;
 
 
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error('Supabase URL ou Anon Key não configuradas.');
+let supabaseInstance: SupabaseClient;
+let supabaseAnonInstance: SupabaseClient;
+let initializationError: Error | null = null;
+
+
+try {
+  // Add checks for missing configuration in config.ts.
+  if (!supabaseUrl || supabaseUrl.includes('your-project-id')) {
+    throw new Error("A variável SUPABASE_URL não foi configurada corretamente no arquivo config.ts. Por favor, adicione o URL do seu projeto Supabase.");
+  }
+  if (!supabaseKey || supabaseKey.includes('your-public-anon-key')) {
+      throw new Error("A variável SUPABASE_ANON_KEY não foi configurada corretamente no arquivo config.ts. Por favor, adicione a chave 'public (anon)' do seu projeto Supabase.");
+  }
+
+  // This is the standard client that will manage user sessions for authenticated actions.
+  supabaseInstance = createClient(supabaseUrl, supabaseKey);
+  
+  // This is a completely stateless client for fetching public data anonymously.
+  // It's configured to never persist sessions, preventing it from using a logged-in user's token.
+  supabaseAnonInstance = createClient(supabaseUrl, supabaseKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    }
+  });
+  
+
+} catch (error: any) {
+  initializationError = error instanceof Error ? error : new Error(String(error));
+  // This dummy client is a fallback to prevent the app from crashing entirely
+  // if initialization fails. It will not be functional.
+  if (!supabaseInstance) {
+    const dummyClient = {
+      from: () => { throw initializationError; },
+      auth: {
+          getSession: () => Promise.resolve({ data: { session: null }, error: initializationError }),
+          onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+      },
+      // Mock other methods as needed to prevent crashes
+    } as any;
+    supabaseInstance = dummyClient;
+    supabaseAnonInstance = dummyClient;
+  }
 }
 
-export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
+export const supabase = supabaseInstance;
+export const supabaseAnon = supabaseAnonInstance;
+
+export const getInitializationError = () => initializationError;
 
 /**
  * Extrai uma mensagem de string compreensível de qualquer objeto de erro.

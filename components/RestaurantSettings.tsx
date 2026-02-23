@@ -75,13 +75,6 @@ const RestaurantSettings: React.FC = () => {
     const { currentUser } = useAuth();
     const { addToast } = useNotification();
     const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [address, setAddress] = useState('');
-    const [phone, setPhone] = useState('');
-    const [deliveryFee, setDeliveryFee] = useState(0);
-    const [deliveryTime, setDeliveryTime] = useState('');
-    const [paymentGateways, setPaymentGateways] = useState<string[]>([]);
     const [mercadoPagoToken, setMercadoPagoToken] = useState('');
     const [manualPixKey, setManualPixKey] = useState('');
     const [printerWidth, setPrinterWidth] = useState(80);
@@ -89,14 +82,6 @@ const RestaurantSettings: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [testOrder, setTestOrder] = useState<Order | null>(null);
-
-    const PREDEFINED_PAYMENT_METHODS = [
-        "Pix",
-        "Cartão de Crédito",
-        "Cartão de Débito",
-        "Dinheiro",
-        "Marcar na minha conta"
-    ];
 
     const restaurantId = currentUser?.restaurantId;
 
@@ -107,13 +92,6 @@ const RestaurantSettings: React.FC = () => {
             const data = await fetchRestaurantByIdSecure(restaurantId);
             if (data) {
                 setRestaurant(data);
-                setName(data.name || '');
-                setDescription(data.description || '');
-                setAddress(data.address || '');
-                setPhone(data.phone || '');
-                setDeliveryFee(data.deliveryFee || 0);
-                setDeliveryTime(data.deliveryTime || '');
-                setPaymentGateways(data.paymentGateways || []);
                 setMercadoPagoToken(data.mercado_pago_credentials?.accessToken || '');
                 setManualPixKey(data.manualPixKey || '');
                 setOperatingHours(data.operatingHours || getDefaultOperatingHours());
@@ -141,24 +119,11 @@ const RestaurantSettings: React.FC = () => {
         });
     };
 
-    const handlePaymentToggle = (method: string) => {
-        setPaymentGateways(prev => 
-            prev.includes(method) ? prev.filter(m => m !== method) : [...prev, method]
-        );
-    };
-
     const handleSaveChanges = async () => {
         if (!restaurantId || !restaurant) return;
         setIsSaving(true);
         try {
             await updateRestaurant(restaurantId, {
-                name,
-                description,
-                address,
-                phone,
-                deliveryFee,
-                deliveryTime,
-                paymentGateways,
                 mercado_pago_credentials: { accessToken: mercadoPagoToken },
                 operatingHours: operatingHours,
                 manualPixKey: manualPixKey,
@@ -195,42 +160,6 @@ const RestaurantSettings: React.FC = () => {
                 <h2 className="text-xl font-black text-gray-800 border-b pb-4 mb-6 uppercase tracking-widest">Painel de Configuração</h2>
                 
                 <NotificationSettings />
-
-                {/* --- INFORMAÇÕES BÁSICAS --- */}
-                <div className="mb-10 space-y-4">
-                    <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Informações da Loja</h3>
-                    
-                    <div>
-                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Nome do Restaurante</label>
-                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-3 border rounded-xl text-sm bg-gray-50" placeholder="Ex: Pastelaria do Jerê" />
-                    </div>
-
-                    <div>
-                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Descrição Curta</label>
-                        <textarea value={description} onChange={e => setDescription(e.target.value)} className="w-full p-3 border rounded-xl text-sm bg-gray-50 h-20" placeholder="Ex: O melhor pastel da cidade..." />
-                    </div>
-
-                    <div>
-                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Endereço Completo</label>
-                        <input type="text" value={address} onChange={e => setAddress(e.target.value)} className="w-full p-3 border rounded-xl text-sm bg-gray-50" placeholder="Rua, Número, Bairro, Cidade" />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Telefone/WhatsApp</label>
-                            <input type="text" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-3 border rounded-xl text-sm bg-gray-50" placeholder="(35) 9..." />
-                        </div>
-                        <div>
-                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Taxa de Entrega (R$)</label>
-                            <input type="number" value={deliveryFee} onChange={e => setDeliveryFee(parseFloat(e.target.value))} className="w-full p-3 border rounded-xl text-sm bg-gray-50" />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Tempo de Entrega Estimado</label>
-                        <input type="text" value={deliveryTime} onChange={e => setDeliveryTime(e.target.value)} className="w-full p-3 border rounded-xl text-sm bg-gray-50" placeholder="Ex: 30-45 min" />
-                    </div>
-                </div>
 
                 {/* --- SELETOR DE IMPRESSORA - DESTAQUE NO TOPO --- */}
                 <div className="mb-10 bg-orange-50 p-6 rounded-2xl border-2 border-orange-100 shadow-sm">
@@ -287,24 +216,6 @@ const RestaurantSettings: React.FC = () => {
 
                     <div className="border-t pt-8">
                         <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Recebimento de Pagamentos</h3>
-                        
-                        <div className="mb-6">
-                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-1">Formas de Pagamento Aceitas</label>
-                            <div className="grid grid-cols-2 gap-2">
-                                {PREDEFINED_PAYMENT_METHODS.map(method => (
-                                    <label key={method} className="flex items-center gap-2 text-xs cursor-pointer p-3 border rounded-xl hover:bg-gray-50 bg-white shadow-sm">
-                                        <input
-                                            type="checkbox"
-                                            checked={paymentGateways.includes(method)}
-                                            onChange={() => handlePaymentToggle(method)}
-                                            className="rounded text-orange-600 focus:ring-orange-500 h-4 w-4"
-                                        />
-                                        <span className="font-bold text-gray-700">{method}</span>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Chave Pix para Visualização</label>

@@ -68,7 +68,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
   const [isGenericModalOpen, setIsGenericModalOpen] = useState(false);
 
   // Lógica para determinar a URL da imagem final
-  const finalImageUrl = item.imageUrl || getGenericImageUrl(categoryName) || null;
+  const finalImageUrl = item.imageUrl || getGenericImageUrl(categoryName) || '';
 
   const isAvailable = item.available !== false;
   const canPurchase = isOpen && isAvailable;

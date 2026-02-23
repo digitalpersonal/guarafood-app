@@ -73,7 +73,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
     const [error, setError] = useState('');
     const [isSaving, setIsSaving] = useState(false);
-    const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
     const [categories, setCategories] = useState<RestaurantCategory[]>([]);
     const [showSecondShift, setShowSecondShift] = useState<boolean[]>(Array(7).fill(false));
 
@@ -112,8 +111,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
     };
 
     useEffect(() => {
-        if (!isOpen) return;
-
         if (existingRestaurant) {
             const opHours = existingRestaurant.operatingHours && existingRestaurant.operatingHours.length === 7 
                 ? existingRestaurant.operatingHours : getDefaultOperatingHours();
@@ -125,7 +122,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 manualPixKey: existingRestaurant.manualPixKey || '',
                 active: existingRestaurant.active !== false
             });
-            setSelectedCategories(existingRestaurant.category ? existingRestaurant.category.split(',').map(c => c.trim()) : []);
             setLogoPreview(existingRestaurant.imageUrl);
             setChangeCredentials(false);
         } else {
@@ -135,37 +131,16 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 mercado_pago_credentials: { accessToken: '' }, operatingHours: getDefaultOperatingHours(),
                 manualPixKey: '', active: true
             });
-            setSelectedCategories([]);
             setShowSecondShift(Array(7).fill(false));
             setChangeCredentials(true); 
             setLogoPreview(null);
         }
         setMerchantEmail(''); setMerchantPassword(''); setLogoFile(null); setError('');
-    }, [existingRestaurant?.id, isOpen]); // SENIOR FIX: Usa o ID para evitar resets por mudança de referência
+    }, [existingRestaurant, isOpen]);
     
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ 
-            ...prev, 
-            [name]: (name === 'deliveryFee' || name === 'rating') 
-                ? (value === '' ? 0 : parseFloat(value)) 
-                : value 
-        }));
-    };
-
-    const handleCategoryToggle = (catName: string) => {
-        setSelectedCategories(prev => 
-            prev.includes(catName) ? prev.filter(c => c !== catName) : [...prev, catName]
-        );
-    };
-
-    const handlePaymentToggle = (method: string) => {
-        setFormData(prev => ({
-            ...prev,
-            paymentGateways: prev.paymentGateways.includes(method)
-                ? prev.paymentGateways.filter(m => m !== method)
-                : [...prev.paymentGateways, method]
-        }));
+        setFormData(prev => ({ ...prev, [name]: (name === 'deliveryFee') ? parseFloat(value) : value }));
     };
 
     const handleCredentialsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -185,8 +160,8 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
     };
 
     const handleSubmit = async () => {
-        if (!formData.name || selectedCategories.length === 0 || !formData.address || !formData.phone) {
-            setError('Campos obrigatórios faltando (Nome, Categorias, Endereço, Telefone).'); return;
+        if (!formData.name || !formData.category || !formData.address || !formData.phone) {
+            setError('Campos obrigatórios faltando.'); return;
         }
         setIsSaving(true);
         let finalImageUrl = existingRestaurant?.imageUrl || '';
@@ -202,14 +177,9 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
 
         const openDays = formData.operatingHours?.filter(d => d.isOpen) || [];
         const dbPayload = {
-            name: formData.name, 
-            category: selectedCategories.join(', '), 
-            delivery_time: formData.deliveryTime,
-            rating: formData.rating, 
-            image_url: finalImageUrl, 
-            payment_gateways: formData.paymentGateways,
-            address: formData.address, 
-            phone: formData.phone, 
+            name: formData.name, category: formData.category, delivery_time: formData.deliveryTime,
+            rating: formData.rating, image_url: finalImageUrl, payment_gateways: formData.paymentGateways,
+            address: formData.address, phone: formData.phone, 
             opening_hours: openDays.length > 0 ? openDays[0].opens : '',
             closing_hours: openDays.length > 0 ? openDays[0].closes : '',
             delivery_fee: formData.deliveryFee || 0,
@@ -239,46 +209,16 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
     if (!isOpen) return null;
 
     return (
-        <div 
-            className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4 backdrop-blur-sm" 
-            onClick={(e) => {
-                // SENIOR FIX: Só fecha se o clique for exatamente no fundo (backdrop)
-                if (e.target === e.currentTarget) onClose();
-            }}
-            onKeyDown={(e) => {
-                // SENIOR FIX: Impede que teclas digitadas "vazem" para o fundo e fechem o modal
-                if (e.key === 'Escape') onClose();
-                e.stopPropagation();
-            }}
-        >
-            <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col relative animate-in fade-in zoom-in duration-200">
-                <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tight">
-                        {existingRestaurant ? 'Editar' : 'Novo'} Restaurante
-                    </h2>
-                    <button 
-                        type="button"
-                        onClick={onClose}
-                        className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400 hover:text-gray-600"
-                        aria-label="Fechar"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose}>
+            <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-2xl font-bold">{existingRestaurant ? 'Editar' : 'Novo'} Restaurante</h2>
                 </div>
                 
                 <div className="overflow-y-auto space-y-6 pr-2">
                     <div className="flex gap-4 items-center">
-                        {logoPreview ? (
-                            <img src={logoPreview} className="w-20 h-20 bg-gray-100 rounded border object-cover" />
-                        ) : (
-                            <div className="w-20 h-20 bg-gray-100 rounded border flex items-center justify-center text-[10px] text-gray-400 font-bold uppercase text-center p-2">Sem Logo</div>
-                        )}
-                        <input 
-                            type="file" 
-                            accept="image/*" 
-                            onChange={async e => {
+                        <img src={logoPreview || ''} className="w-20 h-20 bg-gray-100 rounded border object-cover" />
+                        <input type="file" accept="image/*" onChange={async e => {
                             if(e.target.files?.[0]) {
                                 const comp = await compressLogo(e.target.files[0]);
                                 setLogoFile(comp); setLogoPreview(URL.createObjectURL(comp));
@@ -286,107 +226,16 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                         }} className="text-xs" />
                     </div>
 
-                    <div className="space-y-4">
-                        <input 
-                            name="name" 
-                            value={formData.name} 
-                            onChange={handleChange} 
-                            placeholder="Nome do Restaurante" 
-                            className="w-full p-2 border rounded" 
-                            autoComplete="off"
-                        />
-                        <input 
-                            name="address" 
-                            value={formData.address} 
-                            onChange={handleChange} 
-                            placeholder="Endereço Completo" 
-                            className="w-full p-2 border rounded" 
-                            autoComplete="off"
-                        />
-                        
-                        <div className="grid grid-cols-2 gap-4">
-                            <input 
-                                name="phone" 
-                                value={formData.phone} 
-                                onChange={handleChange} 
-                                placeholder="Telefone/WhatsApp" 
-                                className="p-2 border rounded" 
-                                autoComplete="off"
-                            />
-                            <input 
-                                name="deliveryFee" 
-                                type="number" 
-                                value={formData.deliveryFee || ''} 
-                                onChange={handleChange} 
-                                placeholder="Taxa de Entrega (R$)" 
-                                className="p-2 border rounded" 
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <input name="deliveryTime" value={formData.deliveryTime} onChange={handleChange} placeholder="Tempo de Entrega (ex: 30-45 min)" className="p-2 border rounded" />
-                            <input name="rating" type="number" step="0.1" value={formData.rating} onChange={handleChange} placeholder="Avaliação (0-5)" className="p-2 border rounded" />
-                        </div>
+                    <input name="name" value={formData.name} onChange={handleChange} placeholder="Nome" className="w-full p-2 border rounded" />
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                        <input name="phone" value={formData.phone} onChange={handleChange} placeholder="Telefone" className="p-2 border rounded" />
+                        <input name="deliveryFee" type="number" value={formData.deliveryFee} onChange={handleChange} placeholder="Taxa Entrega" className="p-2 border rounded" />
                     </div>
 
-                    {/* SEÇÃO CATEGORIAS */}
-                    <div className="border-t pt-4">
-                        <h3 className="font-bold text-sm mb-2 uppercase text-gray-500">Categorias</h3>
-                        <div className="flex flex-wrap gap-2">
-                            {categories.map(cat => (
-                                    <button
-                                        type="button"
-                                        key={cat.id}
-                                        onClick={() => handleCategoryToggle(cat.name)}
-                                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 border ${
-                                        selectedCategories.includes(cat.name)
-                                            ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
-                                            : 'bg-white text-gray-600 border-gray-200 hover:border-orange-300'
-                                    }`}
-                                >
-                                    <span>{cat.icon || '🍽️'}</span>
-                                    {cat.name}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* SEÇÃO FORMAS DE PAGAMENTO */}
-                    <div className="border-t pt-4">
-                        <h3 className="font-bold text-sm mb-2 uppercase text-gray-500">Formas de Pagamento Aceitas</h3>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {PREDEFINED_PAYMENT_METHODS.map(method => (
-                                <label key={method} className="flex items-center gap-2 text-xs cursor-pointer p-2 border rounded hover:bg-gray-50">
-                                    <input
-                                        type="checkbox"
-                                        checked={formData.paymentGateways.includes(method)}
-                                        onChange={() => handlePaymentToggle(method)}
-                                        className="rounded text-orange-600 focus:ring-orange-500"
-                                    />
-                                    <span>{method}</span>
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* SEÇÃO PIX MANUAL */}
-                    <div className="p-4 bg-green-50 rounded-xl border border-green-100 space-y-3">
-                        <h3 className="text-sm font-black text-green-900 uppercase">Chave PIX (Recebimento Direto)</h3>
-                        <div>
-                            <label className="text-[10px] font-bold text-green-700">CHAVE PIX PARA EXIBIÇÃO NO CHECKOUT</label>
-                            <input 
-                                name="manualPixKey"
-                                value={formData.manualPixKey} 
-                                onChange={handleChange}
-                                placeholder="CPF, CNPJ, Email ou Aleatória"
-                                className="w-full p-2 border border-green-200 rounded text-sm font-mono" 
-                            />
-                        </div>
-                    </div>
-
-                    {/* SEÇÃO MERCADO PAGO */}
+                    {/* SEÇÃO MERCADO PAGO - ADICIONADA */}
                     <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 space-y-3">
-                        <h3 className="text-sm font-black text-blue-900 uppercase">Configuração Mercado Pago (Opcional)</h3>
+                        <h3 className="text-sm font-black text-blue-900 uppercase">Configuração Mercado Pago</h3>
                         <div>
                             <label className="text-[10px] font-bold text-blue-700">ACCESS TOKEN (PRODUÇÃO)</label>
                             <input 
@@ -401,13 +250,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                             <label className="text-[10px] font-bold text-blue-700">WEBHOOK URL (PARA O MP)</label>
                             <div className="flex gap-2">
                                 <input readOnly value={webhookUrl} className="flex-grow p-2 text-[10px] bg-white border border-blue-200 rounded font-mono truncate" />
-                                <button 
-                                    type="button"
-                                    onClick={() => { navigator.clipboard.writeText(webhookUrl); addToast({message: 'Copiado!', type:'success'}); }} 
-                                    className="p-2 bg-blue-600 text-white rounded"
-                                >
-                                    <ClipboardIcon className="w-4 h-4"/>
-                                </button>
+                                <button onClick={() => { navigator.clipboard.writeText(webhookUrl); addToast({message: 'Copiado!', type:'success'}); }} className="p-2 bg-blue-600 text-white rounded"><ClipboardIcon className="w-4 h-4"/></button>
                             </div>
                         </div>
                     </div>
@@ -425,45 +268,25 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                     </div>
 
                     <div className="p-4 bg-gray-100 rounded">
-                        <h3 className="font-bold text-sm mb-2">Acesso Administrativo</h3>
+                        <h3 className="font-bold text-sm mb-2">Acesso</h3>
                         {!existingRestaurant || changeCredentials ? (
                             <div className="grid grid-cols-2 gap-2">
                                 <input type="email" placeholder="Email" value={merchantEmail} onChange={e => setMerchantEmail(e.target.value)} className="p-2 border rounded bg-white" />
                                 <input type="password" placeholder="Senha" value={merchantPassword} onChange={e => setMerchantPassword(e.target.value)} className="p-2 border rounded bg-white" />
                             </div>
                         ) : (
-                            <button 
-                                type="button"
-                                onClick={() => setChangeCredentials(true)} 
-                                className="text-xs text-blue-600 font-bold underline"
-                            >
-                                Alterar Login/Senha
-                            </button>
+                            <button onClick={() => setChangeCredentials(true)} className="text-xs text-blue-600 font-bold underline">Alterar Login/Senha</button>
                         )}
                     </div>
                 </div>
 
                 {error && <div className="text-red-500 text-xs mt-2">{error}</div>}
-                <div className="mt-6 flex justify-end gap-3 pt-4 border-t">
-                    <button 
-                        type="button"
-                        onClick={onClose} 
-                        className="px-6 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-colors"
-                    >
-                        Cancelar
-                    </button>
-                    <button 
-                        type="button"
-                        onClick={handleSubmit} 
-                        disabled={isSaving} 
-                        className="px-8 py-2.5 bg-orange-600 text-white rounded-xl font-black uppercase tracking-widest shadow-lg shadow-orange-100 hover:bg-orange-700 disabled:opacity-50 transition-all active:scale-95"
-                    >
-                        {isSaving ? 'Salvando...' : 'Salvar'}
-                    </button>
+                <div className="mt-4 flex justify-end gap-2">
+                    <button onClick={onClose} className="p-2 bg-gray-200 rounded">Cancelar</button>
+                    <button onClick={handleSubmit} disabled={isSaving} className="p-2 bg-orange-600 text-white rounded font-bold">{isSaving ? '...' : 'Salvar'}</button>
                 </div>
             </div>
         </div>
     );
 };
-
 export default RestaurantEditorModal;

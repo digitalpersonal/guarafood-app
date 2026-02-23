@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { Restaurant } from '../types';
 // Import fetchRestaurantsSecure instead of fetchRestaurants
-import { fetchRestaurants, deleteRestaurant } from '../services/databaseService';
+import { fetchRestaurantsSecure, deleteRestaurant } from '../services/databaseService';
 import { useNotification } from '../hooks/useNotification';
 import Spinner from './Spinner';
 import { supabase, getErrorMessage } from '../services/api';
@@ -24,17 +24,6 @@ const ClipboardIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 
 
-const LockIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-    </svg>
-);
-const UnlockIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-    </svg>
-);
-
 interface RestaurantManagementProps {
     onEditMenu: (restaurant: Restaurant) => void;
 }
@@ -50,9 +39,10 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
     const loadRestaurants = useCallback(async () => {
         try {
             setIsLoading(true);
-            const data = await fetchRestaurants();
+            // Use the secure fetch to ensure admin can see credentials if needed for editing
+            const data = await fetchRestaurantsSecure();
             setRestaurants(data);
-            setError(null);
+            setError(null); // Clear previous errors on successful load
         } catch (err) {
             console.error("Failed to load restaurants:", err);
             setError(`Falha ao carregar restaurantes: ${getErrorMessage(err)}`);
@@ -64,29 +54,6 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
     useEffect(() => {
         loadRestaurants();
     }, [loadRestaurants]);
-
-    const handleToggleStatus = async (restaurant: Restaurant) => {
-        const newStatus = !restaurant.active;
-        const action = newStatus ? 'Ativar' : 'Suspender';
-        
-        const confirmed = await confirm({
-            title: `${action} Restaurante`,
-            message: `Deseja realmente ${action.toLowerCase()} o restaurante "${restaurant.name}"?`,
-            confirmText: action,
-            isDestructive: !newStatus,
-        });
-
-        if (confirmed) {
-            try {
-                const { error: uErr } = await supabase.from('restaurants').update({ active: newStatus }).eq('id', restaurant.id);
-                if (uErr) throw uErr;
-                addToast({ message: `Restaurante ${newStatus ? 'ativado' : 'suspenso'} com sucesso!`, type: 'success' });
-                await loadRestaurants();
-            } catch (err: any) {
-                addToast({ message: `Erro ao alterar status: ${getErrorMessage(err)}`, type: 'error' });
-            }
-        }
-    };
 
     const handleOpenEditor = (restaurant: Restaurant | null) => {
         setEditingRestaurant(restaurant);
@@ -109,7 +76,7 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
         if (confirmed) {
             try {
                 await deleteRestaurant(restaurantId);
-                addToast({ message: 'Restaurante excluído com sucesso.', type: 'success' });
+                addToast({ message: 'Restaurante excluído.', type: 'info' });
                 await loadRestaurants();
             } catch (err: any) {
                 console.error("Failed to delete restaurant", err);
@@ -124,95 +91,83 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
         addToast({ message: 'Link copiado para a área de transferência!', type: 'success' });
     };
 
+    if (isLoading) return <Spinner message="Carregando restaurantes..." />;
+    if (error) return <p className="text-center text-red-500 p-8 bg-red-50 rounded-lg">{error}</p>;
+
     return (
-        <div className="bg-white p-4 rounded-lg shadow-md relative">
-            {/* SENIOR FIX: Modal renderizado no topo para nunca ser desmontado pelo estado de loading do pai */}
-            {isEditorOpen && (
+        <div className="bg-white p-4 rounded-lg shadow-md">
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-800">Gerenciar Restaurantes</h2>
+                <button
+                    onClick={() => handleOpenEditor(null)}
+                    className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 transition-colors"
+                >
+                    Adicionar Novo Restaurante
+                </button>
+            </div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left text-gray-600">
+                    <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                        <tr>
+                            <th scope="col" className="px-6 py-3">Status</th>
+                            <th scope="col" className="px-6 py-3">Nome</th>
+                            <th scope="col" className="px-6 py-3">Categoria</th>
+                            <th scope="col" className="px-6 py-3">Telefone</th>
+                            <th scope="col" className="px-6 py-3 min-w-[250px]">Link da Loja</th>
+                            <th scope="col" className="px-6 py-3">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {restaurants.map(restaurant => (
+                            <tr key={restaurant.id} className={`bg-white border-b hover:bg-gray-50 ${!restaurant.active ? 'opacity-60 grayscale-[0.5]' : ''}`}>
+                                <td className="px-6 py-4">
+                                    <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${restaurant.active ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
+                                        {restaurant.active ? 'Ativo' : 'Suspenso'}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 font-semibold text-gray-900">{restaurant.name}</td>
+                                <td className="px-6 py-4">{restaurant.category}</td>
+                                <td className="px-6 py-4">{restaurant.phone}</td>
+                                <td className="px-6 py-4 min-w-[250px]">
+                                    <div className="flex items-center gap-2">
+                                        <input 
+                                            type="text" 
+                                            readOnly 
+                                            value={`${window.location.origin}?r=${restaurant.id}`} 
+                                            className="flex-grow p-1 border rounded bg-gray-50 text-xs truncate"
+                                            onClick={(e) => (e.target as HTMLInputElement).select()} 
+                                            aria-label={`Link da loja ${restaurant.name}`}
+                                        />
+                                        <button 
+                                            onClick={() => handleCopyLink(restaurant.id)} 
+                                            className="p-1.5 text-gray-500 hover:text-orange-600" 
+                                            title="Copiar Link"
+                                        >
+                                            <ClipboardIcon className="w-4 h-4"/>
+                                        </button>
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                    <div className="flex space-x-2">
+                                        <button onClick={() => onEditMenu(restaurant)} className="p-2 text-gray-500 hover:text-green-600" title="Gerenciar Cardápio">
+                                            <MenuBookIcon className="w-5 h-5"/>
+                                        </button>
+                                        <button onClick={() => handleOpenEditor(restaurant)} className="p-2 text-gray-500 hover:text-blue-600" title="Editar Restaurante"><EditIcon className="w-5 h-5"/></button>
+                                        <button onClick={() => handleDeleteRestaurant(restaurant.id)} className="p-2 text-gray-500 hover:text-red-600" title="Excluir Restaurante"><TrashIcon className="w-5 h-5"/></button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+             {isEditorOpen && (
                 <RestaurantEditorModal
                     isOpen={isEditorOpen}
                     onClose={handleCloseEditor}
                     onSaveSuccess={loadRestaurants}
                     existingRestaurant={editingRestaurant}
                 />
-            )}
-
-            {isLoading && restaurants.length === 0 ? (
-                <div className="p-12 flex justify-center">
-                    <Spinner message="Carregando restaurantes..." />
-                </div>
-            ) : error ? (
-                <p className="text-center text-red-500 p-8 bg-red-50 rounded-lg">{error}</p>
-            ) : (
-                <>
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-xl font-bold text-gray-800">Gerenciar Restaurantes</h2>
-                        <button
-                            onClick={() => handleOpenEditor(null)}
-                            className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 transition-colors"
-                        >
-                            Adicionar Novo Restaurante
-                        </button>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm text-left text-gray-600">
-                            <thead className="text-xs text-gray-700 uppercase bg-gray-50">
-                                <tr>
-                                    <th scope="col" className="px-6 py-3">Status</th>
-                                    <th scope="col" className="px-6 py-3">Nome</th>
-                                    <th scope="col" className="px-6 py-3">Categoria</th>
-                                    <th scope="col" className="px-6 py-3">Telefone</th>
-                                    <th scope="col" className="px-6 py-3 min-w-[250px]">Link da Loja</th>
-                                    <th scope="col" className="px-6 py-3">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {restaurants.map(restaurant => (
-                                    <tr key={restaurant.id} className={`bg-white border-b hover:bg-gray-50 ${!restaurant.active ? 'opacity-60 grayscale-[0.5]' : ''}`}>
-                                        <td className="px-6 py-4">
-                                            <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${restaurant.active ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
-                                                {restaurant.active ? 'Ativo' : 'Suspenso'}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 font-semibold text-gray-900">{restaurant.name}</td>
-                                        <td className="px-6 py-4">{restaurant.category}</td>
-                                        <td className="px-6 py-4">{restaurant.phone}</td>
-                                        <td className="px-6 py-4 min-w-[250px]">
-                                            <div className="flex items-center gap-2">
-                                                <input 
-                                                    type="text" 
-                                                    readOnly 
-                                                    value={`${window.location.origin}?r=${restaurant.id}`} 
-                                                    className="flex-grow p-1 border rounded bg-gray-50 text-xs truncate"
-                                                    onClick={(e) => (e.target as HTMLInputElement).select()} 
-                                                    aria-label={`Link da loja ${restaurant.name}`}
-                                                />
-                                                <button 
-                                                    onClick={() => handleCopyLink(restaurant.id)} 
-                                                    className="p-1.5 text-gray-500 hover:text-orange-600" 
-                                                    title="Copiar Link"
-                                                >
-                                                    <ClipboardIcon className="w-4 h-4"/>
-                                                </button>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex space-x-2">
-                                                <button onClick={() => handleToggleStatus(restaurant)} className={`p-2 ${restaurant.active ? 'text-gray-500 hover:text-red-600' : 'text-gray-500 hover:text-green-600'}`} title={restaurant.active ? 'Suspender Restaurante' : 'Ativar Restaurante'}>
-                                                    {restaurant.active ? <LockIcon className="w-5 h-5"/> : <UnlockIcon className="w-5 h-5"/>}
-                                                </button>
-                                                <button onClick={() => onEditMenu(restaurant)} className="p-2 text-gray-500 hover:text-green-600" title="Gerenciar Cardápio">
-                                                    <MenuBookIcon className="w-5 h-5"/>
-                                                </button>
-                                                <button onClick={() => handleOpenEditor(restaurant)} className="p-2 text-gray-500 hover:text-blue-600" title="Editar Restaurante"><EditIcon className="w-5 h-5"/></button>
-                                                <button onClick={() => handleDeleteRestaurant(restaurant.id)} className="p-2 text-gray-500 hover:text-red-600" title="Excluir Restaurante"><TrashIcon className="w-5 h-5"/></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </>
             )}
         </div>
     );

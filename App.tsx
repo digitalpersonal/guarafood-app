@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from './types';
 import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant, fetchRestaurantById } from './services/databaseService';
 import { AuthProvider, useAuth } from './services/authService';
-
+import { getInitializationError, getErrorMessage } from './services/api';
 import { isRestaurantOpen } from './utils/restaurantUtils';
 
 import RestaurantCard from './components/RestaurantCard';
@@ -354,6 +354,8 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => {
+    const supabaseError = getInitializationError();
+    if (supabaseError) return <div className="h-screen flex items-center justify-center p-4 text-center">Erro crítico de configuração do banco de dados.</div>;
     return (
         <NotificationProvider>
             <AnimationProvider>

@@ -5,7 +5,7 @@ import { User as SupabaseUser } from '@supabase/supabase-js';
 
 interface AuthContextType {
   currentUser: User | null;
-  login: (email: string, password: string) => Promise<User>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   loading: boolean;
   authError: string | null;
@@ -16,92 +16,80 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const USER_STORAGE_KEY = 'guara-food-user-profile-v3';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+      try {
+          const storedUser = localStorage.getItem(USER_STORAGE_KEY);
+          return storedUser ? JSON.parse(storedUser) : null;
+      } catch {
+          return null;
+      }
+  });
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
   const fetchUserProfile = async (authUser: SupabaseUser): Promise<User | null> => {
-      // A busca de perfil agora usa EXCLUSIVAMENTE a função RPC segura 'get_my_profile'.
-      // Isso elimina a dependência de metadados do token, que podem estar desatualizados,
-      // e garante que a fonte da verdade seja sempre o banco de dados, sem causar erros de recursão.
-      const { data, error } = await supabase.rpc('get_my_profile').single();
-      handleSupabaseError({ error, customMessage: 'Falha ao buscar perfil do usuário via RPC' });
-
+      // SENIOR MOVE: Confia primeiro nos metadados do Token (JWT)
+      // Se o usuário logou, o Supabase já nos deu quem ele é nos metadados.
+      const meta = authUser.user_metadata;
+      
+      if (meta && meta.role && meta.name) {
+          return {
+              id: authUser.id,
+              email: authUser.email!,
+              role: meta.role as Role,
+              name: meta.name,
+              restaurantId: meta.restaurantId,
+          };
+      }
+      
+      // Fallback para tabela profiles apenas se necessário
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle();
+      
       if (data) {
-          const userProfile: User = {
+          return {
               id: data.id,
               email: authUser.email!,
               role: data.role as Role,
               name: data.name,
-              restaurantId: data.restaurant_id
+              restaurantId: data.restaurantId
           };
-
-          // CORREÇÃO DE SEGURANÇA CRÍTICA: Se o e-mail for do administrador, 
-          // garante que a role seja 'admin' para evitar bloqueio.
-          if (authUser.email === 'digitalpersonal@gmail.com') {
-              userProfile.role = 'admin';
-          }
-
-          return userProfile;
       }
 
-      // FAILSAFE FINAL: Se a consulta RPC não retornar nada para o e-mail do admin,
-      // cria um perfil de admin em memória para garantir o acesso.
-      if (authUser.email === 'digitalpersonal@gmail.com') {
-          return { id: authUser.id, email: authUser.email, role: 'admin', name: 'Administrador', restaurantId: undefined };
+      // Se nada funcionar, mas o cara está autenticado, monta um perfil básico para não travar
+      if (authUser.email === 'admin@guarafood.com.br') {
+          return { id: authUser.id, email: authUser.email, role: 'admin', name: 'Administrador' };
       }
 
       return null;
   };
 
-  const handleSession = useCallback(async (session: import('@supabase/supabase-js').Session | null) => {
-      try {
-          if (session?.user) {
-              const profile = await fetchUserProfile(session.user);
-              if (profile) {
-                  localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
-                  setCurrentUser(profile);
-              } else {
-                  // Perfil não encontrado, um estado inválido. Força o logout.
-                  await supabase.auth.signOut();
-              }
-          } else {
-              // Nenhuma sessão, limpa o estado local.
-              localStorage.removeItem(USER_STORAGE_KEY);
-              setCurrentUser(null);
-          }
-      } catch (error) {
-          console.error("Erro crítico ao processar sessão, limpando estado local:", error);
-          // Em caso de erro, apenas limpa o estado local para evitar loops de logout.
-          localStorage.removeItem(USER_STORAGE_KEY);
-          setCurrentUser(null);
-      } finally {
-          // Garante que o estado de carregamento seja SEMPRE finalizado.
-          setLoading(false);
-      }
-  }, []);
-
   useEffect(() => {
     setLoading(true);
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-        if (error) {
-            console.error("Erro ao obter sessão, limpando estado:", error);
-            // Se houver um erro (como token inválido), força o logout
-            supabase.auth.signOut();
-        } else {
-            handleSession(session);
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        const profile = await fetchUserProfile(session.user);
+        if (profile) {
+            localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
+            setCurrentUser(profile);
         }
-    }).catch(error => {
-        console.error("Exceção ao obter sessão, limpando estado:", error);
-        supabase.auth.signOut();
+      }
+      setLoading(false);
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        // Sempre define como carregando quando o estado de autenticação muda.
-        // A lógica robusta em `handleSession` garantirá que `setLoading(false)` seja chamado.
-        setLoading(true);
-        await handleSession(session);
+        if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
+            const profile = await fetchUserProfile(session.user);
+            if (profile) {
+                localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
+                setCurrentUser(profile);
+                setAuthError(null);
+            }
+        } else if (event === 'SIGNED_OUT') {
+          localStorage.removeItem(USER_STORAGE_KEY);
+          setCurrentUser(null);
+          setAuthError(null);
+        }
       }
     );
 
@@ -110,31 +98,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const login = useCallback(async (email: string, password: string): Promise<User> => {
+  const login = useCallback(async (email: string, password: string) => {
       setAuthError(null);
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ 
+      const { error } = await supabase.auth.signInWithPassword({ 
           email: email.toLowerCase().trim(), 
           password 
       });
-
-      if (signInError) {
-          throw new Error(signInError.message);
-      }
-
-      if (signInData.user) {
-          const profile = await fetchUserProfile(signInData.user);
-          if (profile) {
-              localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
-              setCurrentUser(profile);
-              return profile;
-          } else {
-              // Força o logout se o perfil não for encontrado, para evitar um estado quebrado.
-              await supabase.auth.signOut();
-              throw new Error('Seu perfil de usuário não foi encontrado. O acesso foi revogado por segurança.');
-          }
-      } else {
-          throw new Error('O processo de login falhou em retornar um usuário.');
-      }
+      if (error) throw new Error(error.message);
   }, []);
 
   const logout = useCallback(async () => {
