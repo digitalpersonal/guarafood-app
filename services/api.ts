@@ -20,10 +20,18 @@ try {
   }
 
   // This is the standard client that will manage user sessions for authenticated actions.
-  supabaseInstance = createClient(supabaseUrl, supabaseKey);
+  supabaseInstance = createClient(supabaseUrl, supabaseKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      // SENIOR FIX: Desativa o LockManager para evitar o erro de timeout "lock:sb-..."
+      // Isso é comum em ambientes de iframe ou quando múltiplas abas estão abertas.
+      storageKey: 'guara-food-auth-key',
+    }
+  });
   
   // This is a completely stateless client for fetching public data anonymously.
-  // It's configured to never persist sessions, preventing it from using a logged-in user's token.
   supabaseAnonInstance = createClient(supabaseUrl, supabaseKey, {
     auth: {
       persistSession: false,

@@ -227,19 +227,27 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
 
 export const deleteRestaurant = async (id: number): Promise<void> => {
     // Tenta usar a Edge Function para deletar restaurante + usuário do Auth
-    const { error } = await supabase.functions.invoke('delete-restaurant-and-user', { body: { restaurantId: id } });
+    const { data, error } = await supabase.functions.invoke('delete-restaurant-and-user', { body: { restaurantId: id } });
     
-    if (error) {
-        console.warn("Edge function failed or missing, falling back to manual DB deletion:", error);
+    // SENIOR FIX: A Edge Function retorna 200 mesmo em caso de erro interno, 
+    // então precisamos verificar se há um objeto 'error' no corpo da resposta (data).
+    if (error || (data && data.error)) {
+        const errorMessage = error?.message || data?.error;
+        console.warn("Edge function failed, falling back to manual DB deletion:", errorMessage);
         
         // Se a função falhar, tentamos deletar manualmente no banco (Cascata manual)
-        // Deletamos itens, categorias e complementos vinculados para evitar erros de FK
+        // Deletamos todos os dados vinculados para evitar erros de FK
         await supabase.from('menu_items').delete().eq('restaurant_id', id);
         await supabase.from('menu_categories').delete().eq('restaurant_id', id);
         await supabase.from('addons').delete().eq('restaurant_id', id);
         await supabase.from('combos').delete().eq('restaurant_id', id);
         await supabase.from('promotions').delete().eq('restaurant_id', id);
         await supabase.from('coupons').delete().eq('restaurant_id', id);
+        await supabase.from('expenses').delete().eq('restaurant_id', id);
+        await supabase.from('orders').delete().eq('restaurant_id', id);
+        
+        // Também tentamos limpar perfis vinculados (embora sem a edge function o usuário Auth permaneça)
+        await supabase.from('profiles').delete().eq('restaurantId', id);
 
         const { error: dbError } = await supabase.from('restaurants').delete().eq('id', id);
         handleSupabaseError({ error: dbError, customMessage: 'Falha ao excluir restaurante manualmente' });
