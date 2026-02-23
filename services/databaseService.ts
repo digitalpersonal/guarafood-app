@@ -278,8 +278,8 @@ export const fetchRestaurantCategories = async (): Promise<RestaurantCategory[]>
     return (data || []).map(normalizeRestaurantCategory);
 };
 
-export const createRestaurantCategory = async (name: string, icon?: string): Promise<void> => {
-    const { error } = await supabase.from('restaurant_categories').insert({ name, icon });
+export const createRestaurantCategory = async (name: string): Promise<void> => {
+    const { error } = await supabase.from('restaurant_categories').insert({ name });
     handleSupabaseError({ error, customMessage: 'Failed to create category' });
 };
 
