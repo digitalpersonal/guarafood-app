@@ -233,13 +233,15 @@ export const deleteRestaurant = async (id: number): Promise<void> => {
         console.warn("Edge function failed or missing, falling back to manual DB deletion:", error);
         
         // Se a função falhar, tentamos deletar manualmente no banco (Cascata manual)
-        // Deletamos itens, categorias e complementos vinculados para evitar erros de FK
+        // Deletamos todos os dados vinculados para evitar erros de FK
         await supabase.from('menu_items').delete().eq('restaurant_id', id);
         await supabase.from('menu_categories').delete().eq('restaurant_id', id);
         await supabase.from('addons').delete().eq('restaurant_id', id);
         await supabase.from('combos').delete().eq('restaurant_id', id);
         await supabase.from('promotions').delete().eq('restaurant_id', id);
         await supabase.from('coupons').delete().eq('restaurant_id', id);
+        await supabase.from('expenses').delete().eq('restaurant_id', id);
+        await supabase.from('orders').delete().eq('restaurant_id', id); // Deleta pedidos vinculados
 
         const { error: dbError } = await supabase.from('restaurants').delete().eq('id', id);
         handleSupabaseError({ error: dbError, customMessage: 'Falha ao excluir restaurante manualmente' });
