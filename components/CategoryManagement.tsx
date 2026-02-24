@@ -74,7 +74,7 @@ const CategoryManagement: React.FC = () => {
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-gray-800">Categorias de Estabelecimentos</h2>
                 <button 
-                    onClick={handleAddCategory}
+                    onClick={() => handleOpenModal(null)}
                     className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 transition-colors"
                 >
                     + Nova Categoria
