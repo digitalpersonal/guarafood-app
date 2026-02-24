@@ -164,7 +164,10 @@ const normalizeExpense = (data: any): Expense => ({
     restaurantId: data.restaurant_id
 });
 
-const normalizeRestaurantCategory = (data: any): RestaurantCategory => data;
+const normalizeRestaurantCategory = (data: any): RestaurantCategory => ({
+    ...data,
+    iconUrl: data.icon_url,
+});
 
 // ==============================================================================
 // 🏢 RESTAURANTS
@@ -257,9 +260,26 @@ export const fetchRestaurantCategories = async (): Promise<RestaurantCategory[]>
     return (data || []).map(normalizeRestaurantCategory);
 };
 
-export const createRestaurantCategory = async (name: string): Promise<void> => {
-    const { error } = await supabase.from('restaurant_categories').insert({ name });
+export const createRestaurantCategory = async (name: string, iconUrl?: string): Promise<RestaurantCategory | null> => {
+    const payload: { name: string; icon_url?: string } = { name };
+    if (iconUrl) {
+        payload.icon_url = iconUrl;
+    }
+    const { data, error } = await supabase.from('restaurant_categories').insert(payload).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to create category' });
+    return data ? normalizeRestaurantCategory(data) : null;
+};
+
+export const updateRestaurantCategory = async (id: number, name: string, iconUrl?: string): Promise<RestaurantCategory | null> => {
+    const payload: { name: string; icon_url?: string } = { name };
+    if (iconUrl) {
+        payload.icon_url = iconUrl;
+    } else {
+        payload.icon_url = null; // Clear icon if not provided
+    }
+    const { data, error } = await supabase.from('restaurant_categories').update(payload).eq('id', id).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to update category' });
+    return data ? normalizeRestaurantCategory(data) : null;
 };
 
 export const deleteRestaurantCategory = async (id: number): Promise<void> => {

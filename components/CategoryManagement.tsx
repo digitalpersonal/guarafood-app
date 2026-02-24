@@ -5,7 +5,8 @@ import { fetchRestaurantCategories, createRestaurantCategory, deleteRestaurantCa
 import { useNotification } from '../hooks/useNotification';
 import type { RestaurantCategory } from '../types';
 import Spinner from './Spinner';
-import { getErrorMessage } from '../services/api';
+import { getErrorMessage, supabase } from '../services/api';
+import CategoryEditorModal from './CategoryEditorModal';
 
 const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -16,6 +17,8 @@ const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
 const CategoryManagement: React.FC = () => {
     const [categories, setCategories] = useState<RestaurantCategory[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingCategory, setEditingCategory] = useState<RestaurantCategory | null>(null);
     const { addToast, confirm, prompt } = useNotification();
 
     const loadCategories = async () => {
@@ -35,22 +38,14 @@ const CategoryManagement: React.FC = () => {
         loadCategories();
     }, []);
 
-    const handleAddCategory = async () => {
-        const name = await prompt({
-            title: "Nova Categoria",
-            message: "Digite o nome da nova categoria de restaurante (ex: Mexicana):",
-            placeholder: "Nome da categoria"
-        });
+    const handleOpenModal = (category: RestaurantCategory | null) => {
+        setEditingCategory(category);
+        setIsModalOpen(true);
+    };
 
-        if (name && name.trim()) {
-            try {
-                await createRestaurantCategory(name.trim());
-                addToast({ message: 'Categoria criada com sucesso!', type: 'success' });
-                loadCategories();
-            } catch (error: any) {
-                addToast({ message: `Erro ao criar: ${getErrorMessage(error)}`, type: 'error' });
-            }
-        }
+    const handleCloseModal = () => {
+        setIsModalOpen(false);
+        setEditingCategory(null);
     };
 
     const handleDeleteCategory = async (id: number, name: string) => {
@@ -88,15 +83,27 @@ const CategoryManagement: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 {categories.map(cat => (
-                    <div key={cat.id} className="flex justify-between items-center p-4 bg-gray-50 border rounded-lg hover:bg-gray-100 transition-colors">
-                        <span className="font-semibold text-gray-700">{cat.name}</span>
-                        <button 
-                            onClick={() => handleDeleteCategory(cat.id, cat.name)}
-                            className="text-gray-400 hover:text-red-600 p-2 rounded-full hover:bg-white"
-                            title="Excluir"
-                        >
-                            <TrashIcon className="w-5 h-5" />
-                        </button>
+                    <div key={cat.id} className="flex items-center justify-between p-4 bg-gray-50 border rounded-lg hover:bg-gray-100 transition-colors">
+                        <div className="flex items-center gap-3">
+                            {cat.iconUrl && <img src={cat.iconUrl} alt={cat.name} className="w-8 h-8 object-cover rounded-full" />}
+                            <span className="font-semibold text-gray-700">{cat.name}</span>
+                        </div>
+                        <div className="flex gap-2">
+                            <button 
+                                onClick={() => handleOpenModal(cat)}
+                                className="text-gray-400 hover:text-blue-600 p-2 rounded-full hover:bg-white"
+                                title="Editar"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
+                            </button>
+                            <button 
+                                onClick={() => handleDeleteCategory(cat.id, cat.name)}
+                                className="text-gray-400 hover:text-red-600 p-2 rounded-full hover:bg-white"
+                                title="Excluir"
+                            >
+                                <TrashIcon className="w-5 h-5" />
+                            </button>
+                        </div>
                     </div>
                 ))}
             </div>
@@ -104,6 +111,13 @@ const CategoryManagement: React.FC = () => {
             {categories.length === 0 && (
                 <p className="text-center text-gray-500 py-8">Nenhuma categoria cadastrada.</p>
             )}
+
+            <CategoryEditorModal
+                isOpen={isModalOpen}
+                onClose={handleCloseModal}
+                onSaveSuccess={loadCategories}
+                existingCategory={editingCategory}
+            />
         </div>
     );
 };

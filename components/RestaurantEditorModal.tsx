@@ -217,7 +217,11 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 
                 <div className="overflow-y-auto space-y-6 pr-2">
                     <div className="flex gap-4 items-center">
-                        <img src={logoPreview || ''} className="w-20 h-20 bg-gray-100 rounded border object-cover" />
+                        {logoPreview ? (
+                            <img src={logoPreview} alt="Logo Preview" className="w-20 h-20 bg-gray-100 rounded border object-cover" />
+                        ) : (
+                            <div className="w-20 h-20 bg-gray-100 rounded border flex items-center justify-center text-gray-400 text-xs text-center">Sem Logo</div>
+                        )}
                         <input type="file" accept="image/*" onChange={async e => {
                             if(e.target.files?.[0]) {
                                 const comp = await compressLogo(e.target.files[0]);
@@ -228,9 +232,55 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
 
                     <input name="name" value={formData.name} onChange={handleChange} placeholder="Nome" className="w-full p-2 border rounded" />
                     
+                    <div className="border rounded p-3 bg-white">
+                        <h3 className="font-bold text-sm mb-2">Categorias do Restaurante</h3>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                            {categories.map(cat => (
+                                <label key={cat.id} className="flex items-center gap-2 text-gray-700">
+                                    {cat.iconUrl && <img src={cat.iconUrl} alt={cat.name} className="w-5 h-5 object-cover rounded-full" />}
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.category.split(',').map(c => c.trim()).includes(cat.name)}
+                                        onChange={(e) => {
+                                            const currentCategories = formData.category.split(',').map(c => c.trim()).filter(c => c !== '');
+                                            if (e.target.checked) {
+                                                setFormData(prev => ({ ...prev, category: [...currentCategories, cat.name].join(', ') }));
+                                            } else {
+                                                setFormData(prev => ({ ...prev, category: currentCategories.filter(c => c !== cat.name).join(', ') }));
+                                            }
+                                        }}
+                                    />
+                                    {cat.name}
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                         <input name="phone" value={formData.phone} onChange={handleChange} placeholder="Telefone" className="p-2 border rounded" />
                         <input name="deliveryFee" type="number" value={formData.deliveryFee} onChange={handleChange} placeholder="Taxa Entrega" className="p-2 border rounded" />
+                    </div>
+
+                    <div className="border-t pt-4">
+                        <h3 className="font-bold mb-2">Formas de Pagamento</h3>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                            {PREDEFINED_PAYMENT_METHODS.map(method => (
+                                <label key={method} className="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.paymentGateways.includes(method)}
+                                        onChange={(e) => {
+                                            if (e.target.checked) {
+                                                setFormData(prev => ({ ...prev, paymentGateways: [...prev.paymentGateways, method] }));
+                                            } else {
+                                                setFormData(prev => ({ ...prev, paymentGateways: prev.paymentGateways.filter(m => m !== method) }));
+                                            }
+                                        }}
+                                    />
+                                    {method}
+                                </label>
+                            ))}
+                        </div>
                     </div>
 
                     {/* SEÇÃO MERCADO PAGO - ADICIONADA */}

@@ -13,6 +13,7 @@ export interface Banner {
 export interface RestaurantCategory {
   id: number;
   name: string;
+  iconUrl?: string; // NEW: URL do ícone da categoria
 }
 
 // New interface for detailed operating hours
