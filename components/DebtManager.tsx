@@ -48,7 +48,8 @@ const DebtManager: React.FC<DebtManagerProps> = ({ orders }) => {
     // Group by customer phone
     const customersWithDebt = useMemo(() => {
         const grouped = pendingOrders.reduce((acc, order) => {
-            const phone = order.customerPhone.replace(/\D/g, '');
+            const phone = (order.customerPhone || '').replace(/\D/g, '');
+            if (!phone) return acc;
             if (!acc[phone]) {
                 acc[phone] = {
                     name: order.customerName,
@@ -98,7 +99,7 @@ const DebtManager: React.FC<DebtManagerProps> = ({ orders }) => {
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         const baseUrl = isMobile ? 'https://api.whatsapp.com/send' : 'https://web.whatsapp.com/send';
         
-        const url = `${baseUrl}?phone=55${phone.replace(/\D/g, '')}&text=${encodeURIComponent(message)}`;
+        const url = `${baseUrl}?phone=55${(phone || '').replace(/\D/g, '')}&text=${encodeURIComponent(message)}`;
         
         // No desktop, o target fixo 'whatsapp_guarafood' reutiliza a janela se ela já existir
         window.open(url, isMobile ? '_blank' : 'whatsapp_guarafood');

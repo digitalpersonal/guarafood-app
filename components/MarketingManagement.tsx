@@ -258,7 +258,13 @@ const MarketingManagement: React.FC = () => {
                 {banners.map(banner => (
                     <div key={banner.id} className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow relative group">
                         <div className="h-40 bg-gray-200 relative">
-                             <img src={banner.imageUrl} alt={banner.title} className="w-full h-full object-cover" />
+                             {banner.imageUrl ? (
+                                 <img src={banner.imageUrl} alt={banner.title} className="w-full h-full object-cover" />
+                             ) : (
+                                 <div className="w-full h-full bg-gray-200 flex items-center justify-center text-gray-400">
+                                     <span className="text-xs">Sem imagem</span>
+                                 </div>
+                             )}
                              {!banner.active && (
                                  <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
                                      <span className="bg-red-600 text-white px-2 py-1 rounded text-xs font-bold">INATIVO</span>

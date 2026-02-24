@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { MenuItem, Addon, CartItem, SizeOption } from '../types';
+import OptimizedImage from './OptimizedImage';
 
 interface PizzaCustomizationModalProps {
     isOpen: boolean;
@@ -154,7 +155,7 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                             <div className="border rounded-lg p-3">
                                 <h3 className="font-bold text-center text-gray-600 text-sm mb-2">1ª Metade</h3>
                                 <div className="flex items-center space-x-3">
-                                    <img src={firstHalf.imageUrl} alt={firstHalf.name} className="w-14 h-14 rounded-md object-cover" loading="lazy"/>
+                                    <OptimizedImage src={firstHalf.imageUrl || ''} alt={firstHalf.name} className="w-14 h-14 rounded-md object-cover flex-shrink-0" />
                                     <div>
                                         <p className="font-semibold">{firstHalf.name}</p>
                                     </div>
@@ -165,7 +166,7 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                                 {secondHalf ? (
                                     <div className="w-full">
                                         <div className="flex items-center space-x-3">
-                                            <img src={secondHalf.imageUrl} alt={secondHalf.name} className="w-14 h-14 rounded-md object-cover" loading="lazy"/>
+                                            <OptimizedImage src={secondHalf.imageUrl || ''} alt={secondHalf.name} className="w-14 h-14 rounded-md object-cover flex-shrink-0" />
                                             <div className="flex-grow">
                                                 <p className="font-semibold">{secondHalf.name}</p>
                                             </div>
@@ -187,7 +188,7 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border rounded-lg bg-gray-50">
                                 {allPizzas.filter(p => p.id !== firstHalf.id).map(pizza => (
                                     <div key={pizza.id} onClick={() => handleSelectSecondHalf(pizza)} className="p-2 flex items-center space-x-3 rounded-md hover:bg-gray-200 cursor-pointer">
-                                        <img src={pizza.imageUrl} alt={pizza.name} className="w-10 h-10 rounded-md object-cover" loading="lazy"/>
+                                        <OptimizedImage src={pizza.imageUrl || ''} alt={pizza.name} className="w-10 h-10 rounded-md object-cover flex-shrink-0" />
                                         <span className="font-semibold text-sm">{pizza.name}</span>
                                     </div>
                                 ))}

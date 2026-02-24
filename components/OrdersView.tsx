@@ -347,7 +347,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         const baseUrl = isMobile ? 'https://api.whatsapp.com/send' : 'https://web.whatsapp.com/send';
         
-        const whatsappUrl = `${baseUrl}?phone=55${order.customerPhone.replace(/\D/g, '')}&text=${encodeURIComponent(fullMessage)}`;
+        const whatsappUrl = `${baseUrl}?phone=55${(order.customerPhone || '').replace(/\D/g, '')}&text=${encodeURIComponent(fullMessage)}`;
         
         // No desktop, o target fixo 'whatsapp_guarafood' reutiliza a janela se ela já existir
         window.open(whatsappUrl, isMobile ? '_blank' : 'whatsapp_guarafood');

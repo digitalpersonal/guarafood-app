@@ -32,7 +32,7 @@ const CustomerList: React.FC<CustomerListProps> = ({ orders }) => {
 
     const customers = useMemo(() => {
         const customerMap = orders.reduce((acc, order) => {
-            const phone = order.customerPhone.replace(/\D/g, ''); // Normalize phone as ID
+            const phone = (order.customerPhone || '').replace(/\D/g, ''); // Normalize phone as ID
             if (!phone) return acc;
 
             if (!acc[phone]) {
@@ -75,7 +75,7 @@ const CustomerList: React.FC<CustomerListProps> = ({ orders }) => {
 
     const handleWhatsApp = (phone: string) => {
         // FIX: Using official API endpoint for better reliability in native apps detection
-        const url = `https://api.whatsapp.com/send?phone=55${phone.replace(/\D/g, '')}`;
+        const url = `https://api.whatsapp.com/send?phone=55${(phone || '').replace(/\D/g, '')}`;
         const link = document.createElement('a');
         link.href = url;
         link.target = '_blank';

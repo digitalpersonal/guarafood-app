@@ -54,7 +54,7 @@ const GlobalCustomerList: React.FC = () => {
 
     const customers = useMemo(() => {
         const customerMap = orders.reduce((acc, order) => {
-            const phone = order.customerPhone.replace(/\D/g, ''); 
+            const phone = (order.customerPhone || '').replace(/\D/g, ''); 
             if (!phone) return acc;
 
             if (!acc[phone]) {
@@ -142,7 +142,7 @@ const GlobalCustomerList: React.FC = () => {
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         const baseUrl = isMobile ? 'https://api.whatsapp.com/send' : 'https://web.whatsapp.com/send';
         
-        const url = `${baseUrl}?phone=55${phone.replace(/\D/g, '')}`;
+        const url = `${baseUrl}?phone=55${(phone || '').replace(/\D/g, '')}`;
         // No desktop, o target fixo 'whatsapp_guarafood' reutiliza a janela se ela já existir
         window.open(url, isMobile ? '_blank' : 'whatsapp_guarafood');
     };

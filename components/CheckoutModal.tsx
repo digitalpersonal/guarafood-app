@@ -483,7 +483,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             const customerMessage = `Olá, ${restaurant.name}! Recebi a confirmação "Seu pedido foi recebido!" no app.\n\nEstou enviando uma cópia aqui no WhatsApp para registro. Entendo que o acompanhamento oficial é 100% pelo GuaraFood.\n`;
             const orderDetails = formatOrderDetailsForWhatsApp(successfulOrder);
             const fullMessage = `${customerMessage}${orderDetails}`;
-            const restaurantPhone = restaurant.phone.replace(/\D/g, '');
+            const restaurantPhone = (restaurant.phone || '').replace(/\D/g, '');
             const whatsappUrl = `https://wa.me/55${restaurantPhone}?text=${encodeURIComponent(fullMessage)}`;
             window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
         }

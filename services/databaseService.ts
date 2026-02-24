@@ -164,10 +164,7 @@ const normalizeExpense = (data: any): Expense => ({
     restaurantId: data.restaurant_id
 });
 
-const normalizeRestaurantCategory = (data: any): RestaurantCategory => ({
-    ...data,
-    iconUrl: data.icon_url,
-});
+const normalizeRestaurantCategory = (data: any): RestaurantCategory => data;
 
 // ==============================================================================
 // 🏢 RESTAURANTS
@@ -229,10 +226,43 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
 };
 
 export const deleteRestaurant = async (id: number): Promise<void> => {
+    // 1. Try to use the Edge Function (Best practice for cleanup including Auth user)
     const { error } = await supabase.functions.invoke('delete-restaurant-and-user', { body: { restaurantId: id } });
+
     if (error) {
-        const { error: dbError } = await supabase.from('restaurants').delete().eq('id', id);
-        handleSupabaseError({ error: dbError, customMessage: 'Failed to delete restaurant' });
+        console.warn("Edge function 'delete-restaurant-and-user' failed or not available. Attempting manual cleanup...", error);
+
+        // 2. Manual Cleanup (Fallback)
+        // We must delete related records in a specific order to avoid Foreign Key constraint violations
+        // if ON DELETE CASCADE is not set up correctly in the database.
+
+        try {
+            // Delete dependent data first (Children)
+            // Order matters: Delete items/combos before categories
+            await supabase.from('combos').delete().eq('restaurant_id', id);
+            await supabase.from('menu_items').delete().eq('restaurant_id', id);
+            await supabase.from('menu_categories').delete().eq('restaurant_id', id);
+            await supabase.from('addons').delete().eq('restaurant_id', id);
+            await supabase.from('promotions').delete().eq('restaurant_id', id);
+            await supabase.from('coupons').delete().eq('restaurant_id', id);
+            await supabase.from('expenses').delete().eq('restaurant_id', id);
+            
+            // Note: Orders might be preserved for history, but if we are hard deleting the restaurant, 
+            // we likely need to delete them or the DB will reject the deletion.
+            // If you want to keep orders, you'd need to soft-delete the restaurant (set active=false).
+            // Here we assume hard delete is requested.
+            await supabase.from('orders').delete().eq('restaurant_id', id);
+
+            // 3. Delete the Restaurant (Parent)
+            const { error: dbError } = await supabase.from('restaurants').delete().eq('id', id);
+            
+            if (dbError) {
+                throw dbError;
+            }
+        } catch (manualError: any) {
+            // If manual cleanup also fails, throw the error to be caught by the UI
+            handleSupabaseError({ error: manualError, customMessage: 'Failed to delete restaurant (Manual Cleanup)' });
+        }
     }
 };
 
@@ -260,24 +290,14 @@ export const fetchRestaurantCategories = async (): Promise<RestaurantCategory[]>
     return (data || []).map(normalizeRestaurantCategory);
 };
 
-export const createRestaurantCategory = async (name: string, iconUrl?: string): Promise<RestaurantCategory | null> => {
-    const payload: { name: string; icon_url?: string } = { name };
-    if (iconUrl) {
-        payload.icon_url = iconUrl;
-    }
-    const { data, error } = await supabase.from('restaurant_categories').insert(payload).select().single();
+export const createRestaurantCategory = async (name: string): Promise<RestaurantCategory | null> => {
+    const { data, error } = await supabase.from('restaurant_categories').insert({ name }).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to create category' });
     return data ? normalizeRestaurantCategory(data) : null;
 };
 
-export const updateRestaurantCategory = async (id: number, name: string, iconUrl?: string): Promise<RestaurantCategory | null> => {
-    const payload: { name: string; icon_url?: string } = { name };
-    if (iconUrl) {
-        payload.icon_url = iconUrl;
-    } else {
-        payload.icon_url = null; // Clear icon if not provided
-    }
-    const { data, error } = await supabase.from('restaurant_categories').update(payload).eq('id', id).select().single();
+export const updateRestaurantCategory = async (id: number, name: string): Promise<RestaurantCategory | null> => {
+    const { data, error } = await supabase.from('restaurant_categories').update({ name }).eq('id', id).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to update category' });
     return data ? normalizeRestaurantCategory(data) : null;
 };

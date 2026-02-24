@@ -260,7 +260,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
     };
 
     const handlePriceChange = (value: string, setter: React.Dispatch<React.SetStateAction<string>>) => {
-        setter(value.replace(',', '.'));
+        setter((value || '').replace(',', '.'));
     };
 
     const handleSizeChange = (index: number, field: keyof SizeOption, value: string) => {
@@ -268,7 +268,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
         let processedValue: string | number = value;
         
         if (field === 'price') {
-             processedValue = parseFloat(value.replace(',', '.'));
+             processedValue = parseFloat((value || '').replace(',', '.'));
         } else if (field === 'freeAddonCount') {
              processedValue = parseInt(value, 10);
         }

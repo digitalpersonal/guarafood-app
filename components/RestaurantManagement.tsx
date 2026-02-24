@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { Restaurant } from '../types';
 // Import fetchRestaurantsSecure instead of fetchRestaurants
-import { fetchRestaurantsSecure, deleteRestaurant } from '../services/databaseService';
+import { fetchRestaurantsSecure, deleteRestaurant, updateRestaurant } from '../services/databaseService';
+import { importDuGrillRestaurant } from '../utils/importDuGrill';
 import { useNotification } from '../hooks/useNotification';
 import Spinner from './Spinner';
 import { supabase, getErrorMessage } from '../services/api';
@@ -65,22 +66,66 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
         setIsEditorOpen(false);
     };
 
-    const handleDeleteRestaurant = async (restaurantId: number) => {
+    const handleToggleActive = async (restaurant: Restaurant) => {
+        try {
+            const newStatus = !restaurant.active;
+            await updateRestaurant(restaurant.id, { active: newStatus });
+            addToast({ message: `Restaurante ${newStatus ? 'ativado' : 'bloqueado'} com sucesso.`, type: 'success' });
+            await loadRestaurants();
+        } catch (err: any) {
+            console.error("Failed to toggle restaurant status", err);
+            addToast({ message: `Erro ao alterar status: ${getErrorMessage(err)}`, type: 'error' });
+        }
+    };
+
+    const generateDeleteSQL = (restaurantId: number, restaurantName: string) => {
+        const sql = `
+-- SQL para excluir o restaurante "${restaurantName}" (ID: ${restaurantId}) e seus dados
+BEGIN;
+  DELETE FROM combos WHERE restaurant_id = ${restaurantId};
+  DELETE FROM menu_items WHERE restaurant_id = ${restaurantId};
+  DELETE FROM menu_categories WHERE restaurant_id = ${restaurantId};
+  DELETE FROM addons WHERE restaurant_id = ${restaurantId};
+  DELETE FROM promotions WHERE restaurant_id = ${restaurantId};
+  DELETE FROM coupons WHERE restaurant_id = ${restaurantId};
+  DELETE FROM expenses WHERE restaurant_id = ${restaurantId};
+  DELETE FROM orders WHERE restaurant_id = ${restaurantId};
+  DELETE FROM restaurants WHERE id = ${restaurantId};
+COMMIT;
+`;
+        navigator.clipboard.writeText(sql);
+        addToast({ message: 'SQL de exclusão copiado para a área de transferência!', type: 'info' });
+    };
+
+    const handleDeleteRestaurant = async (restaurant: Restaurant) => {
         const confirmed = await confirm({
             title: 'Excluir Restaurante',
-            message: 'Tem certeza que deseja excluir este restaurante? Esta ação também removerá permanentemente a conta do lojista associada.',
+            message: `Tem certeza que deseja excluir "${restaurant.name}"? Esta ação é irreversível.`,
             confirmText: 'Excluir',
             isDestructive: true,
         });
 
         if (confirmed) {
             try {
-                await deleteRestaurant(restaurantId);
+                await deleteRestaurant(restaurant.id);
                 addToast({ message: 'Restaurante excluído.', type: 'info' });
                 await loadRestaurants();
             } catch (err: any) {
                 console.error("Failed to delete restaurant", err);
-                addToast({ message: `Erro ao excluir restaurante: ${getErrorMessage(err)}`, type: 'error' });
+                const errorMsg = getErrorMessage(err);
+                addToast({ message: `Erro ao excluir: ${errorMsg}`, type: 'error' });
+                
+                // Offer SQL workaround
+                const useSql = await confirm({
+                    title: 'Falha na Exclusão Automática',
+                    message: 'O sistema não conseguiu excluir automaticamente (provavelmente devido a restrições de segurança ou dados vinculados). Deseja copiar o SQL para excluir manualmente no Supabase?',
+                    confirmText: 'Copiar SQL',
+                    cancelText: 'Cancelar'
+                });
+                
+                if (useSql) {
+                    generateDeleteSQL(restaurant.id, restaurant.name);
+                }
             }
         }
     };
@@ -91,6 +136,18 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
         addToast({ message: 'Link copiado para a área de transferência!', type: 'success' });
     };
 
+    const handleImportDuGrill = async () => {
+        setIsLoading(true);
+        const result = await importDuGrillRestaurant();
+        if (result.success) {
+            addToast({ message: 'Restaurante Du Grill importado com sucesso!', type: 'success' });
+            await loadRestaurants();
+        } else {
+            addToast({ message: `Erro ao importar: ${getErrorMessage(result.error)}`, type: 'error' });
+        }
+        setIsLoading(false);
+    };
+
     if (isLoading) return <Spinner message="Carregando restaurantes..." />;
     if (error) return <p className="text-center text-red-500 p-8 bg-red-50 rounded-lg">{error}</p>;
 
@@ -98,12 +155,20 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
         <div className="bg-white p-4 rounded-lg shadow-md">
             <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-gray-800">Gerenciar Restaurantes</h2>
-                <button
-                    onClick={() => handleOpenEditor(null)}
-                    className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 transition-colors"
-                >
-                    Adicionar Novo Restaurante
-                </button>
+                <div className="flex gap-2">
+                    <button
+                        onClick={handleImportDuGrill}
+                        className="bg-gray-800 text-white font-bold py-2 px-4 rounded-lg hover:bg-black transition-colors text-xs uppercase tracking-wider"
+                    >
+                        Importar Du Grill (PDF)
+                    </button>
+                    <button
+                        onClick={() => handleOpenEditor(null)}
+                        className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 transition-colors"
+                    >
+                        Adicionar Novo Restaurante
+                    </button>
+                </div>
             </div>
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left text-gray-600">
@@ -149,11 +214,20 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu 
                                 </td>
                                 <td className="px-6 py-4">
                                     <div className="flex space-x-2">
+                                        <button 
+                                            onClick={() => handleToggleActive(restaurant)} 
+                                            className={`p-2 hover:text-white rounded transition-colors ${restaurant.active ? 'text-green-600 hover:bg-green-600' : 'text-red-500 hover:bg-red-500'}`} 
+                                            title={restaurant.active ? "Bloquear Restaurante" : "Ativar Restaurante"}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M5.636 5.636a9 9 0 1012.728 0M12 3v9" />
+                                            </svg>
+                                        </button>
                                         <button onClick={() => onEditMenu(restaurant)} className="p-2 text-gray-500 hover:text-green-600" title="Gerenciar Cardápio">
                                             <MenuBookIcon className="w-5 h-5"/>
                                         </button>
                                         <button onClick={() => handleOpenEditor(restaurant)} className="p-2 text-gray-500 hover:text-blue-600" title="Editar Restaurante"><EditIcon className="w-5 h-5"/></button>
-                                        <button onClick={() => handleDeleteRestaurant(restaurant.id)} className="p-2 text-gray-500 hover:text-red-600" title="Excluir Restaurante"><TrashIcon className="w-5 h-5"/></button>
+                                        <button onClick={() => handleDeleteRestaurant(restaurant)} className="p-2 text-gray-500 hover:text-red-600" title="Excluir Restaurante"><TrashIcon className="w-5 h-5"/></button>
                                     </div>
                                 </td>
                             </tr>

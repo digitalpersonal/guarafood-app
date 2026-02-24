@@ -651,13 +651,25 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {allCombos.map(combo => (
                             <div key={combo.id} className="bg-gray-50 p-4 rounded-lg border">
-                                <img src={combo.imageUrl} alt={combo.name} className="w-full h-32 object-cover rounded-md mb-3" loading="lazy" />
+                                {combo.imageUrl ? (
+                                    <img src={combo.imageUrl} alt={combo.name} className="w-full h-32 object-cover rounded-md mb-3" loading="lazy" />
+                                ) : (
+                                    <div className="w-full h-32 bg-gray-200 rounded-md mb-3 flex items-center justify-center text-gray-400">
+                                        <span className="text-xs">Sem imagem</span>
+                                    </div>
+                                )}
                                 <h3 className="font-bold text-lg">{combo.name}</h3>
                                 <div className="text-xs text-gray-600 border-t pt-2 mt-2">
                                     <div className="space-y-2 mt-1">
                                         {combo.menuItemIds.map(id => allMenuItems.find(item => item.id === id)).filter(Boolean).map(item => (
                                             <div key={item!.id} className="flex items-center space-x-2">
-                                                <img src={item!.imageUrl} alt={item!.name} className="w-6 h-6 rounded-full object-cover" loading="lazy"/>
+                                                {item!.imageUrl ? (
+                                                    <img src={item!.imageUrl} alt={item!.name} className="w-6 h-6 rounded-full object-cover" loading="lazy"/>
+                                                ) : (
+                                                    <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-[8px] text-gray-500 font-bold">
+                                                        {item!.name.charAt(0)}
+                                                    </div>
+                                                )}
                                                 <span className="text-gray-700">{item!.name}</span>
                                             </div>
                                         ))}
@@ -752,7 +764,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                                             </div>
                                         ) : (
                                             <h3 className="text-xl font-bold text-gray-700 flex items-center gap-2">
-                                                {category.iconUrl && <img src={category.iconUrl} alt={category.name} className="w-6 h-6 object-contain" />}
+                                                {category.iconUrl && category.iconUrl.trim() !== '' && <img src={category.iconUrl} alt={category.name} className="w-6 h-6 object-contain" />}
                                                 {category.name}
                                             </h3>
                                         )}

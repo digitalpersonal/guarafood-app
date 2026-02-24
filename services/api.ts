@@ -93,8 +93,12 @@ export const handleSupabaseError = ({ error, customMessage, tableName }: { error
         const fullErrorMessageLower = errorMessage.toLowerCase();
         let enhancedMessage = `${customMessage}: ${errorMessage}`;
 
+        // Check for network errors
+        if (fullErrorMessageLower.includes('failed to fetch')) {
+            enhancedMessage = `${customMessage}: Erro de conexão com o banco de dados. Isso pode ocorrer se o projeto Supabase estiver pausado, se houver um bloqueador de anúncios ativo, ou se sua conexão de internet estiver instável. Verifique se o URL no config.ts está correto e se o projeto está ativo no painel do Supabase.`;
+        }
         // Check for Infinite Recursion (RLS Policy Loop)
-        if (fullErrorMessageLower.includes('infinite recursion')) {
+        else if (fullErrorMessageLower.includes('infinite recursion')) {
             enhancedMessage = `Erro Crítico de Banco de Dados: Recursão infinita detectada nas políticas de segurança (RLS).\n\nSOLUÇÃO: Vá ao SQL Editor do Supabase e execute o script 'fix_recursion.sql' fornecido para resetar as políticas.`;
         }
         // Check for 'column does not exist' error (PostgreSQL error code 42703 for undefined_column)

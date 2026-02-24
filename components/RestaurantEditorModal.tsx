@@ -240,9 +240,9 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                                     {cat.iconUrl && <img src={cat.iconUrl} alt={cat.name} className="w-5 h-5 object-cover rounded-full" />}
                                     <input
                                         type="checkbox"
-                                        checked={formData.category.split(',').map(c => c.trim()).includes(cat.name)}
+                                        checked={(formData.category || '').split(',').map(c => c.trim()).includes(cat.name)}
                                         onChange={(e) => {
-                                            const currentCategories = formData.category.split(',').map(c => c.trim()).filter(c => c !== '');
+                                            const currentCategories = (formData.category || '').split(',').map(c => c.trim()).filter(c => c !== '');
                                             if (e.target.checked) {
                                                 setFormData(prev => ({ ...prev, category: [...currentCategories, cat.name].join(', ') }));
                                             } else {

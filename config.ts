@@ -6,8 +6,8 @@
 // Tenta ler as variáveis de ambiente do Vercel (Segurança Máxima)
 // Se não encontrar (ex: rodando local), usa as chaves hardcoded abaixo.
 
-const ENV_SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL;
-const ENV_SUPABASE_ANON_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
+const ENV_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const ENV_SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // --- SUAS CREDENCIAIS ---
 // Mantenha estas aqui como backup caso não consiga configurar no Vercel agora.
