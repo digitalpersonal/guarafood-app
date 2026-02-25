@@ -67,7 +67,8 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     }, [currentUser, activeTab]);
 
     const processOrdersUpdate = useCallback((allOrders: Order[]) => {
-        const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
+        // Force notifications enabled by default
+        const areNotificationsEnabled = true; // localStorage.getItem('guarafood-notifications-enabled') === 'true';
         
         const currentStatusMap = new Map<string, string>();
         allOrders.forEach(o => currentStatusMap.set(o.id, o.status));

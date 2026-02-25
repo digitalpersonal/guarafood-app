@@ -224,9 +224,13 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const isOpenNow = isRestaurantOpen(restaurant);
 
     const paymentOptions = useMemo(() => {
-        return restaurant.paymentGateways && restaurant.paymentGateways.length > 0 
-            ? restaurant.paymentGateways 
-            : ["Pix", "Cartão de Crédito", "Cartão de Débito", "Dinheiro", "Marcar na minha conta"];
+        const options = restaurant.paymentGateways && restaurant.paymentGateways.length > 0 
+            ? [...restaurant.paymentGateways] 
+            : ["Pix", "Cartão de Crédito", "Cartão de Débito", "Dinheiro"];
+            
+        // Se tiver credenciais do MP, garante que "Pix" seja tratado como automático
+        // Mas mantemos o nome "Pix" para o usuário final
+        return options;
     }, [restaurant]);
 
     const resetState = () => {

@@ -15,10 +15,10 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
     // 58mm -> Usamos 48mm de conteúdo útil
     const contentWidth = printerWidth === 80 ? '65mm' : '48mm';
     
-    const baseFontSize = printerWidth === 58 ? '11px' : '13px';
-    const headerFontSize = printerWidth === 58 ? '12px' : '15px';
-    const titleFontSize = printerWidth === 58 ? '18px' : '22px';
-    const smallFontSize = printerWidth === 58 ? '9px' : '11px';
+    const baseFontSize = printerWidth === 58 ? '13px' : '13px';
+    const headerFontSize = printerWidth === 58 ? '14px' : '15px';
+    const titleFontSize = printerWidth === 58 ? '20px' : '22px';
+    const smallFontSize = printerWidth === 58 ? '11px' : '11px';
 
     const isPixPaid = order.paymentMethod.toLowerCase().includes('pix') && order.paymentStatus === 'paid';
     

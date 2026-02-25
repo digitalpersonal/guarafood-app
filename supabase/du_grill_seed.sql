@@ -25,6 +25,7 @@ BEGIN
     closing_hours = '23:00',
     delivery_fee = 0,
     active = true,
+    printer_width = 58,
     operating_hours = jsonb_build_array(
       jsonb_build_object('dayOfWeek', 0, 'opens', '18:00', 'closes', '23:00', 'isOpen', true),
       jsonb_build_object('dayOfWeek', 1, 'opens', '18:00', 'closes', '23:00', 'isOpen', true),
