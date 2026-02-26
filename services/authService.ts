@@ -65,8 +65,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     setLoading(true);
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      if (error) {
+        console.warn("Session check error:", error.message);
+        if (error.message.includes("Refresh Token") || error.message.includes("refresh_token")) {
+            localStorage.removeItem(USER_STORAGE_KEY);
+            setCurrentUser(null);
+            await supabase.auth.signOut();
+        }
+      } else if (session?.user) {
         const profile = await fetchUserProfile(session.user);
         if (profile) {
             localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
@@ -74,6 +81,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
       setLoading(false);
+    }).catch(async (err) => {
+        console.error("Unexpected auth error:", err);
+        localStorage.removeItem(USER_STORAGE_KEY);
+        setCurrentUser(null);
+        setLoading(false);
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
