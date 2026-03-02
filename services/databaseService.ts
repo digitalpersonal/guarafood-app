@@ -58,7 +58,8 @@ const normalizeRestaurant = (data: any): Restaurant => {
         manualPixKey: data.manual_pix_key,
         hasPixConfigured: hasMpToken,
         active: data.active !== false,
-        printerWidth: data.printer_width
+        printerWidth: data.printer_width,
+        staff: data.staff || [] // NEW
     };
 };
 
@@ -86,7 +87,8 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         manualPixKey: data.manual_pix_key,
         hasPixConfigured: hasMpToken,
         active: data.active !== false,
-        printerWidth: data.printer_width
+        printerWidth: data.printer_width,
+        staff: data.staff || [] // NEW
     };
 };
 
@@ -207,6 +209,7 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     if (updates.operatingHours !== undefined) dbUpdates.operating_hours = updates.operatingHours;
     if (updates.manualPixKey !== undefined) dbUpdates.manual_pix_key = updates.manualPixKey;
     if (updates.printerWidth !== undefined) dbUpdates.printer_width = updates.printerWidth;
+    if (updates.staff !== undefined) dbUpdates.staff = updates.staff;
 
     // Clean up all camelCase keys to prevent Supabase "column does not exist" errors
     const keysToRemove = [
@@ -381,6 +384,26 @@ export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilt
 
     const categories: MenuCategory[] = (categoriesData || []).map(normalizeCategory).map(category => {
         let items = (itemsData || []).map(normalizeItem).filter(item => item.categoryId === category.id);
+        
+        // SMART SORT: Prioritize numerical prefix in names (e.g., "01- X-Tudo", "2- Grill")
+        items.sort((a, b) => {
+            const getNum = (name: string) => {
+                const match = name.match(/^(\d+)/);
+                return match ? parseInt(match[1], 10) : null;
+            };
+            const numA = getNum(a.name);
+            const numB = getNum(b.name);
+            
+            if (numA !== null && numB !== null) {
+                return numA - numB;
+            }
+            if (numA !== null) return -1; // Items with numbers first
+            if (numB !== null) return 1;
+            
+            // Fallback to display_order
+            return (a.displayOrder || 0) - (b.displayOrder || 0);
+        });
+
         if (!ignoreDayFilter) {
             items = items.filter(item => !item.availableDays || item.availableDays.length === 0 || item.availableDays.includes(todayIndex));
         }

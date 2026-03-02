@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import type { Restaurant } from '../types';
 // Import fetchRestaurantsSecure instead of fetchRestaurants
 import { fetchRestaurantsSecure, deleteRestaurant, updateRestaurant } from '../services/databaseService';
-import { importDuGrillRestaurant } from '../utils/importDuGrill';
 import { useNotification } from '../hooks/useNotification';
 import Spinner from './Spinner';
 import { supabase, getErrorMessage } from '../services/api';
@@ -136,18 +135,6 @@ COMMIT;
         addToast({ message: 'Link copiado para a área de transferência!', type: 'success' });
     };
 
-    const handleImportDuGrill = async () => {
-        setIsLoading(true);
-        const result = await importDuGrillRestaurant();
-        if (result.success) {
-            addToast({ message: 'Restaurante Du Grill importado com sucesso!', type: 'success' });
-            await loadRestaurants();
-        } else {
-            addToast({ message: `Erro ao importar: ${getErrorMessage(result.error)}`, type: 'error' });
-        }
-        setIsLoading(false);
-    };
-
     if (isLoading) return <Spinner message="Carregando restaurantes..." />;
     if (error) return <p className="text-center text-red-500 p-8 bg-red-50 rounded-lg">{error}</p>;
 
@@ -156,12 +143,6 @@ COMMIT;
             <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-gray-800">Gerenciar Restaurantes</h2>
                 <div className="flex gap-2">
-                    <button
-                        onClick={handleImportDuGrill}
-                        className="bg-gray-800 text-white font-bold py-2 px-4 rounded-lg hover:bg-black transition-colors text-xs uppercase tracking-wider"
-                    >
-                        Importar Du Grill (PDF)
-                    </button>
                     <button
                         onClick={() => handleOpenEditor(null)}
                         className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 transition-colors"

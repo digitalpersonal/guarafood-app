@@ -2,7 +2,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
+import { useSound } from '../hooks/useSound';
 import { fetchRestaurantByIdSecure, updateRestaurant } from '../services/databaseService';
+import { clearTodayTableOrders } from '../services/orderService';
 import type { Restaurant, OperatingHours, Order } from '../types';
 import Spinner from './Spinner';
 import PrintableOrder from './PrintableOrder';
@@ -10,31 +12,50 @@ import { getErrorMessage } from '../services/api';
 
 const NotificationSettings: React.FC = () => {
     const { addToast } = useNotification();
+    const { playNotification, initAudioContext } = useSound();
     const [notificationsEnabled, setNotificationsEnabled] = useState(false);
     const [permissionStatus, setPermissionStatus] = useState(Notification.permission);
 
     useEffect(() => {
         const savedPref = localStorage.getItem('guarafood-notifications-enabled') === 'true';
-        if (savedPref && Notification.permission === 'granted') {
+        if (savedPref) {
             setNotificationsEnabled(true);
         }
     }, []);
 
     const handleToggleNotifications = async () => {
+        initAudioContext();
         if (!notificationsEnabled) {
+            // Se já está garantido, apenas ativa
             if (permissionStatus === 'granted') {
                 setNotificationsEnabled(true);
                 localStorage.setItem('guarafood-notifications-enabled', 'true');
-                addToast({ message: 'Notificações ativadas!', type: 'success' });
-            } else if (permissionStatus === 'denied') {
-                addToast({ message: 'Notificações bloqueadas no navegador.', type: 'error' });
+                addToast({ message: 'Alertas sonoros ativados!', type: 'success' });
+                playNotification();
             } else {
-                const result = await Notification.requestPermission();
-                setPermissionStatus(result);
-                if (result === 'granted') {
-                    setNotificationsEnabled(true);
-                    localStorage.setItem('guarafood-notifications-enabled', 'true');
+                // Se não está negado, tenta pedir permissão para notificações visuais também
+                if (permissionStatus !== 'denied' && typeof Notification !== 'undefined') {
+                    try {
+                        const result = await Notification.requestPermission();
+                        setPermissionStatus(result);
+                    } catch (e) {
+                        console.error("Erro ao pedir permissão de notificação", e);
+                    }
                 }
+                
+                // Ativa o alerta sonoro de qualquer forma (pois som via Web Audio não depende da permissão de notificação)
+                setNotificationsEnabled(true);
+                localStorage.setItem('guarafood-notifications-enabled', 'true');
+                
+                if (permissionStatus === 'denied') {
+                    addToast({ 
+                        message: 'Alerta sonoro ativado! (Notificações visuais bloqueadas no navegador)', 
+                        type: 'warning' 
+                    });
+                } else {
+                    addToast({ message: 'Alertas sonoros ativados!', type: 'success' });
+                }
+                playNotification();
             }
         } else {
             setNotificationsEnabled(false);
@@ -45,17 +66,28 @@ const NotificationSettings: React.FC = () => {
     return (
         <div className="mb-8">
             <h3 className="text-lg font-bold text-gray-800 mb-2">Alertas Sonoros</h3>
-            <div className="flex items-center justify-between p-4 border rounded-xl bg-orange-50 border-orange-100 shadow-sm">
-                <div>
-                    <span className="font-bold block">Tocar Campainha</span>
-                    <span className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Status: {permissionStatus === 'granted' ? 'Ativo' : 'Pendente'}</span>
-                </div>
-                 <label className="flex items-center cursor-pointer">
-                    <div className="relative">
-                        <input type="checkbox" className="sr-only peer" checked={notificationsEnabled} onChange={handleToggleNotifications} />
-                        <div className="w-14 h-7 bg-gray-300 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-1 after:left-[4px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600 shadow-inner"></div>
+            <div className="space-y-3">
+                <div className="flex items-center justify-between p-4 border rounded-xl bg-orange-50 border-orange-100 shadow-sm">
+                    <div>
+                        <span className="font-bold block">Tocar Campainha</span>
+                        <span className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Status: {permissionStatus === 'granted' ? 'Ativo' : 'Pendente'}</span>
                     </div>
-                </label>
+                    <label className="flex items-center cursor-pointer">
+                        <div className="relative">
+                            <input type="checkbox" className="sr-only peer" checked={notificationsEnabled} onChange={handleToggleNotifications} />
+                            <div className="w-14 h-7 bg-gray-300 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-1 after:left-[4px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600 shadow-inner"></div>
+                        </div>
+                    </label>
+                </div>
+                
+                {notificationsEnabled && (
+                    <button 
+                        onClick={() => { initAudioContext(); playNotification(); }}
+                        className="w-full py-2 text-[10px] font-black uppercase bg-white border border-orange-200 text-orange-600 rounded-lg hover:bg-orange-50 transition-all"
+                    >
+                        Testar Som da Campainha
+                    </button>
+                )}
             </div>
         </div>
     );
@@ -73,11 +105,12 @@ const getDefaultOperatingHours = (): OperatingHours[] =>
 
 const RestaurantSettings: React.FC = () => {
     const { currentUser } = useAuth();
-    const { addToast } = useNotification();
+    const { addToast, confirm } = useNotification();
     const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
     const [mercadoPagoToken, setMercadoPagoToken] = useState('');
     const [manualPixKey, setManualPixKey] = useState('');
     const [printerWidth, setPrinterWidth] = useState(80);
+    const [isPrintServer, setIsPrintServer] = useState(false);
     const [operatingHours, setOperatingHours] = useState<OperatingHours[]>(getDefaultOperatingHours());
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -100,6 +133,9 @@ const RestaurantSettings: React.FC = () => {
                 const savedWidth = data.printerWidth || 80;
                 setPrinterWidth(savedWidth);
                 localStorage.setItem('guarafood-printer-width', savedWidth.toString());
+                
+                const savedIsPrintServer = localStorage.getItem('guarafood-is-print-server') === 'true';
+                setIsPrintServer(savedIsPrintServer);
             }
         } catch (err) { 
             console.error(err); 
@@ -130,11 +166,36 @@ const RestaurantSettings: React.FC = () => {
                 printerWidth: printerWidth
             });
             localStorage.setItem('guarafood-printer-width', printerWidth.toString());
+            localStorage.setItem('guarafood-is-print-server', isPrintServer.toString());
             addToast({ message: 'Configurações salvas e sincronizadas!', type: 'success' });
         } catch (err: any) {
             console.error("Save Error:", err);
             addToast({ message: `Erro ao salvar: ${getErrorMessage(err)}`, type: 'error' });
         } finally { setIsSaving(false); }
+    };
+    
+    const handleCleanupTableOrders = async () => {
+        if (!restaurantId) return;
+        
+        const confirmed = await confirm({
+            title: 'Limpar Pedidos de Mesa',
+            message: 'Tem certeza que deseja apagar TODOS os pedidos de mesa feitos HOJE? Essa ação não pode ser desfeita e removerá os dados do financeiro e histórico.',
+            confirmText: 'Sim, Limpar',
+            cancelText: 'Cancelar'
+        });
+
+        if (confirmed) {
+            setIsSaving(true);
+            try {
+                await clearTodayTableOrders(restaurantId);
+                addToast({ message: 'Pedidos de mesa de hoje foram removidos com sucesso.', type: 'success' });
+            } catch (err: any) {
+                console.error("Cleanup Error:", err);
+                addToast({ message: `Erro ao limpar pedidos: ${getErrorMessage(err)}`, type: 'error' });
+            } finally {
+                setIsSaving(false);
+            }
+        }
     };
     
     const handleTestPrint = (width: number) => {
@@ -190,6 +251,19 @@ const RestaurantSettings: React.FC = () => {
                     >
                         Imprimir Cupom de Teste
                     </button>
+                    
+                    <div className="mt-6 pt-6 border-t border-orange-200">
+                        <label className="flex items-center justify-between cursor-pointer">
+                            <div>
+                                <span className="font-bold text-orange-900 block">Modo Servidor de Impressão</span>
+                                <span className="text-xs text-orange-700">Ative APENAS no computador que tem a impressora conectada.</span>
+                            </div>
+                            <div className="relative">
+                                <input type="checkbox" className="sr-only peer" checked={isPrintServer} onChange={e => setIsPrintServer(e.target.checked)} />
+                                <div className="w-11 h-6 bg-orange-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
+                            </div>
+                        </label>
+                    </div>
                 </div>
 
                 <div className="space-y-8">
@@ -211,6 +285,20 @@ const RestaurantSettings: React.FC = () => {
                                     </div>
                                 </div>
                             ))}
+                        </div>
+                    </div>
+
+                    <div className="border-t pt-8">
+                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Manutenção de Dados</h3>
+                        <div className="bg-red-50 border border-red-100 rounded-xl p-4">
+                            <h4 className="font-bold text-red-800 mb-2 text-sm">Zona de Perigo</h4>
+                            <p className="text-xs text-red-600 mb-4">Ações irreversíveis para correção de dados.</p>
+                            <button 
+                                onClick={handleCleanupTableOrders}
+                                className="w-full py-3 bg-white border border-red-200 text-red-600 font-bold rounded-lg text-xs uppercase hover:bg-red-600 hover:text-white transition-colors shadow-sm"
+                            >
+                                Limpar Pedidos de Mesa (Hoje)
+                            </button>
                         </div>
                     </div>
 

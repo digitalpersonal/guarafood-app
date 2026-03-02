@@ -25,6 +25,7 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
     const [secondHalf, setSecondHalf] = useState<MenuItem | null>(null);
     const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
     const [showSecondHalfSelector, setShowSecondHalfSelector] = useState(false);
+    const [notes, setNotes] = useState('');
 
     useEffect(() => {
         setFirstHalf(initialPizza);
@@ -36,6 +37,7 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
         setSecondHalf(null);
         setSelectedAddonIds(new Set());
         setShowSecondHalfSelector(false);
+        setNotes('');
     }, [initialPizza, isOpen]);
 
     const availableAddons = useMemo(() => {
@@ -111,6 +113,7 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
             halves,
             selectedAddons,
             sizeName: selectedSize.name,
+            notes: notes.trim() || undefined,
         };
         
         onAddToCart(customizedPizza);
@@ -119,7 +122,7 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="pizza-modal-title">
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-[120] flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="pizza-modal-title">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                 <div className="p-4 border-b flex justify-between items-center">
                     <h2 id="pizza-modal-title" className="text-xl font-bold text-gray-800">Monte sua Pizza</h2>
@@ -217,6 +220,17 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                             </div>
                         </div>
                     )}
+
+                    <div className="mt-4">
+                        <label className="block text-sm font-bold text-gray-700 mb-2">Observações</label>
+                        <textarea
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            placeholder="Ex: Tirar cebola, borda recheada, etc."
+                            className="w-full p-3 border rounded-lg bg-gray-50 focus:ring-2 focus:ring-orange-400 focus:outline-none text-sm"
+                            rows={2}
+                        />
+                    </div>
                 </div>
 
                 <div className="p-4 border-t bg-gray-50 flex justify-between items-center">

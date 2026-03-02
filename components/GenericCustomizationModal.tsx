@@ -20,6 +20,7 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
 }) => {
     const [selectedSize, setSelectedSize] = useState<SizeOption | null>(null);
     const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
+    const [notes, setNotes] = useState('');
 
     useEffect(() => {
         if (initialItem.sizes && initialItem.sizes.length > 0) {
@@ -28,6 +29,7 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
             setSelectedSize({ name: 'Único', price: initialItem.price });
         }
         setSelectedAddonIds(new Set());
+        setNotes('');
     }, [initialItem, isOpen]);
 
     const availableAddons = useMemo(() => {
@@ -77,6 +79,7 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
             description: `${selectedAddons.length} adicionais selecionados`,
             selectedAddons: selectedAddons,
             sizeName: selectedSize.name !== 'Único' ? selectedSize.name : undefined,
+            notes: notes.trim() || undefined,
         };
         
         onAddToCart(customizedItem);
@@ -85,7 +88,7 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="generic-modal-title">
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-[120] flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="generic-modal-title">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                 <div className="p-4 border-b flex justify-between items-center">
                     <h2 id="generic-modal-title" className="text-xl font-bold text-gray-800">Personalize seu Item</h2>
@@ -144,6 +147,17 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
                             </div>
                         </div>
                     )}
+
+                    <div className="mt-4">
+                        <label className="block text-sm font-bold text-gray-700 mb-2">Observações</label>
+                        <textarea
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            placeholder="Ex: Sem cebola, bem passado, etc."
+                            className="w-full p-3 border rounded-lg bg-gray-50 focus:ring-2 focus:ring-orange-400 focus:outline-none text-sm"
+                            rows={2}
+                        />
+                    </div>
                 </div>
 
                 <div className="p-4 border-t bg-gray-50 flex justify-between items-center mt-auto">

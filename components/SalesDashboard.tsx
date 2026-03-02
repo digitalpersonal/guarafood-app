@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../services/authService';
 import { fetchOrders } from '../services/orderService';
 import { fetchExpenses, createExpense, fetchRestaurantByIdSecure } from '../services/databaseService';
-import type { Order, Expense, Restaurant, OperatingHours } from '../types';
+import type { Order, Expense, Restaurant, OperatingHours, StaffMember } from '../types';
 import Spinner from './Spinner';
 import { useNotification } from '../hooks/useNotification';
 import { timeToMinutes } from '../utils/restaurantUtils';
@@ -20,18 +20,32 @@ const PrinterIcon: React.FC<{ className?: string }> = ({ className }) => (
 
 type PeriodType = 'day' | 'week' | 'month' | 'year' | 'custom';
 
+interface SalesBreakdown {
+    total: number;
+    count: number;
+    payments: Record<string, number>;
+    bestSellers: { name: string; qty: number }[];
+}
+
 interface DashboardCalculatedData {
     currentOrders: Order[];
     currentExpenses: Expense[];
     stats: { total: number; count: number; cancelledCount: number; pendingPixCount: number };
+    deliveryStats: { count: number; totalFees: number };
     totalExpenses: number;
     netProfit: number;
     bestSellers: { name: string; qty: number }[];
     payments: Record<string, number>;
     periodLabel: string;
+    deliveryBreakdown: SalesBreakdown;
+    tableBreakdown: SalesBreakdown;
 }
 
-const SalesDashboard: React.FC = () => {
+interface SalesDashboardProps {
+    currentStaffUser?: StaffMember | null;
+}
+
+const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => {
     const { currentUser } = useAuth();
     const { addToast } = useNotification();
     const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
@@ -41,6 +55,8 @@ const SalesDashboard: React.FC = () => {
     const [activePeriod, setActivePeriod] = useState<PeriodType>('day');
     const [referenceDate, setReferenceDate] = useState(new Date());
     
+    const isManager = currentStaffUser?.role === 'manager';
+
     const printerWidth = parseInt(localStorage.getItem('guarafood-printer-width') || '80', 10);
     const printableWidth = printerWidth === 80 ? '70mm' : '46mm';
 
@@ -139,6 +155,10 @@ const SalesDashboard: React.FC = () => {
         const totalRevenue = validOrders.reduce((acc, o) => acc + (Number(o.totalPrice) || 0), 0);
         const totalExpenses = currentExpenses.reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
 
+        const deliveryOrders = validOrders.filter(o => (Number(o.deliveryFee) || 0) > 0 || (o.customerAddress && !o.tableNumber));
+        const deliveryCount = deliveryOrders.length;
+        const totalDeliveryFees = deliveryOrders.reduce((acc, o) => acc + (Number(o.deliveryFee) || 0), 0);
+
         const itemRanking: Record<string, number> = {};
         validOrders.forEach(o => o.items.forEach(i => itemRanking[i.name] = (itemRanking[i.name] || 0) + i.quantity));
         
@@ -164,11 +184,46 @@ const SalesDashboard: React.FC = () => {
             ? start.getFullYear().toString()
             : `${start.toLocaleDateString('pt-BR')} a ${end.toLocaleDateString('pt-BR')}`;
 
+        const calculateBreakdown = (orderList: Order[]): SalesBreakdown => {
+            const total = orderList.reduce((acc, o) => acc + (Number(o.totalPrice) || 0), 0);
+            const payments: Record<string, number> = {};
+            const itemRanking: Record<string, number> = {};
+
+            orderList.forEach(o => {
+                // Payments
+                let method = o.paymentMethod.split('(')[0].trim();
+                if (method.toLowerCase().includes('dinheiro')) method = 'Dinheiro';
+                if (method.toLowerCase().includes('pix')) method = 'Pix';
+                if (method.toLowerCase().includes('cartão')) method = 'Cartão';
+                payments[method] = (payments[method] || 0) + (Number(o.totalPrice) || 0);
+
+                // Items
+                o.items.forEach(i => {
+                    itemRanking[i.name] = (itemRanking[i.name] || 0) + i.quantity;
+                });
+            });
+
+            const bestSellers = Object.entries(itemRanking)
+                .map(([name, qty]) => ({ name, qty }))
+                .sort((a, b) => b.qty - a.qty)
+                .slice(0, 5);
+
+            return { total, count: orderList.length, payments, bestSellers };
+        };
+
+        const deliveryOrdersList = validOrders.filter(o => !o.tableNumber);
+        const tableOrdersList = validOrders.filter(o => !!o.tableNumber);
+
         return {
             currentOrders, currentExpenses, 
             stats: { total: totalRevenue, count: validOrders.length, cancelledCount, pendingPixCount }, 
-            totalExpenses, netProfit: totalRevenue - totalExpenses, bestSellers, payments,
-            periodLabel
+            deliveryStats: { count: deliveryCount, totalFees: totalDeliveryFees },
+            totalExpenses, 
+            netProfit: totalRevenue - totalExpenses - totalDeliveryFees,
+            bestSellers, payments,
+            periodLabel,
+            deliveryBreakdown: calculateBreakdown(deliveryOrdersList),
+            tableBreakdown: calculateBreakdown(tableOrdersList)
         };
     }, [orders, expenses, referenceDate, activePeriod, startDateInput, endDateInput, restaurant]);
 
@@ -198,15 +253,18 @@ const SalesDashboard: React.FC = () => {
         <div className="p-4 space-y-6 max-w-6xl mx-auto pb-24">
             <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 space-y-4">
                 <div className="flex flex-wrap justify-center gap-2">
-                    {(['day', 'week', 'month', 'year', 'custom'] as PeriodType[]).map(p => (
-                        <button 
-                            key={p} 
-                            onClick={() => setActivePeriod(p)} 
-                            className={`px-5 py-2 rounded-xl text-xs font-black uppercase transition-all ${activePeriod === p ? 'bg-orange-600 text-white shadow-lg scale-105' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
-                        >
-                            {p === 'day' ? 'Expediente' : p === 'week' ? 'Semana' : p === 'month' ? 'Mês' : p === 'year' ? 'Ano' : 'Personalizado'}
-                        </button>
-                    ))}
+                    {(['day', 'week', 'month', 'year', 'custom'] as PeriodType[]).map(p => {
+                        if (isManager && p !== 'day') return null;
+                        return (
+                            <button 
+                                key={p} 
+                                onClick={() => setActivePeriod(p)} 
+                                className={`px-5 py-2 rounded-xl text-xs font-black uppercase transition-all ${activePeriod === p ? 'bg-orange-600 text-white shadow-lg scale-105' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
+                            >
+                                {p === 'day' ? 'Expediente' : p === 'week' ? 'Semana' : p === 'month' ? 'Mês' : p === 'year' ? 'Ano' : 'Personalizado'}
+                            </button>
+                        );
+                    })}
                 </div>
 
                 {activePeriod === 'custom' ? (
@@ -227,7 +285,7 @@ const SalesDashboard: React.FC = () => {
                 )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                     <p className="text-gray-400 text-[10px] font-black uppercase mb-1 tracking-widest">Receita Bruta</p>
                     <h3 className="text-3xl font-black text-gray-800">R$ {dashboardData.stats.total.toFixed(2)}</h3>
@@ -238,6 +296,11 @@ const SalesDashboard: React.FC = () => {
                     <h3 className="text-3xl font-black text-red-600">R$ {dashboardData.totalExpenses.toFixed(2)}</h3>
                     <p className="text-[10px] text-gray-400 mt-1 font-bold">{dashboardData.currentExpenses.length} lançamentos</p>
                 </div>
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                    <p className="text-gray-400 text-[10px] font-black uppercase mb-1 tracking-widest">Taxas de Entrega</p>
+                    <h3 className="text-3xl font-black text-blue-600">R$ {dashboardData.deliveryStats.totalFees.toFixed(2)}</h3>
+                    <p className="text-[10px] text-blue-400 mt-1 font-bold">{dashboardData.deliveryStats.count} entregas realizadas</p>
+                </div>
                 <div className={`p-6 rounded-3xl shadow-sm border border-gray-100 ${dashboardData.netProfit >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
                     <p className="text-gray-400 text-[10px] font-black uppercase mb-1 tracking-widest">Saldo Líquido</p>
                     <h3 className={`text-3xl font-black ${dashboardData.netProfit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>R$ {dashboardData.netProfit.toFixed(2)}</h3>
@@ -246,10 +309,74 @@ const SalesDashboard: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* DELIVERY BREAKDOWN */}
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                    <h4 className="text-md font-black text-gray-800 mb-6 flex items-center justify-between uppercase tracking-tight">
+                        <div className="flex items-center gap-2">
+                            <span className="w-1.5 h-5 bg-orange-600 rounded-full"></span>
+                            Vendas Delivery / Balcão
+                        </div>
+                        <span className="text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full">R$ {dashboardData.deliveryBreakdown.total.toFixed(2)}</span>
+                    </h4>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div className="space-y-3">
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Por Pagamento</p>
+                            {Object.entries(dashboardData.deliveryBreakdown.payments).map(([method, val]) => (
+                                <div key={method} className="flex justify-between text-xs font-bold">
+                                    <span className="text-gray-500">{method}</span>
+                                    <span className="text-gray-900">R$ {Number(val).toFixed(2)}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="space-y-2">
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Top Produtos</p>
+                            {dashboardData.deliveryBreakdown.bestSellers.map((item, i) => (
+                                <div key={i} className="flex justify-between text-[10px] font-bold bg-gray-50 p-1.5 rounded-lg">
+                                    <span className="truncate max-w-[100px]">{item.name}</span>
+                                    <span className="text-orange-600">{item.qty} un</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                {/* TABLE BREAKDOWN */}
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                    <h4 className="text-md font-black text-gray-800 mb-6 flex items-center justify-between uppercase tracking-tight">
+                        <div className="flex items-center gap-2">
+                            <span className="w-1.5 h-5 bg-purple-600 rounded-full"></span>
+                            Vendas em Mesa
+                        </div>
+                        <span className="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">R$ {dashboardData.tableBreakdown.total.toFixed(2)}</span>
+                    </h4>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div className="space-y-3">
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Por Pagamento</p>
+                            {Object.entries(dashboardData.tableBreakdown.payments).map(([method, val]) => (
+                                <div key={method} className="flex justify-between text-xs font-bold">
+                                    <span className="text-gray-500">{method}</span>
+                                    <span className="text-gray-900">R$ {Number(val).toFixed(2)}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="space-y-2">
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Top Produtos</p>
+                            {dashboardData.tableBreakdown.bestSellers.map((item, i) => (
+                                <div key={i} className="flex justify-between text-[10px] font-bold bg-gray-50 p-1.5 rounded-lg">
+                                    <span className="truncate max-w-[100px]">{item.name}</span>
+                                    <span className="text-purple-600">{item.qty} un</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                     <h4 className="text-md font-black text-gray-800 mb-6 flex items-center gap-2 uppercase tracking-tight">
                         <span className="w-1.5 h-5 bg-orange-600 rounded-full"></span>
-                        Vendas por Pagamento
+                        Vendas Totais por Pagamento
                     </h4>
                     <div className="space-y-4">
                         {Object.entries(dashboardData.payments).length > 0 ? (
@@ -276,7 +403,7 @@ const SalesDashboard: React.FC = () => {
                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                     <h4 className="text-md font-black text-gray-800 mb-6 flex items-center gap-2 uppercase tracking-tight">
                         <span className="w-1.5 h-5 bg-blue-600 rounded-full"></span>
-                        Top 10 Produtos (Volume)
+                        Top 10 Produtos Totais (Volume)
                     </h4>
                     <div className="space-y-2">
                         {dashboardData.bestSellers.map((item, i) => (
@@ -304,33 +431,59 @@ const SalesDashboard: React.FC = () => {
             </div>
 
             {/* BOTÃO PRINCIPAL DE FECHAMENTO E IMPRESSÃO */}
-            <button 
-                onClick={() => window.print()} 
-                className="w-full flex items-center justify-center gap-3 p-6 bg-orange-600 text-white font-black rounded-3xl hover:bg-orange-700 transition-all shadow-xl shadow-orange-200 active:scale-95"
-            >
-                <PrinterIcon className="w-8 h-8" /> 
-                <div className="text-left">
-                    <span className="block text-[10px] uppercase tracking-widest opacity-80">Finalizar e Imprimir</span>
-                    <span className="text-lg uppercase tracking-tight">Imprimir Fechamento de Turno</span>
-                </div>
-            </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button 
+                    onClick={() => {
+                        const style = document.createElement('style');
+                        style.innerHTML = `@media print { #thermal-report-motoboy { display: none !important; } }`;
+                        document.head.appendChild(style);
+                        window.print();
+                        document.head.removeChild(style);
+                    }} 
+                    className="flex items-center justify-center gap-3 p-6 bg-orange-600 text-white font-black rounded-3xl hover:bg-orange-700 transition-all shadow-xl shadow-orange-200 active:scale-95"
+                >
+                    <PrinterIcon className="w-8 h-8" /> 
+                    <div className="text-left">
+                        <span className="block text-[10px] uppercase tracking-widest opacity-80">Finalizar e Imprimir</span>
+                        <span className="text-lg uppercase tracking-tight">Fechamento de Turno Geral</span>
+                    </div>
+                </button>
+
+                <button 
+                    onClick={() => {
+                        const style = document.createElement('style');
+                        style.innerHTML = `@media print { #thermal-report-closing { display: none !important; } #thermal-report-motoboy { display: block !important; } }`;
+                        document.head.appendChild(style);
+                        window.print();
+                        document.head.removeChild(style);
+                    }} 
+                    className="flex items-center justify-center gap-3 p-6 bg-blue-600 text-white font-black rounded-3xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 active:scale-95"
+                >
+                    <PrinterIcon className="w-8 h-8" /> 
+                    <div className="text-left">
+                        <span className="block text-[10px] uppercase tracking-widest opacity-80">Pagar Entregas</span>
+                        <span className="text-lg uppercase tracking-tight">Fechamento Turno Motoboy</span>
+                    </div>
+                </button>
+            </div>
 
             <div className="hidden print:block text-black font-mono">
                 <style>{`
                     @media print {
                         @page { margin: 0 !important; size: ${printerWidth}mm auto; }
                         body { margin: 0 !important; padding: 0 !important; width: ${printerWidth}mm !important; background: #fff !important; }
-                        #thermal-report-closing { 
+                        #thermal-report-closing, #thermal-report-motoboy { 
                             width: ${printableWidth} !important; 
                             margin: 0 auto !important; 
                             padding: 5mm 0 !important; 
                             font-size: 11px; 
                             line-height: 1.2; 
-                            display: block !important; 
+                            display: none; 
                             box-sizing: border-box !important;
                             background: #fff !important;
                             color: #000 !important;
                         }
+                        #thermal-report-closing { display: block; }
                         .thermal-header { text-align: center; border-bottom: 1.5px dashed black; padding-bottom: 4px; margin-bottom: 8px; }
                         .thermal-row { display: flex; justify-content: space-between; margin-bottom: 4px; width: 100%; align-items: flex-start; }
                         .thermal-divider { border-top: 1px dashed black; margin: 8px 0; width: 100%; }
@@ -358,6 +511,10 @@ const SalesDashboard: React.FC = () => {
                         <span className="thermal-left">(-) DESPESAS:</span>
                         <span className="thermal-right">R$ {dashboardData.totalExpenses.toFixed(2)}</span>
                     </div>
+                    <div className="thermal-row">
+                        <span className="thermal-left">(-) ENTREGAS:</span>
+                        <span className="thermal-right">R$ {dashboardData.deliveryStats.totalFees.toFixed(2)}</span>
+                    </div>
                     <div className="thermal-divider" style={{ margin: '4px 0' }}></div>
                     <div className="thermal-row thermal-bold" style={{ fontSize: '13px' }}>
                         <span className="thermal-left">(=) LÍQUIDO:</span>
@@ -382,6 +539,39 @@ const SalesDashboard: React.FC = () => {
                         <br/>GUARA-FOOD PDV
                         <br/>ESTATÍSTICAS DE EXPEDIENTE
                         <br/>.
+                    </div>
+                </div>
+
+                <div id="thermal-report-motoboy">
+                    <div className="thermal-header">
+                        <div className="thermal-title">FECHAMENTO MOTOBOY</div>
+                        <div className="thermal-bold">{currentUser?.name}</div>
+                        <div className="thermal-divider"></div>
+                        <div>TURNO: {dashboardData.periodLabel}</div>
+                    </div>
+
+                    <div className="thermal-bold" style={{ marginBottom: '6px', textDecoration: 'underline' }}>RESUMO DE ENTREGAS</div>
+                    <div className="thermal-row">
+                        <span className="thermal-left">QTD ENTREGAS:</span>
+                        <span className="thermal-right thermal-bold">{dashboardData.deliveryStats.count}</span>
+                    </div>
+                    <div className="thermal-row">
+                        <span className="thermal-left">TOTAL TAXAS:</span>
+                        <span className="thermal-right thermal-bold">R$ {dashboardData.deliveryStats.totalFees.toFixed(2)}</span>
+                    </div>
+                    
+                    <div className="thermal-divider"></div>
+                    <div className="thermal-row thermal-bold" style={{ fontSize: '13px' }}>
+                        <span className="thermal-left">TOTAL A PAGAR:</span>
+                        <span className="thermal-right">R$ {dashboardData.deliveryStats.totalFees.toFixed(2)}</span>
+                    </div>
+
+                    <div className="thermal-footer" style={{ marginTop: '30px' }}>
+                        <div style={{ borderTop: '1px solid black', width: '80%', margin: '0 auto 5px auto' }}></div>
+                        Assinatura do Motoboy
+                        <br/><br/>
+                        Impresso em: {new Date().toLocaleString('pt-BR')}
+                        <br/>GUARA-FOOD PDV
                     </div>
                 </div>
             </div>

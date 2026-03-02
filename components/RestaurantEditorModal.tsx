@@ -21,8 +21,7 @@ const PREDEFINED_PAYMENT_METHODS = [
     "Pix",
     "Cartão de Crédito",
     "Cartão de Débito",
-    "Dinheiro",
-    "Marcar na minha conta"
+    "Dinheiro"
 ];
 
 const PlusIcon: React.FC<{ className?: string }> = ({ className }) => (

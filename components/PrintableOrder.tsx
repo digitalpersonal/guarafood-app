@@ -5,11 +5,25 @@ import type { Order } from '../types';
 interface PrintableOrderProps {
     order: Order;
     printerWidth?: number; // 80 or 58
+    printMode?: 'full' | 'kitchen'; // 'full' prints everything (receipt), 'kitchen' prints only new items
+    printedItems?: string[]; // IDs of items already printed (for kitchen mode)
 }
 
-const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 80 }) => {
+const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 80, printMode = 'full', printedItems = [] }) => {
     const paperSize = `${printerWidth}mm`;
     
+    // Filter items for kitchen printing (only new items)
+    const itemsToPrint = printMode === 'kitchen' 
+        ? order.items.filter(item => !printedItems.includes(item.id))
+        : order.items;
+
+    // If kitchen mode and no new items, don't render anything (or render a message)
+    if (printMode === 'kitchen' && itemsToPrint.length === 0) {
+        return null; 
+    }
+
+    // ... (rest of the component logic remains mostly the same, but using itemsToPrint)
+
     // ÁREAS ÚTEIS SEGURAS:
     // 80mm -> Usamos 62mm de conteúdo útil
     // 58mm -> Usamos 48mm de conteúdo útil
@@ -162,7 +176,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         {new Date(order.timestamp).toLocaleDateString('pt-BR')} - {new Date(order.timestamp).toLocaleTimeString('pt-BR').substring(0,5)}
                     </div>
                     <div className="order-number-box">
-                        PEDIDO: {displayOrderNum}
+                        {printMode === 'kitchen' ? 'COZINHA / BAR' : `PEDIDO: ${displayOrderNum}`}
                     </div>
                 </div>
 
@@ -171,40 +185,18 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                 {/* MODO DE ENTREGA */}
                 <div className="mode-indicator">
                     {order.tableNumber 
-                        ? `>> CONSUMO LOCAL - MESA ${order.tableNumber} <<` 
+                        ? `>> MESA ${order.tableNumber} <<` 
                         : isPickup 
                             ? ">> RETIRADA NO BALCÃO <<" 
                             : ">> ENTREGA EM DOMICÍLIO <<"}
                 </div>
 
-                {/* PREFERÊNCIA DE SACHÊS - EXATAMENTE COMO NO MODELO */}
-                <div className="condiments-box">
-                    {order.wantsSachets !== false ? "ENVIAR SACHÊS/TALHERES" : "NÃO ENVIAR SACHÊS/TALHERES"}
-                </div>
-
-                {/* SEÇÃO CLIENTE */}
-                <div className="section-divider"></div>
-                <div className="label-center">CLIENTE / DESTINO</div>
-                <div className="section-divider"></div>
-
-                <div style={{ fontSize: baseFontSize, marginBottom: '10px' }}>
-                    <div style={{ fontWeight: 'bold' }}>{order.customerName.toUpperCase()}</div>
-                    <div>TEL: {order.customerPhone}</div>
-                    
-                    {!isPickup && order.customerAddress && (
-                        <>
-                            <div style={{ marginTop: '2px' }}>
-                                {order.customerAddress.street.toUpperCase()}, {order.customerAddress.number}
-                            </div>
-                            <div>BAIRRO: {order.customerAddress.neighborhood.toUpperCase()}</div>
-                            {order.customerAddress.complement && (
-                                <div style={{ fontSize: smallFontSize, marginTop: '2px' }}>
-                                    REF: {order.customerAddress.complement.toUpperCase()}
-                                </div>
-                            )}
-                        </>
-                    )}
-                </div>
+                {/* VISUALIZAÇÃO APENAS PARA COZINHA (SEM PREÇOS TOTAIS) */}
+                {printMode === 'kitchen' && (
+                     <div style={{ textAlign: 'center', margin: '10px 0', fontSize: headerFontSize, fontWeight: 'bold' }}>
+                        *** NOVOS ITENS ***
+                     </div>
+                )}
 
                 {/* SEÇÃO ITENS */}
                 <div className="section-divider"></div>
@@ -212,12 +204,13 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                 <div className="section-divider"></div>
 
                 <div style={{ width: '100%', marginBottom: '8px' }}>
-                    {order.items.map((item, index) => (
+                    {itemsToPrint.map((item, index) => (
                         <div key={index} style={{ marginBottom: '6px' }}>
                             <div className="item-row">
                                 <div style={{ flex: 1, textTransform: 'uppercase', fontSize: baseFontSize }}>
                                     {item.quantity}X {item.name} {item.sizeName && `(${item.sizeName})`}
                                 </div>
+                                {/* Hide price in kitchen mode if desired, or keep it. Keeping for now. */}
                                 <div className="item-price-col" style={{ fontSize: baseFontSize }}>
                                     {(Number(item.price) * item.quantity).toFixed(2)}
                                 </div>
@@ -239,41 +232,44 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                     ))}
                 </div>
 
-                {/* TOTAIS */}
-                <div className="section-divider"></div>
-                <div style={{ fontSize: baseFontSize }}>
-                    <div className="item-row">
-                        <span>SUBTOTAL:</span>
-                        <span className="item-price-col">R$ {Number(order.subtotal || 0).toFixed(2)}</span>
-                    </div>
-                    {!isPickup && (
-                        <div className="item-row">
-                            <span>TAXA ENTREGA:</span>
-                            <span className="item-price-col">R$ {Number(order.deliveryFee || 0).toFixed(2)}</span>
+                {/* TOTAIS - APENAS SE NÃO FOR MODO COZINHA */}
+                {printMode === 'full' && (
+                    <>
+                        <div className="section-divider"></div>
+                        <div style={{ fontSize: baseFontSize }}>
+                            <div className="item-row">
+                                <span>SUBTOTAL:</span>
+                                <span className="item-price-col">R$ {Number(order.subtotal || 0).toFixed(2)}</span>
+                            </div>
+                            {!isPickup && (
+                                <div className="item-row">
+                                    <span>TAXA ENTREGA:</span>
+                                    <span className="item-price-col">R$ {Number(order.deliveryFee || 0).toFixed(2)}</span>
+                                </div>
+                            )}
+                            {Number(order.discountAmount || 0) > 0 && (
+                                <div className="item-row">
+                                    <span>DESCONTO:</span>
+                                    <span className="item-price-col">- R$ {Number(order.discountAmount).toFixed(2)}</span>
+                                </div>
+                            )}
+                            <div className="item-row" style={{ fontSize: titleFontSize, marginTop: '4px', borderTop: '1px solid #000', paddingTop: '4px' }}>
+                                <span>TOTAL:</span>
+                                <span className="item-price-col">R$ {Number(order.totalPrice).toFixed(2)}</span>
+                            </div>
                         </div>
-                    )}
-                    {Number(order.discountAmount || 0) > 0 && (
-                        <div className="item-row">
-                            <span>DESCONTO:</span>
-                            <span className="item-price-col">- R$ {Number(order.discountAmount).toFixed(2)}</span>
-                        </div>
-                    )}
-                    <div className="item-row" style={{ fontSize: titleFontSize, marginTop: '4px', borderTop: '1px solid #000', paddingTop: '4px' }}>
-                        <span>TOTAL:</span>
-                        <span className="item-price-col">R$ {Number(order.totalPrice).toFixed(2)}</span>
-                    </div>
-                </div>
 
-                {/* PAGAMENTO */}
-                <div className="payment-box">
-                    PGTO: {order.paymentMethod.toUpperCase()}
-                    {isPixPaid && <div style={{ fontSize: '10px', marginTop: '2px' }}>(PAGO PELO APP)</div>}
-                </div>
+                        {/* PAGAMENTO */}
+                        <div className="payment-box">
+                            PGTO: {order.paymentMethod.toUpperCase()}
+                            {isPixPaid && <div style={{ fontSize: '10px', marginTop: '2px' }}>(PAGO PELO APP)</div>}
+                        </div>
+                    </>
+                )}
 
                 {/* RODAPÉ */}
                 <div style={{ textAlign: 'center', fontSize: smallFontSize, marginTop: '15px', borderTop: '1px dashed #000', paddingTop: '6px' }}>
                     GUARA-FOOD PDV
-                    <br/>OBRIGADO PELA PREFERENCIA!
                     <br/>.
                 </div>
             </div>

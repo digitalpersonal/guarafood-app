@@ -252,8 +252,8 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
 
                 <div className="flex items-center gap-1 text-[10px] text-gray-600 truncate">
                     <CreditCardIcon className={`w-3 h-3 flex-shrink-0 ${isPixPaid ? 'text-green-600' : 'text-gray-400'}`} />
-                    <span className={`truncate ${order.paymentMethod === 'Marcar na minha conta' ? 'text-red-600 font-bold' : isPixPaid ? 'text-green-700 font-bold' : ''}`}>
-                        {order.paymentMethod === 'Marcar na minha conta' ? 'FIADO' : order.paymentMethod}
+                    <span className={`truncate ${isPixPaid ? 'text-green-700 font-bold' : ''}`}>
+                        {order.paymentMethod}
                     </span>
                 </div>
             </div>

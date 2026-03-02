@@ -164,22 +164,8 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
             setIsPizzaModalOpen(true);
         } else if (item.isAcai) {
             setIsAcaiModalOpen(true);
-        } else if (item.availableAddonIds && item.availableAddonIds.length > 0) {
-            setIsGenericModalOpen(true);
-        } else if (item.sizes && item.sizes.length > 0) {
-            setIsGenericModalOpen(true);
         } else {
-            // Simple item, add directly
-            const simpleCartItem: CartItem = {
-                id: `item-${item.id}-${Date.now()}`, // Generate a unique ID to allow multiple additions
-                name: item.name,
-                price: item.price,
-                basePrice: item.price,
-                imageUrl: item.imageUrl,
-                quantity: 1,
-                description: item.description,
-            };
-            handleAddItemToOrder(simpleCartItem);
+            setIsGenericModalOpen(true);
         }
     }, [handleAddItemToOrder]);
     
@@ -201,7 +187,7 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
 
     return (
         <>
-            <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="order-editor-modal-title">
+            <div className="fixed inset-0 bg-black bg-opacity-60 z-[70] flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="order-editor-modal-title">
                 <div className="bg-white p-4 sm:p-6 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-between items-center border-b pb-3 mb-4">
                         <h2 id="order-editor-modal-title" className="text-xl sm:text-2xl font-bold text-gray-800">Editar Pedido #{order.id.substring(0, 6)}</h2>
@@ -249,6 +235,11 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                                                         </li>
                                                     ))}
                                                 </ul>
+                                            )}
+                                            {item.notes && (
+                                                <p className="text-xs text-orange-500 italic mt-1 bg-orange-50 p-1 rounded">
+                                                    Obs: {item.notes}
+                                                </p>
                                             )}
                                             <p className="text-sm text-orange-600 font-bold mt-1">R$ {(item.price * item.quantity).toFixed(2)}</p>
                                         </div>

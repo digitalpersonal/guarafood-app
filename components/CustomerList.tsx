@@ -32,6 +32,9 @@ const CustomerList: React.FC<CustomerListProps> = ({ orders }) => {
 
     const customers = useMemo(() => {
         const customerMap = orders.reduce((acc, order) => {
+            // EXCLUDE TABLE ORDERS FROM CUSTOMER LIST (Only delivery/pickup enter the base)
+            if (order.tableNumber) return acc;
+
             const phone = (order.customerPhone || '').replace(/\D/g, ''); // Normalize phone as ID
             if (!phone) return acc;
 

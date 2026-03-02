@@ -78,77 +78,64 @@ const AddItemToOrderModal: React.FC<AddItemToOrderModalProps> = ({
                         />
                         <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                     </div>
-                    <div className="flex justify-center mt-3 bg-gray-100 rounded-xl p-1">
-                        <button 
-                            type="button"
-                            onClick={() => setShowCombos(true)} 
-                            className={`flex-1 py-2 px-3 rounded-lg text-sm font-bold transition-all ${showCombos ? 'bg-white shadow text-orange-600 scale-[1.02]' : 'text-gray-500'}`}
-                        >
-                            Combos
-                        </button>
-                        <button 
-                            type="button"
-                            onClick={() => setShowCombos(false)} 
-                            className={`flex-1 py-2 px-3 rounded-lg text-sm font-bold transition-all ${!showCombos ? 'bg-white shadow text-orange-600 scale-[1.02]' : 'text-gray-500'}`}
-                        >
-                            Itens
-                        </button>
-                    </div>
                 </div>
 
                 <div className="overflow-y-auto flex-grow space-y-4 pr-1">
-                    {showCombos ? (
-                        <>
-                            <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-3">Combos Disponíveis ({filteredCombos.length})</h3>
-                            {filteredCombos.length === 0 ? (
-                                <p className="text-center text-gray-400 py-10 italic">Nenhum combo encontrado.</p>
-                            ) : (
-                                <div className="space-y-3">
-                                    {filteredCombos.map(combo => (
-                                        <div key={combo.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-xl border border-gray-100 hover:border-orange-200 transition-colors">
-                                            <OptimizedImage src={combo.imageUrl} alt={combo.name} className="w-16 h-16 rounded-lg object-cover flex-shrink-0 shadow-sm" />
-                                            <div className="flex-grow">
-                                                <p className="font-bold text-gray-800">{combo.name}</p>
-                                                <p className="text-sm text-orange-600 font-bold">R$ {combo.price.toFixed(2)}</p>
-                                            </div>
-                                            <button 
-                                                type="button"
-                                                onClick={() => onSelectCombo(combo)} 
-                                                className="px-5 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-xs font-black uppercase tracking-wider shadow-md active:scale-95 transition-all"
-                                            >
-                                                Add
-                                            </button>
-                                        </div>
-                                    ))}
+                    {filteredCombos.length > 0 && (
+                        <div className="space-y-3 mb-6">
+                            <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-2">Combos</h3>
+                            {filteredCombos.map(combo => (
+                                <div key={combo.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-xl border border-gray-100 hover:border-orange-200 transition-colors">
+                                    <OptimizedImage src={combo.imageUrl} alt={combo.name} className="w-16 h-16 rounded-lg object-cover flex-shrink-0 shadow-sm" />
+                                    <div className="flex-grow">
+                                        <p className="font-bold text-gray-800">{combo.name}</p>
+                                        <p className="text-sm text-orange-600 font-bold">R$ {combo.price.toFixed(2)}</p>
+                                    </div>
+                                    <button 
+                                        type="button"
+                                        onClick={() => onSelectCombo(combo)} 
+                                        className="px-5 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-xs font-black uppercase tracking-wider shadow-md active:scale-95 transition-all"
+                                    >
+                                        Adicionar
+                                    </button>
                                 </div>
-                            )}
-                        </>
-                    ) : (
-                        <>
-                            <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-3">Itens Avulsos ({filteredItems.length})</h3>
-                            {filteredItems.length === 0 ? (
-                                <p className="text-center text-gray-400 py-10 italic">Nenhum item encontrado.</p>
-                            ) : (
-                                <div className="space-y-3">
-                                    {filteredItems.map(item => (
-                                        <div key={item.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-xl border border-gray-100 hover:border-orange-200 transition-colors">
-                                            <OptimizedImage src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-lg object-cover flex-shrink-0 shadow-sm" />
-                                            <div className="flex-grow">
-                                                <p className="font-bold text-gray-800">{item.name}</p>
-                                                <p className="text-sm text-orange-600 font-bold">R$ {item.price.toFixed(2)}</p>
-                                            </div>
-                                            <button 
-                                                type="button"
-                                                onClick={() => onSelectMenuItem(item)} 
-                                                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-black uppercase tracking-wider shadow-md active:scale-95 transition-all"
-                                            >
-                                                {hasCustomization(item) ? 'Opções' : 'Add'}
-                                            </button>
+                            ))}
+                        </div>
+                    )}
+
+                    {filteredItems.length > 0 && (
+                        <div className="space-y-3">
+                            <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-2">Itens</h3>
+                            {filteredItems.map(item => {
+                                const isAvailable = item.available !== false;
+                                return (
+                                    <div key={item.id} className={`flex items-center space-x-3 p-3 bg-gray-50 rounded-xl border border-gray-100 transition-colors ${!isAvailable ? 'opacity-60 grayscale' : 'hover:border-orange-200'}`}>
+                                        <OptimizedImage src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-lg object-cover flex-shrink-0 shadow-sm" />
+                                        <div className="flex-grow">
+                                            <p className="font-bold text-gray-800">{item.name}</p>
+                                            <p className="text-sm text-orange-600 font-bold">R$ {item.price.toFixed(2)}</p>
+                                            {!isAvailable && <span className="text-xs font-bold text-red-500 uppercase">Esgotado</span>}
                                         </div>
-                                    ))}
-                                </div>
-                            )}
-                        </>
+                                        <button 
+                                            type="button"
+                                            onClick={() => isAvailable && onSelectMenuItem(item)} 
+                                            disabled={!isAvailable}
+                                            className={`px-5 py-2 rounded-lg text-xs font-black uppercase tracking-wider shadow-md transition-all ${
+                                                isAvailable 
+                                                ? 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95' 
+                                                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                            }`}
+                                        >
+                                            {isAvailable ? 'Adicionar' : 'Esgotado'}
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {filteredItems.length === 0 && filteredCombos.length === 0 && (
+                        <p className="text-center text-gray-400 py-10 italic">Nenhum item encontrado.</p>
                     )}
                 </div>
 

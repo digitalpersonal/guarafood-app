@@ -76,7 +76,7 @@ const normalizeOrder = (data: any): Order => {
         paymentMethod: data.payment_method, couponCode: data.coupon_code, discountAmount: data.discount_amount,
         subtotal: data.subtotal, deliveryFee: data.delivery_fee, payment_id: data.payment_id,
         payment_details: data.payment_details,
-        paymentStatus: data.payment_status || (data.payment_method === 'Marcar na minha conta' ? 'pending' : 'paid')
+        paymentStatus: data.payment_status || 'paid'
     };
 };
 

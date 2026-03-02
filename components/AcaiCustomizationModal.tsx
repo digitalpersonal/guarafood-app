@@ -19,6 +19,7 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
 }) => {
     const [selectedSize, setSelectedSize] = useState<SizeOption | null>(null);
     const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
+    const [notes, setNotes] = useState('');
 
     useEffect(() => {
         if (initialItem.sizes && initialItem.sizes.length > 0) {
@@ -27,6 +28,7 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
             setSelectedSize({ name: 'Único', price: initialItem.price, freeAddonCount: initialItem.freeAddonCount });
         }
         setSelectedAddonIds(new Set());
+        setNotes('');
     }, [initialItem, isOpen]);
 
     const freeAddonCountLimit = selectedSize?.freeAddonCount || 0;
@@ -110,6 +112,7 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
             description: descriptionParts.join(' • '),
             selectedAddons: selectedAddons,
             sizeName: selectedSize.name,
+            notes: notes.trim() || undefined,
         };
         
         onAddToCart(customizedItem);
@@ -121,7 +124,7 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
     const progressPercent = freeAddonCountLimit > 0 ? Math.min(100, (currentFreeCount / freeAddonCountLimit) * 100) : 0;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="acai-modal-title">
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-[120] flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="acai-modal-title">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
                 <div className="p-4 bg-purple-800 text-white flex justify-between items-center shadow-md z-10">
                     <div>
@@ -257,6 +260,22 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
                             </div>
                         </div>
                     )}
+
+                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                        <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                            <span className="bg-purple-100 text-purple-700 w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold">
+                                {paidPool.length > 0 ? (freePool.length > 0 ? 4 : 3) : (freePool.length > 0 ? 3 : 2)}
+                            </span>
+                            Observações
+                        </h3>
+                        <textarea
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            placeholder="Ex: Sem granola, caprichar no leite condensado, etc."
+                            className="w-full p-3 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-purple-400 focus:outline-none text-sm"
+                            rows={2}
+                        />
+                    </div>
                 </div>
 
                 <div className="p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">

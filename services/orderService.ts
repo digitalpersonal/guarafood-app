@@ -28,9 +28,9 @@ const normalizeOrder = (data: any): Order => {
         deliveryFee: data.delivery_fee,
         payment_id: data.payment_id,
         payment_details: data.payment_details,
-        paymentStatus: data.payment_status || (data.payment_method === 'Marcar na minha conta' ? 'pending' : 'paid'),
-        tableNumber: data.table_number,
-        paymentHistory: data.payment_history || []
+        paymentStatus: data.payment_status || 'paid',
+        tableNumber: data.table_number || data.customer_address?.tableNumber,
+        paymentHistory: data.payment_history || data.payment_details?.history || []
     };
 };
 
@@ -132,12 +132,12 @@ export interface NewOrderData {
 }
 
 export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
-    const isDebt = orderData.paymentMethod === 'Marcar na minha conta';
     const isTable = !!orderData.tableNumber;
     
     const addressWithSachetPreference = {
         ...orderData.customerAddress,
-        wantsSachets: orderData.wantsSachets === true
+        wantsSachets: orderData.wantsSachets === true,
+        tableNumber: orderData.tableNumber
     };
     
     const newOrderPayload = {
@@ -155,9 +155,9 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
         discount_amount: orderData.discountAmount,
         subtotal: orderData.subtotal,
         delivery_fee: orderData.deliveryFee,
-        status: orderData.status || 'Novo Pedido', 
-        payment_status: isDebt ? 'pending' : (isTable ? 'pending' : 'paid'),
         table_number: orderData.tableNumber,
+        status: orderData.status || 'Novo Pedido', 
+        payment_status: isTable ? 'pending' : 'paid',
         timestamp: new Date().toISOString(),
     };
 
@@ -172,26 +172,40 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
 export const updateOrderStatus = async (orderId: string, status: OrderStatus): Promise<Order> => {
     const { data, error } = await supabase.from('orders').update({ status }).eq('id', orderId).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to update order status' });
+    
+    // Trigger manual sync for all listeners
+    window.dispatchEvent(new Event('guarafood:update-orders'));
+    
     return normalizeOrder(data);
 };
 
 export const updateOrderPaymentStatus = async (orderId: string, paymentStatus: 'paid' | 'pending' | 'partial'): Promise<void> => {
     const { error } = await supabase.from('orders').update({ payment_status: paymentStatus }).eq('id', orderId);
     handleSupabaseError({ error, customMessage: 'Failed to update payment status' });
+    
+    // Trigger manual sync for all listeners
+    window.dispatchEvent(new Event('guarafood:update-orders'));
 };
 
 export const recordOrderPayment = async (orderId: string, payment: PaymentEntry, newTotalPaid: number, originalTotal: number): Promise<Order> => {
-    // Busca o histórico atual
-    const { data: currentOrder } = await supabase.from('orders').select('payment_history').eq('id', orderId).single();
-    const history = currentOrder?.payment_history || [];
+    // Busca o histórico atual (usando payment_details como fallback seguro)
+    const { data: currentOrder } = await supabase.from('orders').select('payment_details').eq('id', orderId).single();
+    
+    const currentDetails = currentOrder?.payment_details || {};
+    const history = currentDetails.history || [];
     const newHistory = [...history, payment];
     
     const isFullyPaid = newTotalPaid >= originalTotal;
     const paymentStatus = isFullyPaid ? 'paid' : 'partial';
 
+    const newPaymentDetails = {
+        ...currentDetails,
+        history: newHistory
+    };
+
     const { data, error } = await supabase.from('orders')
         .update({ 
-            payment_history: newHistory,
+            payment_details: newPaymentDetails,
             payment_status: paymentStatus
         })
         .eq('id', orderId)
@@ -222,4 +236,109 @@ export const updateOrderDetails = async (
     const { data, error } = await supabase.from('orders').update(payload).eq('id', orderId).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to update order details' });
     return normalizeOrder(data);
+};
+
+export const fetchOpenTableOrder = async (restaurantId: number, tableNumber: string): Promise<Order | null> => {
+    try {
+        const { data, error } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('status', 'Aguardando Pagamento')
+            .contains('customer_address', { tableNumber: tableNumber })
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (error) {
+            console.error("Error fetching table order:", error);
+            return null;
+        }
+
+        return data ? normalizeOrder(data) : null;
+    } catch (e) {
+        console.error("Exception fetching table order:", e);
+        return null;
+    }
+};
+
+export const clearTodayTableOrders = async (restaurantId: number): Promise<void> => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayIso = today.toISOString();
+
+    const { data: ordersToDelete, error: fetchError } = await supabase
+        .from('orders')
+        .select('id, customer_address')
+        .eq('restaurant_id', restaurantId)
+        .gte('created_at', todayIso);
+        
+    if (fetchError) {
+        handleSupabaseError({ error: fetchError, customMessage: 'Failed to fetch orders for cleanup' });
+        return;
+    }
+
+    const idsToDelete = ordersToDelete
+        .filter((o: any) => o.customer_address && o.customer_address.tableNumber)
+        .map((o: any) => o.id);
+
+    if (idsToDelete.length === 0) return;
+
+    const { error: deleteError } = await supabase
+        .from('orders')
+        .delete()
+        .in('id', idsToDelete);
+
+    handleSupabaseError({ error: deleteError, customMessage: 'Failed to clear table orders' });
+    
+    window.dispatchEvent(new Event('guarafood:update-orders'));
+};
+
+export const requestKitchenPrint = async (orderId: string, itemsToPrint: CartItem[]): Promise<void> => {
+    // We'll use a specific field in the order to signal print request
+    // Since we can't easily add tables, we'll use a JSONB field 'print_requests' in 'additional_info' or similar if available,
+    // or just append to a 'print_queue' field in 'payment_details' (hacky but works without schema change)
+    // Actually, let's use the 'items' field itself. We can add a 'printStatus' to items.
+    // But updating items might conflict with other updates.
+    
+    // Better approach: Use a dedicated 'print_status' column if it existed.
+    // Let's assume we can update 'payment_details' to include a print queue.
+    
+    const { data: currentOrder } = await supabase.from('orders').select('payment_details').eq('id', orderId).single();
+    const currentDetails = currentOrder?.payment_details || {};
+    const currentQueue = currentDetails.print_queue || [];
+    
+    const newRequest = {
+        id: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+        items: itemsToPrint,
+        status: 'pending',
+        type: 'kitchen'
+    };
+    
+    const newDetails = {
+        ...currentDetails,
+        print_queue: [...currentQueue, newRequest]
+    };
+    
+    const { error } = await supabase.from('orders').update({ payment_details: newDetails }).eq('id', orderId);
+    handleSupabaseError({ error, customMessage: 'Failed to request kitchen print' });
+};
+
+export const markPrintJobAsDone = async (orderId: string, jobId: string): Promise<void> => {
+    const { data: currentOrder } = await supabase.from('orders').select('payment_details').eq('id', orderId).single();
+    const currentDetails = currentOrder?.payment_details || {};
+    const currentQueue = currentDetails.print_queue || [];
+    
+    const newQueue = currentQueue.map((job: any) => 
+        job.id === jobId ? { ...job, status: 'printed', printedAt: new Date().toISOString() } : job
+    );
+    
+    const newDetails = {
+        ...currentDetails,
+        print_queue: newQueue
+    };
+    
+    const { error } = await supabase.from('orders').update({ payment_details: newDetails }).eq('id', orderId);
+    if (error) console.error("Failed to mark print job as done", error);
 };

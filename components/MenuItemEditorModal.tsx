@@ -117,6 +117,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
     const [originalPrice, setOriginalPrice] = useState('');
     const [category, setCategory] = useState('');
     const [isAcai, setIsAcai] = useState(false);
+    const [isPizza, setIsPizza] = useState(false);
     const [isDailySpecial, setIsDailySpecial] = useState(false);
     const [isWeeklySpecial, setIsWeeklySpecial] = useState(false);
     const [isMarmita, setIsMarmita] = useState(false);
@@ -142,6 +143,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             setImagePreview(existingItem.imageUrl || null);
             setCategory(initialCategory);
             setIsAcai(existingItem.isAcai || false);
+            setIsPizza(existingItem.isPizza || false);
             setIsDailySpecial(existingItem.isDailySpecial || false);
             setIsWeeklySpecial(existingItem.isWeeklySpecial || false);
             setIsMarmita(existingItem.isMarmita || false);
@@ -159,6 +161,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             setImagePreview(null);
             setCategory(initialCategory);
             setIsAcai(false);
+            setIsPizza(false);
             setIsDailySpecial(false);
             setIsWeeklySpecial(false);
             setIsMarmita(false);
@@ -381,6 +384,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                 originalPrice: numericOriginalPrice > 0 ? numericOriginalPrice : undefined,
                 imageUrl: finalImageUrl,
                 isAcai,
+                isPizza,
                 isDailySpecial,
                 isWeeklySpecial,
                 isMarmita,
@@ -581,6 +585,10 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                          <div className="flex items-center space-x-3 p-3 bg-purple-100 rounded-lg">
                             <input type="checkbox" id="is-acai-toggle" checked={isAcai} onChange={(e) => setIsAcai(e.target.checked)} className="h-5 w-5 rounded border-purple-300 text-purple-600 focus:ring-purple-500"/>
                             <label htmlFor="is-acai-toggle" className="font-semibold text-purple-700">Açaí (Montar Copo)?</label>
+                        </div>
+                         <div className="flex items-center space-x-3 p-3 bg-red-100 rounded-lg">
+                            <input type="checkbox" id="is-pizza-toggle" checked={isPizza} onChange={(e) => setIsPizza(e.target.checked)} className="h-5 w-5 rounded border-red-300 text-red-600 focus:ring-red-500"/>
+                            <label htmlFor="is-pizza-toggle" className="font-semibold text-red-700">É Pizza (Meia-Meia)?</label>
                         </div>
                          <div className="flex items-center space-x-3 p-3 bg-gray-100 rounded-lg">
                             <input type="checkbox" id="is-daily-special-toggle" checked={isDailySpecial} onChange={(e) => setIsDailySpecial(e.target.checked)} className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500"/>
