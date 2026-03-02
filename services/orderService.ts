@@ -22,6 +22,7 @@ const normalizeOrder = (data: any): Order => {
         restaurantAddress: data.restaurant_address,
         restaurantPhone: data.restaurant_phone,
         paymentMethod: data.payment_method,
+        changeFor: data.change_for || data.payment_details?.changeFor,
         couponCode: data.coupon_code,
         discountAmount: data.discount_amount,
         subtotal: data.subtotal,
@@ -127,6 +128,7 @@ export interface NewOrderData {
     discountAmount?: number;
     subtotal?: number;
     deliveryFee?: number;
+    changeFor?: number;
     tableNumber?: string;
     status?: OrderStatus;
 }
@@ -155,6 +157,7 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
         discount_amount: orderData.discountAmount,
         subtotal: orderData.subtotal,
         delivery_fee: orderData.deliveryFee,
+        change_for: orderData.changeFor,
         table_number: orderData.tableNumber,
         status: orderData.status || 'Novo Pedido', 
         payment_status: isTable ? 'pending' : 'paid',

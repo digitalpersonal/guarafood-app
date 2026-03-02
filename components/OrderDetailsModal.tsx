@@ -137,6 +137,12 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                                      </p>
                                 )}
                                 <p className="text-sm text-gray-600">Pagamento: <span className="font-medium text-gray-900">{currentOrder.paymentMethod}</span></p>
+                                {currentOrder.changeFor && (
+                                    <div className="mt-1 p-2 bg-orange-50 border border-orange-100 rounded-lg">
+                                        <p className="text-xs font-black text-orange-700 uppercase">Troco para: R$ {currentOrder.changeFor.toFixed(2)}</p>
+                                        <p className="text-xs font-bold text-orange-600">Troco: R$ {(currentOrder.changeFor - currentOrder.totalPrice).toFixed(2)}</p>
+                                    </div>
+                                )}
                             </div>
                             <div className="space-y-1">
                                 <h3 className="font-bold text-gray-700 border-b pb-1 mb-2">Restaurante</h3>

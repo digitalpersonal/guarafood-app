@@ -273,7 +273,20 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
 
                         {/* PAGAMENTO */}
                         <div className="payment-box">
-                            PGTO: {order.paymentMethod.toUpperCase()}
+                            <div style={{ fontWeight: 'bold' }}>PGTO: {order.paymentMethod.split('(')[0].trim().toUpperCase()}</div>
+                            {(order.changeFor || order.paymentMethod.includes('Troco para')) && (
+                                <div style={{ fontSize: headerFontSize, marginTop: '4px', borderTop: '1px dashed #000', paddingTop: '4px', fontWeight: '900' }}>
+                                    {order.changeFor 
+                                        ? `TROCO PARA: R$ ${order.changeFor.toFixed(2)}`
+                                        : (order.paymentMethod.match(/\(([^)]+)\)/)?.[1].toUpperCase() || order.paymentMethod.toUpperCase())
+                                    }
+                                    {order.changeFor && order.changeFor > order.totalPrice && (
+                                        <div style={{ fontSize: '12px', marginTop: '2px' }}>
+                                            TROCO: R$ {(order.changeFor - order.totalPrice).toFixed(2)}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             {isPixPaid && <div style={{ fontSize: '10px', marginTop: '2px' }}>(PAGO PELO APP)</div>}
                         </div>
                     </>

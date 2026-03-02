@@ -435,19 +435,24 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setFormError(null);
         let finalPaymentMethod = paymentMethod;
         if (paymentMethod.toLowerCase() === 'dinheiro' && changeFor) {
-            const changeValue = parseFloat(changeFor);
-            if (!isNaN(changeValue) && changeValue > 0) finalPaymentMethod = `Dinheiro (Troco para R$ ${changeValue.toFixed(2)})`;
+            const cleanChangeFor = changeFor.replace(',', '.').trim();
+            const changeValue = parseFloat(cleanChangeFor);
+            if (!isNaN(changeValue) && changeValue > 0) {
+                finalPaymentMethod = `Dinheiro (Troco para R$ ${changeValue.toFixed(2)})`;
+            }
         }
 
         const customerAddress = deliveryMethod === 'PICKUP' 
             ? { zipCode: '00000-000', street: 'Retirada no Local', number: 'S/N', neighborhood: restaurant.name, complement: 'Cliente irá buscar' }
             : { zipCode: address.zipCode, street: address.street, number: address.number, neighborhood: address.neighborhood, complement: address.complement };
 
+        const changeValue = parseFloat(changeFor.replace(',', '.').trim());
         const orderData: NewOrderData = {
             customerName, customerPhone, items: cartItems, totalPrice: Number(finalPriceWithFee), subtotal: Number(totalPrice),
             discountAmount: Number(discountAmount), couponCode: appliedCoupon?.code, deliveryFee: Number(effectiveDeliveryFee), restaurantId: restaurant.id,
             restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
-            paymentMethod: finalPaymentMethod, customerAddress, wantsSachets
+            paymentMethod: finalPaymentMethod, customerAddress, wantsSachets,
+            changeFor: !isNaN(changeValue) && changeValue > 0 ? changeValue : undefined
         };
 
         if (paymentMethod === 'Pix') await handlePixPayment(orderData);

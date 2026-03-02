@@ -207,6 +207,7 @@ export interface Order {
   deliveryFee?: number;
   payment_id?: string;
   payment_details?: any;
+  changeFor?: number;
   paymentStatus?: 'paid' | 'pending' | 'partial';
   tableNumber?: string; // NEW: Para atendimento local
   paymentHistory?: PaymentEntry[]; // NEW: Para pagamentos fracionados

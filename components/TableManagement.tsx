@@ -44,6 +44,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [paymentAmount, setPaymentAmount] = useState('');
+    const [changeFor, setChangeFor] = useState('');
     const [paymentMethod, setPaymentMethod] = useState('Dinheiro');
     
     // Printing States
@@ -260,9 +261,17 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
             const currentPaid = dbHistory.reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
             const newTotalPaid = currentPaid + amount;
 
+            let finalMethod = paymentMethod;
+            if (paymentMethod === 'Dinheiro' && changeFor) {
+                const changeVal = parseFloat(changeFor.replace(',', '.').trim());
+                if (!isNaN(changeVal) && changeVal > amount) {
+                    finalMethod = `Dinheiro (Troco para R$ ${changeVal.toFixed(2)})`;
+                }
+            }
+
             const entry: PaymentEntry = {
                 amount,
-                method: paymentMethod,
+                method: finalMethod,
                 timestamp: new Date().toISOString()
             };
             
@@ -271,6 +280,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
             
             setSelectedTableOrder(updated);
             setPaymentAmount('');
+            setChangeFor('');
             setIsPaymentModalOpen(false);
             addToast({ message: 'Pagamento registrado!', type: 'success' });
 
@@ -609,6 +619,27 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                 />
                             </div>
 
+                            {paymentMethod === 'Dinheiro' && (
+                                <div className="animate-fadeIn">
+                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Troco para quanto?</label>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">R$</span>
+                                        <input 
+                                            type="number" 
+                                            value={changeFor}
+                                            onChange={e => setChangeFor(e.target.value)}
+                                            placeholder="Ex: 50,00"
+                                            className="w-full pl-12 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-orange-500 outline-none transition-all font-bold text-lg"
+                                        />
+                                    </div>
+                                    {changeFor && parseFloat(changeFor) > parseFloat(paymentAmount) && (
+                                        <p className="text-[10px] font-black text-orange-600 mt-1 ml-1 uppercase">
+                                            Troco: R$ {(parseFloat(changeFor) - parseFloat(paymentAmount)).toFixed(2)}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
                             <div>
                                 <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Forma de Pagamento</label>
                                 <div className="grid grid-cols-2 gap-2">
@@ -637,7 +668,10 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                 Confirmar Recebimento
                             </button>
                             <button 
-                                onClick={() => setIsPaymentModalOpen(false)}
+                                onClick={() => {
+                                    setIsPaymentModalOpen(false);
+                                    setChangeFor('');
+                                }}
                                 className="w-full py-3 text-gray-400 font-bold uppercase text-[10px] hover:text-gray-800 transition-colors"
                             >
                                 Cancelar
