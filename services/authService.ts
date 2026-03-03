@@ -55,6 +55,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
       }
 
+      // 3. SENIOR MOVE: Busca na lista de staff de todos os restaurantes
+      // Se o usuário não é um merchant dono, ele pode ser um funcionário convidado
+      const { data: staffData } = await supabase
+          .from('restaurants')
+          .select('id, name, staff')
+          .not('staff', 'is', null);
+
+      if (staffData) {
+          for (const res of staffData) {
+              const staffList = res.staff as any[];
+              const member = staffList.find(s => s.email?.toLowerCase() === authUser.email?.toLowerCase() && s.active);
+              if (member) {
+                  return {
+                      id: authUser.id,
+                      email: authUser.email!,
+                      role: member.role as Role,
+                      name: member.name,
+                      restaurantId: res.id
+                  };
+              }
+          }
+      }
+
       // Se nada funcionar, mas o cara está autenticado, monta um perfil básico para não travar
       if (authUser.email === 'admin@guarafood.com.br') {
           return { id: authUser.id, email: authUser.email, role: 'admin', name: 'Administrador' };

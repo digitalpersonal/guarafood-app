@@ -191,6 +191,15 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                             : ">> ENTREGA EM DOMICÍLIO <<"}
                 </div>
 
+                {/* SACHÊS / CONDIMENTOS */}
+                {printMode === 'full' && (
+                    <div className="condiments-box" style={{ fontWeight: 'bold', fontSize: headerFontSize }}>
+                        {order.wantsSachets 
+                            ? ">>> ENVIAR SACHÊS: SIM <<<" 
+                            : ">>> NÃO ENVIAR SACHÊS <<<"}
+                    </div>
+                )}
+
                 {/* ENDEREÇO DE ENTREGA */}
                 {!isPickup && order.customerAddress && (
                     <div style={{ marginTop: '4px', marginBottom: '8px', fontSize: baseFontSize, border: '1.5px solid #000', padding: '6px' }}>

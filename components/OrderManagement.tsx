@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { subscribeToOrders, fetchOrders } from '../services/orderService';
 import { useAuth } from '../services/authService'; 
 import { fetchRestaurantByIdSecure } from '../services/databaseService';
-import type { Order, StaffMember } from '../types';
+import type { Order, StaffMember, CartItem } from '../types';
 import OrdersView from './OrdersView';
 import MenuManagement from './MenuManagement';
 import RestaurantSettings from './RestaurantSettings';
@@ -38,7 +38,12 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { currentUser, logout } = useAuth();
     const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff'>('orders');
     const [orders, setOrders] = useState<Order[]>([]);
-    const [orderToPrint, setOrderToPrint] = useState<Order | null>(null);
+    const [printJob, setPrintJob] = useState<{ 
+        order: Order, 
+        mode: 'full' | 'kitchen', 
+        items?: CartItem[], 
+        jobId?: string 
+    } | null>(null);
     const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'RECONNECTING'>('CONNECTED');
     const { playNotification, initAudioContext } = useSound();
     
@@ -52,6 +57,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const previousOrdersStatusRef = useRef<Map<string, string>>(new Map());
     const isFirstLoadRef = useRef(true);
     const printedOrderIdsRef = useRef<Set<string>>(new Set());
+    const processedJobIdsRef = useRef<Set<string>>(new Set());
     const heartbeatIntervalRef = useRef<number | null>(null);
     const reconnectGraceTimeoutRef = useRef<number | null>(null);
 
@@ -114,21 +120,26 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const visibleTabs = useMemo(() => {
         const allTabs = ['orders', 'tables', 'menu', 'financial', 'customers', 'staff', 'settings'] as const;
         
-        // If locked or waiter, only show tables
-        if (isLocked || currentStaffUser?.role === 'waiter') {
+        // Se o usuário logado for garçom, ele só vê mesas
+        if (currentUser?.role === 'waiter') {
+            return ['tables'];
+        }
+
+        // Se o painel estiver travado (Modo Garçom compartilhado), só mostra mesas
+        if (isLocked) {
             return ['tables'];
         }
         
-        // Manager or Admin (Owner) sees all
+        // Manager ou Merchant (Dono) vê tudo
         return allTabs;
-    }, [currentStaffUser, isLocked]);
+    }, [currentUser, isLocked]);
 
     // Force tab if current is not allowed
     useEffect(() => {
-        if ((isLocked || currentStaffUser?.role === 'waiter') && activeTab !== 'tables') {
+        if ((isLocked || currentUser?.role === 'waiter') && activeTab !== 'tables') {
             setActiveTab('tables');
         }
-    }, [currentStaffUser, isLocked, activeTab]);
+    }, [currentUser, isLocked, activeTab]);
 
     const processOrdersUpdate = useCallback((allOrders: Order[]) => {
         const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
@@ -160,7 +171,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     }
                     playNotification(); 
                 }
-                setOrderToPrint(newestOrder);
+                setPrintJob({ order: newestOrder, mode: 'full' });
             }
         }
 
@@ -228,25 +239,68 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const enableAudio = useCallback(() => { initAudioContext(); }, [initAudioContext]);
 
     useEffect(() => {
-        if (orderToPrint) {
-            if (printedOrderIdsRef.current.has(orderToPrint.id)) {
-                setOrderToPrint(null); 
+        if (printJob) {
+            // Se for um pedido de delivery novo, evitamos duplicidade pelo ID
+            if (printJob.mode === 'full' && !printJob.jobId && printedOrderIdsRef.current.has(printJob.order.id)) {
+                setPrintJob(null); 
                 return;
             }
-            const printTimer = setTimeout(() => {
+
+            const printTimer = setTimeout(async () => {
                 window.focus();
-                printedOrderIdsRef.current.add(orderToPrint.id);
+                
+                if (printJob.mode === 'full' && !printJob.jobId) {
+                    printedOrderIdsRef.current.add(printJob.order.id);
+                }
+                
                 window.print();
-                setTimeout(() => setOrderToPrint(null), 1000);
+
+                // Se era um trabalho da fila remota (jobId), marcamos como feito no banco
+                if (printJob.jobId) {
+                    try {
+                        const { markPrintJobAsDone } = await import('../services/orderService');
+                        await markPrintJobAsDone(printJob.order.id, printJob.jobId);
+                    } catch (e) {
+                        console.error("Erro ao marcar impressão como concluída:", e);
+                    }
+                }
+
+                setTimeout(() => setPrintJob(null), 1000);
             }, 500); 
             return () => clearTimeout(printTimer);
         }
-    }, [orderToPrint]);
+    }, [printJob]);
 
-    const handleManualPrint = (order: Order) => {
+    // MONITOR DE FILA DE IMPRESSÃO REMOTA (Para Mesas/Garçons)
+    useEffect(() => {
+        const isPrintServer = localStorage.getItem('guarafood-is-print-server') === 'true';
+        if (!isPrintServer || orders.length === 0) return;
+
+        // Procuramos em todos os pedidos ativos por solicitações de impressão pendentes
+        for (const order of orders) {
+            const queue = order.payment_details?.print_queue || [];
+            const pendingJob = queue.find((job: any) => job.status === 'pending');
+            
+            if (pendingJob) {
+                // Se já estamos imprimindo algo ou já processamos esse ID, ignoramos
+                if (printJob || processedJobIdsRef.current.has(pendingJob.id)) break;
+
+                processedJobIdsRef.current.add(pendingJob.id);
+                setPrintJob({
+                    order: order,
+                    mode: pendingJob.type || 'kitchen',
+                    items: pendingJob.items,
+                    jobId: pendingJob.id
+                });
+                break; // Processa um por vez
+            }
+        }
+    }, [orders, printJob]);
+
+    const handleManualPrint = (order: Order, mode: 'full' | 'kitchen' = 'full') => {
         printedOrderIdsRef.current.delete(order.id);
-        setOrderToPrint(null);
-        setTimeout(() => setOrderToPrint(order), 50);
+        setPrintJob(null);
+        setTimeout(() => setPrintJob({ order, mode }), 50);
     };
 
     useEffect(() => {
@@ -282,7 +336,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             case 'orders':
                 return <OrdersView orders={orders} printerWidth={printerWidth} onPrint={handleManualPrint} />;
             case 'tables':
-                return <TableManagement orders={orders} currentStaffUser={currentStaffUser} />;
+                return <TableManagement orders={orders} currentStaffUser={currentStaffUser} onPrint={handleManualPrint} />;
             case 'menu': return <MenuManagement />;
             case 'financial':
                 return (
@@ -319,32 +373,36 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     </button>
                     <div className="flex flex-col">
                         <h1 className="text-xl sm:text-2xl font-black text-gray-800 truncate">
-                            {currentStaffUser ? currentStaffUser.name : (currentUser?.name || 'Painel Lojista')}
+                            {currentUser?.name || 'Painel Lojista'}
                         </h1>
-                        {currentStaffUser && <span className="text-xs text-orange-600 font-bold uppercase">{currentStaffUser.role === 'waiter' ? 'Garçom' : 'Gerente'}</span>}
+                        <span className="text-xs text-orange-600 font-bold uppercase">
+                            {currentUser?.role === 'waiter' ? 'Garçom' : currentUser?.role === 'manager' ? 'Gerente' : 'Administrador'}
+                        </span>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    {isLocked ? (
-                        <button 
-                            onClick={handleUnlockClick}
-                            className="flex items-center gap-2 px-3 py-2 bg-orange-100 text-orange-600 rounded-xl hover:bg-orange-200 transition-all font-black text-[10px] uppercase tracking-wider shadow-sm"
-                            title="Desbloquear Painel Completo"
-                        >
-                            <LockClosedIcon className="w-5 h-5" />
-                            Modo Garçom
-                        </button>
-                    ) : (
-                        staffList.length > 0 && (
+                    {currentUser?.role !== 'waiter' && (
+                        isLocked ? (
                             <button 
-                                onClick={handleLockScreen}
-                                className="p-2 rounded-lg text-gray-400 hover:text-orange-600 transition-all"
-                                title="Ativar Modo Garçom (Restrito)"
+                                onClick={handleUnlockClick}
+                                className="flex items-center gap-2 px-3 py-2 bg-orange-100 text-orange-600 rounded-xl hover:bg-orange-200 transition-all font-black text-[10px] uppercase tracking-wider shadow-sm"
+                                title="Desbloquear Painel Completo"
                             >
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                                </svg>
+                                <LockClosedIcon className="w-5 h-5" />
+                                Modo Garçom
                             </button>
+                        ) : (
+                            staffList.length > 0 && (
+                                <button 
+                                    onClick={handleLockScreen}
+                                    className="p-2 rounded-lg text-gray-400 hover:text-orange-600 transition-all"
+                                    title="Ativar Modo Garçom (Restrito)"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                                    </svg>
+                                </button>
+                            )
                         )
                     )}
                     <button 
@@ -356,12 +414,10 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
                         </svg>
                     </button>
-                    {!currentStaffUser && (
-                        <button onClick={logout} className="flex items-center space-x-2 p-2 text-gray-500 hover:text-red-600 rounded-lg transition-colors font-bold flex-shrink-0">
-                            <LogoutIcon className="w-6 h-6" />
-                            <span className="hidden sm:inline">Sair</span>
-                        </button>
-                    )}
+                    <button onClick={logout} className="flex items-center space-x-2 p-2 text-gray-500 hover:text-red-600 rounded-lg transition-colors font-bold flex-shrink-0">
+                        <LogoutIcon className="w-6 h-6" />
+                        <span className="hidden sm:inline">Sair</span>
+                    </button>
                 </div>
             </header>
 
@@ -391,7 +447,13 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
             <div className="hidden print:block">
                 <div id="printable-order">
-                    {orderToPrint && <PrintableOrder order={orderToPrint} printerWidth={printerWidth} />}
+                    {printJob && (
+                        <PrintableOrder 
+                            order={printJob.items ? { ...printJob.order, items: printJob.items } : printJob.order} 
+                            printerWidth={printerWidth} 
+                            printMode={printJob.mode}
+                        />
+                    )}
                 </div>
             </div>
 

@@ -143,6 +143,12 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                                         <p className="text-xs font-bold text-orange-600">Troco: R$ {(currentOrder.changeFor - currentOrder.totalPrice).toFixed(2)}</p>
                                     </div>
                                 )}
+                                <div className={`mt-2 p-2 rounded-lg border flex items-center gap-2 ${currentOrder.wantsSachets ? 'bg-green-50 border-green-100 text-green-700' : 'bg-gray-50 border-gray-100 text-gray-500'}`}>
+                                    <div className={`w-2 h-2 rounded-full ${currentOrder.wantsSachets ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                                    <span className="text-xs font-black uppercase">
+                                        {currentOrder.wantsSachets ? 'Enviar Sachês: SIM' : 'Não enviar sachês'}
+                                    </span>
+                                </div>
                             </div>
                             <div className="space-y-1">
                                 <h3 className="font-bold text-gray-700 border-b pb-1 mb-2">Restaurante</h3>

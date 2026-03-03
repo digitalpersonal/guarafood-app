@@ -35,9 +35,10 @@ import PrintableOrder from './PrintableOrder';
 interface TableManagementProps {
     orders: Order[];
     currentStaffUser?: StaffMember | null;
+    onPrint?: (order: Order, mode: 'full' | 'kitchen', items?: CartItem[]) => void;
 }
 
-const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffUser }) => {
+const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffUser, onPrint }) => {
     const { currentUser } = useAuth();
     const { addToast, confirm, prompt } = useNotification();
     const [selectedTableOrder, setSelectedTableOrder] = useState<Order | null>(null);
@@ -49,13 +50,6 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
     
     // Printing States
     const [printedItems, setPrintedItems] = useState<Set<string>>(new Set());
-    const [kitchenPrintOrder, setKitchenPrintOrder] = useState<Order | null>(null);
-    const [printMode, setPrintMode] = useState<'kitchen' | 'full'>('kitchen');
-
-    // Remote Print Monitoring
-    const [printQueueOrder, setPrintQueueOrder] = useState<Order | null>(null);
-    const [printQueueItems, setPrintQueueItems] = useState<CartItem[]>([]);
-    const [printJobId, setPrintJobId] = useState<string | null>(null);
 
     const activeTables = useMemo(() => {
         // Usamos 'Aguardando Pagamento' para mesas abertas para evitar erros de constraint no banco
@@ -63,36 +57,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
         return orders.filter(o => o.status === 'Aguardando Pagamento' && o.tableNumber);
     }, [orders]);
 
-    // Remote Print Queue Monitor
-    useEffect(() => {
-        const isPrintServer = localStorage.getItem('guarafood-is-print-server') === 'true';
-        if (!isPrintServer) return;
-
-        const checkForPrintJobs = async () => {
-            for (const order of activeTables) {
-                const queue = order.payment_details?.print_queue || [];
-                const pendingJob = queue.find((job: any) => job.status === 'pending' && job.type === 'kitchen');
-                
-                if (pendingJob) {
-                    console.log("Found print job:", pendingJob);
-                    setPrintQueueOrder(order);
-                    setPrintQueueItems(pendingJob.items);
-                    setPrintJobId(pendingJob.id);
-                    
-                    setTimeout(() => {
-                        window.print();
-                        markPrintJobAsDone(order.id, pendingJob.id);
-                        setPrintQueueOrder(null);
-                        setPrintQueueItems([]);
-                        setPrintJobId(null);
-                    }, 500);
-                    return; 
-                }
-            }
-        };
-
-        checkForPrintJobs();
-    }, [activeTables]);
+    // Remote Print Queue Monitor - REMOVED (Now handled by OrderManagement)
 
     // Load printed items from local storage to persist across reloads
     useEffect(() => {
@@ -112,71 +77,66 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
         localStorage.setItem('guarafood-printed-items', JSON.stringify(Array.from(printedItems)));
     }, [printedItems]);
 
-    // Handle printing queue
-    useEffect(() => {
-        if (kitchenPrintOrder) {
-            // Small delay to ensure DOM is updated
-            const timer = setTimeout(() => {
-                window.print();
-                
-                // If it was a kitchen print, mark items as printed
-                if (printMode === 'kitchen') {
-                    setPrintedItems(prev => {
-                        const newSet = new Set(prev);
-                        kitchenPrintOrder.items.forEach(item => newSet.add(item.id));
-                        return newSet;
-                    });
-                }
-                
-                // Clear print queue
-                setKitchenPrintOrder(null);
-            }, 500);
-            return () => clearTimeout(timer);
-        }
-    }, [kitchenPrintOrder, printMode]);
+    // Handle printing queue - REMOVED (Now handled by OrderManagement)
 
     const triggerKitchenPrint = async (order: Order) => {
         const isPrintServer = localStorage.getItem('guarafood-is-print-server') === 'true';
         
+        // Identifica itens que já foram enviados para a fila de impressão (remota ou local)
+        const queue = order.payment_details?.print_queue || [];
+        const alreadyInQueueIds = new Set<string>();
+        queue.forEach((job: any) => {
+            if (job.items) job.items.forEach((item: any) => alreadyInQueueIds.add(item.id));
+        });
+
+        // Itens que ainda não foram impressos (nem localmente nem via fila)
+        const unprintedItems = order.items.filter(item => !printedItems.has(item.id) && !alreadyInQueueIds.has(item.id));
+
+        if (unprintedItems.length === 0) {
+            addToast({ message: 'Todos os itens já foram enviados para a cozinha.', type: 'info' });
+            return;
+        }
+
         if (isPrintServer) {
             // Local print (Server)
-            const unprintedItems = order.items.filter(item => !printedItems.has(item.id));
-            if (unprintedItems.length === 0) {
-                addToast({ message: 'Todos os itens já foram enviados para a cozinha.', type: 'info' });
-                return;
+            if (onPrint) {
+                onPrint(order, 'kitchen', unprintedItems);
+                // Mark as printed locally
+                setPrintedItems(prev => {
+                    const newSet = new Set(prev);
+                    unprintedItems.forEach(item => newSet.add(item.id));
+                    return newSet;
+                });
             }
-            setPrintMode('kitchen');
-            setKitchenPrintOrder(order);
         } else {
             // Remote print request (Mobile)
             const confirmed = await confirm({
                 title: 'Imprimir na Cozinha',
-                message: 'Deseja enviar este pedido para a impressora da cozinha (Computador)?',
-                confirmText: 'Enviar para Impressora',
-                cancelText: 'Imprimir neste dispositivo'
+                message: `Deseja enviar ${unprintedItems.length} novo(s) item(ns) para a impressora da cozinha?`,
+                confirmText: 'Sim, Enviar',
+                cancelText: 'Cancelar'
             });
             
             if (confirmed) {
                 try {
-                    // Send all items or just unprinted? Ideally unprinted, but we don't track remote printed state perfectly here yet.
-                    // Let's send all items for now, or filter if we had remote state.
-                    // For simplicity, send all items. The server will print them.
-                    await requestKitchenPrint(order.id, order.items);
+                    await requestKitchenPrint(order.id, unprintedItems);
                     addToast({ message: 'Enviado para impressão na cozinha!', type: 'success' });
+                    
+                    // Atualiza o estado local para evitar reenvio imediato antes do sync do banco
+                    setPrintedItems(prev => {
+                        const newSet = new Set(prev);
+                        unprintedItems.forEach(item => newSet.add(item.id));
+                        return newSet;
+                    });
                 } catch (e) {
                     addToast({ message: 'Erro ao enviar para impressão.', type: 'error' });
                 }
-            } else {
-                // Fallback to local print
-                setPrintMode('kitchen');
-                setKitchenPrintOrder(order);
             }
         }
     };
 
     const triggerBillPrint = (order: Order) => {
-        setPrintMode('full');
-        setKitchenPrintOrder(order);
+        if (onPrint) onPrint(order, 'full');
     };
 
 
@@ -692,28 +652,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                 />
             )}
             
-            {/* Hidden Printable Area for Bill */}
-            <div className="hidden print:block">
-                <div id="printable-order">
-                    {kitchenPrintOrder && (
-                        <PrintableOrder 
-                            order={kitchenPrintOrder} 
-                            printerWidth={80} 
-                            printMode={printMode}
-                            printedItems={Array.from(printedItems)}
-                        />
-                    )}
-                    {/* Hidden Printable Area for Remote Jobs */}
-                    {printQueueOrder && printJobId && (
-                        <PrintableOrder 
-                            order={{...printQueueOrder, items: printQueueItems}} 
-                            printerWidth={80} 
-                            printMode="kitchen"
-                            printedItems={[]} // Always print all items in job
-                        />
-                    )}
-                </div>
-            </div>
+            {/* Hidden Printable Area - REMOVED (Now handled by OrderManagement) */}
         </div>
     );
 };

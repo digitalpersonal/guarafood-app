@@ -14,6 +14,7 @@ const StaffManagement: React.FC = () => {
 
     // Form State
     const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
     const [pin, setPin] = useState('');
     const [role, setRole] = useState<'waiter' | 'manager'>('waiter');
 
@@ -43,11 +44,13 @@ const StaffManagement: React.FC = () => {
         if (member) {
             setEditingMember(member);
             setName(member.name);
-            setPin(member.pin);
+            setEmail(member.email);
+            setPin(member.pin || '');
             setRole(member.role);
         } else {
             setEditingMember(null);
             setName('');
+            setEmail('');
             setPin('');
             setRole('waiter');
         }
@@ -55,8 +58,18 @@ const StaffManagement: React.FC = () => {
     };
 
     const handleSave = async () => {
-        if (!name.trim() || pin.length !== 4) {
-            addToast({ message: 'Nome é obrigatório e PIN deve ter 4 dígitos.', type: 'error' });
+        if (!name.trim() || !email.trim()) {
+            addToast({ message: 'Nome e Email são obrigatórios.', type: 'error' });
+            return;
+        }
+
+        if (!email.includes('@')) {
+            addToast({ message: 'Email inválido.', type: 'error' });
+            return;
+        }
+
+        if (pin && pin.length !== 4) {
+            addToast({ message: 'O PIN deve ter 4 dígitos.', type: 'error' });
             return;
         }
 
@@ -67,13 +80,14 @@ const StaffManagement: React.FC = () => {
         if (editingMember) {
             // Update existing
             updatedStaff = updatedStaff.map(s => 
-                s.id === editingMember.id ? { ...s, name, pin, role } : s
+                s.id === editingMember.id ? { ...s, name, email, pin, role } : s
             );
         } else {
             // Create new
             const newMember: StaffMember = {
                 id: crypto.randomUUID(),
                 name,
+                email: email.toLowerCase().trim(),
                 pin,
                 role,
                 active: true
@@ -188,8 +202,8 @@ const StaffManagement: React.FC = () => {
                         </div>
                         
                         <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-100">
-                            <div className="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                                PIN: <span className="font-bold tracking-widest">****</span>
+                            <div className="text-[10px] font-mono text-gray-400 truncate max-w-[150px]">
+                                {member.email}
                             </div>
                             <button 
                                 onClick={() => handleToggleActive(member)}
@@ -230,7 +244,19 @@ const StaffManagement: React.FC = () => {
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">PIN de Acesso (4 dígitos)</label>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email de Acesso</label>
+                                <input 
+                                    type="email" 
+                                    value={email}
+                                    onChange={e => setEmail(e.target.value)}
+                                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-orange-500 outline-none font-medium"
+                                    placeholder="email@exemplo.com"
+                                />
+                                <p className="text-[10px] text-gray-400 mt-1">O funcionário deve criar uma conta com este email para acessar individualmente.</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">PIN de Acesso Rápido (Opcional - 4 dígitos)</label>
                                 <input 
                                     type="text" 
                                     maxLength={4}
@@ -239,6 +265,7 @@ const StaffManagement: React.FC = () => {
                                     className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-orange-500 outline-none font-mono text-center tracking-[0.5em] text-lg"
                                     placeholder="0000"
                                 />
+                                <p className="text-[10px] text-gray-400 mt-1">Usado apenas para desbloquear o painel em dispositivos compartilhados.</p>
                             </div>
 
                             <div>
