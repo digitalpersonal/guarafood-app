@@ -102,6 +102,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
             setCurrentUser(profile);
         }
+      } else {
+        // SENIOR MOVE: Se não há sessão do Supabase, verifica se temos um usuário "Staff" no localStorage
+        // Isso permite que garçons/gerentes fiquem logados sem conta real no Supabase
+        const storedUser = localStorage.getItem(USER_STORAGE_KEY);
+        if (storedUser) {
+            try {
+                const user = JSON.parse(storedUser);
+                if (user.role === 'waiter' || user.role === 'manager') {
+                    // É um staff, mantemos logado
+                    setCurrentUser(user);
+                } else {
+                    // Era um merchant/admin mas a sessão expirou
+                    setCurrentUser(null);
+                }
+            } catch {
+                setCurrentUser(null);
+            }
+        }
       }
       setLoading(false);
     }).catch(async (err) => {
@@ -135,15 +153,55 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = useCallback(async (email: string, password: string) => {
       setAuthError(null);
-      const { error } = await supabase.auth.signInWithPassword({ 
-          email: email.toLowerCase().trim(), 
+      
+      const cleanEmail = email.toLowerCase().trim();
+
+      // 1. Tenta login real no Supabase primeiro
+      const { data, error } = await supabase.auth.signInWithPassword({ 
+          email: cleanEmail, 
           password 
       });
-      if (error) throw new Error(error.message);
+
+      if (error) {
+          // 2. SENIOR MOVE: Se falhar no Supabase, busca na lista de staff dos restaurantes
+          // Isso permite acesso imediato para garçons cadastrados pelo admin
+          const { data: staffData } = await supabase
+              .from('restaurants')
+              .select('id, name, staff')
+              .not('staff', 'is', null);
+
+          if (staffData) {
+              for (const res of staffData) {
+                  const staffList = res.staff as any[];
+                  const member = staffList.find(s => 
+                      s.email?.toLowerCase() === cleanEmail && 
+                      s.password === password && 
+                      s.active
+                  );
+                  
+                  if (member) {
+                      const profile: User = {
+                          id: member.id,
+                          email: member.email,
+                          role: member.role as Role,
+                          name: member.name,
+                          restaurantId: res.id
+                      };
+                      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
+                      setCurrentUser(profile);
+                      return;
+                  }
+              }
+          }
+          
+          throw new Error(error.message);
+      }
   }, []);
 
   const logout = useCallback(async () => {
       await supabase.auth.signOut();
+      localStorage.removeItem(USER_STORAGE_KEY);
+      setCurrentUser(null);
   }, []);
 
   const value = useMemo(() => ({

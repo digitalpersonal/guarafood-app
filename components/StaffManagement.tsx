@@ -15,6 +15,7 @@ const StaffManagement: React.FC = () => {
     // Form State
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
     const [pin, setPin] = useState('');
     const [role, setRole] = useState<'waiter' | 'manager'>('waiter');
 
@@ -45,12 +46,14 @@ const StaffManagement: React.FC = () => {
             setEditingMember(member);
             setName(member.name);
             setEmail(member.email);
+            setPassword(member.password || '');
             setPin(member.pin || '');
             setRole(member.role);
         } else {
             setEditingMember(null);
             setName('');
             setEmail('');
+            setPassword('');
             setPin('');
             setRole('waiter');
         }
@@ -58,8 +61,8 @@ const StaffManagement: React.FC = () => {
     };
 
     const handleSave = async () => {
-        if (!name.trim() || !email.trim()) {
-            addToast({ message: 'Nome e Email são obrigatórios.', type: 'error' });
+        if (!name.trim() || !email.trim() || !password.trim()) {
+            addToast({ message: 'Nome, Email e Senha são obrigatórios.', type: 'error' });
             return;
         }
 
@@ -80,7 +83,7 @@ const StaffManagement: React.FC = () => {
         if (editingMember) {
             // Update existing
             updatedStaff = updatedStaff.map(s => 
-                s.id === editingMember.id ? { ...s, name, email, pin, role } : s
+                s.id === editingMember.id ? { ...s, name, email, password, pin, role } : s
             );
         } else {
             // Create new
@@ -88,6 +91,7 @@ const StaffManagement: React.FC = () => {
                 id: crypto.randomUUID(),
                 name,
                 email: email.toLowerCase().trim(),
+                password,
                 pin,
                 role,
                 active: true
@@ -252,7 +256,18 @@ const StaffManagement: React.FC = () => {
                                     className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-orange-500 outline-none font-medium"
                                     placeholder="email@exemplo.com"
                                 />
-                                <p className="text-[10px] text-gray-400 mt-1">O funcionário deve criar uma conta com este email para acessar individualmente.</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Senha de Acesso</label>
+                                <input 
+                                    type="text" 
+                                    value={password}
+                                    onChange={e => setPassword(e.target.value)}
+                                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-orange-500 outline-none font-medium"
+                                    placeholder="Defina uma senha"
+                                />
+                                <p className="text-[10px] text-gray-400 mt-1">O acesso será liberado imediatamente com este email e senha.</p>
                             </div>
 
                             <div>

@@ -22,6 +22,8 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
     const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
     const [notes, setNotes] = useState('');
 
+    const [isAdding, setIsAdding] = useState(false);
+
     useEffect(() => {
         if (initialItem.sizes && initialItem.sizes.length > 0) {
             setSelectedSize(initialItem.sizes[0]);
@@ -30,6 +32,7 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
         }
         setSelectedAddonIds(new Set());
         setNotes('');
+        setIsAdding(false);
     }, [initialItem, isOpen]);
 
     const availableAddons = useMemo(() => {
@@ -60,6 +63,8 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
     const handleAddToCartClick = () => {
         if (!selectedSize) return;
 
+        setIsAdding(true);
+
         const selectedAddons = availableAddons.filter(a => selectedAddonIds.has(a.id));
         
         const topAddons = selectedAddons.slice(0, 2).map(a => a.name).join(', ');
@@ -82,7 +87,9 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
             notes: notes.trim() || undefined,
         };
         
-        onAddToCart(customizedItem);
+        setTimeout(() => {
+            onAddToCart(customizedItem);
+        }, 300);
     };
 
     if (!isOpen) return null;
@@ -167,9 +174,19 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
                     </div>
                     <button 
                         onClick={handleAddToCartClick}
-                        className="bg-orange-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-orange-700 transition-colors"
+                        disabled={isAdding}
+                        className={`font-bold py-3 px-6 rounded-lg transition-all flex items-center gap-2 ${isAdding ? 'bg-green-600 text-white scale-105' : 'bg-orange-600 text-white hover:bg-orange-700'}`}
                     >
-                        Adicionar ao Carrinho
+                        {isAdding ? (
+                            <>
+                                <span>Adicionado!</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-5 h-5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                                </svg>
+                            </>
+                        ) : (
+                            'Adicionar ao Carrinho'
+                        )}
                     </button>
                 </div>
             </div>

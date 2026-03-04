@@ -27,6 +27,8 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
     const [showSecondHalfSelector, setShowSecondHalfSelector] = useState(false);
     const [notes, setNotes] = useState('');
 
+    const [isAdding, setIsAdding] = useState(false);
+
     useEffect(() => {
         setFirstHalf(initialPizza);
         if (initialPizza.sizes && initialPizza.sizes.length > 0) {
@@ -38,6 +40,7 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
         setSelectedAddonIds(new Set());
         setShowSecondHalfSelector(false);
         setNotes('');
+        setIsAdding(false);
     }, [initialPizza, isOpen]);
 
     const availableAddons = useMemo(() => {
@@ -87,6 +90,8 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
     const handleAddToCartClick = () => {
         if (!selectedSize) return;
 
+        setIsAdding(true);
+
         const halves = secondHalf ? [
             { name: firstHalf.name, price: firstHalf.price },
             { name: secondHalf.name, price: secondHalf.price }
@@ -116,7 +121,9 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
             notes: notes.trim() || undefined,
         };
         
-        onAddToCart(customizedPizza);
+        setTimeout(() => {
+            onAddToCart(customizedPizza);
+        }, 300);
     };
 
     if (!isOpen) return null;
@@ -240,9 +247,19 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                     </div>
                     <button 
                         onClick={handleAddToCartClick}
-                        className="bg-orange-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-orange-700 transition-colors"
+                        disabled={isAdding}
+                        className={`font-bold py-3 px-6 rounded-lg transition-all flex items-center gap-2 ${isAdding ? 'bg-green-600 text-white scale-105' : 'bg-orange-600 text-white hover:bg-orange-700'}`}
                     >
-                        Adicionar ao Carrinho
+                        {isAdding ? (
+                            <>
+                                <span>Adicionado!</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-5 h-5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                                </svg>
+                            </>
+                        ) : (
+                            'Adicionar ao Carrinho'
+                        )}
                     </button>
                 </div>
             </div>

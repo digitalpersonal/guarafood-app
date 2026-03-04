@@ -29,10 +29,11 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
     // 58mm -> Usamos 48mm de conteúdo útil
     const contentWidth = printerWidth === 80 ? '65mm' : '48mm';
     
-    const baseFontSize = printerWidth === 58 ? '13px' : '13px';
-    const headerFontSize = printerWidth === 58 ? '14px' : '15px';
-    const titleFontSize = printerWidth === 58 ? '20px' : '22px';
-    const smallFontSize = printerWidth === 58 ? '11px' : '11px';
+    const baseFontSize = printerWidth === 58 ? '18px' : '13px';
+    const headerFontSize = printerWidth === 58 ? '20px' : '15px';
+    const titleFontSize = printerWidth === 58 ? '26px' : '22px';
+    const smallFontSize = printerWidth === 58 ? '16px' : '11px';
+    const lineHeight = printerWidth === 58 ? '1.2' : '1.1';
 
     const isPixPaid = order.paymentMethod.toLowerCase().includes('pix') && order.paymentStatus === 'paid';
     
@@ -83,7 +84,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                     #thermal-content {
                         font-family: 'Courier New', Courier, monospace; 
                         color: #000 !important;
-                        line-height: 1.1;
+                        line-height: ${lineHeight};
                         background: #fff !important;
                     }
 
@@ -145,7 +146,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
 
                     .item-price-col {
                         text-align: right;
-                        min-width: ${printerWidth === 58 ? '55px' : '75px'};
+                        min-width: ${printerWidth === 58 ? '80px' : '75px'};
                         margin-left: 2mm;
                     }
 
@@ -290,13 +291,13 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                                         : (order.paymentMethod.match(/\(([^)]+)\)/)?.[1].toUpperCase() || order.paymentMethod.toUpperCase())
                                     }
                                     {order.changeFor && order.changeFor > order.totalPrice && (
-                                        <div style={{ fontSize: '12px', marginTop: '2px' }}>
+                                        <div style={{ fontSize: smallFontSize, marginTop: '2px' }}>
                                             TROCO: R$ {(order.changeFor - order.totalPrice).toFixed(2)}
                                         </div>
                                     )}
                                 </div>
                             )}
-                            {isPixPaid && <div style={{ fontSize: '10px', marginTop: '2px' }}>(PAGO PELO APP)</div>}
+                            {isPixPaid && <div style={{ fontSize: smallFontSize, marginTop: '2px' }}>(PAGO PELO APP)</div>}
                         </div>
                     </>
                 )}

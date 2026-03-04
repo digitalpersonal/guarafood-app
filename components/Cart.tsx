@@ -39,6 +39,18 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
 
     const isOpen = restaurant ? isRestaurantOpen(restaurant) : true;
 
+    const [isBumping, setIsBumping] = useState(false);
+    const prevTotalItems = useRef(totalItems);
+
+    useEffect(() => {
+        if (totalItems > prevTotalItems.current) {
+            setIsBumping(true);
+            const timer = setTimeout(() => setIsBumping(false), 300);
+            return () => clearTimeout(timer);
+        }
+        prevTotalItems.current = totalItems;
+    }, [totalItems]);
+
     useEffect(() => {
         if (cartButtonRef.current) {
             setCartElement(cartButtonRef.current);
@@ -71,11 +83,11 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
                 <button
                     ref={cartButtonRef}
                     onClick={() => setIsCartOpen(true)}
-                    className="bg-orange-600 text-white rounded-full shadow-lg p-4 flex items-center justify-center space-x-2 hover:bg-orange-700 transition-colors"
+                    className={`bg-orange-600 text-white rounded-full shadow-lg p-4 flex items-center justify-center space-x-2 hover:bg-orange-700 transition-all duration-300 ${isBumping ? 'scale-125 rotate-12' : 'scale-100'}`}
                     aria-label={`Abrir carrinho com ${totalItems} itens`}
                 >
                     <CartIcon className="w-8 h-8"/>
-                    <span className="absolute -top-1 -right-1 bg-white text-orange-600 rounded-full text-xs font-bold w-6 h-6 flex items-center justify-center border-2 border-orange-600">{totalItems}</span>
+                    <span className={`absolute -top-1 -right-1 bg-white text-orange-600 rounded-full text-xs font-bold w-6 h-6 flex items-center justify-center border-2 border-orange-600 transition-transform duration-300 ${isBumping ? 'scale-110' : 'scale-100'}`}>{totalItems}</span>
                 </button>
             </div>
         )

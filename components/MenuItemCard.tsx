@@ -67,6 +67,8 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
   const [isAcaiModalOpen, setIsAcaiModalOpen] = useState(false);
   const [isGenericModalOpen, setIsGenericModalOpen] = useState(false);
 
+  const [isAdding, setIsAdding] = useState(false);
+  
   // Lógica para determinar a URL da imagem final
   const finalImageUrl = item.imageUrl || getGenericImageUrl(categoryName) || '';
 
@@ -93,6 +95,9 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
         setIsGenericModalOpen(true); // Also open for items that just have sizes
     }
     else {
+      setIsAdding(true);
+      setTimeout(() => setIsAdding(false), 500);
+      
       const rect = event.currentTarget.getBoundingClientRect();
       addFlyingItem(finalImageUrl, rect);
       addToCart(item);
@@ -100,6 +105,9 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
   };
 
   const handleCustomizedItemAddToCart = (customizedItem: CartItem) => {
+    setIsAdding(true);
+    setTimeout(() => setIsAdding(false), 500);
+    
     addToCart(customizedItem);
     setIsPizzaModalOpen(false);
     setIsAcaiModalOpen(false);
@@ -112,7 +120,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
 
   return (
     <>
-      <div className={`${containerClasses} rounded-lg overflow-hidden flex p-3 space-x-4 relative transition-all duration-300 group ${!canPurchase ? 'grayscale opacity-75' : ''}`}>
+      <div className={`${containerClasses} rounded-lg overflow-hidden flex p-3 space-x-4 relative transition-all duration-300 group ${!canPurchase ? 'grayscale opacity-75' : ''} ${isAdding ? 'ring-2 ring-green-500 bg-green-50' : ''}`}>
           
           {/* Badge: Esgotado */}
           {!isAvailable && (
@@ -189,10 +197,10 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
           <button 
             onClick={handleAddToCartClick}
             disabled={!canPurchase}
-            className={`absolute -bottom-2 -right-2 rounded-full w-9 h-9 flex items-center justify-center text-xl font-bold shadow-lg transition-all z-10 transform ${canPurchase ? 'bg-gray-800 text-white hover:bg-orange-600 group-hover:scale-110' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+            className={`absolute -bottom-2 -right-2 rounded-full w-9 h-9 flex items-center justify-center text-xl font-bold shadow-lg transition-all z-10 transform ${canPurchase ? (isAdding ? 'bg-green-500 scale-125 text-white' : 'bg-gray-800 text-white hover:bg-orange-600 group-hover:scale-110') : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
             title={canPurchase ? "Adicionar" : !isAvailable ? "Item Esgotado" : "Restaurante Fechado"}
           >
-            {canPurchase ? '+' : !isAvailable ? '!' : '×'}
+            {isAdding ? '✓' : canPurchase ? '+' : !isAvailable ? '!' : '×'}
           </button>
         </div>
       </div>
