@@ -1,10 +1,25 @@
 
 import { supabase, supabaseAnon, handleSupabaseError } from './api';
-import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory, Expense, Order } from '../types';
+import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory, Expense, Order, OperatingHours } from '../types';
 
 // ==============================================================================
 // 🔄 NORMALIZADORES (Banco de Dados -> App)
 // ==============================================================================
+
+const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+const getDefaultOperatingHours = (): OperatingHours[] =>
+    daysOfWeek.map((_, index) => ({
+        dayOfWeek: index,
+        opens: '18:00',
+        closes: '23:00',
+        isOpen: false,
+    }));
+
+const ensureOperatingHours = (hours: any): OperatingHours[] => {
+    if (Array.isArray(hours) && hours.length === 7) return hours;
+    return getDefaultOperatingHours();
+};
 
 // Normalizer for orders (Maps DB snake_case to App camelCase)
 const normalizeOrder = (data: any): Order => {
@@ -53,7 +68,7 @@ const normalizeRestaurant = (data: any): Restaurant => {
         openingHours: data.opening_hours,
         closingHours: data.closing_hours,
         deliveryFee: data.delivery_fee,
-        operatingHours: data.operating_hours,
+        operatingHours: ensureOperatingHours(data.operating_hours),
         mercado_pago_credentials: { accessToken: hasMpToken ? "PROTECTED" : "" },
         manualPixKey: data.manual_pix_key,
         hasPixConfigured: hasMpToken,
@@ -82,7 +97,7 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         openingHours: data.opening_hours,
         closingHours: data.closing_hours,
         deliveryFee: data.delivery_fee,
-        operatingHours: data.operating_hours,
+        operatingHours: ensureOperatingHours(data.operating_hours),
         mercado_pago_credentials: data.mercado_pago_credentials || { accessToken: '' },
         manualPixKey: data.manual_pix_key,
         hasPixConfigured: hasMpToken,
@@ -206,7 +221,19 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     if (updates.openingHours !== undefined) dbUpdates.opening_hours = updates.openingHours;
     if (updates.closingHours !== undefined) dbUpdates.closing_hours = updates.closingHours;
     if (updates.deliveryFee !== undefined) dbUpdates.delivery_fee = updates.deliveryFee;
-    if (updates.operatingHours !== undefined) dbUpdates.operating_hours = updates.operatingHours;
+    if (updates.operatingHours !== undefined) {
+        dbUpdates.operating_hours = updates.operatingHours;
+        
+        // SENIOR SYNC: Update legacy fields for summary display on main page
+        const firstOpenDay = updates.operatingHours.find(d => d.isOpen);
+        if (firstOpenDay) {
+            dbUpdates.opening_hours = firstOpenDay.opens;
+            dbUpdates.closing_hours = firstOpenDay.closes;
+        } else {
+            dbUpdates.opening_hours = 'Fechado';
+            dbUpdates.closing_hours = 'Fechado';
+        }
+    }
     if (updates.manualPixKey !== undefined) dbUpdates.manual_pix_key = updates.manualPixKey;
     if (updates.printerWidth !== undefined) dbUpdates.printer_width = updates.printerWidth;
     if (updates.staff !== undefined) dbUpdates.staff = updates.staff;

@@ -165,7 +165,7 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
     };
 
     const { data, error } = await supabase.from('orders').insert(newOrderPayload).select().single();
-    handleSupabaseError({ error, customMessage: 'Failed to create order' });
+    handleSupabaseError({ error, customMessage: 'Failed to create order', tableName: 'orders' });
     
     window.dispatchEvent(new Event('guarafood:update-orders'));
     

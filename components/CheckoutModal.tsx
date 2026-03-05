@@ -399,9 +399,10 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             addToast({ message: 'Pedido enviado!', type: 'success' });
             clearCart();
             setCurrentStep('SUCCESS');
-        } catch (err) {
+        } catch (err: any) {
             console.error('Failed to create order:', err);
-            addToast({ message: `Erro ao enviar pedido`, type: 'error' });
+            const errorMessage = err.message || 'Erro desconhecido';
+            addToast({ message: `Erro ao enviar pedido: ${errorMessage}`, type: 'error' });
         } finally {
             setIsSubmitting(false);
         }

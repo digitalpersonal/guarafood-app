@@ -31,7 +31,7 @@ interface DashboardCalculatedData {
     currentOrders: Order[];
     currentExpenses: Expense[];
     stats: { total: number; count: number; cancelledCount: number; pendingPixCount: number };
-    deliveryStats: { count: number; totalFees: number };
+    deliveryStats: { count: number; totalFees: number; unitFee: number; totalToPay: number };
     totalExpenses: number;
     netProfit: number;
     bestSellers: { name: string; qty: number }[];
@@ -158,6 +158,9 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
         const deliveryOrders = validOrders.filter(o => (Number(o.deliveryFee) || 0) > 0 || (o.customerAddress && !o.tableNumber));
         const deliveryCount = deliveryOrders.length;
         const totalDeliveryFees = deliveryOrders.reduce((acc, o) => acc + (Number(o.deliveryFee) || 0), 0);
+        
+        const unitFee = Number(restaurant?.deliveryFee) || 0;
+        const totalToPay = deliveryCount * unitFee;
 
         const itemRanking: Record<string, number> = {};
         validOrders.forEach(o => o.items.forEach(i => itemRanking[i.name] = (itemRanking[i.name] || 0) + i.quantity));
@@ -217,9 +220,9 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
         return {
             currentOrders, currentExpenses, 
             stats: { total: totalRevenue, count: validOrders.length, cancelledCount, pendingPixCount }, 
-            deliveryStats: { count: deliveryCount, totalFees: totalDeliveryFees },
+            deliveryStats: { count: deliveryCount, totalFees: totalDeliveryFees, unitFee, totalToPay },
             totalExpenses, 
-            netProfit: totalRevenue - totalExpenses - totalDeliveryFees,
+            netProfit: totalRevenue - totalExpenses - totalToPay,
             bestSellers, payments,
             periodLabel,
             deliveryBreakdown: calculateBreakdown(deliveryOrdersList),
@@ -513,7 +516,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                     </div>
                     <div className="thermal-row">
                         <span className="thermal-left">(-) ENTREGAS:</span>
-                        <span className="thermal-right">R$ {dashboardData.deliveryStats.totalFees.toFixed(2)}</span>
+                        <span className="thermal-right">R$ {dashboardData.deliveryStats.totalToPay.toFixed(2)}</span>
                     </div>
                     <div className="thermal-divider" style={{ margin: '4px 0' }}></div>
                     <div className="thermal-row thermal-bold" style={{ fontSize: '13px' }}>
@@ -556,14 +559,22 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                         <span className="thermal-right thermal-bold">{dashboardData.deliveryStats.count}</span>
                     </div>
                     <div className="thermal-row">
-                        <span className="thermal-left">TOTAL TAXAS:</span>
-                        <span className="thermal-right thermal-bold">R$ {dashboardData.deliveryStats.totalFees.toFixed(2)}</span>
+                        <span className="thermal-left">VALOR POR ENTREGA:</span>
+                        <span className="thermal-right">R$ {dashboardData.deliveryStats.unitFee.toFixed(2)}</span>
+                    </div>
+                    <div className="thermal-row">
+                        <span className="thermal-left">TOTAL TAXAS (PEDIDOS):</span>
+                        <span className="thermal-right">R$ {dashboardData.deliveryStats.totalFees.toFixed(2)}</span>
                     </div>
                     
                     <div className="thermal-divider"></div>
                     <div className="thermal-row thermal-bold" style={{ fontSize: '13px' }}>
                         <span className="thermal-left">TOTAL A PAGAR:</span>
-                        <span className="thermal-right">R$ {dashboardData.deliveryStats.totalFees.toFixed(2)}</span>
+                        <span className="thermal-right">R$ {dashboardData.deliveryStats.totalToPay.toFixed(2)}</span>
+                    </div>
+                    <div className="thermal-row" style={{ fontSize: '9px', marginTop: '2px' }}>
+                        <span className="thermal-left">CÁLCULO:</span>
+                        <span className="thermal-right">{dashboardData.deliveryStats.count} x R$ {dashboardData.deliveryStats.unitFee.toFixed(2)}</span>
                     </div>
 
                     <div className="thermal-footer" style={{ marginTop: '30px' }}>

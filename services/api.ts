@@ -120,12 +120,28 @@ export const handleSupabaseError = ({ error, customMessage, tableName }: { error
             else if (errorMessage.includes('mercado_pago_credentials')) {
                  enhancedMessage = `Erro de Banco de Dados: A coluna 'mercado_pago_credentials' está faltando.\nSOLUÇÃO: Execute no SQL Editor:\nALTER TABLE restaurants ADD COLUMN IF NOT EXISTS mercado_pago_credentials jsonb default '{}';`;
             }
+            else if (errorMessage.includes('staff')) {
+                 enhancedMessage = `Erro de Banco de Dados: A coluna 'staff' está faltando na tabela 'restaurants'.\nSOLUÇÃO: Execute no SQL Editor:\nALTER TABLE restaurants ADD COLUMN IF NOT EXISTS staff jsonb default '[]';`;
+            }
+            // Fix for 'orders' table missing columns
+            else if (tableName === 'orders' || errorMessage.includes('orders')) {
+                enhancedMessage = `Erro de Banco de Dados: Uma coluna está faltando na tabela 'orders'.\n\nSOLUÇÃO: Vá ao SQL Editor do Supabase e execute o script 'fix_orders_table_columns.sql' fornecido para atualizar a estrutura da tabela de pedidos.`;
+            }
         } 
+        // Check for 'relation does not exist' error (PostgreSQL error code 42P01 for undefined_table)
+        else if (error?.code === '42P01') {
+            enhancedMessage = `Erro de Banco de Dados: A tabela '${tableName || 'desconhecida'}' não existe.\n\nSOLUÇÃO: Vá ao SQL Editor do Supabase e execute o script 'fix_orders_table_columns.sql' para criar a tabela de pedidos e suas colunas.`;
+        }
         else if (error?.code === '42701' && tableName === 'promotions' && fullErrorMessageLower.includes('column "') && fullErrorMessageLower.includes('" of relation "promotions" already exists')) {
             console.log(`[GuaraFood Info] Coluna já existe na tabela 'promotions'. Isso não é um erro crítico. Detalhes: ${errorMessage}`, error);
             return; 
         } else if (error?.code === 'PGRST116') { // No rows found for .single()
-            console.warn("Supabase warning: .single() query returned no rows.");
+            console.warn("Supabase warning: .single() query returned no rows.", customMessage);
+            // Se for um erro de "não encontrado" em uma operação que deveria retornar algo, avisamos
+            if (customMessage.toLowerCase().includes('atualizar') || customMessage.toLowerCase().includes('update')) {
+                enhancedMessage = `${customMessage}: Registro não encontrado ou permissão negada (RLS).`;
+                throw new Error(enhancedMessage);
+            }
             return;
         }
         
