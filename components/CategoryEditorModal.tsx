@@ -60,10 +60,10 @@ const CategoryEditorModal: React.FC<CategoryEditorModalProps> = ({ isOpen, onClo
                 // I will implement basic name editing.
                 
                 // Actually, let's just do name for now to be safe with existing types.
-                await updateRestaurantCategory(existingCategory.id, name); 
+                await updateRestaurantCategory(existingCategory.id, name, iconUrl); 
                 addToast({ message: 'Categoria atualizada com sucesso!', type: 'success' });
             } else {
-                await createRestaurantCategory(name);
+                await createRestaurantCategory(name, iconUrl);
                 addToast({ message: 'Categoria criada com sucesso!', type: 'success' });
             }
             onSaveSuccess();
@@ -102,6 +102,18 @@ const CategoryEditorModal: React.FC<CategoryEditorModalProps> = ({ isOpen, onClo
                             placeholder="Ex: Lanches, Pizzas, Bebidas"
                             autoFocus
                         />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">URL do Ícone (Opcional)</label>
+                        <input
+                            type="text"
+                            value={iconUrl}
+                            onChange={(e) => setIconUrl(e.target.value)}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all"
+                            placeholder="https://exemplo.com/icone.png"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Recomendado: imagem quadrada (1:1) com fundo transparente.</p>
                     </div>
 
                     <div className="flex justify-end gap-3 pt-4">

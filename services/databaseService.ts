@@ -320,14 +320,14 @@ export const fetchRestaurantCategories = async (): Promise<RestaurantCategory[]>
     return (data || []).map(normalizeRestaurantCategory);
 };
 
-export const createRestaurantCategory = async (name: string): Promise<RestaurantCategory | null> => {
-    const { data, error } = await supabase.from('restaurant_categories').insert({ name }).select().single();
+export const createRestaurantCategory = async (name: string, iconUrl?: string): Promise<RestaurantCategory | null> => {
+    const { data, error } = await supabase.from('restaurant_categories').insert({ name, icon_url: iconUrl }).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to create category' });
     return data ? normalizeRestaurantCategory(data) : null;
 };
 
-export const updateRestaurantCategory = async (id: number, name: string): Promise<RestaurantCategory | null> => {
-    const { data, error } = await supabase.from('restaurant_categories').update({ name }).eq('id', id).select().single();
+export const updateRestaurantCategory = async (id: number, name: string, iconUrl?: string): Promise<RestaurantCategory | null> => {
+    const { data, error } = await supabase.from('restaurant_categories').update({ name, icon_url: iconUrl }).eq('id', id).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to update category' });
     return data ? normalizeRestaurantCategory(data) : null;
 };

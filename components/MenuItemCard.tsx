@@ -165,7 +165,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
               </div>
           )}
 
-          <p className="text-sm text-gray-500 my-1 line-clamp-2">{item.description}</p>
+          <p className="text-sm text-gray-500 my-1">{item.description}</p>
           
           {item.isMarmita && item.marmitaOptions && item.marmitaOptions.length > 0 && (
               <div className="mt-2 p-2 bg-yellow-100/50 border border-yellow-200 rounded-lg">

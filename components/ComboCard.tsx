@@ -39,7 +39,7 @@ const ComboDetailsModal: React.FC<{ combo: Combo; items: MenuItem[]; onClose: ()
                             <OptimizedImage src={item.imageUrl} alt={item.name} className="w-14 h-14 rounded-md flex-shrink-0" />
                             <div className="flex-grow">
                                 <p className="font-semibold text-gray-800">{item.name}</p>
-                                <p className="text-sm text-gray-500 line-clamp-1">{item.description}</p>
+                                <p className="text-sm text-gray-500">{item.description}</p>
                             </div>
                         </li>
                     ))}

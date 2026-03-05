@@ -104,21 +104,7 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             case 'restaurants':
                 return <RestaurantManagement onEditMenu={(restaurant) => setEditingMenuRestaurantId(restaurant.id)} />;
             case 'categories':
-                if (!editingMenuRestaurantId) {
-                    return (
-                        <div className="bg-white p-6 rounded-lg shadow-md max-w-2xl mx-auto text-center">
-                            <h2 className="text-xl font-bold text-gray-800 mb-4">Selecione um Restaurante</h2>
-                            <p className="text-gray-600 mb-6">Por favor, selecione um restaurante na aba "Restaurantes" para gerenciar suas categorias de estabelecimento.</p>
-                            <button
-                                onClick={() => setActiveTab('restaurants')}
-                                className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 transition-colors"
-                            >
-                                Ir para Restaurantes
-                            </button>
-                        </div>
-                    );
-                }
-                return <CategoryManagement restaurantId={editingMenuRestaurantId} />;
+                return <CategoryManagement />;
             case 'marketing':
                 return <MarketingManagement />;
             case 'customers':
