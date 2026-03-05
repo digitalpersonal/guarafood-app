@@ -159,8 +159,8 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
     };
 
     const handleSubmit = async () => {
-        if (!formData.name || !formData.category || !formData.address || !formData.phone) {
-            setError('Campos obrigatórios faltando.'); return;
+        if (!formData.name || !formData.address || !formData.phone) {
+            setError('Campos obrigatórios faltando (Nome, Endereço, Telefone).'); return;
         }
         setIsSaving(true);
         let finalImageUrl = existingRestaurant?.imageUrl || '';
@@ -230,6 +230,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                     </div>
 
                     <input name="name" value={formData.name} onChange={handleChange} placeholder="Nome" className="w-full p-2 border rounded" />
+                    <input name="address" value={formData.address} onChange={handleChange} placeholder="Endereço" className="w-full p-2 border rounded" />
                     
                     <div className="border rounded p-3 bg-white">
                         <h3 className="font-bold text-sm mb-2">Categorias do Restaurante</h3>
