@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Order, CartItem, PaymentEntry, StaffMember } from '../types';
-import { createOrder, recordOrderPayment, updateOrderStatus, fetchOpenTableOrder, requestKitchenPrint, markPrintJobAsDone, updateOrderDetails } from '../services/orderService';
+import { createOrder, recordOrderPayment, updateOrderStatus, fetchOpenTableOrder, requestKitchenPrint, requestBillPrint, markPrintJobAsDone, updateOrderDetails } from '../services/orderService';
 import { supabase } from '../services/api';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
@@ -135,8 +135,18 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
         }
     };
 
-    const triggerBillPrint = (order: Order) => {
-        if (onPrint) onPrint(order, 'full');
+    const triggerBillPrint = async (order: Order) => {
+        const isPrintServer = localStorage.getItem('guarafood-is-print-server') === 'true';
+        if (isPrintServer) {
+            if (onPrint) onPrint(order, 'full');
+        } else {
+            try {
+                await requestBillPrint(order.id);
+                addToast({ message: 'Enviado para impressão da conta!', type: 'success' });
+            } catch (e) {
+                addToast({ message: 'Erro ao enviar para impressão.', type: 'error' });
+            }
+        }
     };
 
 

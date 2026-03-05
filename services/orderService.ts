@@ -328,6 +328,27 @@ export const requestKitchenPrint = async (orderId: string, itemsToPrint: CartIte
     handleSupabaseError({ error, customMessage: 'Failed to request kitchen print' });
 };
 
+export const requestBillPrint = async (orderId: string): Promise<void> => {
+    const { data: currentOrder } = await supabase.from('orders').select('payment_details').eq('id', orderId).single();
+    const currentDetails = currentOrder?.payment_details || {};
+    const currentQueue = currentDetails.print_queue || [];
+    
+    const newRequest = {
+        id: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+        status: 'pending',
+        type: 'full'
+    };
+    
+    const newDetails = {
+        ...currentDetails,
+        print_queue: [...currentQueue, newRequest]
+    };
+    
+    const { error } = await supabase.from('orders').update({ payment_details: newDetails }).eq('id', orderId);
+    handleSupabaseError({ error, customMessage: 'Failed to request bill print' });
+};
+
 export const markPrintJobAsDone = async (orderId: string, jobId: string): Promise<void> => {
     const { data: currentOrder } = await supabase.from('orders').select('payment_details').eq('id', orderId).single();
     const currentDetails = currentOrder?.payment_details || {};
