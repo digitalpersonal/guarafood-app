@@ -256,19 +256,16 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
 };
 
 export const deleteRestaurant = async (id: number): Promise<void> => {
-    // 1. Try to use the Edge Function (Best practice for cleanup including Auth user)
-    const { error } = await supabase.functions.invoke('delete-restaurant-and-user', { body: { restaurantId: id } });
+    // 1. Try to use the Edge Function
+    const { data, error } = await supabase.functions.invoke('delete-restaurant-and-user', { body: { restaurantId: id } });
 
-    if (error) {
-        console.warn("Edge function 'delete-restaurant-and-user' failed or not available. Attempting manual cleanup...", error);
+    // Check for both network errors and application-level errors returned by the function
+    if (error || (data && data.error)) {
+        console.warn("Edge function 'delete-restaurant-and-user' failed or returned error. Attempting manual cleanup...", error || data.error);
 
         // 2. Manual Cleanup (Fallback)
-        // We must delete related records in a specific order to avoid Foreign Key constraint violations
-        // if ON DELETE CASCADE is not set up correctly in the database.
-
         try {
-            // Delete dependent data first (Children)
-            // Order matters: Delete items/combos before categories
+            // Delete dependent data first
             await supabase.from('combos').delete().eq('restaurant_id', id);
             await supabase.from('menu_items').delete().eq('restaurant_id', id);
             await supabase.from('menu_categories').delete().eq('restaurant_id', id);
@@ -276,22 +273,15 @@ export const deleteRestaurant = async (id: number): Promise<void> => {
             await supabase.from('promotions').delete().eq('restaurant_id', id);
             await supabase.from('coupons').delete().eq('restaurant_id', id);
             await supabase.from('expenses').delete().eq('restaurant_id', id);
-            
-            // Note: Orders might be preserved for history, but if we are hard deleting the restaurant, 
-            // we likely need to delete them or the DB will reject the deletion.
-            // If you want to keep orders, you'd need to soft-delete the restaurant (set active=false).
-            // Here we assume hard delete is requested.
             await supabase.from('orders').delete().eq('restaurant_id', id);
 
-            // 3. Delete the Restaurant (Parent)
+            // 3. Delete the Restaurant
             const { error: dbError } = await supabase.from('restaurants').delete().eq('id', id);
             
-            if (dbError) {
-                throw dbError;
-            }
+            if (dbError) throw dbError;
         } catch (manualError: any) {
-            // If manual cleanup also fails, throw the error to be caught by the UI
-            handleSupabaseError({ error: manualError, customMessage: 'Failed to delete restaurant (Manual Cleanup)' });
+            handleSupabaseError({ error: manualError, customMessage: 'Falha ao excluir restaurante (Limpeza Manual)' });
+            throw manualError; // Re-throw to inform the UI
         }
     }
 };
