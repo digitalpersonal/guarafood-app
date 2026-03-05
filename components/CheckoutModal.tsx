@@ -602,15 +602,15 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                             </div>
 
                             <div>
-                                <label htmlFor="customerPhone" className="block text-xs font-black text-gray-500 uppercase mb-1 tracking-widest">WhatsApp</label>
+                                <label htmlFor="customerPhone" className="block text-xs font-black text-gray-500 uppercase mb-1 tracking-widest">WhatsApp <span className="text-[10px] font-normal lowercase">(somente números)</span></label>
                                 <input 
                                     id="customerPhone" 
                                     type="tel" 
                                     value={customerPhone} 
-                                    onChange={e => setCustomerPhone(e.target.value)} 
+                                    onChange={e => setCustomerPhone(e.target.value.replace(/\D/g, ''))} 
                                     required 
                                     className={`w-full p-3 border-2 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-400 font-bold transition-all ${highlightFields ? 'border-blue-400 ring-2 ring-blue-100' : 'border-white'}`} 
-                                    placeholder="(00) 00000-0000" 
+                                    placeholder="Ex: 35999998888" 
                                 />
                             </div>
                         </div>
