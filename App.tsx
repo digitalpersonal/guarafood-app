@@ -68,6 +68,26 @@ const categoryIcons: Record<string, React.ReactNode> = {
 
 const slugify = (text: string) => `category-${text.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '')}`;
 
+const categoryBackgrounds: Record<string, string> = {
+    'Lanches': 'https://images.unsplash.com/photo-1571091718767-18b5b1457add?q=80&w=1000&auto=format&fit=crop',
+    'Pizza': 'https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=1000&auto=format&fit=crop',
+    'Açaí': 'https://images.unsplash.com/photo-1590301157890-4810ed352733?q=80&w=1000&auto=format&fit=crop',
+    'Japonesa': 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?q=80&w=1000&auto=format&fit=crop',
+    'Sushi': 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?q=80&w=1000&auto=format&fit=crop',
+    'Brasileira': 'https://images.unsplash.com/photo-1547592166-23ac45744acd?q=80&w=1000&auto=format&fit=crop',
+    'Doces': 'https://images.unsplash.com/photo-1563729784474-d77dbb933a9e?q=80&w=1000&auto=format&fit=crop',
+    'Bebidas': 'https://images.unsplash.com/photo-1544145945-f904253d0c7b?q=80&w=1000&auto=format&fit=crop',
+    'Saudável': 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?q=80&w=1000&auto=format&fit=crop',
+    'Italiana': 'https://images.unsplash.com/photo-1473093226795-af9932fe5856?q=80&w=1000&auto=format&fit=crop',
+    'Marmita': 'https://images.unsplash.com/photo-1543339308-43e59d6b73a6?q=80&w=1000&auto=format&fit=crop',
+    'Pastelaria': 'https://images.unsplash.com/photo-1626074353765-517a681e40be?q=80&w=1000&auto=format&fit=crop',
+    'Pastel': 'https://images.unsplash.com/photo-1626074353765-517a681e40be?q=80&w=1000&auto=format&fit=crop',
+    'Supermercado': 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=1000&auto=format&fit=crop',
+    'Hambúrguer': 'https://images.unsplash.com/photo-1571091718767-18b5b1457add?q=80&w=1000&auto=format&fit=crop',
+    'Churrasco': 'https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=1000&auto=format&fit=crop',
+    'Sorvetes': 'https://images.unsplash.com/photo-1501443762994-82bd5dace89a?q=80&w=1000&auto=format&fit=crop',
+};
+
 const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> = ({ restaurant, onBack }) => {
     const [menu, setMenu] = useState<MenuCategory[]>([]);
     const [marmitas, setMarmitas] = useState<MenuItem[]>([]);
@@ -77,7 +97,18 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     const [activeCategory, setActiveCategory] = useState<string | null>(null);
     const [categoryNameMap, setCategoryNameMap] = useState<Map<number, string>>(new Map());
 
+    const bgImage = useMemo(() => {
+        if (restaurant.bannerImageUrl) return restaurant.bannerImageUrl;
+        
+        const cats = restaurant.category ? restaurant.category.split(',').map(c => c.trim()) : [];
+        for (const cat of cats) {
+            if (categoryBackgrounds[cat]) return categoryBackgrounds[cat];
+        }
+        return 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=1000&auto=format&fit=crop'; // Default food bg
+    }, [restaurant.category, restaurant.bannerImageUrl]);
+
     useEffect(() => {
+        window.scrollTo(0, 0);
         const loadMenu = async () => {
             try {
                 setIsLoading(true);
@@ -121,9 +152,20 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
 
     return (
         <div className="w-full">
-            <div className="relative h-40 sm:h-52 bg-gradient-to-br from-gray-800 to-gray-900 overflow-hidden">
+            <div className="relative h-40 sm:h-52 overflow-hidden">
+                {/* Background Image with Overlay */}
+                <div className="absolute inset-0">
+                    <img 
+                        src={bgImage} 
+                        alt="" 
+                        className="w-full h-full object-cover" 
+                        referrerPolicy="no-referrer"
+                    />
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"></div>
+                </div>
+
                 <div className="absolute inset-0 flex items-center justify-center z-10 p-4">
-                    <div className="relative w-28 h-28 sm:w-32 sm:h-32 bg-white rounded-full shadow-2xl p-1 flex-shrink-0 overflow-hidden">
+                    <div className="relative w-28 h-28 sm:w-32 sm:h-32 bg-white rounded-full shadow-2xl p-1 flex-shrink-0 overflow-hidden border-4 border-white/20">
                          <OptimizedImage src={restaurant.imageUrl} alt={restaurant.name} priority={true} className="w-full h-full rounded-full" objectFit="contain" />
                     </div>
                 </div>
@@ -303,6 +345,10 @@ const AppContent: React.FC = () => {
     const { currentUser, loading } = useAuth();
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
 
+    useEffect(() => {
+        window.scrollTo(0, 0);
+    }, [selectedRestaurant, view]);
+
     // Deep Link Logic: Check for restaurant ID in URL
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -340,15 +386,17 @@ const AppContent: React.FC = () => {
 
     return (
         <div className="container mx-auto max-w-7xl bg-white min-h-screen flex flex-col shadow-xl overflow-x-hidden">
-            <HeaderGlobal 
-                onOrdersClick={() => setView('history')} 
-                onHomeClick={() => { setView('customer'); setSelectedRestaurant(null); }} 
-            />
+            {!selectedRestaurant && (
+                <HeaderGlobal 
+                    onOrdersClick={() => setView('history')} 
+                    onHomeClick={() => { setView('customer'); setSelectedRestaurant(null); }} 
+                />
+            )}
             <div className="flex-grow relative print-container">
                 {renderContent()}
             </div>
             <OrderTracker />
-            <Footer onLoginClick={() => setView('login')} />
+            {!selectedRestaurant && <Footer onLoginClick={() => setView('login')} />}
         </div>
     );
 };

@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
 import { useSound } from '../hooks/useSound';
+import { supabase } from '../services/api';
 import { fetchRestaurantByIdSecure, updateRestaurant } from '../services/databaseService';
 import { clearTodayTableOrders } from '../services/orderService';
 import type { Restaurant, OperatingHours, Order } from '../types';
@@ -93,6 +94,122 @@ const NotificationSettings: React.FC = () => {
     );
 };
 
+const BannerSettings: React.FC<{ restaurantId: number, currentBanner: string | undefined, onUpdate: (url: string) => void }> = ({ restaurantId, currentBanner, onUpdate }) => {
+    const { addToast } = useNotification();
+    const [isUploading, setIsUploading] = useState(false);
+    const [preview, setPreview] = useState(currentBanner || '');
+
+    const compressImage = async (file: File): Promise<File> => {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.src = URL.createObjectURL(file);
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    URL.revokeObjectURL(img.src);
+                    reject(new Error("Não foi possível processar a imagem."));
+                    return;
+                }
+                const MAX_WIDTH = 1200; 
+                const MAX_HEIGHT = 600;
+                let width = img.width;
+                let height = img.height;
+                if (width > height) {
+                    if (width > MAX_WIDTH) {
+                        height *= MAX_WIDTH / width;
+                        width = MAX_WIDTH;
+                    }
+                } else {
+                    if (height > MAX_HEIGHT) {
+                        width *= MAX_HEIGHT / height;
+                        height = MAX_HEIGHT;
+                    }
+                }
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+                canvas.toBlob((blob) => {
+                    URL.revokeObjectURL(img.src);
+                    if (blob) {
+                        const compressedFile = new File([blob], "banner.jpg", { type: 'image/jpeg' });
+                        resolve(compressedFile);
+                    } else {
+                        reject(new Error("Falha na compressão."));
+                    }
+                }, 'image/jpeg', 0.7); 
+            };
+        });
+    };
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setIsUploading(true);
+            try {
+                const compressed = await compressImage(file);
+                const fileName = `banner-${Date.now()}.jpg`;
+                const filePath = `${restaurantId}/${fileName}`;
+
+                const { error: uploadError } = await supabase.storage
+                    .from('product-images')
+                    .upload(filePath, compressed);
+
+                if (uploadError) throw uploadError;
+
+                const { data } = supabase.storage
+                    .from('product-images')
+                    .getPublicUrl(filePath);
+
+                setPreview(data.publicUrl);
+                onUpdate(data.publicUrl);
+                addToast({ message: 'Imagem de capa atualizada!', type: 'success' });
+            } catch (err: any) {
+                console.error(err);
+                addToast({ message: 'Erro ao enviar imagem.', type: 'error' });
+            } finally {
+                setIsUploading(false);
+            }
+        }
+    };
+
+    return (
+        <div className="mb-8">
+            <h3 className="text-lg font-bold text-gray-800 mb-2">Capa do Cardápio</h3>
+            <div className="p-4 border rounded-xl bg-gray-50 border-gray-200 shadow-sm">
+                <div className="relative h-32 w-full bg-gray-200 rounded-lg overflow-hidden mb-4">
+                    {preview ? (
+                        <img src={preview} alt="Banner Preview" className="w-full h-full object-cover" />
+                    ) : (
+                        <div className="flex items-center justify-center h-full text-gray-400 text-xs font-bold uppercase">Sem imagem personalizada</div>
+                    )}
+                    {isUploading && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                        </div>
+                    )}
+                </div>
+                <label className="block">
+                    <span className="sr-only">Escolher foto de capa</span>
+                    <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleFileChange}
+                        disabled={isUploading}
+                        className="block w-full text-sm text-gray-500
+                            file:mr-4 file:py-2 file:px-4
+                            file:rounded-full file:border-0
+                            file:text-sm file:font-semibold
+                            file:bg-orange-50 file:text-orange-700
+                            hover:file:bg-orange-100 cursor-pointer disabled:opacity-50"
+                    />
+                </label>
+                <p className="text-[10px] text-gray-500 mt-2 font-bold uppercase">Recomendado: 1200x600px. Deixe em branco para usar o padrão da categoria.</p>
+            </div>
+        </div>
+    );
+};
+
 const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
 const getDefaultOperatingHours = (): OperatingHours[] =>
@@ -109,6 +226,7 @@ const RestaurantSettings: React.FC = () => {
     const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
     const [mercadoPagoToken, setMercadoPagoToken] = useState('');
     const [manualPixKey, setManualPixKey] = useState('');
+    const [bannerImageUrl, setBannerImageUrl] = useState('');
     const [printerWidth, setPrinterWidth] = useState(80);
     const [isPrintServer, setIsPrintServer] = useState(false);
     const [operatingHours, setOperatingHours] = useState<OperatingHours[]>(getDefaultOperatingHours());
@@ -127,6 +245,7 @@ const RestaurantSettings: React.FC = () => {
                 setRestaurant(data);
                 setMercadoPagoToken(data.mercado_pago_credentials?.accessToken || '');
                 setManualPixKey(data.manualPixKey || '');
+                setBannerImageUrl(data.bannerImageUrl || '');
                 setOperatingHours(data.operatingHours || getDefaultOperatingHours());
                 
                 // Força o estado da impressora a partir do banco e sincroniza LocalStorage
@@ -163,7 +282,8 @@ const RestaurantSettings: React.FC = () => {
                 mercado_pago_credentials: { accessToken: mercadoPagoToken },
                 operatingHours: operatingHours,
                 manualPixKey: manualPixKey,
-                printerWidth: printerWidth
+                printerWidth: printerWidth,
+                bannerImageUrl: bannerImageUrl
             });
             localStorage.setItem('guarafood-printer-width', printerWidth.toString());
             localStorage.setItem('guarafood-is-print-server', isPrintServer.toString());
@@ -221,6 +341,14 @@ const RestaurantSettings: React.FC = () => {
                 <h2 className="text-xl font-black text-gray-800 border-b pb-4 mb-6 uppercase tracking-widest">Painel de Configuração</h2>
                 
                 <NotificationSettings />
+
+                {restaurantId && (
+                    <BannerSettings 
+                        restaurantId={restaurantId} 
+                        currentBanner={bannerImageUrl} 
+                        onUpdate={setBannerImageUrl} 
+                    />
+                )}
 
                 {/* --- SELETOR DE IMPRESSORA - DESTAQUE NO TOPO --- */}
                 <div className="mb-10 bg-orange-50 p-6 rounded-2xl border-2 border-orange-100 shadow-sm">

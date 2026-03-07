@@ -114,6 +114,17 @@ const GlobalCustomerList: React.FC = () => {
         );
     }, [customers, searchTerm]);
 
+    const realStats = useMemo(() => {
+        const validOrders = orders.filter(o => o.status !== 'Cancelado');
+        const totalRevenue = validOrders.reduce((acc, o) => acc + Number(o.totalPrice || 0), 0);
+        return {
+            totalRevenue,
+            totalOrders: orders.length,
+            validOrdersCount: validOrders.length,
+            averageTicket: validOrders.length > 0 ? totalRevenue / validOrders.length : 0
+        };
+    }, [orders]);
+
     const handleExportCSV = () => {
         const headers = ["Nome", "Telefone", "Total Pedidos", "Total Gasto", "Ultimo Endereco", "Ultima Compra", "Restaurante Principal", "Lojas Frequentadas"];
         const csvContent = [
@@ -170,20 +181,24 @@ const GlobalCustomerList: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total de Clientes</p>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Base de Marketing</p>
                     <p className="text-2xl font-black text-gray-800">{customers.length}</p>
+                    <p className="text-[9px] text-gray-400 font-bold">Clientes com contato</p>
                 </div>
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Volume Global</p>
-                    <p className="text-2xl font-black text-green-600">R$ {customers.reduce((acc, c) => acc + c.totalSpent, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Volume Global Real</p>
+                    <p className="text-2xl font-black text-green-600">R$ {realStats.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-[9px] text-green-600 font-bold">Total de todos os pedidos</p>
                 </div>
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total de Pedidos</p>
-                    <p className="text-2xl font-black text-blue-600">{orders.length}</p>
+                    <p className="text-2xl font-black text-blue-600">{realStats.totalOrders}</p>
+                    <p className="text-[9px] text-blue-400 font-bold">Incluindo mesas e balcão</p>
                 </div>
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Ticket Médio</p>
-                    <p className="text-2xl font-black text-orange-600">R$ {(orders.length > 0 ? (customers.reduce((acc, c) => acc + c.totalSpent, 0) / orders.length) : 0).toFixed(2)}</p>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Ticket Médio Real</p>
+                    <p className="text-2xl font-black text-orange-600">R$ {realStats.averageTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-[9px] text-orange-400 font-bold">Baseado em vendas válidas</p>
                 </div>
             </div>
             

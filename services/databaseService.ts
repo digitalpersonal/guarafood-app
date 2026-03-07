@@ -74,6 +74,7 @@ const normalizeRestaurant = (data: any): Restaurant => {
         hasPixConfigured: hasMpToken,
         active: data.active !== false,
         printerWidth: data.printer_width,
+        bannerImageUrl: data.banner_image_url,
         staff: data.staff || [] // NEW
     };
 };
@@ -103,6 +104,7 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         hasPixConfigured: hasMpToken,
         active: data.active !== false,
         printerWidth: data.printer_width,
+        bannerImageUrl: data.banner_image_url,
         staff: data.staff || [] // NEW
     };
 };
@@ -236,13 +238,14 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     }
     if (updates.manualPixKey !== undefined) dbUpdates.manual_pix_key = updates.manualPixKey;
     if (updates.printerWidth !== undefined) dbUpdates.printer_width = updates.printerWidth;
+    if (updates.bannerImageUrl !== undefined) dbUpdates.banner_image_url = updates.bannerImageUrl;
     if (updates.staff !== undefined) dbUpdates.staff = updates.staff;
 
     // Clean up all camelCase keys to prevent Supabase "column does not exist" errors
     const keysToRemove = [
         'deliveryTime', 'imageUrl', 'paymentGateways', 'openingHours', 
         'closingHours', 'deliveryFee', 'operatingHours', 'manualPixKey', 
-        'hasPixConfigured', 'printerWidth'
+        'hasPixConfigured', 'printerWidth', 'bannerImageUrl'
     ];
     keysToRemove.forEach(key => delete dbUpdates[key]);
 
@@ -294,7 +297,8 @@ export const fetchAllOrdersAdmin = async (): Promise<Order[]> => {
     const { data, error } = await supabase
         .from('orders')
         .select('*')
-        .order('timestamp', { ascending: false });
+        .order('timestamp', { ascending: false })
+        .limit(5000); // Increased limit for global admin stats
     
     handleSupabaseError({ error, customMessage: 'Failed to fetch all orders for admin' });
     return (data || []).map(normalizeOrder);

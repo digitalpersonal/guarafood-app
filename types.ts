@@ -55,6 +55,7 @@ export interface Restaurant {
   manualPixKey?: string;
   hasPixConfigured?: boolean;
   printerWidth?: number; // 80 or 58 (mm) - AGORA NO BANCO
+  bannerImageUrl?: string; // NEW: Custom background for the menu header
   active?: boolean; // NEW: Field to suspend restaurant
   staff?: StaffMember[]; // NEW: List of staff members
 }

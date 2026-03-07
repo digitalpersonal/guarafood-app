@@ -596,10 +596,14 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                         </div>
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
-                        <Combobox options={restaurantCategories} value={category} onChange={setCategory} placeholder="Selecione..."/>
-                    </div>
+                    {/* Only show category selection if we don't have an initial category context (new item from top level) 
+                        or if we are editing an existing item (to allow moving it) */}
+                    {(!initialCategory || existingItem) && (
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
+                            <Combobox options={restaurantCategories} value={category} onChange={setCategory} placeholder="Selecione..."/>
+                        </div>
+                    )}
                 </div>
 
                 {error && <p className="text-red-500 text-sm mt-4">{error}</p>}

@@ -201,15 +201,22 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                     </div>
                 )}
 
-                {/* ENDEREÇO DE ENTREGA */}
-                {!isPickup && order.customerAddress && (
+                {/* DADOS DO CLIENTE / ENTREGA */}
+                {(order.customerName || order.customerPhone) && (
                     <div style={{ marginTop: '4px', marginBottom: '8px', fontSize: baseFontSize, border: '1.5px solid #000', padding: '6px' }}>
-                        <div style={{ fontWeight: '900', textDecoration: 'underline', marginBottom: '4px', fontSize: headerFontSize, textAlign: 'center' }}>DADOS DE ENTREGA</div>
-                        <div style={{ marginBottom: '2px' }}>CLIENTE: {order.customerName.toUpperCase()}</div>
-                        <div style={{ marginBottom: '2px' }}>FONE: {order.customerPhone}</div>
-                        <div style={{ marginBottom: '2px' }}>RUA: {order.customerAddress.street.toUpperCase()}, {order.customerAddress.number}</div>
-                        {order.customerAddress.complement && <div style={{ marginBottom: '2px' }}>COMPL: {order.customerAddress.complement.toUpperCase()}</div>}
-                        <div style={{ marginBottom: '2px' }}>BAIRRO: {order.customerAddress.neighborhood.toUpperCase()}</div>
+                        <div style={{ fontWeight: '900', textDecoration: 'underline', marginBottom: '4px', fontSize: headerFontSize, textAlign: 'center' }}>
+                            {isPickup ? 'DADOS DO CLIENTE' : 'DADOS DE ENTREGA'}
+                        </div>
+                        {order.customerName && <div style={{ marginBottom: '2px' }}>CLIENTE: {order.customerName.toUpperCase()}</div>}
+                        {order.customerPhone && <div style={{ marginBottom: '2px' }}>FONE: {order.customerPhone}</div>}
+                        
+                        {!isPickup && order.customerAddress && (
+                            <>
+                                <div style={{ marginBottom: '2px' }}>RUA: {order.customerAddress.street.toUpperCase()}, {order.customerAddress.number}</div>
+                                {order.customerAddress.complement && <div style={{ marginBottom: '2px' }}>COMPL: {order.customerAddress.complement.toUpperCase()}</div>}
+                                <div style={{ marginBottom: '2px' }}>BAIRRO: {order.customerAddress.neighborhood.toUpperCase()}</div>
+                            </>
+                        )}
                     </div>
                 )}
 
