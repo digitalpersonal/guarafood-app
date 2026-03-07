@@ -386,17 +386,15 @@ const AppContent: React.FC = () => {
 
     return (
         <div className="container mx-auto max-w-7xl bg-white min-h-screen flex flex-col shadow-xl overflow-x-hidden">
-            {!selectedRestaurant && (
-                <HeaderGlobal 
-                    onOrdersClick={() => setView('history')} 
-                    onHomeClick={() => { setView('customer'); setSelectedRestaurant(null); }} 
-                />
-            )}
+            <HeaderGlobal 
+                onOrdersClick={() => setView('history')} 
+                onHomeClick={() => { setView('customer'); setSelectedRestaurant(null); }} 
+            />
             <div className="flex-grow relative print-container">
                 {renderContent()}
             </div>
             <OrderTracker />
-            {!selectedRestaurant && <Footer onLoginClick={() => setView('login')} />}
+            <Footer onLoginClick={() => setView('login')} />
         </div>
     );
 };
