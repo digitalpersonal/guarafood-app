@@ -3,10 +3,10 @@ const CACHE_NAME = 'guarafood-v3';
 
 // Arquivos para cachear (Caminhos relativos para funcionar em proxies)
 const urlsToCache = [
-  './',
-  'index.html',
-  'vite.svg',
-  'manifest.json'
+  '/',
+  '/index.html',
+  '/vite.svg',
+  '/manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
