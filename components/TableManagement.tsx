@@ -97,16 +97,17 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
             return;
         }
 
+        // Mark as printed locally BEFORE printing to prevent loop
+        setPrintedItems(prev => {
+            const newSet = new Set(prev);
+            unprintedItems.forEach(item => newSet.add(item.id));
+            return newSet;
+        });
+
         if (isPrintServer) {
             // Local print (Server)
             if (onPrint) {
                 onPrint(order, 'kitchen', unprintedItems);
-                // Mark as printed locally
-                setPrintedItems(prev => {
-                    const newSet = new Set(prev);
-                    unprintedItems.forEach(item => newSet.add(item.id));
-                    return newSet;
-                });
             }
         } else {
             // Remote print request (Mobile)
@@ -121,16 +122,22 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                 try {
                     await requestKitchenPrint(order.id, unprintedItems);
                     addToast({ message: 'Enviado para impressão na cozinha!', type: 'success' });
-                    
-                    // Atualiza o estado local para evitar reenvio imediato antes do sync do banco
+                } catch (e) {
+                    // Rollback local state if printing fails
                     setPrintedItems(prev => {
                         const newSet = new Set(prev);
-                        unprintedItems.forEach(item => newSet.add(item.id));
+                        unprintedItems.forEach(item => newSet.delete(item.id));
                         return newSet;
                     });
-                } catch (e) {
                     addToast({ message: 'Erro ao enviar para impressão.', type: 'error' });
                 }
+            } else {
+                // Rollback local state if cancelled
+                setPrintedItems(prev => {
+                    const newSet = new Set(prev);
+                    unprintedItems.forEach(item => newSet.delete(item.id));
+                    return newSet;
+                });
             }
         }
     };
@@ -388,7 +395,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
 
             {selectedTableOrder && (
                 <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm animate-fadeIn">
-                    <div className="bg-white w-full max-w-xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[90vh] animate-slideUp">
+                    <div className="bg-white w-full max-w-xl sm:rounded-3xl shadow-2xl animate-slideUp max-h-[90vh] overflow-y-auto">
                         <div className="p-6 border-b flex justify-between items-center">
                             <div>
                                 <div className="flex items-center gap-2">
@@ -422,7 +429,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                             </div>
                         </div>
 
-                        <div className="flex-grow overflow-y-auto p-6 space-y-6">
+                        <div className="p-6 space-y-6">
                             {/* Itens da Comanda */}
                             <div className="space-y-3">
                                 <div className="flex justify-between items-center">
