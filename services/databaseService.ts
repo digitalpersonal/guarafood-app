@@ -236,6 +236,8 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
             dbUpdates.closing_hours = 'Fechado';
         }
     }
+    if (updates.marmitaStartTime !== undefined) dbUpdates.marmita_start_time = updates.marmitaStartTime;
+    if (updates.marmitaEndTime !== undefined) dbUpdates.marmita_end_time = updates.marmitaEndTime;
     if (updates.manualPixKey !== undefined) dbUpdates.manual_pix_key = updates.manualPixKey;
     if (updates.printerWidth !== undefined) dbUpdates.printer_width = updates.printerWidth;
     if (updates.bannerImageUrl !== undefined) dbUpdates.banner_image_url = updates.bannerImageUrl;
@@ -245,7 +247,7 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     const keysToRemove = [
         'deliveryTime', 'imageUrl', 'paymentGateways', 'openingHours', 
         'closingHours', 'deliveryFee', 'operatingHours', 'manualPixKey', 
-        'hasPixConfigured', 'printerWidth', 'bannerImageUrl'
+        'hasPixConfigured', 'printerWidth', 'bannerImageUrl', 'marmitaStartTime', 'marmitaEndTime'
     ];
     keysToRemove.forEach(key => delete dbUpdates[key]);
 

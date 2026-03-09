@@ -308,7 +308,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
 
     // --- Menu Item Handlers ---
     const handleOpenItemModal = (item: MenuItem | null = null, categoryName: string = '') => {
-        setEditingItem({ item: item as MenuItem, categoryName });
+        setEditingItem(item ? { item, categoryName } : null);
         setIsItemModalOpen(true);
     };
     const handleSaveItem = async (itemData: Omit<MenuItem, 'id' | 'restaurantId'>, category: string) => {

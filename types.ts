@@ -52,6 +52,8 @@ export interface Restaurant {
   deliveryFee: number;
   mercado_pago_credentials?: { accessToken: string };
   operatingHours?: OperatingHours[]; // The new detailed structure
+  marmitaStartTime?: string; // "HH:MM"
+  marmitaEndTime?: string;   // "HH:MM"
   manualPixKey?: string;
   hasPixConfigured?: boolean;
   printerWidth?: number; // 80 or 58 (mm) - AGORA NO BANCO

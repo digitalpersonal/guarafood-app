@@ -122,9 +122,14 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                 setCategoryNameMap(newCategoryNameMap);
 
                 const now = new Date();
-                const isLunchTime = now.getHours() < 15 || (now.getHours() === 15 && now.getMinutes() <= 30);
+                const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+                const startTime = restaurant.marmitaStartTime || '10:00';
+                const endTime = restaurant.marmitaEndTime || '15:30';
+                const isLunchTime = currentTime >= startTime && currentTime <= endTime;
 
                 const allItems = menuData.flatMap(c => c.items);
+                
+                // Filtra marmitas para exibir na seção de almoço apenas se estiver no horário
                 setMarmitas(isLunchTime ? allItems.filter(item => item.isMarmita) : []);
                 setAllPizzas(allItems.filter(item => item.isPizza));
                 
@@ -144,6 +149,11 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
         };
         loadMenu();
     }, [restaurant]);
+
+    // Lógica para exibir a seção de marmitas
+    const showMarmitas = useMemo(() => {
+        return marmitas.length > 0;
+    }, [marmitas]);
 
     const handleNavClick = (categoryName: string) => {
         const id = slugify(categoryName);
@@ -179,7 +189,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                 <p className="text-gray-600 mt-1 text-sm font-medium uppercase tracking-wide">{restaurant.category}</p>
             </div>
             
-            {!isLoading && marmitas.length > 0 && (
+            {showMarmitas && (
                  <div className="bg-gradient-to-r from-orange-100 to-yellow-50 p-4 border-b-4 border-orange-200">
                     <h2 className="text-xl font-black text-orange-800 uppercase mb-4">Hora do Almoço</h2>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

@@ -281,6 +281,8 @@ const RestaurantSettings: React.FC = () => {
             await updateRestaurant(restaurantId, {
                 mercado_pago_credentials: { accessToken: mercadoPagoToken },
                 operatingHours: operatingHours,
+                marmitaStartTime: restaurant.marmitaStartTime,
+                marmitaEndTime: restaurant.marmitaEndTime,
                 manualPixKey: manualPixKey,
                 printerWidth: printerWidth,
                 bannerImageUrl: bannerImageUrl
@@ -399,20 +401,49 @@ const RestaurantSettings: React.FC = () => {
                         <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Horário de Funcionamento</h3>
                         <div className="space-y-2">
                             {operatingHours.map((day, index) => (
-                                <div key={index} className="grid grid-cols-12 gap-2 items-center p-3 rounded-xl bg-gray-50 border border-gray-100">
-                                    <div className="col-span-5 flex items-center">
-                                        <input type="checkbox" checked={day.isOpen} onChange={e => handleOperatingHoursChange(index, 'isOpen', e.target.checked)} className="h-5 w-5 mr-3" />
-                                        <span className="font-bold text-xs text-gray-700">{daysOfWeek[index]}</span>
+                                <div key={index} className="space-y-2">
+                                    <div className="grid grid-cols-12 gap-2 items-center p-3 rounded-xl bg-gray-50 border border-gray-100">
+                                        <div className="col-span-5 flex items-center">
+                                            <input type="checkbox" checked={day.isOpen} onChange={e => handleOperatingHoursChange(index, 'isOpen', e.target.checked)} className="h-5 w-5 mr-3" />
+                                            <span className="font-bold text-xs text-gray-700">{daysOfWeek[index]}</span>
+                                        </div>
+                                        <div className="col-span-3">
+                                            <input type="time" value={day.opens} onChange={e => handleOperatingHoursChange(index, 'opens', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
+                                        </div>
+                                        <div className="col-span-1 text-center text-gray-400 font-bold text-xs">às</div>
+                                        <div className="col-span-3">
+                                            <input type="time" value={day.closes} onChange={e => handleOperatingHoursChange(index, 'closes', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
+                                        </div>
                                     </div>
-                                    <div className="col-span-3">
-                                        <input type="time" value={day.opens} onChange={e => handleOperatingHoursChange(index, 'opens', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
-                                    </div>
-                                    <div className="col-span-1 text-center text-gray-400 font-bold text-xs">às</div>
-                                    <div className="col-span-3">
-                                        <input type="time" value={day.closes} onChange={e => handleOperatingHoursChange(index, 'closes', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
+                                    <div className="grid grid-cols-12 gap-2 items-center p-3 rounded-xl bg-gray-50 border border-gray-100">
+                                        <div className="col-span-5 flex items-center">
+                                            <span className="font-bold text-[10px] text-gray-400 uppercase ml-8">2º Turno</span>
+                                        </div>
+                                        <div className="col-span-3">
+                                            <input type="time" value={day.opens2 || ''} onChange={e => handleOperatingHoursChange(index, 'opens2', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
+                                        </div>
+                                        <div className="col-span-1 text-center text-gray-400 font-bold text-xs">às</div>
+                                        <div className="col-span-3">
+                                            <input type="time" value={day.closes2 || ''} onChange={e => handleOperatingHoursChange(index, 'closes2', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
+                                        </div>
                                     </div>
                                 </div>
                             ))}
+                        </div>
+                    </div>
+
+                    {/* --- CONFIGURAÇÃO DE MARMITAS --- */}
+                    <div className="border-t pt-8">
+                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Configuração de Marmitas</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Início (Almoço)</label>
+                                <input type="time" value={restaurant.marmitaStartTime || '10:00'} onChange={e => setRestaurant({...restaurant, marmitaStartTime: e.target.value})} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50" />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Fim (Almoço)</label>
+                                <input type="time" value={restaurant.marmitaEndTime || '15:30'} onChange={e => setRestaurant({...restaurant, marmitaEndTime: e.target.value})} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50" />
+                            </div>
                         </div>
                     </div>
 
