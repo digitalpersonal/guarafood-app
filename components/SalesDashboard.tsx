@@ -300,9 +300,9 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                     <p className="text-[10px] text-gray-400 mt-1 font-bold">{dashboardData.currentExpenses.length} lançamentos</p>
                 </div>
                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-                    <p className="text-gray-400 text-[10px] font-black uppercase mb-1 tracking-widest">Taxas de Entrega</p>
-                    <h3 className="text-3xl font-black text-blue-600">R$ {dashboardData.deliveryStats.totalFees.toFixed(2)}</h3>
-                    <p className="text-[10px] text-blue-400 mt-1 font-bold">{dashboardData.deliveryStats.count} entregas realizadas</p>
+                    <p className="text-gray-400 text-[10px] font-black uppercase mb-1 tracking-widest">Taxas a Pagar (Motoboy)</p>
+                    <h3 className="text-3xl font-black text-blue-600">R$ {dashboardData.deliveryStats.totalToPay.toFixed(2)}</h3>
+                    <p className="text-[10px] text-blue-400 mt-1 font-bold">{dashboardData.deliveryStats.count} entregas (Recebido dos clientes: R$ {dashboardData.deliveryStats.totalFees.toFixed(2)})</p>
                 </div>
                 <div className={`p-6 rounded-3xl shadow-sm border border-gray-100 ${dashboardData.netProfit >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
                     <p className="text-gray-400 text-[10px] font-black uppercase mb-1 tracking-widest">Saldo Líquido</p>
@@ -440,8 +440,10 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                         const style = document.createElement('style');
                         style.innerHTML = `@media print { #thermal-report-motoboy { display: none !important; } }`;
                         document.head.appendChild(style);
-                        window.print();
-                        document.head.removeChild(style);
+                        setTimeout(() => {
+                            window.print();
+                            document.head.removeChild(style);
+                        }, 100);
                     }} 
                     className="flex items-center justify-center gap-3 p-6 bg-orange-600 text-white font-black rounded-3xl hover:bg-orange-700 transition-all shadow-xl shadow-orange-200 active:scale-95"
                 >
@@ -457,8 +459,10 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                         const style = document.createElement('style');
                         style.innerHTML = `@media print { #thermal-report-closing { display: none !important; } #thermal-report-motoboy { display: block !important; } }`;
                         document.head.appendChild(style);
-                        window.print();
-                        document.head.removeChild(style);
+                        setTimeout(() => {
+                            window.print();
+                            document.head.removeChild(style);
+                        }, 100);
                     }} 
                     className="flex items-center justify-center gap-3 p-6 bg-blue-600 text-white font-black rounded-3xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 active:scale-95"
                 >
@@ -564,7 +568,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                         <span className="thermal-right">R$ {dashboardData.deliveryStats.unitFee.toFixed(2)}</span>
                     </div>
                     <div className="thermal-row">
-                        <span className="thermal-left">TOTAL TAXAS (PEDIDOS):</span>
+                        <span className="thermal-left">TAXAS RECEBIDAS (CLIENTES):</span>
                         <span className="thermal-right">R$ {dashboardData.deliveryStats.totalFees.toFixed(2)}</span>
                     </div>
                     
