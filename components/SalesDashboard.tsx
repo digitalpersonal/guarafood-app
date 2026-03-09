@@ -38,6 +38,7 @@ interface DashboardCalculatedData {
     payments: Record<string, number>;
     periodLabel: string;
     deliveryBreakdown: SalesBreakdown;
+    pickupBreakdown: SalesBreakdown;
     tableBreakdown: SalesBreakdown;
 }
 
@@ -155,7 +156,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
         const totalRevenue = validOrders.reduce((acc, o) => acc + (Number(o.totalPrice) || 0), 0);
         const totalExpenses = currentExpenses.reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
 
-        const deliveryOrders = validOrders.filter(o => (Number(o.deliveryFee) || 0) > 0 || (o.customerAddress && !o.tableNumber));
+        const deliveryOrders = validOrders.filter(o => (Number(o.deliveryFee) || 0) > 0);
         const deliveryCount = deliveryOrders.length;
         const totalDeliveryFees = deliveryOrders.reduce((acc, o) => acc + (Number(o.deliveryFee) || 0), 0);
         
@@ -214,7 +215,8 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
             return { total, count: orderList.length, payments, bestSellers };
         };
 
-        const deliveryOrdersList = validOrders.filter(o => !o.tableNumber);
+        const deliveryOrdersList = validOrders.filter(o => !o.tableNumber && (Number(o.deliveryFee) || 0) > 0);
+        const pickupOrdersList = validOrders.filter(o => !o.tableNumber && (Number(o.deliveryFee) || 0) === 0);
         const tableOrdersList = validOrders.filter(o => !!o.tableNumber);
 
         return {
@@ -226,6 +228,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
             bestSellers, payments,
             periodLabel,
             deliveryBreakdown: calculateBreakdown(deliveryOrdersList),
+            pickupBreakdown: calculateBreakdown(pickupOrdersList),
             tableBreakdown: calculateBreakdown(tableOrdersList)
         };
     }, [orders, expenses, referenceDate, activePeriod, startDateInput, endDateInput, restaurant]);
@@ -311,18 +314,18 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* DELIVERY BREAKDOWN */}
                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                     <h4 className="text-md font-black text-gray-800 mb-6 flex items-center justify-between uppercase tracking-tight">
                         <div className="flex items-center gap-2">
                             <span className="w-1.5 h-5 bg-orange-600 rounded-full"></span>
-                            Vendas Delivery / Balcão
+                            Vendas Delivery
                         </div>
                         <span className="text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full">R$ {dashboardData.deliveryBreakdown.total.toFixed(2)}</span>
                     </h4>
                     
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 gap-6">
                         <div className="space-y-3">
                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Por Pagamento</p>
                             {Object.entries(dashboardData.deliveryBreakdown.payments).map(([method, val]) => (
@@ -344,6 +347,38 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                     </div>
                 </div>
 
+                {/* PICKUP BREAKDOWN */}
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                    <h4 className="text-md font-black text-gray-800 mb-6 flex items-center justify-between uppercase tracking-tight">
+                        <div className="flex items-center gap-2">
+                            <span className="w-1.5 h-5 bg-emerald-600 rounded-full"></span>
+                            Vendas Retirada / Balcão
+                        </div>
+                        <span className="text-xs bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">R$ {dashboardData.pickupBreakdown.total.toFixed(2)}</span>
+                    </h4>
+                    
+                    <div className="grid grid-cols-1 gap-6">
+                        <div className="space-y-3">
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Por Pagamento</p>
+                            {Object.entries(dashboardData.pickupBreakdown.payments).map(([method, val]) => (
+                                <div key={method} className="flex justify-between text-xs font-bold">
+                                    <span className="text-gray-500">{method}</span>
+                                    <span className="text-gray-900">R$ {Number(val).toFixed(2)}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="space-y-2">
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Top Produtos</p>
+                            {dashboardData.pickupBreakdown.bestSellers.map((item, i) => (
+                                <div key={i} className="flex justify-between text-[10px] font-bold bg-gray-50 p-1.5 rounded-lg">
+                                    <span className="truncate max-w-[100px]">{item.name}</span>
+                                    <span className="text-emerald-600">{item.qty} un</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
                 {/* TABLE BREAKDOWN */}
                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                     <h4 className="text-md font-black text-gray-800 mb-6 flex items-center justify-between uppercase tracking-tight">
@@ -354,7 +389,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                         <span className="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">R$ {dashboardData.tableBreakdown.total.toFixed(2)}</span>
                     </h4>
                     
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 gap-6">
                         <div className="space-y-3">
                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Por Pagamento</p>
                             {Object.entries(dashboardData.tableBreakdown.payments).map(([method, val]) => (
