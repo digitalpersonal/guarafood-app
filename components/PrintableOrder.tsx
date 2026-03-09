@@ -312,7 +312,6 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                 {/* RODAPÉ */}
                 <div style={{ textAlign: 'center', fontSize: smallFontSize, marginTop: '15px', borderTop: '1px dashed #000', paddingTop: '6px' }}>
                     GUARA-FOOD PDV
-                    <br/>.
                 </div>
             </div>
         </div>

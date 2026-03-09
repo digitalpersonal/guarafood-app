@@ -487,6 +487,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                             color: #000 !important;
                         }
                         #thermal-report-closing { display: block; }
+                        #thermal-report-motoboy { display: block; }
                         .thermal-header { text-align: center; border-bottom: 1.5px dashed black; padding-bottom: 4px; margin-bottom: 8px; }
                         .thermal-row { display: flex; justify-content: space-between; margin-bottom: 4px; width: 100%; align-items: flex-start; }
                         .thermal-divider { border-top: 1px dashed black; margin: 8px 0; width: 100%; }
