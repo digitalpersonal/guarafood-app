@@ -75,6 +75,8 @@ const normalizeRestaurant = (data: any): Restaurant => {
         active: data.active !== false,
         printerWidth: data.printer_width,
         bannerImageUrl: data.banner_image_url,
+        marmitaStartTime: data.marmita_start_time,
+        marmitaEndTime: data.marmita_end_time,
         staff: data.staff || [] // NEW
     };
 };
@@ -105,6 +107,8 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         active: data.active !== false,
         printerWidth: data.printer_width,
         bannerImageUrl: data.banner_image_url,
+        marmitaStartTime: data.marmita_start_time,
+        marmitaEndTime: data.marmita_end_time,
         staff: data.staff || [] // NEW
     };
 };

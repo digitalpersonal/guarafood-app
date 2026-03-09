@@ -91,6 +91,7 @@ const categoryBackgrounds: Record<string, string> = {
 const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> = ({ restaurant, onBack }) => {
     const [menu, setMenu] = useState<MenuCategory[]>([]);
     const [marmitas, setMarmitas] = useState<MenuItem[]>([]);
+    const [dailySpecials, setDailySpecials] = useState<MenuItem[]>([]);
     const [addons, setAddons] = useState<Addon[]>([]);
     const [allPizzas, setAllPizzas] = useState<MenuItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -131,6 +132,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                 
                 // Filtra marmitas para exibir na seção de almoço apenas se estiver no horário
                 setMarmitas(isLunchTime ? allItems.filter(item => item.isMarmita) : []);
+                setDailySpecials(allItems.filter(item => item.isDailySpecial));
                 setAllPizzas(allItems.filter(item => item.isPizza));
                 
                 const filteredMenu = menuData.map(cat => ({
@@ -199,6 +201,18 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                         })}
                     </div>
                 </div>
+            )}
+
+            {dailySpecials.length > 0 && (
+                 <div className="p-4 bg-yellow-50 border-b-4 border-yellow-200">
+                    <h2 className="text-xl font-black text-yellow-800 uppercase mb-4">Destaques do Dia</h2>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {dailySpecials.map(item => {
+                            const categoryName = item.categoryId ? categoryNameMap.get(item.categoryId) : undefined;
+                            return <MenuItemCard key={`destaque-${item.id}`} item={item} allPizzas={allPizzas} allAddons={addons} categoryName={categoryName} />
+                        })}
+                    </div>
+                 </div>
             )}
 
             {!isLoading && menu.length > 0 && (
