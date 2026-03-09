@@ -90,7 +90,6 @@ const categoryBackgrounds: Record<string, string> = {
 
 const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> = ({ restaurant, onBack }) => {
     const [menu, setMenu] = useState<MenuCategory[]>([]);
-    const [marmitas, setMarmitas] = useState<MenuItem[]>([]);
     const [dailySpecials, setDailySpecials] = useState<MenuItem[]>([]);
     const [addons, setAddons] = useState<Addon[]>([]);
     const [allPizzas, setAllPizzas] = useState<MenuItem[]>([]);
@@ -130,9 +129,9 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
 
                 const allItems = menuData.flatMap(c => c.items);
                 
-                // Filtra marmitas para exibir na seção de almoço apenas se estiver no horário
-                setMarmitas(isLunchTime ? allItems.filter(item => item.isMarmita) : []);
-                setDailySpecials(allItems.filter(item => item.isDailySpecial));
+                // Filtra destaques (marmitas) para exibir apenas se estiver no horário
+                const lunchItems = allItems.filter(item => item.isDailySpecial);
+                setDailySpecials(isLunchTime ? lunchItems : []);
                 setAllPizzas(allItems.filter(item => item.isPizza));
                 
                 const filteredMenu = menuData.map(cat => ({
@@ -151,11 +150,6 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
         };
         loadMenu();
     }, [restaurant]);
-
-    // Lógica para exibir a seção de marmitas
-    const showMarmitas = useMemo(() => {
-        return marmitas.length > 0;
-    }, [marmitas]);
 
     const handleNavClick = (categoryName: string) => {
         const id = slugify(categoryName);
@@ -191,18 +185,6 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                 <p className="text-gray-600 mt-1 text-sm font-medium uppercase tracking-wide">{restaurant.category}</p>
             </div>
             
-            {showMarmitas && (
-                 <div className="bg-gradient-to-r from-orange-100 to-yellow-50 p-4 border-b-4 border-orange-200">
-                    <h2 className="text-xl font-black text-orange-800 uppercase mb-4">Hora do Almoço</h2>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        {marmitas.map(item => {
-                            const categoryName = item.categoryId ? categoryNameMap.get(item.categoryId) : (item.isMarmita ? 'Marmita' : undefined);
-                            return <MenuItemCard key={`marmita-${item.id}`} item={item} allPizzas={allPizzas} allAddons={addons} categoryName={categoryName} />
-                        })}
-                    </div>
-                </div>
-            )}
-
             {dailySpecials.length > 0 && (
                  <div className="p-4 bg-yellow-50 border-b-4 border-yellow-200">
                     <h2 className="text-xl font-black text-yellow-800 uppercase mb-4">Destaques do Dia</h2>
