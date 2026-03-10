@@ -530,7 +530,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const currentStepIndex = steps.findIndex(step => step.id === currentStep);
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-[100] flex justify-center items-center p-4 backdrop-blur-sm transition-opacity duration-200" onClick={currentStep === 'SUCCESS' ? undefined : onClose}>
+        <div className="fixed inset-0 bg-black/60 z-[102] flex justify-center items-center p-4 backdrop-blur-sm transition-opacity duration-200" onClick={currentStep === 'SUCCESS' ? undefined : onClose}>
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden transform transition-all duration-200 scale-100" onClick={e => e.stopPropagation()}>
                 
                 {currentStep !== 'SUCCESS' && (
