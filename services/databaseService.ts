@@ -77,6 +77,7 @@ const normalizeRestaurant = (data: any): Restaurant => {
         bannerImageUrl: data.banner_image_url,
         marmitaStartTime: data.marmita_start_time,
         marmitaEndTime: data.marmita_end_time,
+        hasMensalistas: data.has_mensalistas,
         staff: data.staff || [] // NEW
     };
 };
@@ -109,6 +110,7 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         bannerImageUrl: data.banner_image_url,
         marmitaStartTime: data.marmita_start_time,
         marmitaEndTime: data.marmita_end_time,
+        hasMensalistas: data.has_mensalistas,
         staff: data.staff || [] // NEW
     };
 };
@@ -245,6 +247,7 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     if (updates.manualPixKey !== undefined) dbUpdates.manual_pix_key = updates.manualPixKey;
     if (updates.printerWidth !== undefined) dbUpdates.printer_width = updates.printerWidth;
     if (updates.bannerImageUrl !== undefined) dbUpdates.banner_image_url = updates.bannerImageUrl;
+    if (updates.hasMensalistas !== undefined) dbUpdates.has_mensalistas = updates.hasMensalistas;
     if (updates.staff !== undefined) dbUpdates.staff = updates.staff;
 
     // Clean up all camelCase keys to prevent Supabase "column does not exist" errors
