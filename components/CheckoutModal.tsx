@@ -475,7 +475,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             discountAmount: Number(discountAmount), couponCode: appliedCoupon?.code, deliveryFee: Number(effectiveDeliveryFee), restaurantId: restaurant.id,
             restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
             paymentMethod: finalPaymentMethod, customerAddress, wantsSachets,
-            changeFor: !isNaN(changeValue) && changeValue > 0 ? changeValue : undefined
+            changeFor: !isNaN(changeValue) && changeValue > 0 ? changeValue : undefined,
+            status: paymentMethod === 'Pix' ? 'Aguardando Pagamento' : 'Novo Pedido'
         };
 
         if (paymentMethod === 'Pix') await handlePixPayment(orderData);
@@ -731,7 +732,16 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
                 {currentStep === 'PIX_PAYMENT' && (
                     <div className="text-center flex flex-col items-center p-6 animate-fadeIn">
-                        <h3 className="text-xl font-bold text-gray-800 mb-2">{isManualPix ? 'Pix Manual' : 'Pague para Confirmar'}</h3>
+                        <h3 className="text-xl font-bold text-gray-800 mb-2">{isManualPix ? 'Pix Manual' : 'Pedido Criado com Sucesso!'}</h3>
+                        
+                        {!isManualPix && (
+                            <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-lg w-full mb-4">
+                                <p className="text-xs text-emerald-800 font-bold">
+                                    Seu pedido já foi registrado. Realize o pagamento do Pix abaixo para confirmar.
+                                </p>
+                            </div>
+                        )}
+
                         {isManualPix ? (
                             <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg w-full mb-4">
                                 <p className="text-[10px] text-orange-700 font-bold uppercase mb-1">Chave Pix</p>
