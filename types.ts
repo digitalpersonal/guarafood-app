@@ -1,4 +1,16 @@
 
+export interface Mensalista {
+  id: string;
+  restaurantId: number;
+  name: string;
+  phone: string;
+  startDate: string;
+  nextPaymentDate: string;
+  status: 'active' | 'inactive' | 'pending';
+  monthlyFee: number;
+  notes?: string;
+}
+
 export interface Banner {
   id: number;
   title: string;
@@ -59,6 +71,7 @@ export interface Restaurant {
   printerWidth?: number; // 80 or 58 (mm) - AGORA NO BANCO
   bannerImageUrl?: string; // NEW: Custom background for the menu header
   active?: boolean; // NEW: Field to suspend restaurant
+  hasMensalistas?: boolean; // NEW: Field to enable/disable mensalistas
   staff?: StaffMember[]; // NEW: List of staff members
 }
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, Coupon, Order, CartItem } from '../types';
 import { useCart } from '../hooks/useCart';
 import { useNotification } from '../hooks/useNotification';
+import { checkIfMensalista } from '../services/mensalistaService';
 import { createOrder, type NewOrderData } from '../services/orderService';
 import { validateCouponByCode, fetchCouponsForRestaurant } from '../services/databaseService';
 import { supabase } from '../services/api';
@@ -154,6 +155,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
     const [hasAvailableCoupons, setHasAvailableCoupons] = useState(false);
 
+    const [isMensalista, setIsMensalista] = useState(false);
     const [knownCustomers, setKnownCustomers] = useState<Record<string, { phone: string, address: any }>>({});
     const [highlightFields, setHighlightFields] = useState(false);
     const [stepTransitionLock, setStepTransitionLock] = useState(false);
@@ -258,6 +260,26 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             pixChannelRef.current = null;
         }
     };
+
+    useEffect(() => {
+        const check = async () => {
+            if (customerPhone.length >= 8) {
+                const isM = await checkIfMensalista(customerPhone, restaurant.id);
+                setIsMensalista(isM);
+                if (isM) {
+                    setPaymentMethod('Mensalista');
+                } else if (paymentMethod === 'Mensalista') {
+                    setPaymentMethod('');
+                }
+            } else {
+                setIsMensalista(false);
+                if (paymentMethod === 'Mensalista') {
+                    setPaymentMethod('');
+                }
+            }
+        };
+        check();
+    }, [customerPhone, restaurant.id]);
 
     useEffect(() => {
         if (isOpen) {
@@ -653,33 +675,39 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         </div>
 
                         <div className="border-t pt-4">
-                            <span className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-3">Escolha a Forma de Pagamento</span>
-                            <div className="space-y-3">
-                                {paymentOptions.map(gateway => {
-                                    const isSelected = paymentMethod === gateway;
-                                    const isCash = gateway.toLowerCase().includes('dinheiro');
-                                    return (
-                                        <div key={gateway} className={`border-2 rounded-xl transition-all ${isSelected ? 'border-orange-500 bg-orange-50/30' : 'border-gray-100 hover:border-orange-200'}`}>
-                                            <label className="flex items-center p-3 cursor-pointer">
-                                                <input type="radio" name="payment" value={gateway} checked={isSelected} onChange={e => { setPaymentMethod(e.target.value); setFormError(null); }} className="h-5 w-5 text-orange-600" />
-                                                <div className="ml-3 flex flex-col">
-                                                    <span className="text-sm font-bold text-gray-700">{gateway}</span>
-                                                    {gateway.toLowerCase().includes('cartão') && <span className="text-[10px] text-blue-600">ⓘ Maquininha na entrega.</span>}
-                                                </div>
-                                            </label>
-                                            {isSelected && isCash && (
-                                                <div className="p-3 border-t border-orange-200 bg-white/50 animate-fadeIn">
-                                                    <label htmlFor="changeFor" className="block text-[10px] font-black text-orange-800 uppercase mb-1 tracking-wider">Precisa de troco para quanto?</label>
-                                                    <div className="flex items-center bg-white border-2 border-orange-100 rounded-lg px-3 py-2 focus-within:border-orange-400 transition-colors">
-                                                        <span className="text-orange-400 mr-1 font-black">R$</span>
-                                                        <input id="changeFor" type="number" step="0.01" placeholder="Ex: 50.00" value={changeFor} onChange={(e) => setChangeFor(e.target.value)} className="w-full bg-transparent outline-none font-black text-gray-800 placeholder-gray-300"/>
+                            <span className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-3">Forma de Pagamento</span>
+                            {isMensalista ? (
+                                <div className="bg-emerald-100 p-4 rounded-xl border-2 border-emerald-500 text-emerald-900 font-bold text-sm">
+                                    ✅ Cliente Mensalista identificado! O pagamento será processado conforme o plano mensal.
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {paymentOptions.map(gateway => {
+                                        const isSelected = paymentMethod === gateway;
+                                        const isCash = gateway.toLowerCase().includes('dinheiro');
+                                        return (
+                                            <div key={gateway} className={`border-2 rounded-xl transition-all ${isSelected ? 'border-orange-500 bg-orange-50/30' : 'border-gray-100 hover:border-orange-200'}`}>
+                                                <label className="flex items-center p-3 cursor-pointer">
+                                                    <input type="radio" name="payment" value={gateway} checked={isSelected} onChange={e => { setPaymentMethod(e.target.value); setFormError(null); }} className="h-5 w-5 text-orange-600" />
+                                                    <div className="ml-3 flex flex-col">
+                                                        <span className="text-sm font-bold text-gray-700">{gateway}</span>
+                                                        {gateway.toLowerCase().includes('cartão') && <span className="text-[10px] text-blue-600">ⓘ Maquininha na entrega.</span>}
                                                     </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                                                </label>
+                                                {isSelected && isCash && (
+                                                    <div className="p-3 border-t border-orange-200 bg-white/50 animate-fadeIn">
+                                                        <label htmlFor="changeFor" className="block text-[10px] font-black text-orange-800 uppercase mb-1 tracking-wider">Precisa de troco para quanto?</label>
+                                                        <div className="flex items-center bg-white border-2 border-orange-100 rounded-lg px-3 py-2 focus-within:border-orange-400 transition-colors">
+                                                            <span className="text-orange-400 mr-1 font-black">R$</span>
+                                                            <input id="changeFor" type="number" step="0.01" placeholder="Ex: 50.00" value={changeFor} onChange={(e) => setChangeFor(e.target.value)} className="w-full bg-transparent outline-none font-black text-gray-800 placeholder-gray-300"/>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
                         {hasAvailableCoupons && (
                             <div className="pt-2">

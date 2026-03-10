@@ -9,6 +9,7 @@ import { clearTodayTableOrders } from '../services/orderService';
 import type { Restaurant, OperatingHours, Order } from '../types';
 import Spinner from './Spinner';
 import PrintableOrder from './PrintableOrder';
+import MensalistasManager from './MensalistasManager';
 import { getErrorMessage } from '../services/api';
 
 const NotificationSettings: React.FC = () => {
@@ -227,6 +228,7 @@ const RestaurantSettings: React.FC = () => {
     const [mercadoPagoToken, setMercadoPagoToken] = useState('');
     const [manualPixKey, setManualPixKey] = useState('');
     const [bannerImageUrl, setBannerImageUrl] = useState('');
+    const [hasMensalistas, setHasMensalistas] = useState(false);
     const [printerWidth, setPrinterWidth] = useState(80);
     const [isPrintServer, setIsPrintServer] = useState(false);
     const [operatingHours, setOperatingHours] = useState<OperatingHours[]>(getDefaultOperatingHours());
@@ -246,6 +248,7 @@ const RestaurantSettings: React.FC = () => {
                 setMercadoPagoToken(data.mercado_pago_credentials?.accessToken || '');
                 setManualPixKey(data.manualPixKey || '');
                 setBannerImageUrl(data.bannerImageUrl || '');
+                setHasMensalistas(data.hasMensalistas || false);
                 setOperatingHours(data.operatingHours || getDefaultOperatingHours());
                 
                 // Força o estado da impressora a partir do banco e sincroniza LocalStorage
@@ -285,7 +288,8 @@ const RestaurantSettings: React.FC = () => {
                 marmitaEndTime: restaurant.marmitaEndTime,
                 manualPixKey: manualPixKey,
                 printerWidth: printerWidth,
-                bannerImageUrl: bannerImageUrl
+                bannerImageUrl: bannerImageUrl,
+                hasMensalistas: hasMensalistas
             });
             localStorage.setItem('guarafood-printer-width', printerWidth.toString());
             localStorage.setItem('guarafood-is-print-server', isPrintServer.toString());
@@ -433,6 +437,23 @@ const RestaurantSettings: React.FC = () => {
                     </div>
 
                     {/* --- CONFIGURAÇÃO DE MARMITAS --- */}
+                    <div className="border-t pt-8">
+                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Gerenciamento de Mensalistas</h3>
+                        <div className="mb-4">
+                            <label className="flex items-center justify-between cursor-pointer p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                <div>
+                                    <span className="font-bold text-gray-800 block">Ativar Mensalistas</span>
+                                    <span className="text-xs text-gray-500">Exibir o módulo de mensalistas no painel financeiro.</span>
+                                </div>
+                                <div className="relative">
+                                    <input type="checkbox" className="sr-only peer" checked={hasMensalistas} onChange={e => setHasMensalistas(e.target.checked)} />
+                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                </div>
+                            </label>
+                        </div>
+                        <MensalistasManager />
+                    </div>
+
                     <div className="border-t pt-8">
                         <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Configuração de Marmitas</h3>
                         <div className="grid grid-cols-2 gap-4">
