@@ -8,6 +8,7 @@ export interface Mensalista {
   nextPaymentDate: string;
   status: 'active' | 'inactive' | 'pending';
   monthlyFee: number;
+  balance: number; // NEW: Saldo devedor
   notes?: string;
 }
 
@@ -229,6 +230,7 @@ export interface Order {
   paymentStatus?: 'paid' | 'pending' | 'partial';
   tableNumber?: string; // NEW: Para atendimento local
   paymentHistory?: PaymentEntry[]; // NEW: Para pagamentos fracionados
+  mensalistaId?: string; // NEW: Para pedidos de mensalistas
 }
 
 export type Role = 'admin' | 'merchant' | 'waiter' | 'manager';

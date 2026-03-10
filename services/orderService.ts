@@ -31,7 +31,8 @@ const normalizeOrder = (data: any): Order => {
         payment_details: data.payment_details,
         paymentStatus: data.payment_status || 'paid',
         tableNumber: data.table_number || data.customer_address?.tableNumber,
-        paymentHistory: data.payment_history || data.payment_details?.history || []
+        paymentHistory: data.payment_history || data.payment_details?.history || [],
+        mensalistaId: data.mensalista_id
     };
 };
 
@@ -131,6 +132,7 @@ export interface NewOrderData {
     changeFor?: number;
     tableNumber?: string;
     status?: OrderStatus;
+    mensalistaId?: string; // NEW: Para pedidos de mensalistas
 }
 
 export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
@@ -152,7 +154,7 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
         restaurant_name: orderData.restaurantName,
         restaurant_address: orderData.restaurantAddress,
         restaurant_phone: orderData.restaurantPhone,
-        payment_method: orderData.paymentMethod,
+        payment_method: orderData.mensalistaId ? 'Mensalista' : orderData.paymentMethod,
         coupon_code: orderData.couponCode,
         discount_amount: orderData.discountAmount,
         subtotal: orderData.subtotal,
@@ -162,10 +164,19 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
         status: orderData.status || 'Novo Pedido', 
         payment_status: isTable ? 'pending' : 'paid',
         timestamp: new Date().toISOString(),
+        mensalista_id: orderData.mensalistaId, // NEW
     };
 
     const { data, error } = await supabase.from('orders').insert(newOrderPayload).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to create order', tableName: 'orders' });
+    
+    // Atualizar saldo do mensalista se aplicável
+    if (orderData.mensalistaId) {
+        const { data: mensalista } = await supabase.from('mensalistas').select('balance').eq('id', orderData.mensalistaId).single();
+        if (mensalista) {
+            await supabase.from('mensalistas').update({ balance: Number(mensalista.balance || 0) + orderData.totalPrice }).eq('id', orderData.mensalistaId);
+        }
+    }
     
     window.dispatchEvent(new Event('guarafood:update-orders'));
     

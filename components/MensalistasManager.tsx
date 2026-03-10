@@ -7,7 +7,7 @@ import Spinner from './Spinner';
 
 const MensalistasManager: React.FC = () => {
     const { currentUser } = useAuth();
-    const { addToast, confirm } = useNotification();
+    const { addToast, confirm, prompt } = useNotification();
     const [mensalistas, setMensalistas] = useState<Mensalista[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -79,6 +79,32 @@ const MensalistasManager: React.FC = () => {
         }
     };
 
+    const handleSettle = async (mensalista: Mensalista) => {
+        const amountStr = await prompt({
+            title: 'Registrar pagamento',
+            message: `Saldo atual: R$ ${mensalista.balance.toFixed(2)}. Informe o valor do pagamento:`,
+            placeholder: '0.00',
+            submitText: 'Registrar'
+        });
+
+        if (amountStr) {
+            const amount = parseFloat(amountStr.replace(',', '.'));
+            if (isNaN(amount) || amount <= 0) {
+                addToast({ message: 'Valor inválido', type: 'error' });
+                return;
+            }
+            
+            try {
+                const newBalance = Math.max(0, mensalista.balance - amount);
+                await updateMensalista(mensalista.id, { ...mensalista, balance: newBalance });
+                addToast({ message: 'Pagamento registrado!', type: 'success' });
+                loadMensalistas();
+            } catch (error) {
+                addToast({ message: 'Erro ao registrar pagamento', type: 'error' });
+            }
+        }
+    };
+
     if (isLoading) return <Spinner />;
 
     return (
@@ -108,11 +134,11 @@ const MensalistasManager: React.FC = () => {
                     <div key={m.id} className="flex justify-between items-center p-4 border rounded-2xl">
                         <div>
                             <p className="font-bold text-gray-800">{m.name}</p>
-                            <p className="text-xs text-gray-500">{m.phone} | Próx. Pag: {new Date(m.nextPaymentDate).toLocaleDateString()}</p>
+                            <p className="text-xs text-gray-500">{m.phone} | Saldo: <span className="font-black text-red-600">R$ {m.balance.toFixed(2)}</span></p>
                         </div>
-                        <div className="flex items-center gap-4">
-                            <span className="text-xs font-black text-orange-600">R$ {m.monthlyFee.toFixed(2)}</span>
-                            <button onClick={() => handleDelete(m.id)} className="text-red-500 hover:text-red-700">Remover</button>
+                        <div className="flex items-center gap-2">
+                            <button onClick={() => handleSettle(m)} className="bg-emerald-600 text-white text-[10px] font-black px-3 py-2 rounded-lg hover:bg-emerald-700 uppercase">Dar Baixa</button>
+                            <button onClick={() => handleDelete(m.id)} className="text-red-500 hover:text-red-700 text-xs">Remover</button>
                         </div>
                     </div>
                 ))}

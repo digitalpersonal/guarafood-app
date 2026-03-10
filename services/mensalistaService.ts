@@ -13,7 +13,8 @@ export const fetchMensalistas = async (restaurantId: number): Promise<Mensalista
     restaurantId: m.restaurant_id,
     startDate: m.start_date,
     nextPaymentDate: m.next_payment_date,
-    monthlyFee: Number(m.monthly_fee)
+    monthlyFee: Number(m.monthly_fee),
+    balance: Number(m.balance || 0)
   }));
 };
 
@@ -45,6 +46,7 @@ export const updateMensalista = async (id: string, updates: Partial<Mensalista>)
       next_payment_date: updates.nextPaymentDate,
       status: updates.status,
       monthly_fee: updates.monthlyFee,
+      balance: updates.balance,
       notes: updates.notes
     })
     .eq('id', id)
