@@ -252,12 +252,6 @@ export const updateOrderDetails = async (
     return normalizeOrder(data);
 };
 
-export const updateOrderItemStatus = async (orderId: string, items: CartItem[]): Promise<void> => {
-    const { error } = await supabase.from('orders').update({ items }).eq('id', orderId);
-    handleSupabaseError({ error, customMessage: 'Failed to update item status' });
-    window.dispatchEvent(new Event('guarafood:update-orders'));
-};
-
 export const fetchOpenTableOrder = async (restaurantId: number, tableNumber: string): Promise<Order | null> => {
     try {
         const { data, error } = await supabase

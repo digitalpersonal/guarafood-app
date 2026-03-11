@@ -9,7 +9,6 @@ import MenuManagement from './MenuManagement';
 import RestaurantSettings from './RestaurantSettings';
 import PrintableOrder from './PrintableOrder';
 import TableManagement from './TableManagement';
-import TableKitchenDisplay from './TableKitchenDisplay';
 import StaffManagement from './StaffManagement';
 import PinPadModal from './PinPadModal';
 import { useSound } from '../hooks/useSound';
@@ -37,7 +36,7 @@ const CustomerList = React.lazy(() => import('./CustomerList'));
 
 const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { currentUser, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'kitchen'>('orders');
+    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff'>('orders');
     const [orders, setOrders] = useState<Order[]>([]);
     const [printJob, setPrintJob] = useState<{ 
         order: Order, 
@@ -106,22 +105,6 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }
     };
 
-    const handleUpdateItemStatus = async (orderId: string, itemId: string, status: 'pending' | 'preparing' | 'ready') => {
-        const order = orders.find(o => o.id === orderId);
-        if (!order) return;
-
-        const updatedItems = order.items.map(item => 
-            item.id === itemId ? { ...item, status } : item
-        );
-
-        try {
-            const { updateOrderItemStatus } = await import('../services/orderService');
-            await updateOrderItemStatus(orderId, updatedItems);
-        } catch (e) {
-            console.error("Failed to update item status", e);
-        }
-    };
-
     const handleLockScreen = () => {
         setCurrentStaffUser(null);
         setIsLocked(true);
@@ -135,7 +118,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     // Determine visible tabs based on role and lock state
     const visibleTabs = useMemo(() => {
-        const allTabs = ['orders', 'tables', 'menu', 'financial', 'customers', 'staff', 'settings', 'kitchen'] as const;
+        const allTabs = ['orders', 'tables', 'menu', 'financial', 'customers', 'staff', 'settings'] as const;
         
         // Se o usuário logado for garçom, ele só vê mesas
         if (currentUser?.role === 'waiter') {
@@ -171,7 +154,9 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         if (!isFirstLoadRef.current) {
             const ordersToAlert = visibleOrders.filter(order => {
                 const prevStatus = previousOrdersStatusRef.current.get(order.id);
-                return order.status === 'Novo Pedido' && prevStatus !== 'Novo Pedido';
+                const isNewDelivery = order.status === 'Novo Pedido' && prevStatus !== 'Novo Pedido';
+                const isNewTable = order.tableNumber && !previousOrdersStatusRef.current.has(order.id);
+                return isNewDelivery || isNewTable;
             });
 
             if (ordersToAlert.length > 0) {
@@ -179,8 +164,10 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 if (areNotificationsEnabled) {
                     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
                          try {
-                             new Notification('Novo Pedido!', {
-                                body: `Pedido ${newestOrder.order_number || ''} - R$ ${newestOrder.totalPrice.toFixed(2)}`,
+                             new Notification(newestOrder.tableNumber ? 'Nova Mesa Aberta!' : 'Novo Pedido!', {
+                                body: newestOrder.tableNumber 
+                                    ? `Mesa ${newestOrder.tableNumber} foi aberta.`
+                                    : `Pedido ${newestOrder.order_number || ''} - R$ ${newestOrder.totalPrice.toFixed(2)}`,
                                 icon: '/vite.svg',
                                 tag: newestOrder.id
                             });
@@ -188,7 +175,10 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     }
                     playNotification(); 
                 }
-                setPrintJob({ order: newestOrder, mode: 'full' });
+                // Only auto-print delivery orders, not empty table openings
+                if (!newestOrder.tableNumber) {
+                    setPrintJob({ order: newestOrder, mode: 'full' });
+                }
             }
         }
 
@@ -303,6 +293,13 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 if (printJob || processedJobIdsRef.current.has(pendingJob.id)) break;
 
                 processedJobIdsRef.current.add(pendingJob.id);
+                
+                // Toca a campainha para novos pedidos da mesa (impressão remota)
+                const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
+                if (areNotificationsEnabled) {
+                    playNotification();
+                }
+
                 setPrintJob({
                     order: order,
                     mode: pendingJob.type || 'kitchen',
@@ -312,7 +309,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 break; // Processa um por vez
             }
         }
-    }, [orders, printJob]);
+    }, [orders, printJob, playNotification]);
 
     const handleManualPrint = (order: Order, mode: 'full' | 'kitchen' = 'full') => {
         printedOrderIdsRef.current.delete(order.id);
@@ -353,9 +350,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             case 'orders':
                 return <OrdersView orders={orders} printerWidth={printerWidth} onPrint={handleManualPrint} />;
             case 'tables':
-                return <TableManagement orders={orders} currentStaffUser={currentStaffUser} onPrint={handleManualPrint} playNotification={playNotification} />;
-            case 'kitchen':
-                return <TableKitchenDisplay orders={orders} onUpdateItemStatus={handleUpdateItemStatus} />;
+                return <TableManagement orders={orders} currentStaffUser={currentStaffUser} onPrint={handleManualPrint} />;
             case 'menu': return <MenuManagement />;
             case 'financial':
                 return (
@@ -446,7 +441,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         {visibleTabs.map((tab) => {
                             const labels: Record<string, string> = { 
                                 orders: 'Pedidos', tables: 'Mesas', menu: 'Cardápio', 
-                                financial: 'Financeiro', customers: 'Clientes', staff: 'Equipe', settings: 'Config', kitchen: 'Cozinha' 
+                                financial: 'Financeiro', customers: 'Clientes', staff: 'Equipe', settings: 'Config' 
                             };
                             return (
                                 <button 

@@ -36,10 +36,9 @@ interface TableManagementProps {
     orders: Order[];
     currentStaffUser?: StaffMember | null;
     onPrint?: (order: Order, mode: 'full' | 'kitchen', items?: CartItem[]) => void;
-    playNotification: () => void;
 }
 
-const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffUser, onPrint, playNotification }) => {
+const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffUser, onPrint }) => {
     const { currentUser } = useAuth();
     const { addToast, confirm, prompt } = useNotification();
     const [selectedTableOrder, setSelectedTableOrder] = useState<Order | null>(null);
@@ -358,6 +357,23 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
         }
     };
 
+    const handleToggleItemServed = async (index: number) => {
+        if (!selectedTableOrder) return;
+        
+        try {
+            const newItems = [...selectedTableOrder.items];
+            newItems[index] = { ...newItems[index], served: !newItems[index].served };
+            
+            const updated = await updateOrderDetails(selectedTableOrder.id, {
+                items: newItems
+            });
+            
+            setSelectedTableOrder(updated);
+        } catch (e: any) {
+            addToast({ message: `Erro ao atualizar item: ${e.message}`, type: 'error' });
+        }
+    };
+
     const totalPaid = (selectedTableOrder?.paymentHistory || []).reduce((acc, p) => acc + p.amount, 0);
     const balance = (selectedTableOrder?.totalPrice || 0) - totalPaid;
 
@@ -374,15 +390,22 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                 {tableNumbers.map(num => {
                     const order = activeTables.find(o => o.tableNumber === num);
                     const isOpen = !!order;
+                    const hasUnservedItems = order?.items?.some(item => !item.served);
+                    
+                    let buttonClass = 'bg-white border-gray-100 text-gray-400 hover:border-orange-200 hover:text-orange-400';
+                    if (isOpen) {
+                        if (hasUnservedItems) {
+                            buttonClass = 'bg-red-500 border-red-600 text-white shadow-red-200';
+                        } else {
+                            buttonClass = 'bg-orange-500 border-orange-600 text-white shadow-orange-200';
+                        }
+                    }
+
                     return (
                         <button
                             key={num}
                             onClick={() => handleOpenTable(num)}
-                            className={`aspect-square rounded-2xl flex flex-col items-center justify-center border-2 transition-all shadow-sm active:scale-95 ${
-                                isOpen 
-                                ? 'bg-orange-500 border-orange-600 text-white shadow-orange-200' 
-                                : 'bg-white border-gray-100 text-gray-400 hover:border-orange-200 hover:text-orange-400'
-                            }`}
+                            className={`aspect-square rounded-2xl flex flex-col items-center justify-center border-2 transition-all shadow-sm active:scale-95 ${buttonClass}`}
                         >
                             <div className="flex flex-col items-center">
                                 <span className="text-[10px] font-black uppercase opacity-60">Mesa</span>
@@ -390,8 +413,9 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                             </div>
                             {isOpen && (
                                 <div className="mt-1 flex flex-col items-center">
-                                    <span className="text-[9px] font-black bg-white/20 px-1.5 rounded uppercase">
+                                    <span className="text-[9px] font-black bg-white/20 px-1.5 rounded uppercase flex items-center gap-1">
                                         #{String(order.order_number || '').padStart(3, '0')}
+                                        {hasUnservedItems && <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span>}
                                     </span>
                                     <span className="text-[10px] font-bold truncate w-full px-2 text-center">
                                         R$ {order.totalPrice.toFixed(2)}
@@ -462,14 +486,22 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                 ) : (
                                     <div className="space-y-2">
                                         {selectedTableOrder.items.map((item, i) => (
-                                            <div key={i} className="flex flex-col p-3 bg-gray-50 rounded-xl border border-gray-100 group">
+                                            <div key={i} className={`flex flex-col p-3 rounded-xl border group transition-colors ${item.served ? 'bg-green-50/50 border-green-100' : 'bg-gray-50 border-gray-100'}`}>
                                                 <div className="flex justify-between items-center">
                                                     <div className="flex gap-3 items-center">
-                                                        <span className="font-black text-orange-600">{item.quantity}x</span>
-                                                        <span className="font-bold text-gray-800 text-sm">{item.name}</span>
+                                                        <label className="flex items-center cursor-pointer">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={!!item.served}
+                                                                onChange={() => handleToggleItemServed(i)}
+                                                                className="w-5 h-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
+                                                            />
+                                                        </label>
+                                                        <span className={`font-black ${item.served ? 'text-green-600' : 'text-orange-600'}`}>{item.quantity}x</span>
+                                                        <span className={`font-bold text-sm ${item.served ? 'text-gray-500 line-through decoration-gray-300' : 'text-gray-800'}`}>{item.name}</span>
                                                     </div>
                                                     <div className="flex items-center gap-3">
-                                                        <span className="font-bold text-gray-600 text-sm">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                                                        <span className={`font-bold text-sm ${item.served ? 'text-gray-400' : 'text-gray-600'}`}>R$ {(item.price * item.quantity).toFixed(2)}</span>
                                                         <button 
                                                             onClick={() => handleRemoveItem(i)}
                                                             className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
@@ -480,7 +512,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                                     </div>
                                                 </div>
                                                 {item.notes && (
-                                                    <p className="text-[10px] text-gray-400 italic mt-1 ml-8">Obs: {item.notes}</p>
+                                                    <p className={`text-[10px] italic mt-1 ml-14 ${item.served ? 'text-gray-300' : 'text-gray-400'}`}>Obs: {item.notes}</p>
                                                 )}
                                             </div>
                                         ))}
@@ -676,7 +708,6 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                     onSave={(updated) => setSelectedTableOrder(updated)}
                     restaurantId={currentUser.restaurantId!}
                     restaurantName={currentUser.name}
-                    playNotification={playNotification}
                 />
             )}
             
