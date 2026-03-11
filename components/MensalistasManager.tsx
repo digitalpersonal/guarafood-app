@@ -48,6 +48,7 @@ const MensalistasManager: React.FC = () => {
                 nextPaymentDate,
                 status: 'active',
                 monthlyFee: Number(monthlyFee),
+                balance: 0,
             });
             addToast({ message: 'Mensalista adicionado!', type: 'success' });
             setIsFormOpen(false);

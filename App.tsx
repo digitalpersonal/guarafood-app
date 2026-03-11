@@ -384,7 +384,7 @@ const AppContent: React.FC = () => {
     const renderContent = () => {
         if (loading) return <div className="h-screen flex items-center justify-center"><Spinner /></div>;
         if (currentUser?.role === 'admin') return <AdminDashboard onBack={() => setView('customer')} />;
-        if (currentUser?.role === 'merchant') return <OrderManagement onBack={() => setView('customer')} />;
+        if (currentUser?.role === 'merchant' || currentUser?.role === 'waiter' || currentUser?.role === 'manager') return <OrderManagement onBack={() => setView('customer')} />;
         if (view === 'login') return <LoginScreen onLoginSuccess={() => setView('customer')} onBack={() => setView('customer')} />;
         if (view === 'history') return <CustomerOrders onBack={() => setView('customer')} />;
         return <CustomerView selectedRestaurant={selectedRestaurant} onSelectRestaurant={setSelectedRestaurant} />;

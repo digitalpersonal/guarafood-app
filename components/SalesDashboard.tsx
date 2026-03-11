@@ -252,12 +252,27 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
     const handleAddExpense = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!currentUser?.restaurantId || !desc || !amount) return;
+        
+        const numericAmount = parseFloat(amount);
+        if (isNaN(numericAmount)) {
+            addToast({ message: 'Valor inválido.', type: 'error' });
+            return;
+        }
+
         try {
-            const newExp = await createExpense(currentUser.restaurantId, { description: desc, amount: parseFloat(amount), category: 'Outros', date: new Date().toISOString() });
+            const newExp = await createExpense(currentUser.restaurantId, { 
+                description: desc, 
+                amount: numericAmount, 
+                category: 'Outros', 
+                date: new Date().toISOString() 
+            });
             setExpenses([newExp, ...expenses]);
             setDesc(''); setAmount('');
             addToast({ message: 'Despesa registrada!', type: 'success' });
-        } catch (err) { addToast({ message: 'Erro ao salvar.', type: 'error' }); }
+        } catch (err) { 
+            console.error(err);
+            addToast({ message: 'Erro ao salvar despesa.', type: 'error' }); 
+        }
     };
 
     if (isLoading) return <Spinner message="Calculando financeiro..." />;

@@ -230,7 +230,7 @@ const StaffManagement: React.FC = () => {
             {/* Modal */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
-                    <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl animate-slideUp">
+                    <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl animate-slideUp max-h-[90vh] overflow-y-auto">
                         <h3 className="text-xl font-black text-gray-800 mb-6">
                             {editingMember ? 'Editar Atendente' : 'Novo Atendente'}
                         </h3>
