@@ -275,6 +275,10 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
 
     const handleCloseTable = async () => {
         if (!selectedTableOrder) return;
+        if (selectedTableOrder.items.length > 0) {
+            addToast({ message: 'Não é possível encerrar a mesa com itens lançados. Por favor, registre o pagamento.', type: 'warning' });
+            return;
+        }
         try {
              await updateOrderStatus(selectedTableOrder.id, 'Entregue');
              addToast({ message: 'Mesa encerrada e liberada com sucesso!', type: 'success' });
@@ -286,6 +290,11 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
 
     const handleCancelTable = async () => {
         if (!selectedTableOrder) return;
+
+        if (selectedTableOrder.items.length > 0) {
+            addToast({ message: 'Não é possível cancelar a mesa com itens lançados.', type: 'warning' });
+            return;
+        }
 
         // Restrição: Apenas administradores/gerentes podem cancelar mesa
         if (currentStaffUser && currentStaffUser.role !== 'manager') {

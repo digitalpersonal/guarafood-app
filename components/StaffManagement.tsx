@@ -61,8 +61,8 @@ const StaffManagement: React.FC = () => {
     };
 
     const handleSave = async () => {
-        if (!name.trim() || !email.trim() || !password.trim()) {
-            addToast({ message: 'Nome, Email e Senha são obrigatórios.', type: 'error' });
+        if (!name.trim() || !email.trim() || password.length !== 6) {
+            addToast({ message: 'Nome, Email e Senha (6 dígitos) são obrigatórios.', type: 'error' });
             return;
         }
 
@@ -259,15 +259,15 @@ const StaffManagement: React.FC = () => {
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Senha de Acesso</label>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Senha de Acesso (6 dígitos)</label>
                                 <input 
                                     type="text" 
                                     value={password}
-                                    onChange={e => setPassword(e.target.value)}
+                                    onChange={e => setPassword(e.target.value.replace(/\D/g, '').slice(0, 6))}
                                     className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-orange-500 outline-none font-medium"
-                                    placeholder="Defina uma senha"
+                                    placeholder="000000"
                                 />
-                                <p className="text-[10px] text-gray-400 mt-1">O acesso será liberado imediatamente com este email e senha.</p>
+                                <p className="text-[10px] text-gray-400 mt-1">A senha deve ter obrigatoriamente 6 dígitos.</p>
                             </div>
 
                             <div>
