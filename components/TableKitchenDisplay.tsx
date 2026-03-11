@@ -11,7 +11,7 @@ const TableKitchenDisplay: React.FC<TableKitchenDisplayProps> = ({ orders, onUpd
     const prevOrdersRef = useRef<Order[]>([]);
 
     const tableOrders = useMemo(() => {
-        return orders.filter(o => o.status === 'Mesa Aberta' && o.tableNumber);
+        return orders.filter(o => (o.status === 'Mesa Aberta' || o.status === 'Aguardando Pagamento') && o.tableNumber);
     }, [orders]);
 
     useEffect(() => {

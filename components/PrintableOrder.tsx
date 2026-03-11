@@ -5,20 +5,20 @@ import type { Order } from '../types';
 interface PrintableOrderProps {
     order: Order;
     printerWidth?: number; // 80 or 58
-    printMode?: 'full' | 'kitchen'; // 'full' prints everything (receipt), 'kitchen' prints only new items
+    printMode?: 'full' | 'kitchen' | 'admin'; // 'full' prints everything, 'kitchen'/'admin' prints only new items
     printedItems?: string[]; // IDs of items already printed (for kitchen mode)
 }
 
 const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 80, printMode = 'full', printedItems = [] }) => {
     const paperSize = `${printerWidth}mm`;
     
-    // Filter items for kitchen printing (only new items)
-    const itemsToPrint = printMode === 'kitchen' 
+    // Filter items for kitchen/admin printing (only new items)
+    const itemsToPrint = (printMode === 'kitchen' || printMode === 'admin')
         ? order.items.filter(item => !printedItems.includes(item.id))
         : order.items;
 
-    // If kitchen mode and no new items, don't render anything (or render a message)
-    if (printMode === 'kitchen' && itemsToPrint.length === 0) {
+    // If kitchen/admin mode and no new items, don't render anything
+    if ((printMode === 'kitchen' || printMode === 'admin') && itemsToPrint.length === 0) {
         return null; 
     }
 
@@ -177,7 +177,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         {new Date(order.timestamp).toLocaleDateString('pt-BR')} - {new Date(order.timestamp).toLocaleTimeString('pt-BR').substring(0,5)}
                     </div>
                     <div className="order-number-box">
-                        {printMode === 'kitchen' ? 'COZINHA / BAR' : `PEDIDO: ${displayOrderNum}`}
+                        {printMode === 'kitchen' ? 'COZINHA / BAR' : printMode === 'admin' ? 'VIA ADMINISTRADOR' : `PEDIDO: ${displayOrderNum}`}
                     </div>
                 </div>
 
@@ -220,8 +220,8 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                     </div>
                 )}
 
-                {/* VISUALIZAÇÃO APENAS PARA COZINHA (SEM PREÇOS TOTAIS) */}
-                {printMode === 'kitchen' && (
+                {/* VISUALIZAÇÃO APENAS PARA COZINHA/ADMIN (SEM PREÇOS TOTAIS) */}
+                {(printMode === 'kitchen' || printMode === 'admin') && (
                      <div style={{ textAlign: 'center', margin: '10px 0', fontSize: headerFontSize, fontWeight: 'bold' }}>
                         *** NOVOS ITENS ***
                      </div>

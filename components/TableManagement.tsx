@@ -275,8 +275,12 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
 
     const handleCloseTable = async () => {
         if (!selectedTableOrder) return;
-        if (selectedTableOrder.items.length > 0) {
-            addToast({ message: 'Não é possível encerrar a mesa com itens lançados. Por favor, registre o pagamento.', type: 'warning' });
+        
+        const totalPaid = (selectedTableOrder.paymentHistory || []).reduce((acc, p) => acc + p.amount, 0);
+        const balance = selectedTableOrder.totalPrice - totalPaid;
+
+        if (selectedTableOrder.items.length > 0 && balance > 0.01) {
+            addToast({ message: 'Não é possível encerrar a mesa com saldo pendente. Por favor, registre o pagamento.', type: 'warning' });
             return;
         }
         try {

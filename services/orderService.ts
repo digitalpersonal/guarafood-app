@@ -309,15 +309,6 @@ export const clearTodayTableOrders = async (restaurantId: number): Promise<void>
 };
 
 export const requestKitchenPrint = async (orderId: string, itemsToPrint: CartItem[]): Promise<void> => {
-    // We'll use a specific field in the order to signal print request
-    // Since we can't easily add tables, we'll use a JSONB field 'print_requests' in 'additional_info' or similar if available,
-    // or just append to a 'print_queue' field in 'payment_details' (hacky but works without schema change)
-    // Actually, let's use the 'items' field itself. We can add a 'printStatus' to items.
-    // But updating items might conflict with other updates.
-    
-    // Better approach: Use a dedicated 'print_status' column if it existed.
-    // Let's assume we can update 'payment_details' to include a print queue.
-    
     const { data: currentOrder } = await supabase.from('orders').select('payment_details').eq('id', orderId).single();
     const currentDetails = currentOrder?.payment_details || {};
     const currentQueue = currentDetails.print_queue || [];
@@ -337,6 +328,28 @@ export const requestKitchenPrint = async (orderId: string, itemsToPrint: CartIte
     
     const { error } = await supabase.from('orders').update({ payment_details: newDetails }).eq('id', orderId);
     handleSupabaseError({ error, customMessage: 'Failed to request kitchen print' });
+};
+
+export const requestAdminPrint = async (orderId: string, itemsToPrint: CartItem[]): Promise<void> => {
+    const { data: currentOrder } = await supabase.from('orders').select('payment_details').eq('id', orderId).single();
+    const currentDetails = currentOrder?.payment_details || {};
+    const currentQueue = currentDetails.print_queue || [];
+    
+    const newRequest = {
+        id: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+        items: itemsToPrint,
+        status: 'pending',
+        type: 'admin'
+    };
+    
+    const newDetails = {
+        ...currentDetails,
+        print_queue: [...currentQueue, newRequest]
+    };
+    
+    const { error } = await supabase.from('orders').update({ payment_details: newDetails }).eq('id', orderId);
+    handleSupabaseError({ error, customMessage: 'Failed to request admin print' });
 };
 
 export const requestBillPrint = async (orderId: string): Promise<void> => {

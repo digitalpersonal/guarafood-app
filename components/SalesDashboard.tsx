@@ -152,11 +152,11 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
         const currentExpenses = filterByRange<Expense>(expenses, start, end);
 
         const validOrders = currentOrders.filter(o => 
-            o.status !== 'Cancelado' && o.status !== 'Aguardando Pagamento'
+            o.status !== 'Cancelado' && (o.status !== 'Aguardando Pagamento' || !!o.tableNumber)
         );
         
         const cancelledCount = currentOrders.filter(o => o.status === 'Cancelado').length;
-        const pendingPixCount = currentOrders.filter(o => o.status === 'Aguardando Pagamento').length;
+        const pendingPixCount = currentOrders.filter(o => o.status === 'Aguardando Pagamento' && !o.tableNumber).length;
 
         const totalRevenue = validOrders.reduce((acc, o) => acc + (Number(o.totalPrice) || 0), 0);
         const totalExpenses = currentExpenses.reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
@@ -178,13 +178,37 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
 
         const payments: Record<string, number> = {};
         validOrders.forEach(o => {
-            let method = o.paymentMethod.split('(')[0].trim();
-            if (method.toLowerCase().includes('dinheiro')) method = 'Dinheiro';
-            if (method.toLowerCase().includes('pix')) method = 'Pix';
-            if (method.toLowerCase().includes('cartão')) method = 'Cartão';
-            if (method.toLowerCase().includes('conta')) method = 'Fiado / Conta';
-            
-            payments[method] = (payments[method] || 0) + (Number(o.totalPrice) || 0);
+            if (o.paymentHistory && o.paymentHistory.length > 0) {
+                let totalPaid = 0;
+                o.paymentHistory.forEach(p => {
+                    let method = p.method.split('(')[0].trim();
+                    if (method.toLowerCase().includes('dinheiro')) method = 'Dinheiro';
+                    if (method.toLowerCase().includes('pix')) method = 'Pix';
+                    if (method.toLowerCase().includes('cartão')) method = 'Cartão';
+                    if (method.toLowerCase().includes('conta')) method = 'Fiado / Conta';
+                    const amount = Number(p.amount) || 0;
+                    payments[method] = (payments[method] || 0) + amount;
+                    totalPaid += amount;
+                });
+                
+                const balance = (Number(o.totalPrice) || 0) - totalPaid;
+                if (balance > 0.01) {
+                    let method = o.paymentMethod.split('(')[0].trim();
+                    if (method.toLowerCase().includes('dinheiro')) method = 'Dinheiro';
+                    if (method.toLowerCase().includes('pix')) method = 'Pix';
+                    if (method.toLowerCase().includes('cartão')) method = 'Cartão';
+                    if (method.toLowerCase().includes('conta')) method = 'Fiado / Conta';
+                    payments[method] = (payments[method] || 0) + balance;
+                }
+            } else {
+                let method = o.paymentMethod.split('(')[0].trim();
+                if (method.toLowerCase().includes('dinheiro')) method = 'Dinheiro';
+                if (method.toLowerCase().includes('pix')) method = 'Pix';
+                if (method.toLowerCase().includes('cartão')) method = 'Cartão';
+                if (method.toLowerCase().includes('conta')) method = 'Fiado / Conta';
+                
+                payments[method] = (payments[method] || 0) + (Number(o.totalPrice) || 0);
+            }
         });
 
         const periodLabel = activePeriod === 'day' 
@@ -200,11 +224,36 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
 
             orderList.forEach(o => {
                 // Payments
-                let method = o.paymentMethod.split('(')[0].trim();
-                if (method.toLowerCase().includes('dinheiro')) method = 'Dinheiro';
-                if (method.toLowerCase().includes('pix')) method = 'Pix';
-                if (method.toLowerCase().includes('cartão')) method = 'Cartão';
-                payments[method] = (payments[method] || 0) + (Number(o.totalPrice) || 0);
+                if (o.paymentHistory && o.paymentHistory.length > 0) {
+                    let totalPaid = 0;
+                    o.paymentHistory.forEach(p => {
+                        let method = p.method.split('(')[0].trim();
+                        if (method.toLowerCase().includes('dinheiro')) method = 'Dinheiro';
+                        if (method.toLowerCase().includes('pix')) method = 'Pix';
+                        if (method.toLowerCase().includes('cartão')) method = 'Cartão';
+                        if (method.toLowerCase().includes('conta')) method = 'Fiado / Conta';
+                        const amount = Number(p.amount) || 0;
+                        payments[method] = (payments[method] || 0) + amount;
+                        totalPaid += amount;
+                    });
+                    
+                    const balance = (Number(o.totalPrice) || 0) - totalPaid;
+                    if (balance > 0.01) {
+                        let method = o.paymentMethod.split('(')[0].trim();
+                        if (method.toLowerCase().includes('dinheiro')) method = 'Dinheiro';
+                        if (method.toLowerCase().includes('pix')) method = 'Pix';
+                        if (method.toLowerCase().includes('cartão')) method = 'Cartão';
+                        if (method.toLowerCase().includes('conta')) method = 'Fiado / Conta';
+                        payments[method] = (payments[method] || 0) + balance;
+                    }
+                } else {
+                    let method = o.paymentMethod.split('(')[0].trim();
+                    if (method.toLowerCase().includes('dinheiro')) method = 'Dinheiro';
+                    if (method.toLowerCase().includes('pix')) method = 'Pix';
+                    if (method.toLowerCase().includes('cartão')) method = 'Cartão';
+                    if (method.toLowerCase().includes('conta')) method = 'Fiado / Conta';
+                    payments[method] = (payments[method] || 0) + (Number(o.totalPrice) || 0);
+                }
 
                 // Items
                 o.items.forEach(i => {
