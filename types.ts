@@ -188,6 +188,7 @@ export interface CartItem {
   sizeName?: string; // To display selected size, e.g., "Grande"
   notes?: string; // User observations (e.g., "Sem cebola")
   selectedOptions?: { groupTitle: string; optionName: string; price: number }[]; // Generic customization options
+  status?: 'pending' | 'preparing' | 'ready'; // NEW: Status for KDS
 }
 
 export type OrderStatus = 'Aguardando Pagamento' | 'Novo Pedido' | 'Preparando' | 'A Caminho' | 'Entregue' | 'Cancelado' | 'Mesa Aberta';

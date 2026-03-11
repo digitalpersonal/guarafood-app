@@ -36,9 +36,10 @@ interface TableManagementProps {
     orders: Order[];
     currentStaffUser?: StaffMember | null;
     onPrint?: (order: Order, mode: 'full' | 'kitchen', items?: CartItem[]) => void;
+    playNotification: () => void;
 }
 
-const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffUser, onPrint }) => {
+const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffUser, onPrint, playNotification }) => {
     const { currentUser } = useAuth();
     const { addToast, confirm, prompt } = useNotification();
     const [selectedTableOrder, setSelectedTableOrder] = useState<Order | null>(null);
@@ -675,6 +676,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                     onSave={(updated) => setSelectedTableOrder(updated)}
                     restaurantId={currentUser.restaurantId!}
                     restaurantName={currentUser.name}
+                    playNotification={playNotification}
                 />
             )}
             

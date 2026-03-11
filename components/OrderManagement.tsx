@@ -9,6 +9,7 @@ import MenuManagement from './MenuManagement';
 import RestaurantSettings from './RestaurantSettings';
 import PrintableOrder from './PrintableOrder';
 import TableManagement from './TableManagement';
+import TableKitchenDisplay from './TableKitchenDisplay';
 import StaffManagement from './StaffManagement';
 import PinPadModal from './PinPadModal';
 import { useSound } from '../hooks/useSound';
@@ -36,7 +37,7 @@ const CustomerList = React.lazy(() => import('./CustomerList'));
 
 const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { currentUser, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff'>('orders');
+    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'kitchen'>('orders');
     const [orders, setOrders] = useState<Order[]>([]);
     const [printJob, setPrintJob] = useState<{ 
         order: Order, 
@@ -105,6 +106,22 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }
     };
 
+    const handleUpdateItemStatus = async (orderId: string, itemId: string, status: 'pending' | 'preparing' | 'ready') => {
+        const order = orders.find(o => o.id === orderId);
+        if (!order) return;
+
+        const updatedItems = order.items.map(item => 
+            item.id === itemId ? { ...item, status } : item
+        );
+
+        try {
+            const { updateOrderItemStatus } = await import('../services/orderService');
+            await updateOrderItemStatus(orderId, updatedItems);
+        } catch (e) {
+            console.error("Failed to update item status", e);
+        }
+    };
+
     const handleLockScreen = () => {
         setCurrentStaffUser(null);
         setIsLocked(true);
@@ -118,7 +135,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     // Determine visible tabs based on role and lock state
     const visibleTabs = useMemo(() => {
-        const allTabs = ['orders', 'tables', 'menu', 'financial', 'customers', 'staff', 'settings'] as const;
+        const allTabs = ['orders', 'tables', 'menu', 'financial', 'customers', 'staff', 'settings', 'kitchen'] as const;
         
         // Se o usuário logado for garçom, ele só vê mesas
         if (currentUser?.role === 'waiter') {
@@ -336,7 +353,9 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             case 'orders':
                 return <OrdersView orders={orders} printerWidth={printerWidth} onPrint={handleManualPrint} />;
             case 'tables':
-                return <TableManagement orders={orders} currentStaffUser={currentStaffUser} onPrint={handleManualPrint} />;
+                return <TableManagement orders={orders} currentStaffUser={currentStaffUser} onPrint={handleManualPrint} playNotification={playNotification} />;
+            case 'kitchen':
+                return <TableKitchenDisplay orders={orders} onUpdateItemStatus={handleUpdateItemStatus} />;
             case 'menu': return <MenuManagement />;
             case 'financial':
                 return (
@@ -427,7 +446,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         {visibleTabs.map((tab) => {
                             const labels: Record<string, string> = { 
                                 orders: 'Pedidos', tables: 'Mesas', menu: 'Cardápio', 
-                                financial: 'Financeiro', customers: 'Clientes', staff: 'Equipe', settings: 'Config' 
+                                financial: 'Financeiro', customers: 'Clientes', staff: 'Equipe', settings: 'Config', kitchen: 'Cozinha' 
                             };
                             return (
                                 <button 

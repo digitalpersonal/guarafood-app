@@ -18,6 +18,7 @@ interface OrderEditorModalProps {
     onSave: (updatedOrder: Order) => void;
     restaurantId: number;
     restaurantName: string;
+    playNotification: () => void;
 }
 
 const XIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -34,7 +35,7 @@ const PlusIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
-const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, order, onSave, restaurantId, restaurantName }) => {
+const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, order, onSave, restaurantId, restaurantName, playNotification }) => {
     const { addToast } = useNotification();
     const [editedItems, setEditedItems] = useState<CartItem[]>([]);
     const [isSaving, setIsSaving] = useState(false);
@@ -147,6 +148,12 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                 discountAmount: discountAmount,
                 paymentMethod: order.paymentMethod,
             });
+            
+            // Play notification if it's a table order
+            if (order.tableNumber) {
+                playNotification();
+            }
+
             addToast({ message: 'Pedido atualizado com sucesso!', type: 'success' });
             onSave(updatedOrder);
             onClose();
