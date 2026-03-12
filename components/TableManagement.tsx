@@ -1,8 +1,9 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Order, CartItem, PaymentEntry, StaffMember } from '../types';
-import { createOrder, recordOrderPayment, updateOrderStatus, fetchOpenTableOrder, requestKitchenPrint, requestBillPrint, markPrintJobAsDone, updateOrderDetails } from '../services/orderService';
+import type { Order, CartItem, PaymentEntry, StaffMember, Restaurant } from '../types';
+import { createOrder, recordOrderPayment, updateOrderStatus, fetchOpenTableOrder, fetchOpenTableOrders, requestKitchenPrint, requestBillPrint, markPrintJobAsDone, updateOrderDetails } from '../services/orderService';
 import { getMensalistaByPhone } from '../services/mensalistaService';
+import { fetchRestaurantByIdSecure } from '../services/databaseService';
 import { supabase } from '../services/api';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
@@ -42,6 +43,9 @@ interface TableManagementProps {
 const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffUser, onPrint }) => {
     const { currentUser } = useAuth();
     const { addToast, confirm, prompt } = useNotification();
+    const [selectedTable, setSelectedTable] = useState<string | null>(null);
+    const [tableOrders, setTableOrders] = useState<Order[]>([]);
+    const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
     const [selectedTableOrder, setSelectedTableOrder] = useState<Order | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -52,164 +56,274 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
     // Printing States
     const [printedItems, setPrintedItems] = useState<Set<string>>(new Set());
 
+    const tableNumbers = Array.from({ length: 30 }, (_, i) => (i + 1).toString());
+
+    useEffect(() => {
+        const loadRestaurant = async () => {
+            if (currentUser?.restaurantId) {
+                const data = await fetchRestaurantByIdSecure(currentUser.restaurantId);
+                setRestaurant(data);
+            }
+        };
+        loadRestaurant();
+    }, [currentUser?.restaurantId]);
+
     const activeTables = useMemo(() => {
-        // Usamos 'Aguardando Pagamento' para mesas abertas para evitar erros de constraint no banco
-        // e para garantir que não apareçam na lista de delivery (que filtra esse status)
+        // Filtramos pedidos de mesa abertos
         return orders.filter(o => o.status === 'Aguardando Pagamento' && o.tableNumber);
     }, [orders]);
 
-    // Remote Print Queue Monitor - REMOVED (Now handled by OrderManagement)
-
-    // Load printed items from local storage to persist across reloads
-    useEffect(() => {
-        const saved = localStorage.getItem('guarafood-printed-items');
-        if (saved) {
-            try {
-                setPrintedItems(new Set(JSON.parse(saved)));
-            } catch (e) {
-                console.error("Error parsing printed items:", e);
+    // Agrupar pedidos por mesa para o grid
+    const tableSummaries = useMemo(() => {
+        const summaries: Record<string, { count: number; total: number; hasUnserved: boolean }> = {};
+        activeTables.forEach(o => {
+            const num = o.tableNumber!;
+            if (!summaries[num]) {
+                summaries[num] = { count: 0, total: 0, hasUnserved: false };
             }
-        }
-    }, []);
-
-    // Save printed items to local storage whenever they change
-    useEffect(() => {
-        // Convert Set to Array for JSON stringify
-        localStorage.setItem('guarafood-printed-items', JSON.stringify(Array.from(printedItems)));
-    }, [printedItems]);
-
-    // Handle printing queue - REMOVED (Now handled by OrderManagement)
-
-    const triggerKitchenPrint = async (order: Order) => {
-        const isPrintServer = localStorage.getItem('guarafood-is-print-server') === 'true';
-        
-        // Identifica itens que já foram enviados para a fila de impressão (remota ou local)
-        const queue = order.payment_details?.print_queue || [];
-        const alreadyInQueueIds = new Set<string>();
-        queue.forEach((job: any) => {
-            if (job.items) job.items.forEach((item: any) => alreadyInQueueIds.add(item.id));
+            summaries[num].count += 1;
+            summaries[num].total += o.totalPrice;
+            if (o.items?.some(item => !item.served)) {
+                summaries[num].hasUnserved = true;
+            }
         });
-
-        // Itens que ainda não foram impressos (nem localmente nem via fila)
-        const unprintedItems = order.items.filter(item => !printedItems.has(item.id) && !alreadyInQueueIds.has(item.id));
-
-        if (unprintedItems.length === 0) {
-            addToast({ message: 'Todos os itens já foram enviados para a cozinha.', type: 'info' });
-            return;
-        }
-
-        // Mark as printed locally BEFORE printing to prevent loop
-        setPrintedItems(prev => {
-            const newSet = new Set(prev);
-            unprintedItems.forEach(item => newSet.add(item.id));
-            return newSet;
-        });
-
-        if (isPrintServer) {
-            // Local print (Server)
-            if (onPrint) {
-                onPrint(order, 'kitchen', unprintedItems);
-            }
-        } else {
-            // Remote print request (Mobile)
-            const confirmed = await confirm({
-                title: 'Imprimir na Cozinha',
-                message: `Deseja enviar ${unprintedItems.length} novo(s) item(ns) para a impressora da cozinha?`,
-                confirmText: 'Sim, Enviar',
-                cancelText: 'Cancelar'
-            });
-            
-            if (confirmed) {
-                try {
-                    await requestKitchenPrint(order.id, unprintedItems);
-                    addToast({ message: 'Enviado para impressão na cozinha!', type: 'success' });
-                } catch (e) {
-                    // Rollback local state if printing fails
-                    setPrintedItems(prev => {
-                        const newSet = new Set(prev);
-                        unprintedItems.forEach(item => newSet.delete(item.id));
-                        return newSet;
-                    });
-                    addToast({ message: 'Erro ao enviar para impressão.', type: 'error' });
-                }
-            } else {
-                // Rollback local state if cancelled
-                setPrintedItems(prev => {
-                    const newSet = new Set(prev);
-                    unprintedItems.forEach(item => newSet.delete(item.id));
-                    return newSet;
-                });
-            }
-        }
-    };
-
-    const triggerBillPrint = async (order: Order) => {
-        const isPrintServer = localStorage.getItem('guarafood-is-print-server') === 'true';
-        if (isPrintServer) {
-            if (onPrint) onPrint(order, 'full');
-        } else {
-            try {
-                await requestBillPrint(order.id);
-                addToast({ message: 'Enviado para impressão da conta!', type: 'success' });
-            } catch (e) {
-                addToast({ message: 'Erro ao enviar para impressão.', type: 'error' });
-            }
-        }
-    };
-
-
-    const tableNumbers = Array.from({ length: 30 }, (_, i) => String(i + 1).padStart(2, '0'));
+        return summaries;
+    }, [activeTables]);
 
     const handleOpenTable = async (tableNum: string) => {
-        // Tenta buscar um pedido existente fresco do banco primeiro
-        let existingOrder: Order | null = null;
-        
+        setSelectedTable(tableNum);
         if (currentUser?.restaurantId) {
             try {
-                existingOrder = await fetchOpenTableOrder(currentUser.restaurantId, tableNum);
+                const orders = await fetchOpenTableOrders(currentUser.restaurantId, tableNum);
+                setTableOrders(orders);
+                
+                // Se só tiver uma comanda e ela não tiver número/nome específico além de "Mesa X", 
+                // talvez queiramos abrir direto? Mas o usuário quer a opção de comandas.
+                // Vamos mostrar a lista sempre que houver pelo menos uma ou para criar a primeira.
             } catch (e) {
-                console.error("Erro ao buscar mesa no banco:", e);
+                console.error("Erro ao buscar comandas da mesa:", e);
+                setTableOrders([]);
             }
         }
+    };
 
-        // Se não achou no banco, tenta no estado local (fallback)
-        if (!existingOrder) {
-            existingOrder = activeTables.find(o => o.tableNumber === tableNum) || null;
+    const handleCreateComanda = async () => {
+        if (!selectedTable || !currentUser?.restaurantId) return;
+
+        const comandaName = await prompt({
+            title: 'Nova Comanda',
+            message: 'Nome do Cliente:',
+            placeholder: 'Ex: João Silva',
+            submitText: 'Continuar',
+            cancelText: 'Cancelar'
+        });
+
+        if (!comandaName) return;
+
+        const comandaNum = await prompt({
+            title: 'Número da Comanda',
+            message: 'Número ou Identificador (Opcional):',
+            placeholder: 'Ex: 01',
+            submitText: 'Abrir Comanda',
+            cancelText: 'Pular'
+        });
+
+        try {
+            const newOrder = await createOrder({
+                customerName: comandaName,
+                customerPhone: '0000000000',
+                customerAddress: { 
+                    zipCode: '00000-000', 
+                    street: 'Consumo Local', 
+                    number: 'Mesa ' + selectedTable, 
+                    neighborhood: 'Salão', 
+                    complement: comandaNum ? `Comanda ${comandaNum}` : '' 
+                },
+                items: [],
+                totalPrice: 0,
+                restaurantId: currentUser.restaurantId,
+                restaurantName: currentUser.name,
+                restaurantAddress: '',
+                restaurantPhone: '',
+                paymentMethod: 'Dinheiro',
+                tableNumber: selectedTable,
+                comandaNumber: comandaNum || undefined,
+                status: 'Aguardando Pagamento'
+            });
+            
+            addToast({ message: `Comanda para ${comandaName} aberta na Mesa ${selectedTable}!`, type: 'success' });
+            setTableOrders(prev => [...prev, newOrder]);
+            setSelectedTableOrder(newOrder);
+        } catch (e: any) {
+            console.error("Erro ao abrir comanda:", e);
+            addToast({ message: `Erro ao abrir comanda: ${e.message}`, type: 'error' });
         }
+    };
 
-        if (existingOrder) {
-            setSelectedTableOrder(existingOrder);
+    const handleCreateKiloComanda = async () => {
+        if (!selectedTable || !currentUser?.restaurantId || !restaurant?.pricePerKilo) return;
+
+        const comandaName = await prompt({
+            title: 'Nova Comanda (Peso)',
+            message: 'Nome do Cliente:',
+            placeholder: 'Ex: João Silva',
+            submitText: 'Continuar',
+            cancelText: 'Cancelar'
+        });
+
+        if (!comandaName) return;
+
+        const comandaNum = await prompt({
+            title: 'Número da Comanda',
+            message: 'Número ou Identificador (Opcional):',
+            placeholder: 'Ex: 01',
+            submitText: 'Continuar',
+            cancelText: 'Pular'
+        });
+
+        const weightStr = await prompt({
+            title: 'Pesar Prato',
+            message: `Valor do Kg: R$ ${restaurant.pricePerKilo.toFixed(2)}\nDigite o peso em KG (ex: 0.450):`,
+            placeholder: '0.000',
+            submitText: 'Confirmar Peso',
+            cancelText: 'Cancelar'
+        });
+
+        if (!weightStr) return;
+        const weight = parseFloat(weightStr.replace(',', '.'));
+        if (isNaN(weight) || weight <= 0) {
+            addToast({ message: 'Peso inválido.', type: 'error' });
             return;
         }
 
-        if (currentUser?.restaurantId) {
-            try {
-                const newOrder = await createOrder({
-                    customerName: `Mesa ${tableNum}`,
-                    customerPhone: '0000000000',
-                    customerAddress: { zipCode: '00000-000', street: 'Consumo Local', number: 'Mesa ' + tableNum, neighborhood: 'Salão', complement: '' },
-                    items: [],
-                    totalPrice: 0,
-                    restaurantId: currentUser.restaurantId,
-                    restaurantName: currentUser.name,
-                    restaurantAddress: '',
-                    restaurantPhone: '',
-                    paymentMethod: 'Dinheiro', // Placeholder seguro
-                    tableNumber: tableNum,
-                    status: 'Aguardando Pagamento' // Status compatível com o banco
-                });
-                
-                addToast({ message: `Mesa ${tableNum} aberta!`, type: 'success' });
-                setSelectedTableOrder(newOrder);
-            } catch (e: any) {
-                console.error("Erro ao abrir mesa:", e);
-                addToast({ message: `Erro ao abrir mesa: ${e.message || 'Erro desconhecido'}`, type: 'error' });
-            }
+        const itemPrice = weight * restaurant.pricePerKilo;
+
+        try {
+            const kiloItem: CartItem = {
+                id: `kilo-${Date.now()}`,
+                name: 'Prato por Kilo',
+                price: itemPrice,
+                basePrice: itemPrice,
+                imageUrl: '',
+                quantity: 1,
+                description: `Peso: ${weight.toFixed(3)}kg (R$ ${restaurant.pricePerKilo.toFixed(2)}/kg)`,
+                weight: weight,
+                isKiloItem: true,
+                served: true
+            };
+
+            const newOrder = await createOrder({
+                customerName: comandaName,
+                customerPhone: '0000000000',
+                customerAddress: { 
+                    zipCode: '00000-000', 
+                    street: 'Consumo Local', 
+                    number: 'Mesa ' + selectedTable, 
+                    neighborhood: 'Salão', 
+                    complement: comandaNum ? `Comanda ${comandaNum}` : '' 
+                },
+                items: [kiloItem],
+                totalPrice: itemPrice,
+                restaurantId: currentUser.restaurantId,
+                restaurantName: currentUser.name,
+                restaurantAddress: '',
+                restaurantPhone: '',
+                paymentMethod: 'Dinheiro',
+                tableNumber: selectedTable,
+                comandaNumber: comandaNum || undefined,
+                status: 'Aguardando Pagamento'
+            });
+            
+            addToast({ message: `Comanda de peso para ${comandaName} aberta!`, type: 'success' });
+            setTableOrders(prev => [...prev, newOrder]);
+            setSelectedTableOrder(newOrder);
+        } catch (e: any) {
+            console.error("Erro ao abrir comanda por peso:", e);
+            addToast({ message: `Erro: ${e.message}`, type: 'error' });
+        }
+    };
+
+    const handleAddKiloItem = async () => {
+        if (!selectedTableOrder || !restaurant?.pricePerKilo) return;
+
+        const weightStr = await prompt({
+            title: 'Adicionar Peso',
+            message: `Valor do Kg: R$ ${restaurant.pricePerKilo.toFixed(2)}\nDigite o peso em KG (ex: 0.450):`,
+            placeholder: '0.000',
+            submitText: 'Adicionar ao Pedido',
+            cancelText: 'Cancelar'
+        });
+
+        if (!weightStr) return;
+        const weight = parseFloat(weightStr.replace(',', '.'));
+        if (isNaN(weight) || weight <= 0) {
+            addToast({ message: 'Peso inválido.', type: 'error' });
+            return;
+        }
+
+        const itemPrice = weight * restaurant.pricePerKilo;
+
+        try {
+            const kiloItem: CartItem = {
+                id: `kilo-${Date.now()}`,
+                name: 'Prato por Kilo',
+                price: itemPrice,
+                basePrice: itemPrice,
+                imageUrl: '',
+                quantity: 1,
+                description: `Peso: ${weight.toFixed(3)}kg (R$ ${restaurant.pricePerKilo.toFixed(2)}/kg)`,
+                weight: weight,
+                isKiloItem: true,
+                served: true
+            };
+
+            const updatedItems = [...selectedTableOrder.items, kiloItem];
+            const updatedSubtotal = updatedItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+            const updatedTotal = updatedSubtotal - (selectedTableOrder.discountAmount || 0);
+
+            const updatedOrder = await updateOrderDetails(selectedTableOrder.id, {
+                items: updatedItems,
+                totalPrice: updatedTotal,
+                subtotal: updatedSubtotal,
+                discountAmount: selectedTableOrder.discountAmount
+            });
+
+            setSelectedTableOrder(updatedOrder);
+            addToast({ message: 'Item por peso adicionado!', type: 'success' });
+        } catch (e: any) {
+            addToast({ message: `Erro ao adicionar item: ${e.message}`, type: 'error' });
         }
     };
 
     const handleCloseModal = async () => {
         setSelectedTableOrder(null);
+    };
+
+    const handleCloseTableList = () => {
+        setSelectedTable(null);
+        setTableOrders([]);
+    };
+
+    const triggerKitchenPrint = (order: Order) => {
+        if (onPrint) {
+            // Filter only items not yet printed for kitchen
+            const unprintedItems = order.items.filter(item => !printedItems.has(`${order.id}-${item.name}-${item.price}`));
+            if (unprintedItems.length === 0) {
+                addToast({ message: 'Todos os itens já foram enviados para a cozinha.', type: 'info' });
+                return;
+            }
+            onPrint(order, 'kitchen', unprintedItems);
+            // Mark as printed locally
+            const newPrinted = new Set(printedItems);
+            unprintedItems.forEach(item => newPrinted.add(`${order.id}-${item.name}-${item.price}`));
+            setPrintedItems(newPrinted);
+        }
+    };
+
+    const triggerBillPrint = (order: Order) => {
+        if (onPrint) {
+            onPrint(order, 'full');
+        }
     };
 
     const handleProcessPayment = async () => {
@@ -219,22 +333,14 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
 
         try {
             // Fetch fresh order data to ensure we have the latest total price and history
-            // This prevents stale state issues (e.g. if items were added but local state wasn't perfectly synced, or multi-device usage)
             const { data: latestOrderRaw, error: fetchError } = await supabase.from('orders').select('*').eq('id', selectedTableOrder.id).single();
             
             if (fetchError || !latestOrderRaw) {
                 throw new Error('Falha ao buscar dados atualizados do pedido.');
             }
 
-            // Normalize manually since we can't easily import normalizeOrder here without circular deps or moving it
-            // But we can use the helper from orderService if we exported it, or just rely on the fact that we need specific fields
-            // Actually, let's just use the raw data for calculation to be safe, or import normalizeOrder if possible.
-            // Since normalizeOrder is not exported from TableManagement, we rely on the raw fields.
-            
-            // Raw fields mapping
             const dbTotalPrice = latestOrderRaw.total_price;
-            const dbPaymentDetails = latestOrderRaw.payment_details || {};
-            const dbHistory = dbPaymentDetails.history || latestOrderRaw.payment_history || [];
+            const dbHistory = latestOrderRaw.payment_history || latestOrderRaw.payment_details?.history || [];
             
             const currentPaid = dbHistory.reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
             const newTotalPaid = currentPaid + amount;
@@ -263,9 +369,6 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                 
                 finalMethod = `Mensalista (${mensalista.name})`;
                 mensalistaId = mensalista.id;
-                
-                // Update mensalista balance
-                await supabase.from('mensalistas').update({ balance: Number(mensalista.balance || 0) + amount }).eq('id', mensalista.id);
             }
 
             const entry: PaymentEntry = {
@@ -274,7 +377,6 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                 timestamp: new Date().toISOString()
             };
             
-            // We pass the DB total price to recordOrderPayment to ensure the check is against the real total
             const updated = await recordOrderPayment(selectedTableOrder.id, entry, newTotalPaid, dbTotalPrice, mensalistaId);
             
             setSelectedTableOrder(updated);
@@ -283,15 +385,43 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
             setIsPaymentModalOpen(false);
             addToast({ message: 'Pagamento registrado!', type: 'success' });
 
-            // Check if fully paid using the updated order returned from service
-            // The service sets payment_status='paid' if fully paid
             if (updated.paymentStatus === 'paid' || newTotalPaid >= dbTotalPrice - 0.01) {
-                // Não fecha mais automaticamente. O usuário deve clicar em "Encerrar Mesa".
                 addToast({ message: 'Conta quitada! O botão para encerrar a mesa foi liberado.', type: 'success' });
             }
         } catch (e: any) {
             console.error("Payment error:", e);
             addToast({ message: `Erro ao processar pagamento: ${e.message || 'Erro desconhecido'}`, type: 'error' });
+        }
+    };
+
+    const handleQuickPayment = async (method: string) => {
+        if (!selectedTableOrder || balance <= 0) return;
+        
+        const amount = balance;
+        const entry: PaymentEntry = {
+            amount,
+            method,
+            timestamp: new Date().toISOString()
+        };
+
+        try {
+            const { data: latestOrderRaw } = await supabase.from('orders').select('total_price, payment_history, payment_details').eq('id', selectedTableOrder.id).single();
+            if (!latestOrderRaw) throw new Error('Pedido não encontrado.');
+
+            const dbTotalPrice = latestOrderRaw.total_price;
+            const history = latestOrderRaw.payment_history || latestOrderRaw.payment_details?.history || [];
+            const currentPaid = history.reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
+            const newTotalPaid = currentPaid + amount;
+
+            const updated = await recordOrderPayment(selectedTableOrder.id, entry, newTotalPaid, dbTotalPrice);
+            setSelectedTableOrder(updated);
+            addToast({ message: `Pagamento de R$ ${amount.toFixed(2)} (${method}) registrado!`, type: 'success' });
+            
+            if (newTotalPaid >= dbTotalPrice - 0.01) {
+                addToast({ message: 'Conta quitada!', type: 'success' });
+            }
+        } catch (e: any) {
+            addToast({ message: `Erro: ${e.message}`, type: 'error' });
         }
     };
 
@@ -307,7 +437,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
         }
         try {
              await updateOrderStatus(selectedTableOrder.id, 'Entregue');
-             addToast({ message: 'Mesa encerrada e liberada com sucesso!', type: 'success' });
+             addToast({ message: 'Comanda encerrada com sucesso!', type: 'success' });
              setSelectedTableOrder(null);
         } catch (e: any) {
              addToast({ message: `Erro ao encerrar mesa: ${e.message}`, type: 'error' });
@@ -332,8 +462,8 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
         }
 
         const confirmed = await confirm({
-            title: 'Cancelar Mesa',
-            message: 'Tem certeza que deseja cancelar esta mesa? Isso liberará a mesa e o pedido não será cobrado.',
+            title: 'Cancelar Comanda',
+            message: 'Tem certeza que deseja cancelar esta comanda? Isso liberará a comanda e o pedido não será cobrado.',
             confirmText: 'Sim, Cancelar',
             cancelText: 'Voltar'
         });
@@ -341,10 +471,10 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
         if (confirmed) {
             try {
                 await updateOrderStatus(selectedTableOrder.id, 'Cancelado');
-                addToast({ message: 'Mesa cancelada e liberada.', type: 'success' });
+                addToast({ message: 'Comanda cancelada.', type: 'success' });
                 setSelectedTableOrder(null);
             } catch (e: any) {
-                addToast({ message: `Erro ao cancelar mesa: ${e.message}`, type: 'error' });
+                addToast({ message: `Erro ao cancelar comanda: ${e.message}`, type: 'error' });
             }
         }
     };
@@ -417,9 +547,9 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
 
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
                 {tableNumbers.map(num => {
-                    const order = activeTables.find(o => o.tableNumber === num);
-                    const isOpen = !!order;
-                    const hasUnservedItems = order?.items?.some(item => !item.served);
+                    const summary = tableSummaries[num];
+                    const isOpen = !!summary;
+                    const hasUnservedItems = summary?.hasUnserved;
                     
                     let buttonClass = 'bg-white border-gray-100 text-gray-400 hover:border-orange-200 hover:text-orange-400';
                     if (isOpen) {
@@ -443,11 +573,11 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                             {isOpen && (
                                 <div className="mt-1 flex flex-col items-center">
                                     <span className="text-[9px] font-black bg-white/20 px-1.5 rounded uppercase flex items-center gap-1">
-                                        #{String(order.order_number || '').padStart(3, '0')}
+                                        {summary.count} {summary.count === 1 ? 'Comanda' : 'Comandas'}
                                         {hasUnservedItems && <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span>}
                                     </span>
                                     <span className="text-[10px] font-bold truncate w-full px-2 text-center">
-                                        R$ {order.totalPrice.toFixed(2)}
+                                        R$ {summary.total.toFixed(2)}
                                     </span>
                                 </div>
                             )}
@@ -456,6 +586,89 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                 })}
             </div>
 
+            {/* Modal de Lista de Comandas da Mesa */}
+            {selectedTable && !selectedTableOrder && (
+                <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm animate-fadeIn">
+                    <div className="bg-white w-full max-w-lg sm:rounded-3xl shadow-2xl animate-slideUp max-h-[90vh] flex flex-col">
+                        <div className="p-6 border-b flex justify-between items-center bg-gray-50 sm:rounded-t-3xl">
+                            <div>
+                                <h3 className="text-2xl font-black text-gray-800 uppercase">Mesa {selectedTable}</h3>
+                                <p className="text-sm text-gray-500 font-bold">Selecione ou abra uma comanda</p>
+                            </div>
+                            <button 
+                                onClick={handleCloseTableList}
+                                className="p-2 text-gray-400 hover:text-gray-800 rounded-full hover:bg-gray-200 transition-colors"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                            {tableOrders.length === 0 ? (
+                                <div className="py-12 text-center border-2 border-dashed border-gray-100 rounded-3xl">
+                                    <StoreIcon className="w-12 h-12 text-gray-200 mx-auto mb-3" />
+                                    <p className="text-gray-400 font-bold">Nenhuma comanda aberta nesta mesa.</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 gap-3">
+                                    {tableOrders.map(order => (
+                                        <button
+                                            key={order.id}
+                                            onClick={() => setSelectedTableOrder(order)}
+                                            className="flex items-center justify-between p-4 bg-white border-2 border-gray-100 rounded-2xl hover:border-orange-500 hover:shadow-md transition-all group"
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center text-orange-600 font-black text-lg group-hover:bg-orange-600 group-hover:text-white transition-colors">
+                                                    {order.comandaNumber || '?'}
+                                                </div>
+                                                <div className="text-left">
+                                                    <h4 className="font-black text-gray-800 uppercase text-sm">{order.customerName}</h4>
+                                                    <p className="text-xs text-gray-400 font-bold">#{String(order.order_number || '').padStart(3, '0')}</p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="font-black text-gray-800">R$ {order.totalPrice.toFixed(2)}</p>
+                                                {order.items.some(i => !i.served) && (
+                                                    <span className="text-[9px] font-black text-red-500 uppercase flex items-center gap-1 justify-end">
+                                                        <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></span>
+                                                        Itens pendentes
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-6 border-t bg-gray-50 sm:rounded-b-3xl space-y-3">
+                            {restaurant?.hasKiloService && (
+                                <button
+                                    onClick={handleCreateKiloComanda}
+                                    className="w-full bg-emerald-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-emerald-100 flex items-center justify-center gap-2 hover:bg-emerald-700 active:scale-95 transition-all uppercase tracking-widest"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                    </svg>
+                                    Nova Comanda por Peso
+                                </button>
+                            )}
+                            <button
+                                onClick={handleCreateComanda}
+                                className="w-full bg-orange-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-orange-100 flex items-center justify-center gap-2 hover:bg-orange-700 active:scale-95 transition-all uppercase tracking-widest"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                </svg>
+                                Abrir Nova Comanda
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {selectedTableOrder && (
                 <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm animate-fadeIn">
                     <div className="bg-white w-full max-w-xl sm:rounded-3xl shadow-2xl animate-slideUp max-h-[90vh] overflow-y-auto">
@@ -463,6 +676,11 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                             <div>
                                 <div className="flex items-center gap-2">
                                     <h3 className="text-2xl font-black text-gray-800 uppercase">Mesa {selectedTableOrder.tableNumber}</h3>
+                                    {selectedTableOrder.comandaNumber && (
+                                        <span className="bg-purple-600 text-white text-xs font-black px-2 py-0.5 rounded-lg">
+                                            COMANDA {selectedTableOrder.comandaNumber}
+                                        </span>
+                                    )}
                                     <span className="bg-orange-100 text-orange-600 text-xs font-black px-2 py-0.5 rounded-lg">
                                         #{String(selectedTableOrder.order_number || '').padStart(3, '0')}
                                     </span>
@@ -497,15 +715,28 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                             <div className="space-y-3">
                                 <div className="flex justify-between items-center">
                                     <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">Consumo Atual</h4>
-                                    <button 
-                                        onClick={() => setIsEditModalOpen(true)}
-                                        className="bg-orange-100 text-orange-600 px-4 py-2 rounded-xl text-xs font-black uppercase flex items-center gap-1 hover:bg-orange-200 transition-colors"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                                        </svg> 
-                                        Lançar Itens
-                                    </button>
+                                    <div className="flex gap-2">
+                                        {restaurant?.hasKiloService && (
+                                            <button 
+                                                onClick={handleAddKiloItem}
+                                                className="bg-emerald-100 text-emerald-600 px-4 py-2 rounded-xl text-xs font-black uppercase flex items-center gap-1 hover:bg-emerald-200 transition-colors"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                                </svg> 
+                                                Pesar Prato
+                                            </button>
+                                        )}
+                                        <button 
+                                            onClick={() => setIsEditModalOpen(true)}
+                                            className="bg-orange-100 text-orange-600 px-4 py-2 rounded-xl text-xs font-black uppercase flex items-center gap-1 hover:bg-orange-200 transition-colors"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                            </svg> 
+                                            Lançar Itens
+                                        </button>
+                                    </div>
                                 </div>
                                 
                                 {selectedTableOrder.items.length === 0 ? (
@@ -526,7 +757,9 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                                                 className="w-5 h-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
                                                             />
                                                         </label>
-                                                        <span className={`font-black ${item.served ? 'text-green-600' : 'text-orange-600'}`}>{item.quantity}x</span>
+                                                        <span className={`font-black ${item.served ? 'text-green-600' : 'text-orange-600'}`}>
+                                                            {item.isKiloItem ? `${item.weight?.toFixed(3)}kg` : `${item.quantity}x`}
+                                                        </span>
                                                         <span className={`font-bold text-sm ${item.served ? 'text-gray-500 line-through decoration-gray-300' : 'text-gray-800'}`}>{item.name}</span>
                                                     </div>
                                                     <div className="flex items-center gap-3">
@@ -540,8 +773,10 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                                         </button>
                                                     </div>
                                                 </div>
-                                                {item.notes && (
-                                                    <p className={`text-[10px] italic mt-1 ml-14 ${item.served ? 'text-gray-300' : 'text-gray-400'}`}>Obs: {item.notes}</p>
+                                                {(item.notes || (item.isKiloItem && item.description)) && (
+                                                    <p className={`text-[10px] italic mt-1 ml-14 ${item.served ? 'text-gray-300' : 'text-gray-400'}`}>
+                                                        {item.isKiloItem ? item.description : `Obs: ${item.notes}`}
+                                                    </p>
                                                 )}
                                             </div>
                                         ))}
@@ -585,6 +820,28 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">
+                                {balance > 0.01 && (
+                                    <div className="col-span-2 grid grid-cols-3 gap-2 mb-2">
+                                        <button 
+                                            onClick={() => handleQuickPayment('Dinheiro')}
+                                            className="bg-emerald-50 text-emerald-700 font-black py-3 rounded-xl hover:bg-emerald-100 transition-all text-[10px] uppercase border border-emerald-100"
+                                        >
+                                            Pagar Tudo (Dinheiro)
+                                        </button>
+                                        <button 
+                                            onClick={() => handleQuickPayment('Pix')}
+                                            className="bg-emerald-50 text-emerald-700 font-black py-3 rounded-xl hover:bg-emerald-100 transition-all text-[10px] uppercase border border-emerald-100"
+                                        >
+                                            Pagar Tudo (Pix)
+                                        </button>
+                                        <button 
+                                            onClick={() => handleQuickPayment('Cartão')}
+                                            className="bg-emerald-50 text-emerald-700 font-black py-3 rounded-xl hover:bg-emerald-100 transition-all text-[10px] uppercase border border-emerald-100"
+                                        >
+                                            Pagar Tudo (Cartão)
+                                        </button>
+                                    </div>
+                                )}
                                 <button 
                                     onClick={() => triggerKitchenPrint(selectedTableOrder)}
                                     className="bg-orange-100 text-orange-600 font-black py-4 rounded-2xl hover:bg-orange-200 active:scale-95 transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-2"
@@ -601,12 +858,15 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 4.5ZM3 4.5a.75.75 0 0 1 .75-.75v.75c0 .414-.336.75-.75.75Zm3.375 0h14.25M6 7.5h2.25a.75.75 0 0 1 .75.75v.75a.75.75 0 0 1-.75.75H6a.75.75 0 0 1-.75-.75v-.75a.75.75 0 0 1 .75-.75Zm0 4.5h2.25a.75.75 0 0 1 .75.75v.75a.75.75 0 0 1-.75.75H6a.75.75 0 0 1-.75-.75v-.75a.75.75 0 0 1 .75-.75Zm0 4.5h2.25a.75.75 0 0 1 .75.75v.75a.75.75 0 0 1-.75.75H6a.75.75 0 0 1-.75-.75v-.75a.75.75 0 0 1 .75-.75ZM15 7.5h2.25a.75.75 0 0 1 .75.75v.75a.75.75 0 0 1-.75.75H15a.75.75 0 0 1-.75-.75v-.75a.75.75 0 0 1 .75-.75Zm0 4.5h2.25a.75.75 0 0 1 .75.75v.75a.75.75 0 0 1-.75.75H15a.75.75 0 0 1-.75-.75v-.75a.75.75 0 0 1 .75-.75ZM15 15h2.25a.75.75 0 0 1 .75.75v.75a.75.75 0 0 1-.75.75H15a.75.75 0 0 1-.75-.75v-.75a.75.75 0 0 1 .75-.75ZM6 3.75v16.5M12 6.75a.75.75 0 0 1 .75.75v11.25a.75.75 0 0 1-1.5 0V7.5a.75.75 0 0 1 .75-.75Zm9.75-.75a.75.75 0 0 1 .75.75v11.25a.75.75 0 0 1-1.5 0V6.75a.75.75 0 0 1 .75-.75Z" />
                                     </svg>
-                                    Imprimir Conta (Fechar)
+                                    Imprimir Conta
                                 </button>
                                 
                                 {balance > 0.01 ? (
                                     <button 
-                                        onClick={() => setIsPaymentModalOpen(true)}
+                                        onClick={() => {
+                                            setPaymentAmount(balance.toFixed(2));
+                                            setIsPaymentModalOpen(true);
+                                        }}
                                         className="bg-emerald-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-emerald-100 hover:bg-emerald-700 active:scale-95 transition-all text-sm uppercase tracking-widest"
                                     >
                                         Receber Valor
@@ -616,16 +876,16 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                         onClick={handleCloseTable}
                                         className="bg-green-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-green-100 hover:bg-green-700 active:scale-95 transition-all text-sm uppercase tracking-widest animate-pulse"
                                     >
-                                        Encerrar Mesa
+                                        Encerrar Comanda
                                     </button>
                                 )}
                                 
                                 <button 
-                                    onClick={handleCloseModal}
+                                    onClick={() => setSelectedTableOrder(null)}
                                     className="bg-gray-100 text-gray-600 font-black py-4 rounded-2xl hover:bg-gray-200 active:scale-95 transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-2"
                                 >
                                     <MinimizeIcon className="w-5 h-5" />
-                                    Minimizar (Sair)
+                                    Voltar p/ Mesa
                                 </button>
                                 <button 
                                     onClick={handleCancelTable}
@@ -634,10 +894,10 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                         : 'bg-red-50 text-red-600 hover:bg-red-100'
                                     }`}
-                                    title={currentStaffUser && currentStaffUser.role !== 'manager' ? 'Apenas gerentes podem cancelar' : 'Cancelar Mesa'}
+                                    title={currentStaffUser && currentStaffUser.role !== 'manager' ? 'Apenas gerentes podem cancelar' : 'Cancelar Comanda'}
                                 >
                                     <TrashIcon className="w-5 h-5" />
-                                    Cancelar Mesa
+                                    Cancelar Comanda
                                 </button>
                             </div>
                         </div>
@@ -665,6 +925,23 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                     placeholder="0,00"
                                     className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-center text-3xl font-black text-emerald-600 focus:border-emerald-500 transition-all outline-none"
                                 />
+                                <div className="grid grid-cols-4 gap-2 mt-2">
+                                    {[5, 10, 20, 50].map(val => (
+                                        <button 
+                                            key={val}
+                                            onClick={() => setPaymentAmount(val.toFixed(2))}
+                                            className="py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-xs font-black text-gray-600 transition-colors"
+                                        >
+                                            R$ {val}
+                                        </button>
+                                    ))}
+                                    <button 
+                                        onClick={() => setPaymentAmount(balance.toFixed(2))}
+                                        className="col-span-4 py-2 bg-emerald-100 hover:bg-emerald-200 rounded-xl text-xs font-black text-emerald-700 transition-colors uppercase"
+                                    >
+                                        Pagar Total (R$ {balance.toFixed(2)})
+                                    </button>
+                                </div>
                             </div>
 
                             {paymentMethod === 'Dinheiro' && (

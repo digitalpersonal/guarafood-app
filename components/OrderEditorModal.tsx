@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Order, CartItem, MenuItem, Combo, Addon } from '../types';
 import { useNotification } from '../hooks/useNotification';
 import { updateOrderDetails } from '../services/orderService';
+import { getMensalistaByPhone } from '../services/mensalistaService';
 import { fetchMenuForRestaurant, fetchAddonsForRestaurant } from '../services/databaseService';
 import Spinner from './Spinner';
 import OptimizedImage from './OptimizedImage';
@@ -38,6 +39,9 @@ const PlusIcon: React.FC<{ className?: string }> = ({ className }) => (
 const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, order, onSave, restaurantId, restaurantName, playNotification }) => {
     const { addToast } = useNotification();
     const [editedItems, setEditedItems] = useState<CartItem[]>([]);
+    const [editedPaymentMethod, setEditedPaymentMethod] = useState(order.paymentMethod);
+    const [editedCustomerName, setEditedCustomerName] = useState(order.customerName);
+    const [editedCustomerPhone, setEditedCustomerPhone] = useState(order.customerPhone);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -56,6 +60,9 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
     useEffect(() => {
         if (isOpen) {
             setEditedItems(order.items.map(item => ({ ...item }))); // Deep copy
+            setEditedPaymentMethod(order.paymentMethod);
+            setEditedCustomerName(order.customerName);
+            setEditedCustomerPhone(order.customerPhone);
             setError(null);
             setIsSaving(false);
         }
@@ -141,12 +148,38 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
 
         setIsSaving(true);
         try {
+            let mensalistaIdToUpdate: string | null | undefined = undefined;
+            let finalPaymentMethod = editedPaymentMethod;
+
+            if (editedPaymentMethod === 'Mensalista') {
+                if (!editedCustomerPhone.trim()) {
+                    setError('O WhatsApp é obrigatório para pedidos de Mensalista.');
+                    setIsSaving(false);
+                    return;
+                }
+                const mensalista = await getMensalistaByPhone(editedCustomerPhone.replace(/\D/g, ''), restaurantId);
+                if (mensalista) {
+                    mensalistaIdToUpdate = mensalista.id;
+                    finalPaymentMethod = `Mensalista (${mensalista.name})`;
+                } else {
+                    setError('Mensalista não encontrado com este WhatsApp.');
+                    setIsSaving(false);
+                    return;
+                }
+            } else if (order.mensalista_id) {
+                // Se era mensalista e mudou para outra forma, removemos o ID do mensalista
+                mensalistaIdToUpdate = null;
+            }
+
             const updatedOrder = await updateOrderDetails(order.id, {
                 items: editedItems,
                 subtotal: subtotal,
                 totalPrice: finalTotalPrice,
                 discountAmount: discountAmount,
-                paymentMethod: order.paymentMethod,
+                paymentMethod: finalPaymentMethod,
+                customerName: editedCustomerName,
+                customerPhone: editedCustomerPhone,
+                mensalistaId: mensalistaIdToUpdate,
             });
             
             // Play notification if it's a table order
@@ -204,6 +237,27 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                     </div>
 
                     <div className="overflow-y-auto space-y-4 pr-2 -mr-2">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-400 uppercase">Nome do Cliente</label>
+                                <input 
+                                    type="text" 
+                                    value={editedCustomerName} 
+                                    onChange={e => setEditedCustomerName(e.target.value)}
+                                    className="w-full p-2 border rounded bg-gray-50 text-sm font-bold"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-400 uppercase">WhatsApp</label>
+                                <input 
+                                    type="text" 
+                                    value={editedCustomerPhone} 
+                                    onChange={e => setEditedCustomerPhone(e.target.value.replace(/\D/g, ''))}
+                                    className="w-full p-2 border rounded bg-gray-50 text-sm font-bold"
+                                />
+                            </div>
+                        </div>
+
                         <p className="text-sm text-gray-600 mb-4">Ajuste a quantidade, remova ou adicione itens a este pedido.</p>
 
                         {editedItems.length === 0 ? (
@@ -272,6 +326,26 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                             <PlusIcon className="w-5 h-5" />
                             Adicionar Novo Item
                         </button>
+
+                        <div className="space-y-2">
+                            <label className="block text-xs font-black text-gray-500 uppercase">Forma de Pagamento</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Mensalista', 'Fiado / Conta'].map(m => (
+                                    <button 
+                                        key={m}
+                                        type="button"
+                                        onClick={() => setEditedPaymentMethod(m)}
+                                        className={`py-2 rounded-lg text-[10px] font-black uppercase border-2 transition-all ${
+                                            editedPaymentMethod.startsWith(m)
+                                            ? 'bg-blue-600 border-blue-600 text-white' 
+                                            : 'bg-white border-gray-100 text-gray-500 hover:border-blue-100'
+                                        }`}
+                                    >
+                                        {m}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
 
                         <div className="border-t pt-4 space-y-2">
                             <div className="flex justify-between text-gray-600 text-sm">

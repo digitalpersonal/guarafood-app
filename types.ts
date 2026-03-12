@@ -73,6 +73,8 @@ export interface Restaurant {
   bannerImageUrl?: string; // NEW: Custom background for the menu header
   active?: boolean; // NEW: Field to suspend restaurant
   hasMensalistas?: boolean; // NEW: Field to enable/disable mensalistas
+  hasKiloService?: boolean; // NEW: Field to enable/disable kilo service
+  pricePerKilo?: number; // NEW: Price per kilogram
   staff?: StaffMember[]; // NEW: List of staff members
 }
 
@@ -187,6 +189,8 @@ export interface CartItem {
   halves?: { name: string; price: number }[]; // For half-and-half pizzas
   selectedAddons?: Addon[]; // For addons
   sizeName?: string; // To display selected size, e.g., "Grande"
+  weight?: number; // NEW: Weight in kg for "comida por kilo"
+  isKiloItem?: boolean; // NEW: Flag for "comida por kilo" items
   notes?: string; // User observations (e.g., "Sem cebola")
   selectedOptions?: { groupTitle: string; optionName: string; price: number }[]; // Generic customization options
 }
@@ -230,6 +234,7 @@ export interface Order {
   changeFor?: number;
   paymentStatus?: 'paid' | 'pending' | 'partial';
   tableNumber?: string; // NEW: Para atendimento local
+  comandaNumber?: string; // NEW: Para múltiplas comandas por mesa
   paymentHistory?: PaymentEntry[]; // NEW: Para pagamentos fracionados
   mensalistaId?: string; // NEW: Para pedidos de mensalistas
 }

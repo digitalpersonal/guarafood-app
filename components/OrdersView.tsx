@@ -310,31 +310,38 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
     const [isManualModalOpen, setIsManualModalOpen] = useState(false);
     const [manualCustomerName, setManualCustomerName] = useState('');
     const [manualCustomerPhone, setManualCustomerPhone] = useState('');
+    const [manualPaymentMethod, setManualPaymentMethod] = useState('Dinheiro');
 
     const handleCreateManualOrder = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
         if (!currentUser?.restaurantId) return;
-        if (!manualCustomerName.trim()) {
-            addToast({ message: 'O nome do cliente é obrigatório.', type: 'error' });
-            return;
-        }
 
         setIsCreatingOrder(true);
         try {
-            let paymentMethod = 'Fiado / Conta';
+            let finalPaymentMethod = manualPaymentMethod;
             let mensalistaId: string | undefined = undefined;
+            const finalCustomerName = manualCustomerName.trim() || 'Cliente Balcão';
 
-            if (manualCustomerPhone.length >= 8) {
-                const mensalista = await getMensalistaByPhone(manualCustomerPhone, currentUser.restaurantId);
+            if (manualPaymentMethod === 'Mensalista') {
+                if (!manualCustomerPhone.trim()) {
+                    addToast({ message: 'O WhatsApp é obrigatório para pedidos de Mensalista.', type: 'error' });
+                    setIsCreatingOrder(false);
+                    return;
+                }
+                const mensalista = await getMensalistaByPhone(manualCustomerPhone.replace(/\D/g, ''), currentUser.restaurantId);
                 if (mensalista) {
-                    paymentMethod = 'Mensalista';
                     mensalistaId = mensalista.id;
+                    finalPaymentMethod = `Mensalista (${mensalista.name})`;
                     addToast({ message: `Mensalista ${mensalista.name} identificado!`, type: 'success' });
+                } else {
+                    addToast({ message: 'Mensalista não encontrado com este WhatsApp.', type: 'error' });
+                    setIsCreatingOrder(false);
+                    return;
                 }
             }
 
             const newOrder = await createOrder({
-                customerName: manualCustomerName.trim(),
+                customerName: finalCustomerName,
                 customerPhone: manualCustomerPhone.trim() || '0000000000',
                 customerAddress: { zipCode: '00000-000', street: 'Retirada no Local', number: 'Balcão', neighborhood: 'Balcão', complement: '' },
                 items: [],
@@ -343,7 +350,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                 restaurantName: currentUser.name,
                 restaurantAddress: '',
                 restaurantPhone: '',
-                paymentMethod: paymentMethod,
+                paymentMethod: finalPaymentMethod,
                 status: 'Novo Pedido',
                 mensalistaId: mensalistaId
             });
@@ -353,6 +360,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
             setIsManualModalOpen(false);
             setManualCustomerName('');
             setManualCustomerPhone('');
+            setManualPaymentMethod('Dinheiro');
         } catch (e: any) {
             addToast({ message: `Erro ao criar pedido: ${e.message}`, type: 'error' });
         } finally {
@@ -597,14 +605,13 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                         <h3 className="text-xl font-bold text-gray-800 mb-4">Novo Pedido (Balcão / Mensalista)</h3>
                         <form onSubmit={handleCreateManualOrder} className="space-y-4">
                             <div>
-                                <label className="block text-xs font-black text-gray-500 uppercase mb-1">Nome do Cliente *</label>
+                                <label className="block text-xs font-black text-gray-500 uppercase mb-1">Nome do Cliente</label>
                                 <input 
                                     type="text" 
                                     value={manualCustomerName} 
                                     onChange={e => setManualCustomerName(e.target.value)} 
-                                    required 
                                     className="w-full p-3 border-2 rounded-xl bg-gray-50 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all font-bold text-gray-800"
-                                    placeholder="Ex: João Silva"
+                                    placeholder="Ex: João Silva (Opcional)"
                                 />
                             </div>
                             <div>
@@ -616,7 +623,26 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                                     className="w-full p-3 border-2 rounded-xl bg-gray-50 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all font-bold text-gray-800"
                                     placeholder="Apenas números. Ex: 35999998888"
                                 />
-                                <p className="text-[10px] text-gray-500 mt-1">Se informado, vincula automaticamente ao mensalista se existir.</p>
+                                <p className="text-[10px] text-gray-500 mt-1">Obrigatório apenas se selecionar "Mensalista".</p>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-black text-gray-500 uppercase mb-1">Forma de Pagamento</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Mensalista', 'Fiado / Conta'].map(m => (
+                                        <button 
+                                            key={m}
+                                            type="button"
+                                            onClick={() => setManualPaymentMethod(m)}
+                                            className={`py-2 rounded-xl text-[10px] font-black uppercase border-2 transition-all ${
+                                                manualPaymentMethod === m 
+                                                ? 'bg-orange-600 border-orange-600 text-white' 
+                                                : 'bg-white border-gray-100 text-gray-500 hover:border-orange-100'
+                                            }`}
+                                        >
+                                            {m}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                             <div className="flex justify-end gap-2 mt-6">
                                 <button type="button" onClick={() => setIsManualModalOpen(false)} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold text-sm">Cancelar</button>

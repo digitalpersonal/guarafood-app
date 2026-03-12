@@ -31,6 +31,7 @@ const normalizeOrder = (data: any): Order => {
         payment_details: data.payment_details,
         paymentStatus: data.payment_status || 'paid',
         tableNumber: data.table_number || data.customer_address?.tableNumber,
+        comandaNumber: data.comanda_number || data.customer_address?.comandaNumber,
         paymentHistory: data.payment_history || data.payment_details?.history || [],
         mensalistaId: data.mensalista_id
     };
@@ -131,6 +132,7 @@ export interface NewOrderData {
     deliveryFee?: number;
     changeFor?: number;
     tableNumber?: string;
+    comandaNumber?: string;
     status?: OrderStatus;
     mensalistaId?: string; // NEW: Para pedidos de mensalistas
 }
@@ -141,7 +143,8 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
     const addressWithSachetPreference = {
         ...orderData.customerAddress,
         wantsSachets: orderData.wantsSachets === true,
-        tableNumber: orderData.tableNumber
+        tableNumber: orderData.tableNumber,
+        comandaNumber: orderData.comandaNumber
     };
     
     const newOrderPayload = {
@@ -161,6 +164,7 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
         delivery_fee: orderData.deliveryFee,
         change_for: orderData.changeFor,
         table_number: orderData.tableNumber,
+        comanda_number: orderData.comandaNumber,
         status: orderData.status || 'Novo Pedido', 
         payment_status: isTable ? 'pending' : 'paid',
         timestamp: new Date().toISOString(),
@@ -202,28 +206,36 @@ export const updateOrderPaymentStatus = async (orderId: string, paymentStatus: '
 };
 
 export const recordOrderPayment = async (orderId: string, payment: PaymentEntry, newTotalPaid: number, originalTotal: number, mensalistaId?: string): Promise<Order> => {
-    // Busca o histórico atual (usando payment_details como fallback seguro)
-    const { data: currentOrder } = await supabase.from('orders').select('payment_details').eq('id', orderId).single();
+    // Busca o histórico atual
+    const { data: currentOrder } = await supabase.from('orders').select('payment_history, payment_details').eq('id', orderId).single();
     
-    const currentDetails = currentOrder?.payment_details || {};
-    const history = currentDetails.history || [];
+    const history = currentOrder?.payment_history || currentOrder?.payment_details?.history || [];
     const newHistory = [...history, payment];
     
-    const isFullyPaid = newTotalPaid >= originalTotal;
+    const isFullyPaid = newTotalPaid >= originalTotal - 0.01; // Tolerance for float precision
     const paymentStatus = isFullyPaid ? 'paid' : 'partial';
 
-    const newPaymentDetails = {
-        ...currentDetails,
-        history: newHistory
-    };
-
     const updateData: any = { 
-        payment_details: newPaymentDetails,
+        payment_history: newHistory,
         payment_status: paymentStatus
     };
 
+    // Also update payment_details for backward compatibility if needed
+    if (currentOrder?.payment_details) {
+        updateData.payment_details = {
+            ...currentOrder.payment_details,
+            history: newHistory
+        };
+    }
+
     if (mensalistaId) {
         updateData.mensalista_id = mensalistaId;
+        
+        // Adjust mensalista balance
+        const { data: mensalista } = await supabase.from('mensalistas').select('balance').eq('id', mensalistaId).single();
+        if (mensalista) {
+            await supabase.from('mensalistas').update({ balance: Number(mensalista.balance || 0) + payment.amount }).eq('id', mensalistaId);
+        }
     }
 
     const { data, error } = await supabase.from('orders')
@@ -244,33 +256,95 @@ export const updateOrderDetails = async (
         subtotal: number;
         discountAmount?: number;
         paymentMethod?: string; 
+        customerName?: string;
+        customerPhone?: string;
+        mensalistaId?: string | null;
     }
 ): Promise<Order> => {
     // Fetch current order to get old total price and mensalista_id
     const { data: currentOrder } = await supabase.from('orders').select('total_price, mensalista_id').eq('id', orderId).single();
 
-    const payload = {
+    const payload: any = {
         items: updatedDetails.items,
         total_price: updatedDetails.totalPrice,
         subtotal: updatedDetails.subtotal,
         discount_amount: updatedDetails.discountAmount,
         payment_method: updatedDetails.paymentMethod,
     };
+
+    if (updatedDetails.customerName) payload.customer_name = updatedDetails.customerName;
+    if (updatedDetails.customerPhone) payload.customer_phone = updatedDetails.customerPhone;
+    if (updatedDetails.mensalistaId !== undefined) payload.mensalista_id = updatedDetails.mensalistaId;
+
     const { data, error } = await supabase.from('orders').update(payload).eq('id', orderId).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to update order details' });
 
+    // Recalculate payment status based on history and new total price
+    const history = data.payment_history || data.payment_details?.history || [];
+    const totalPaid = history.reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
+    const isFullyPaid = totalPaid >= updatedDetails.totalPrice - 0.01;
+    const paymentStatus = isFullyPaid ? 'paid' : (totalPaid > 0 ? 'partial' : 'pending');
+    
+    if (data.payment_status !== paymentStatus) {
+        await supabase.from('orders').update({ payment_status: paymentStatus }).eq('id', orderId);
+        data.payment_status = paymentStatus;
+    }
+
     // Adjust mensalista balance if applicable
-    if (currentOrder && currentOrder.mensalista_id) {
+    // Case 1: Mensalista ID changed (from one to another, or added/removed)
+    const oldMensalistaId = currentOrder?.mensalista_id;
+    const newMensalistaId = updatedDetails.mensalistaId;
+
+    if (currentOrder && newMensalistaId !== undefined && oldMensalistaId !== newMensalistaId) {
+        // Remove from old mensalista balance
+        if (oldMensalistaId) {
+            const { data: oldMensalista } = await supabase.from('mensalistas').select('balance').eq('id', oldMensalistaId).single();
+            if (oldMensalista) {
+                await supabase.from('mensalistas').update({ balance: Number(oldMensalista.balance || 0) - Number(currentOrder.total_price) }).eq('id', oldMensalistaId);
+            }
+        }
+        // Add to new mensalista balance
+        if (newMensalistaId) {
+            const { data: newMensalista } = await supabase.from('mensalistas').select('balance').eq('id', newMensalistaId).single();
+            if (newMensalista) {
+                await supabase.from('mensalistas').update({ balance: Number(newMensalista.balance || 0) + updatedDetails.totalPrice }).eq('id', newMensalistaId);
+            }
+        }
+    } 
+    // Case 2: Same mensalista, but price changed
+    else if (currentOrder && oldMensalistaId && updatedDetails.totalPrice !== undefined) {
         const priceDifference = updatedDetails.totalPrice - Number(currentOrder.total_price);
         if (priceDifference !== 0) {
-            const { data: mensalista } = await supabase.from('mensalistas').select('balance').eq('id', currentOrder.mensalista_id).single();
+            const { data: mensalista } = await supabase.from('mensalistas').select('balance').eq('id', oldMensalistaId).single();
             if (mensalista) {
-                await supabase.from('mensalistas').update({ balance: Number(mensalista.balance || 0) + priceDifference }).eq('id', currentOrder.mensalista_id);
+                await supabase.from('mensalistas').update({ balance: Number(mensalista.balance || 0) + priceDifference }).eq('id', oldMensalistaId);
             }
         }
     }
 
     return normalizeOrder(data);
+};
+
+export const fetchOpenTableOrders = async (restaurantId: number, tableNumber: string): Promise<Order[]> => {
+    try {
+        const { data, error } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('status', 'Aguardando Pagamento')
+            .or(`table_number.eq.${tableNumber},customer_address->>tableNumber.eq.${tableNumber}`)
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            console.error("Error fetching table orders:", error);
+            return [];
+        }
+
+        return (data || []).map(normalizeOrder);
+    } catch (e) {
+        console.error("Exception fetching table orders:", e);
+        return [];
+    }
 };
 
 export const fetchOpenTableOrder = async (restaurantId: number, tableNumber: string): Promise<Order | null> => {

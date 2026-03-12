@@ -58,7 +58,7 @@ interface CheckoutModalProps {
 }
 
 type CheckoutStep = 'SUMMARY' | 'DETAILS' | 'PIX_PAYMENT' | 'SUCCESS';
-type DeliveryMethod = 'DELIVERY' | 'PICKUP';
+type DeliveryMethod = 'DELIVERY' | 'PICKUP' | 'COUNTER' | 'TABLE';
 
 const steps: { id: CheckoutStep; title: string; icon: React.FC<{ className?: string }> }[] = [
     { id: 'SUMMARY', title: 'Resumo', icon: ShoppingBagIcon },
@@ -114,10 +114,12 @@ const formatOrderDetailsForWhatsApp = (order: Order): string => {
     if (order.wantsSachets === false) {
         detailsMessage += `_Cliente solicitou *NÃO ENVIAR SACHÊS/TALHERES*._\n`;
     }
-    if (order.customerAddress && order.customerAddress.street !== 'Retirada no Local') {
+    if (order.customerAddress && order.customerAddress.street !== 'Retirada no Local' && order.customerAddress.street !== 'Consumo no Balcão') {
         detailsMessage += `*Endereço:* ${order.customerAddress.street}, ${order.customerAddress.number}`;
         if (order.customerAddress.complement) detailsMessage += ` - ${order.customerAddress.complement}`;
         detailsMessage += `\nBairro: ${order.customerAddress.neighborhood}\n`;
+    } else if (order.customerAddress?.street === 'Consumo no Balcão') {
+        detailsMessage += `*Consumo no Balcão.*\n`;
     } else {
         detailsMessage += `*Retirada no Balcão.*\n`;
     }
@@ -135,6 +137,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [changeFor, setChangeFor] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('DELIVERY');
+    const [tableNumber, setTableNumber] = useState('');
     const [wantsSachets, setWantsSachets] = useState(false);
     const [address, setAddress] = useState({
         zipCode: '37810-000', 
@@ -166,6 +169,13 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     useEffect(() => {
         if (isOpen) {
+            const params = new URLSearchParams(window.location.search);
+            const tableParam = params.get('table');
+            if (tableParam) {
+                setTableNumber(tableParam);
+                setDeliveryMethod('TABLE');
+            }
+
             const loaded: Record<string, { phone: string, address: any }> = {};
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
@@ -312,7 +322,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         return { finalPrice: Math.max(0, totalNum - discount), discountAmount: discount };
     }, [totalPrice, appliedCoupon]);
 
-    const effectiveDeliveryFee = deliveryMethod === 'PICKUP' ? 0 : Number(restaurant.deliveryFee || 0);
+    const effectiveDeliveryFee = (deliveryMethod === 'PICKUP' || deliveryMethod === 'COUNTER' || deliveryMethod === 'TABLE') ? 0 : Number(restaurant.deliveryFee || 0);
     const finalPriceWithFee = Number(finalPrice) + Number(effectiveDeliveryFee);
     
     const handleAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -436,8 +446,14 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     };
 
     const handleConfirmManualPix = async () => {
-        const customerAddress = deliveryMethod === 'PICKUP' 
-            ? { zipCode: '00000-000', street: 'Retirada no Local', number: 'S/N', neighborhood: restaurant.name, complement: 'Cliente irá buscar' }
+        const customerAddress = (deliveryMethod === 'PICKUP' || deliveryMethod === 'COUNTER' || deliveryMethod === 'TABLE')
+            ? { 
+                zipCode: '00000-000', 
+                street: deliveryMethod === 'PICKUP' ? 'Retirada no Local' : deliveryMethod === 'COUNTER' ? 'Consumo no Balcão' : `Mesa ${tableNumber}`, 
+                number: 'S/N', 
+                neighborhood: restaurant.name, 
+                complement: deliveryMethod === 'PICKUP' ? 'Cliente irá buscar' : deliveryMethod === 'COUNTER' ? 'Atendimento presencial' : 'Pedido de Mesa' 
+              }
             : { zipCode: address.zipCode, street: address.street, number: address.number, neighborhood: address.neighborhood, complement: address.complement };
 
         const orderData: NewOrderData = {
@@ -470,8 +486,14 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             }
         }
 
-        const customerAddress = deliveryMethod === 'PICKUP' 
-            ? { zipCode: '00000-000', street: 'Retirada no Local', number: 'S/N', neighborhood: restaurant.name, complement: 'Cliente irá buscar' }
+        const customerAddress = (deliveryMethod === 'PICKUP' || deliveryMethod === 'COUNTER' || deliveryMethod === 'TABLE')
+            ? { 
+                zipCode: '00000-000', 
+                street: deliveryMethod === 'PICKUP' ? 'Retirada no Local' : deliveryMethod === 'COUNTER' ? 'Consumo no Balcão' : `Mesa ${tableNumber}`, 
+                number: 'S/N', 
+                neighborhood: restaurant.name, 
+                complement: deliveryMethod === 'PICKUP' ? 'Cliente irá buscar' : deliveryMethod === 'COUNTER' ? 'Atendimento presencial' : 'Pedido de Mesa' 
+              }
             : { zipCode: address.zipCode, street: address.street, number: address.number, neighborhood: address.neighborhood, complement: address.complement };
 
         const changeValue = parseFloat(changeFor.replace(',', '.').trim());
@@ -481,7 +503,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
             paymentMethod: finalPaymentMethod, customerAddress, wantsSachets,
             changeFor: !isNaN(changeValue) && changeValue > 0 ? changeValue : undefined,
-            status: paymentMethod === 'Pix' ? 'Aguardando Pagamento' : 'Novo Pedido',
+            status: deliveryMethod === 'TABLE' ? 'Mesa Aberta' : (paymentMethod === 'Pix' ? 'Aguardando Pagamento' : 'Novo Pedido'),
+            tableNumber: deliveryMethod === 'TABLE' ? tableNumber : undefined,
             mensalistaId
         };
 
@@ -598,7 +621,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         <div className="border-t pt-4 space-y-2 text-sm">
                             <div className="flex justify-between text-gray-600"><span>Subtotal</span><span>R$ {Number(totalPrice).toFixed(2)}</span></div>
                             {appliedCoupon && <div className="flex justify-between text-green-600 font-semibold"><span>Desconto</span><span>- R$ {Number(discountAmount).toFixed(2)}</span></div>}
-                            <div className="flex justify-between text-gray-600"><span>Entrega</span><span>{deliveryMethod === 'PICKUP' ? 'Grátis' : `R$ ${Number(restaurant.deliveryFee || 0).toFixed(2)}`}</span></div>
+                            <div className="flex justify-between text-gray-600"><span>Entrega</span><span>{(deliveryMethod === 'PICKUP' || deliveryMethod === 'COUNTER' || deliveryMethod === 'TABLE') ? 'Grátis' : `R$ ${Number(restaurant.deliveryFee || 0).toFixed(2)}`}</span></div>
                             <div className="flex justify-between font-bold text-lg text-gray-800 border-t pt-2"><span>Total</span><span>R$ {Number(finalPriceWithFee).toFixed(2)}</span></div>
                         </div>
                     </div>
@@ -646,11 +669,26 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
                         <div ref={deliveryMethodRef} className="space-y-3 animate-fadeIn">
                              <label className="block text-xs font-black text-gray-500 uppercase tracking-widest">Como quer receber seu pedido?</label>
-                             <div className="bg-gray-100 p-1 rounded-xl flex shadow-inner border border-gray-200">
-                                <button type="button" onClick={() => setDeliveryMethod('DELIVERY')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-black text-sm transition-all ${deliveryMethod === 'DELIVERY' ? 'bg-white text-orange-600 shadow-md scale-[1.02]' : 'text-gray-500'}`}><TruckIcon className="w-5 h-5" />ENTREGA</button>
-                                <button type="button" onClick={() => setDeliveryMethod('PICKUP')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-black text-sm transition-all ${deliveryMethod === 'PICKUP' ? 'bg-white text-orange-600 shadow-md scale-[1.02]' : 'text-gray-500'}`}><StoreIcon className="w-5 h-5" />RETIRADA</button>
+                             <div className="bg-gray-100 p-1 rounded-xl flex shadow-inner border border-gray-200 gap-1 overflow-x-auto no-scrollbar">
+                                <button type="button" onClick={() => setDeliveryMethod('DELIVERY')} className={`flex-1 min-w-[80px] flex flex-col items-center justify-center py-2 rounded-lg font-black text-[10px] transition-all ${deliveryMethod === 'DELIVERY' ? 'bg-white text-orange-600 shadow-md scale-[1.02]' : 'text-gray-500'}`}><TruckIcon className="w-5 h-5 mb-1" />ENTREGA</button>
+                                <button type="button" onClick={() => setDeliveryMethod('PICKUP')} className={`flex-1 min-w-[80px] flex flex-col items-center justify-center py-2 rounded-lg font-black text-[10px] transition-all ${deliveryMethod === 'PICKUP' ? 'bg-white text-orange-600 shadow-md scale-[1.02]' : 'text-gray-500'}`}><StoreIcon className="w-5 h-5 mb-1" />RETIRADA</button>
+                                <button type="button" onClick={() => setDeliveryMethod('COUNTER')} className={`flex-1 min-w-[80px] flex flex-col items-center justify-center py-2 rounded-lg font-black text-[10px] transition-all ${deliveryMethod === 'COUNTER' ? 'bg-white text-orange-600 shadow-md scale-[1.02]' : 'text-gray-500'}`}><ClipboardIcon className="w-5 h-5 mb-1" />BALCÃO</button>
+                                <button type="button" onClick={() => setDeliveryMethod('TABLE')} className={`flex-1 min-w-[80px] flex flex-col items-center justify-center py-2 rounded-lg font-black text-[10px] transition-all ${deliveryMethod === 'TABLE' ? 'bg-white text-orange-600 shadow-md scale-[1.02]' : 'text-gray-500'}`}><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mb-1"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0h.5m-.5 0h-10.5m0 0h-.5" /></svg>MESA</button>
                             </div>
                         </div>
+
+                        {deliveryMethod === 'TABLE' && (
+                            <div className="space-y-2 animate-fadeIn">
+                                <label className="block text-xs font-black text-gray-500 uppercase tracking-widest">Número da Mesa</label>
+                                <input 
+                                    type="text" 
+                                    value={tableNumber} 
+                                    onChange={(e) => setTableNumber(e.target.value)}
+                                    placeholder="Ex: 05"
+                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-orange-500 outline-none transition-all font-bold"
+                                />
+                            </div>
+                        )}
                         
                         {deliveryMethod === 'DELIVERY' && (
                             <div className="bg-white p-4 rounded-2xl border-2 border-orange-100 space-y-3 animate-fadeIn">

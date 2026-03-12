@@ -229,6 +229,8 @@ const RestaurantSettings: React.FC = () => {
     const [manualPixKey, setManualPixKey] = useState('');
     const [bannerImageUrl, setBannerImageUrl] = useState('');
     const [hasMensalistas, setHasMensalistas] = useState(false);
+    const [hasKiloService, setHasKiloService] = useState(false);
+    const [pricePerKilo, setPricePerKilo] = useState(0);
     const [printerWidth, setPrinterWidth] = useState(80);
     const [isPrintServer, setIsPrintServer] = useState(false);
     const [operatingHours, setOperatingHours] = useState<OperatingHours[]>(getDefaultOperatingHours());
@@ -249,6 +251,8 @@ const RestaurantSettings: React.FC = () => {
                 setManualPixKey(data.manualPixKey || '');
                 setBannerImageUrl(data.bannerImageUrl || '');
                 setHasMensalistas(data.hasMensalistas || false);
+                setHasKiloService(data.hasKiloService || false);
+                setPricePerKilo(data.pricePerKilo || 0);
                 setOperatingHours(data.operatingHours || getDefaultOperatingHours());
                 
                 // Força o estado da impressora a partir do banco e sincroniza LocalStorage
@@ -289,7 +293,9 @@ const RestaurantSettings: React.FC = () => {
                 manualPixKey: manualPixKey,
                 printerWidth: printerWidth,
                 bannerImageUrl: bannerImageUrl,
-                hasMensalistas: hasMensalistas
+                hasMensalistas: hasMensalistas,
+                hasKiloService: hasKiloService,
+                pricePerKilo: pricePerKilo
             });
             localStorage.setItem('guarafood-printer-width', printerWidth.toString());
             localStorage.setItem('guarafood-is-print-server', isPrintServer.toString());
@@ -452,6 +458,43 @@ const RestaurantSettings: React.FC = () => {
                             </label>
                         </div>
                         <MensalistasManager />
+                    </div>
+
+                    {/* --- CONFIGURAÇÃO DE COMIDA POR KILO --- */}
+                    <div className="border-t pt-8">
+                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Serviço de Comida por Kilo</h3>
+                        <div className="space-y-4">
+                            <label className="flex items-center justify-between cursor-pointer p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                <div>
+                                    <span className="font-bold text-gray-800 block">Ativar Venda por Peso</span>
+                                    <span className="text-xs text-gray-500">Permite adicionar itens ao pedido informando apenas o peso.</span>
+                                </div>
+                                <div className="relative">
+                                    <input type="checkbox" className="sr-only peer" checked={hasKiloService} onChange={e => setHasKiloService(e.target.checked)} />
+                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                                </div>
+                            </label>
+
+                            {hasKiloService && (
+                                <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <label className="block text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-1 ml-1">Valor do Quilo (R$)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-emerald-600">R$</span>
+                                        <input 
+                                            type="number" 
+                                            step="0.01"
+                                            value={pricePerKilo} 
+                                            onChange={e => setPricePerKilo(parseFloat(e.target.value) || 0)} 
+                                            className="w-full p-3 pl-12 border border-emerald-200 rounded-xl font-mono text-lg bg-white text-emerald-900 focus:ring-2 focus:ring-emerald-500 outline-none" 
+                                            placeholder="0,00" 
+                                        />
+                                    </div>
+                                    <p className="text-[10px] text-emerald-600 mt-2 font-bold uppercase italic">
+                                        * O sistema calculará automaticamente: Peso (kg) x Valor do Quilo
+                                    </p>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     <div className="border-t pt-8">
