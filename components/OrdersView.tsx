@@ -2,9 +2,11 @@
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
-import type { Order, OrderStatus, CartItem } from '../types';
+import type { Order, OrderStatus, CartItem, StaffMember } from '../types';
 import OrderDetailsModal from './OrderDetailsModal';
-import { updateOrderStatus } from '../services/orderService';
+import OrderEditorModal from './OrderEditorModal';
+import { updateOrderStatus, createOrder } from '../services/orderService';
+import { getMensalistaByPhone } from '../services/mensalistaService';
 
 
 const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -294,13 +296,69 @@ interface OrdersViewProps {
     orders: Order[];
     printerWidth?: number;
     onPrint: (order: Order) => void;
+    currentStaffUser?: StaffMember | null;
 }
 
-const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPrint }) => {
-    const { addToast } = useNotification();
+const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPrint, currentStaffUser }) => {
+    const { currentUser } = useAuth();
+    const { addToast, prompt } = useNotification();
     const [searchTerm, setSearchTerm] = useState('');
     const [viewMode, setViewMode] = useState<'active' | 'history'>('active');
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+    const [orderToEdit, setOrderToEdit] = useState<Order | null>(null);
+    const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+    const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+    const [manualCustomerName, setManualCustomerName] = useState('');
+    const [manualCustomerPhone, setManualCustomerPhone] = useState('');
+
+    const handleCreateManualOrder = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!currentUser?.restaurantId) return;
+        if (!manualCustomerName.trim()) {
+            addToast({ message: 'O nome do cliente é obrigatório.', type: 'error' });
+            return;
+        }
+
+        setIsCreatingOrder(true);
+        try {
+            let paymentMethod = 'Fiado / Conta';
+            let mensalistaId: string | undefined = undefined;
+
+            if (manualCustomerPhone.length >= 8) {
+                const mensalista = await getMensalistaByPhone(manualCustomerPhone, currentUser.restaurantId);
+                if (mensalista) {
+                    paymentMethod = 'Mensalista';
+                    mensalistaId = mensalista.id;
+                    addToast({ message: `Mensalista ${mensalista.name} identificado!`, type: 'success' });
+                }
+            }
+
+            const newOrder = await createOrder({
+                customerName: manualCustomerName.trim(),
+                customerPhone: manualCustomerPhone.trim() || '0000000000',
+                customerAddress: { zipCode: '00000-000', street: 'Retirada no Local', number: 'Balcão', neighborhood: 'Balcão', complement: '' },
+                items: [],
+                totalPrice: 0,
+                restaurantId: currentUser.restaurantId,
+                restaurantName: currentUser.name,
+                restaurantAddress: '',
+                restaurantPhone: '',
+                paymentMethod: paymentMethod,
+                status: 'Novo Pedido',
+                mensalistaId: mensalistaId
+            });
+            
+            addToast({ message: 'Pedido criado! Adicione os itens agora.', type: 'success' });
+            setOrderToEdit(newOrder);
+            setIsManualModalOpen(false);
+            setManualCustomerName('');
+            setManualCustomerPhone('');
+        } catch (e: any) {
+            addToast({ message: `Erro ao criar pedido: ${e.message}`, type: 'error' });
+        } finally {
+            setIsCreatingOrder(false);
+        }
+    };
 
     const handleStatusUpdate = (orderId: string, newStatus: OrderStatus) => {
         updateOrderStatus(orderId, newStatus)
@@ -436,6 +494,19 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                         />
                         <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" aria-hidden="true" />
                     </div>
+                    {(!currentStaffUser || currentStaffUser.role === 'admin' || currentStaffUser.role === 'manager') && (
+                        <button
+                            onClick={() => setIsManualModalOpen(true)}
+                            disabled={isCreatingOrder}
+                            className="bg-orange-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-1 shadow flex-shrink-0 disabled:opacity-50"
+                            title="Criar pedido manual para retirada"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                            </svg>
+                            <span className="hidden sm:inline">Novo Pedido</span>
+                        </button>
+                    )}
                     <div className="flex bg-gray-200 rounded-lg p-1 flex-shrink-0">
                         <button 
                             onClick={() => setViewMode('active')} 
@@ -506,6 +577,57 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                 )}
             </main>
             {selectedOrder && <OrderDetailsModal order={selectedOrder} onClose={() => setSelectedOrder(null)} printerWidth={printerWidth} />}
+            {orderToEdit && currentUser && (
+                <OrderEditorModal
+                    isOpen={!!orderToEdit}
+                    onClose={() => setOrderToEdit(null)}
+                    order={orderToEdit}
+                    onSave={(updated) => {
+                        setOrderToEdit(null);
+                        setSelectedOrder(updated); // Show details after saving
+                    }}
+                    restaurantId={currentUser.restaurantId!}
+                    restaurantName={currentUser.name}
+                />
+            )}
+
+            {isManualModalOpen && (
+                <div className="fixed inset-0 bg-black/60 z-[100] flex justify-center items-center p-4 backdrop-blur-sm" onClick={() => setIsManualModalOpen(false)}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-xl font-bold text-gray-800 mb-4">Novo Pedido (Balcão / Mensalista)</h3>
+                        <form onSubmit={handleCreateManualOrder} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-black text-gray-500 uppercase mb-1">Nome do Cliente *</label>
+                                <input 
+                                    type="text" 
+                                    value={manualCustomerName} 
+                                    onChange={e => setManualCustomerName(e.target.value)} 
+                                    required 
+                                    className="w-full p-3 border-2 rounded-xl bg-gray-50 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all font-bold text-gray-800"
+                                    placeholder="Ex: João Silva"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-black text-gray-500 uppercase mb-1">WhatsApp (Opcional)</label>
+                                <input 
+                                    type="tel" 
+                                    value={manualCustomerPhone} 
+                                    onChange={e => setManualCustomerPhone(e.target.value.replace(/\D/g, ''))} 
+                                    className="w-full p-3 border-2 rounded-xl bg-gray-50 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all font-bold text-gray-800"
+                                    placeholder="Apenas números. Ex: 35999998888"
+                                />
+                                <p className="text-[10px] text-gray-500 mt-1">Se informado, vincula automaticamente ao mensalista se existir.</p>
+                            </div>
+                            <div className="flex justify-end gap-2 mt-6">
+                                <button type="button" onClick={() => setIsManualModalOpen(false)} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold text-sm">Cancelar</button>
+                                <button type="submit" disabled={isCreatingOrder} className="px-4 py-2 rounded-lg bg-orange-600 text-white font-bold text-sm disabled:opacity-50">
+                                    {isCreatingOrder ? 'Criando...' : 'Criar Pedido'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </>
     );
 };

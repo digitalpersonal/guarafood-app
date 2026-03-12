@@ -18,7 +18,7 @@ interface OrderEditorModalProps {
     onSave: (updatedOrder: Order) => void;
     restaurantId: number;
     restaurantName: string;
-    playNotification: () => void;
+    playNotification?: () => void;
 }
 
 const XIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -150,7 +150,7 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
             });
             
             // Play notification if it's a table order
-            if (order.tableNumber) {
+            if (order.tableNumber && playNotification) {
                 playNotification();
             }
 

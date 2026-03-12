@@ -87,14 +87,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
+    const handleSessionExpired = async () => {
+        console.warn("Session expired event received. Logging out.");
+        localStorage.removeItem(USER_STORAGE_KEY);
+        setCurrentUser(null);
+        try {
+            await supabase.auth.signOut();
+        } catch (e) {
+            console.warn("Error during signOut after session expired:", e);
+        }
+    };
+    window.addEventListener('auth:session-expired', handleSessionExpired);
+
     setLoading(true);
     supabase.auth.getSession().then(async ({ data: { session }, error }) => {
       if (error) {
         console.warn("Session check error:", error.message);
         if (error.message.includes("Refresh Token") || error.message.includes("refresh_token")) {
-            localStorage.removeItem(USER_STORAGE_KEY);
-            setCurrentUser(null);
-            await supabase.auth.signOut();
+            handleSessionExpired();
         }
       } else if (session?.user) {
         const profile = await fetchUserProfile(session.user);
@@ -148,6 +158,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
       authListener?.subscription.unsubscribe();
+      window.removeEventListener('auth:session-expired', handleSessionExpired);
     };
   }, []);
 

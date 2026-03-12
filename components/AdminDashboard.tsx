@@ -7,6 +7,7 @@ import CategoryManagement from './CategoryManagement';
 import MarketingManagement from './MarketingManagement';
 import MenuManagement from './MenuManagement';
 import GlobalCustomerList from './GlobalCustomerList';
+import HelpCenter from './HelpCenter';
 
 
 // Re-usable Icons
@@ -28,7 +29,7 @@ import { fetchRestaurantsSecure, deleteRestaurant } from '../services/databaseSe
 const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { logout } = useAuth();
     const { addToast } = useNotification();
-    const [activeTab, setActiveTab] = useState<'restaurants' | 'categories' | 'marketing' | 'customers' | 'settings'>('restaurants');
+    const [activeTab, setActiveTab] = useState<'restaurants' | 'categories' | 'marketing' | 'customers' | 'settings' | 'help'>('restaurants');
     const [editingMenuRestaurantId, setEditingMenuRestaurantId] = useState<number | null>(null);
 
     // Se estiver editando um cardápio específico, mostra o componente de Menu
@@ -111,6 +112,8 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 return <GlobalCustomerList />;
             case 'settings':
                 return renderSettings();
+            case 'help':
+                return <HelpCenter onBack={() => setActiveTab('restaurants')} />;
             default:
                 return null;
         }
@@ -140,6 +143,7 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     <button onClick={() => setActiveTab('marketing')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'marketing' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Marketing</button>
                     <button onClick={() => setActiveTab('customers')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'customers' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Clientes</button>
                     <button onClick={() => setActiveTab('settings')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'settings' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Config</button>
+                    <button onClick={() => setActiveTab('help')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'help' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Ajuda</button>
                 </div>
             </nav>
             

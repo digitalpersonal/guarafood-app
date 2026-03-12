@@ -201,7 +201,7 @@ export const updateOrderPaymentStatus = async (orderId: string, paymentStatus: '
     window.dispatchEvent(new Event('guarafood:update-orders'));
 };
 
-export const recordOrderPayment = async (orderId: string, payment: PaymentEntry, newTotalPaid: number, originalTotal: number): Promise<Order> => {
+export const recordOrderPayment = async (orderId: string, payment: PaymentEntry, newTotalPaid: number, originalTotal: number, mensalistaId?: string): Promise<Order> => {
     // Busca o histórico atual (usando payment_details como fallback seguro)
     const { data: currentOrder } = await supabase.from('orders').select('payment_details').eq('id', orderId).single();
     
@@ -217,11 +217,17 @@ export const recordOrderPayment = async (orderId: string, payment: PaymentEntry,
         history: newHistory
     };
 
+    const updateData: any = { 
+        payment_details: newPaymentDetails,
+        payment_status: paymentStatus
+    };
+
+    if (mensalistaId) {
+        updateData.mensalista_id = mensalistaId;
+    }
+
     const { data, error } = await supabase.from('orders')
-        .update({ 
-            payment_details: newPaymentDetails,
-            payment_status: paymentStatus
-        })
+        .update(updateData)
         .eq('id', orderId)
         .select()
         .single();
@@ -240,6 +246,9 @@ export const updateOrderDetails = async (
         paymentMethod?: string; 
     }
 ): Promise<Order> => {
+    // Fetch current order to get old total price and mensalista_id
+    const { data: currentOrder } = await supabase.from('orders').select('total_price, mensalista_id').eq('id', orderId).single();
+
     const payload = {
         items: updatedDetails.items,
         total_price: updatedDetails.totalPrice,
@@ -249,6 +258,18 @@ export const updateOrderDetails = async (
     };
     const { data, error } = await supabase.from('orders').update(payload).eq('id', orderId).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to update order details' });
+
+    // Adjust mensalista balance if applicable
+    if (currentOrder && currentOrder.mensalista_id) {
+        const priceDifference = updatedDetails.totalPrice - Number(currentOrder.total_price);
+        if (priceDifference !== 0) {
+            const { data: mensalista } = await supabase.from('mensalistas').select('balance').eq('id', currentOrder.mensalista_id).single();
+            if (mensalista) {
+                await supabase.from('mensalistas').update({ balance: Number(mensalista.balance || 0) + priceDifference }).eq('id', currentOrder.mensalista_id);
+            }
+        }
+    }
+
     return normalizeOrder(data);
 };
 

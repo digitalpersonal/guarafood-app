@@ -11,6 +11,7 @@ import PrintableOrder from './PrintableOrder';
 import TableManagement from './TableManagement';
 import StaffManagement from './StaffManagement';
 import PinPadModal from './PinPadModal';
+import HelpCenter from './HelpCenter';
 import { useSound } from '../hooks/useSound';
 
 const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -36,7 +37,7 @@ const CustomerList = React.lazy(() => import('./CustomerList'));
 
 const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { currentUser, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff'>('orders');
+    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'help'>('orders');
     const [orders, setOrders] = useState<Order[]>([]);
     const [printJob, setPrintJob] = useState<{ 
         order: Order, 
@@ -118,16 +119,16 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     // Determine visible tabs based on role and lock state
     const visibleTabs = useMemo(() => {
-        const allTabs = ['orders', 'tables', 'menu', 'financial', 'customers', 'staff', 'settings'] as const;
+        const allTabs = ['orders', 'tables', 'menu', 'financial', 'customers', 'staff', 'settings', 'help'] as const;
         
         // Se o usuário logado for garçom, ele só vê mesas
         if (currentUser?.role === 'waiter') {
-            return ['tables'];
+            return ['tables', 'help'];
         }
 
         // Se o painel estiver travado (Modo Garçom compartilhado), só mostra mesas
         if (isLocked) {
-            return ['tables'];
+            return ['tables', 'help'];
         }
         
         // Manager ou Merchant (Dono) vê tudo
@@ -348,7 +349,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const renderContent = () => {
         switch (activeTab) {
             case 'orders':
-                return <OrdersView orders={orders} printerWidth={printerWidth} onPrint={handleManualPrint} />;
+                return <OrdersView orders={orders} printerWidth={printerWidth} onPrint={handleManualPrint} currentStaffUser={currentStaffUser} />;
             case 'tables':
                 return <TableManagement orders={orders} currentStaffUser={currentStaffUser} onPrint={handleManualPrint} />;
             case 'menu': return <MenuManagement />;
@@ -366,6 +367,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 );
             case 'staff': return <StaffManagement />;
             case 'settings': return <RestaurantSettings />;
+            case 'help': return <HelpCenter onBack={() => setActiveTab('orders')} />;
             default: return null;
         }
     }
@@ -441,7 +443,8 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         {visibleTabs.map((tab) => {
                             const labels: Record<string, string> = { 
                                 orders: 'Pedidos', tables: 'Mesas', menu: 'Cardápio', 
-                                financial: 'Financeiro', customers: 'Clientes', staff: 'Equipe', settings: 'Config' 
+                                financial: 'Financeiro', customers: 'Clientes', staff: 'Equipe', 
+                                settings: 'Config', help: 'Ajuda'
                             };
                             return (
                                 <button 

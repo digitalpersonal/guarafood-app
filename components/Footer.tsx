@@ -33,9 +33,10 @@ const LockClosedIcon: React.FC<{ className?: string }> = ({ className }) => (
 
 interface FooterProps {
     onLoginClick?: () => void;
+    onHelpClick?: () => void;
 }
 
-const Footer: React.FC<FooterProps> = ({ onLoginClick }) => {
+const Footer: React.FC<FooterProps> = ({ onLoginClick, onHelpClick }) => {
   const [showInstallModal, setShowInstallModal] = useState(false);
 
   return (
@@ -65,6 +66,19 @@ const Footer: React.FC<FooterProps> = ({ onLoginClick }) => {
               <span>Instalar Aplicativo</span>
             </button>
 
+            {/* Botão Central de Ajuda */}
+            {onHelpClick && (
+              <button 
+                onClick={onHelpClick}
+                className="flex items-center justify-center gap-2 px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-xl transition-all text-sm font-black shadow-xl shadow-orange-900/20"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                </svg>
+                <span>Central de Ajuda</span>
+              </button>
+            )}
+
             {/* Botão WhatsApp Dev */}
             <a 
               href="https://wa.me/5535991048020" 
@@ -73,7 +87,7 @@ const Footer: React.FC<FooterProps> = ({ onLoginClick }) => {
               className="flex items-center justify-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl transition-all text-sm font-black shadow-xl shadow-green-900/20"
             >
               <WhatsAppIcon className="w-5 h-5" />
-              <span>Falar com o desenvolvedor</span>
+              <span>Suporte Técnico</span>
             </a>
           </div>
 

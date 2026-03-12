@@ -19,6 +19,7 @@ interface CustomerListProps {
 }
 
 interface CustomerData {
+    id: string;
     name: string;
     phone: string;
     totalOrders: number;
@@ -35,11 +36,16 @@ const CustomerList: React.FC<CustomerListProps> = ({ orders }) => {
             // EXCLUDE TABLE ORDERS FROM CUSTOMER LIST (Only delivery/pickup enter the base)
             if (order.tableNumber) return acc;
 
-            const phone = (order.customerPhone || '').replace(/\D/g, ''); // Normalize phone as ID
-            if (!phone) return acc;
+            let phone = (order.customerPhone || '').replace(/\D/g, ''); // Normalize phone as ID
+            
+            // For mensalistas/balcão, phone is usually '0000000000', use name as ID instead
+            if (!phone || phone === '0000000000') {
+                phone = `mensalista_${order.customerName.toLowerCase().replace(/\s+/g, '_')}`;
+            }
 
             if (!acc[phone]) {
                 acc[phone] = {
+                    id: phone,
                     name: order.customerName,
                     phone: order.customerPhone,
                     totalOrders: 0,
@@ -116,9 +122,9 @@ const CustomerList: React.FC<CustomerListProps> = ({ orders }) => {
                     </thead>
                     <tbody>
                         {filteredCustomers.length > 0 ? filteredCustomers.map((customer) => (
-                            <tr key={customer.phone} className="bg-white border-b hover:bg-gray-50">
+                            <tr key={customer.id} className="bg-white border-b hover:bg-gray-50">
                                 <td className="px-6 py-4 font-bold text-gray-900">{customer.name}</td>
-                                <td className="px-6 py-4">{customer.phone}</td>
+                                <td className="px-6 py-4">{customer.phone === '0000000000' ? '-' : customer.phone}</td>
                                 <td className="px-6 py-4 truncate max-w-xs" title={customer.address}>{customer.address}</td>
                                 <td className="px-6 py-4 text-center">
                                     <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-full">{customer.totalOrders}</span>
@@ -126,13 +132,15 @@ const CustomerList: React.FC<CustomerListProps> = ({ orders }) => {
                                 <td className="px-6 py-4 text-right font-bold text-green-600">R$ {customer.totalSpent.toFixed(2)}</td>
                                 <td className="px-6 py-4">{customer.lastOrderDate.toLocaleDateString()}</td>
                                 <td className="px-6 py-4 text-center">
-                                    <button 
-                                        onClick={() => handleWhatsApp(customer.phone)} 
-                                        className="text-green-600 hover:text-green-800 p-2 rounded-full hover:bg-green-50 transition-colors"
-                                        title="Abrir WhatsApp"
-                                    >
-                                        <WhatsAppIcon className="w-6 h-6" />
-                                    </button>
+                                    {customer.phone && customer.phone !== '0000000000' && (
+                                        <button 
+                                            onClick={() => handleWhatsApp(customer.phone)} 
+                                            className="text-green-600 hover:text-green-800 p-2 rounded-full hover:bg-green-50 transition-colors"
+                                            title="Abrir WhatsApp"
+                                        >
+                                            <WhatsAppIcon className="w-6 h-6" />
+                                        </button>
+                                    )}
                                 </td>
                             </tr>
                         )) : (

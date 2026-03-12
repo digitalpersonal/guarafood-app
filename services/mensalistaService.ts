@@ -65,15 +65,29 @@ export const deleteMensalista = async (id: string) => {
   if (error) throw error;
 };
 
-export const checkIfMensalista = async (phone: string, restaurantId: number): Promise<boolean> => {
+export const getMensalistaByPhone = async (phone: string, restaurantId: number): Promise<Mensalista | null> => {
   const { data, error } = await supabase
     .from('mensalistas')
-    .select('id')
+    .select('*')
     .eq('restaurant_id', restaurantId)
     .eq('phone', phone)
     .eq('status', 'active')
     .maybeSingle();
 
   if (error) throw error;
-  return !!data;
+  if (!data) return null;
+  
+  return {
+    ...data,
+    restaurantId: data.restaurant_id,
+    startDate: data.start_date,
+    nextPaymentDate: data.next_payment_date,
+    monthlyFee: Number(data.monthly_fee),
+    balance: Number(data.balance || 0)
+  } as Mensalista;
+};
+
+export const checkIfMensalista = async (phone: string, restaurantId: number): Promise<boolean> => {
+  const mensalista = await getMensalistaByPhone(phone, restaurantId);
+  return !!mensalista;
 };

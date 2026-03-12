@@ -132,6 +132,11 @@ export const handleSupabaseError = ({ error, customMessage, tableName }: { error
         else if (error?.code === '42P01') {
             enhancedMessage = `Erro de Banco de Dados: A tabela '${tableName || 'desconhecida'}' não existe.\n\nSOLUÇÃO: Vá ao SQL Editor do Supabase e execute o script 'fix_orders_table_columns.sql' para criar a tabela de pedidos e suas colunas.`;
         }
+        else if (fullErrorMessageLower.includes('invalid refresh token') || fullErrorMessageLower.includes('refresh token not found')) {
+            enhancedMessage = `Sua sessão expirou. Por favor, atualize a página e faça login novamente.`;
+            // Dispara um evento para deslogar o usuário automaticamente
+            window.dispatchEvent(new Event('auth:session-expired'));
+        }
         else if (error?.code === '42701' && tableName === 'promotions' && fullErrorMessageLower.includes('column "') && fullErrorMessageLower.includes('" of relation "promotions" already exists')) {
             console.log(`[GuaraFood Info] Coluna já existe na tabela 'promotions'. Isso não é um erro crítico. Detalhes: ${errorMessage}`, error);
             return; 

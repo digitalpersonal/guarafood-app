@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Order, CartItem, PaymentEntry, StaffMember } from '../types';
 import { createOrder, recordOrderPayment, updateOrderStatus, fetchOpenTableOrder, requestKitchenPrint, requestBillPrint, markPrintJobAsDone, updateOrderDetails } from '../services/orderService';
+import { getMensalistaByPhone } from '../services/mensalistaService';
 import { supabase } from '../services/api';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
@@ -239,11 +240,32 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
             const newTotalPaid = currentPaid + amount;
 
             let finalMethod = paymentMethod;
+            let mensalistaId: string | undefined = undefined;
             if (paymentMethod === 'Dinheiro' && changeFor) {
                 const changeVal = parseFloat(changeFor.replace(',', '.').trim());
                 if (!isNaN(changeVal) && changeVal > amount) {
                     finalMethod = `Dinheiro (Troco para R$ ${changeVal.toFixed(2)})`;
                 }
+            } else if (paymentMethod === 'Mensalista') {
+                const phone = await prompt({
+                    title: 'Identificar Mensalista',
+                    message: 'Digite o WhatsApp do mensalista (somente números):',
+                    submitText: 'Confirmar',
+                    cancelText: 'Cancelar'
+                });
+                if (!phone) return;
+                
+                const mensalista = await getMensalistaByPhone(phone.replace(/\D/g, ''), currentUser!.restaurantId!);
+                if (!mensalista) {
+                    addToast({ message: 'Mensalista não encontrado ou inativo.', type: 'error' });
+                    return;
+                }
+                
+                finalMethod = `Mensalista (${mensalista.name})`;
+                mensalistaId = mensalista.id;
+                
+                // Update mensalista balance
+                await supabase.from('mensalistas').update({ balance: Number(mensalista.balance || 0) + amount }).eq('id', mensalista.id);
             }
 
             const entry: PaymentEntry = {
@@ -253,7 +275,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
             };
             
             // We pass the DB total price to recordOrderPayment to ensure the check is against the real total
-            const updated = await recordOrderPayment(selectedTableOrder.id, entry, newTotalPaid, dbTotalPrice);
+            const updated = await recordOrderPayment(selectedTableOrder.id, entry, newTotalPaid, dbTotalPrice, mensalistaId);
             
             setSelectedTableOrder(updated);
             setPaymentAmount('');
@@ -369,7 +391,10 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
             newItems[index] = { ...newItems[index], served: !newItems[index].served };
             
             const updated = await updateOrderDetails(selectedTableOrder.id, {
-                items: newItems
+                items: newItems,
+                totalPrice: selectedTableOrder.totalPrice,
+                subtotal: selectedTableOrder.subtotal || selectedTableOrder.totalPrice,
+                discountAmount: selectedTableOrder.discountAmount
             });
             
             setSelectedTableOrder(updated);
@@ -666,7 +691,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                             <div>
                                 <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Forma de Pagamento</label>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito'].map(m => (
+                                    {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Mensalista'].map(m => (
                                         <button 
                                             key={m}
                                             onClick={() => setPaymentMethod(m)}

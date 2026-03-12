@@ -22,6 +22,7 @@ import { NotificationProvider } from './hooks/useNotification';
 import OptimizedImage from './components/OptimizedImage';
 import OrderTracker from './components/OrderTracker';
 import CustomerOrders from './components/CustomerOrders';
+import HelpCenter from './components/HelpCenter';
 import HeaderGlobal from './components/HeaderGlobal';
 import Footer from './components/Footer';
 
@@ -347,7 +348,7 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
 };
 
 const AppContent: React.FC = () => {
-    const [view, setView] = useState<'customer' | 'login' | 'history'>('customer');
+    const [view, setView] = useState<'customer' | 'login' | 'history' | 'help'>('customer');
     const { currentUser, loading } = useAuth();
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
 
@@ -387,6 +388,7 @@ const AppContent: React.FC = () => {
         if (currentUser?.role === 'merchant' || currentUser?.role === 'waiter' || currentUser?.role === 'manager') return <OrderManagement onBack={() => setView('customer')} />;
         if (view === 'login') return <LoginScreen onLoginSuccess={() => setView('customer')} onBack={() => setView('customer')} />;
         if (view === 'history') return <CustomerOrders onBack={() => setView('customer')} />;
+        if (view === 'help') return <HelpCenter onBack={() => setView('customer')} />;
         return <CustomerView selectedRestaurant={selectedRestaurant} onSelectRestaurant={setSelectedRestaurant} />;
     };
 
@@ -400,7 +402,7 @@ const AppContent: React.FC = () => {
                 {renderContent()}
             </div>
             <OrderTracker />
-            <Footer onLoginClick={() => setView('login')} />
+            <Footer onLoginClick={() => setView('login')} onHelpClick={() => setView('help')} />
         </div>
     );
 };

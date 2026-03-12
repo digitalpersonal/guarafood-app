@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, Coupon, Order, CartItem } from '../types';
 import { useCart } from '../hooks/useCart';
 import { useNotification } from '../hooks/useNotification';
-import { checkIfMensalista } from '../services/mensalistaService';
+import { checkIfMensalista, getMensalistaByPhone } from '../services/mensalistaService';
 import { createOrder, type NewOrderData } from '../services/orderService';
 import { validateCouponByCode, fetchCouponsForRestaurant } from '../services/databaseService';
 import { supabase } from '../services/api';
@@ -156,6 +156,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [hasAvailableCoupons, setHasAvailableCoupons] = useState(false);
 
     const [isMensalista, setIsMensalista] = useState(false);
+    const [mensalistaId, setMensalistaId] = useState<string | undefined>(undefined);
     const [knownCustomers, setKnownCustomers] = useState<Record<string, { phone: string, address: any }>>({});
     const [highlightFields, setHighlightFields] = useState(false);
     const [stepTransitionLock, setStepTransitionLock] = useState(false);
@@ -251,6 +252,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setDeliveryMethod('DELIVERY');
         setStepTransitionLock(false);
         setSuccessfulOrder(null);
+        setMensalistaId(undefined);
         if (countdownIntervalRef.current) {
             clearInterval(countdownIntervalRef.current);
             countdownIntervalRef.current = null;
@@ -264,8 +266,10 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     useEffect(() => {
         const check = async () => {
             if (customerPhone.length >= 8) {
-                const isM = await checkIfMensalista(customerPhone, restaurant.id);
+                const mensalista = await getMensalistaByPhone(customerPhone, restaurant.id);
+                const isM = !!mensalista;
                 setIsMensalista(isM);
+                setMensalistaId(mensalista?.id);
                 if (isM) {
                     setPaymentMethod('Mensalista');
                 } else if (paymentMethod === 'Mensalista') {
@@ -273,6 +277,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 }
             } else {
                 setIsMensalista(false);
+                setMensalistaId(undefined);
                 if (paymentMethod === 'Mensalista') {
                     setPaymentMethod('');
                 }
@@ -439,7 +444,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             customerName, customerPhone, items: cartItems, totalPrice: Number(finalPriceWithFee), subtotal: Number(totalPrice),
             discountAmount: Number(discountAmount), couponCode: appliedCoupon?.code, deliveryFee: Number(effectiveDeliveryFee), restaurantId: restaurant.id,
             restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
-            paymentMethod: "Pix (Comprovante via WhatsApp)", customerAddress, wantsSachets
+            paymentMethod: "Pix (Comprovante via WhatsApp)", customerAddress, wantsSachets, mensalistaId
         };
         await handlePayOnDelivery(orderData);
     };
@@ -476,7 +481,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
             paymentMethod: finalPaymentMethod, customerAddress, wantsSachets,
             changeFor: !isNaN(changeValue) && changeValue > 0 ? changeValue : undefined,
-            status: paymentMethod === 'Pix' ? 'Aguardando Pagamento' : 'Novo Pedido'
+            status: paymentMethod === 'Pix' ? 'Aguardando Pagamento' : 'Novo Pedido',
+            mensalistaId
         };
 
         if (paymentMethod === 'Pix') await handlePixPayment(orderData);
