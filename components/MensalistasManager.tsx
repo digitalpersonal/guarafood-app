@@ -26,12 +26,19 @@ const MensalistasManager: React.FC = () => {
     }, [currentUser]);
 
     const loadMensalistas = async () => {
-        if (!currentUser?.restaurantId) return;
+        console.log("Loading mensalistas for restaurant:", currentUser?.restaurantId);
+        if (!currentUser?.restaurantId) {
+            console.log("No restaurantId found, stopping load.");
+            setIsLoading(false);
+            return;
+        }
         setIsLoading(true);
         try {
             const data = await fetchMensalistas(currentUser.restaurantId);
+            console.log("Mensalistas loaded:", data);
             setMensalistas(data);
         } catch (error) {
+            console.error("Error loading mensalistas:", error);
             addToast({ message: 'Erro ao carregar mensalistas', type: 'error' });
         } finally {
             setIsLoading(false);
