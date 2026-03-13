@@ -1,6 +1,8 @@
 
 
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../services/authService';
+import { supabase } from '../services/api';
 import type { Banner, Restaurant, RestaurantCategory } from '../types';
 import { 
     fetchBanners, 
@@ -28,9 +30,10 @@ interface BannerEditorModalProps {
     existingBanner: Banner | null;
     restaurants: Restaurant[];
     categories: RestaurantCategory[];
+    restaurantId: number | undefined;
 }
 
-const BannerEditorModal: React.FC<BannerEditorModalProps> = ({ isOpen, onClose, onSaveSuccess, existingBanner, restaurants, categories }) => {
+const BannerEditorModal: React.FC<BannerEditorModalProps> = ({ isOpen, onClose, onSaveSuccess, existingBanner, restaurants, categories, restaurantId }) => {
     const [formData, setFormData] = useState<Partial<Banner>>({
         title: '',
         description: '',
@@ -41,6 +44,7 @@ const BannerEditorModal: React.FC<BannerEditorModalProps> = ({ isOpen, onClose, 
         active: true
     });
     const [isSaving, setIsSaving] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const { addToast } = useNotification();
 
@@ -54,11 +58,88 @@ const BannerEditorModal: React.FC<BannerEditorModalProps> = ({ isOpen, onClose, 
                 imageUrl: '',
                 ctaText: 'Ver Mais',
                 targetType: 'category',
-                targetValue: categories.length > 0 ? categories[0].name : '',
+                targetValue: '',
                 active: true
             });
         }
-    }, [existingBanner, isOpen, categories]);
+    }, [existingBanner, isOpen]);
+
+    const compressImage = async (file: File): Promise<File> => {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.src = URL.createObjectURL(file);
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    URL.revokeObjectURL(img.src);
+                    reject(new Error("Não foi possível processar a imagem."));
+                    return;
+                }
+                const MAX_WIDTH = 1200; 
+                const MAX_HEIGHT = 600;
+                let width = img.width;
+                let height = img.height;
+                if (width > height) {
+                    if (width > MAX_WIDTH) {
+                        height *= MAX_WIDTH / width;
+                        width = MAX_WIDTH;
+                    }
+                } else {
+                    if (height > MAX_HEIGHT) {
+                        width *= MAX_HEIGHT / height;
+                        height = MAX_HEIGHT;
+                    }
+                }
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+                canvas.toBlob((blob) => {
+                    URL.revokeObjectURL(img.src);
+                    if (blob) {
+                        const compressedFile = new File([blob], "banner.jpg", { type: 'image/jpeg' });
+                        resolve(compressedFile);
+                    } else {
+                        reject(new Error("Falha na compressão."));
+                    }
+                }, 'image/jpeg', 0.7); 
+            };
+        });
+    };
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            if (!restaurantId) {
+                setError("Erro ao identificar restaurante para upload.");
+                return;
+            }
+            setIsUploading(true);
+            try {
+                const compressed = await compressImage(file);
+                const fileName = `banner-${Date.now()}.jpg`;
+                const filePath = `${restaurantId}/${fileName}`;
+
+                const { error: uploadError } = await supabase.storage
+                    .from('product-images')
+                    .upload(filePath, compressed);
+
+                if (uploadError) throw uploadError;
+
+                const { data } = supabase.storage
+                    .from('product-images')
+                    .getPublicUrl(filePath);
+
+                setFormData(prev => ({ ...prev, imageUrl: data.publicUrl }));
+                addToast({ message: 'Imagem enviada!', type: 'success' });
+            } catch (err: any) {
+                console.error(err);
+                setError('Erro ao enviar imagem.');
+            } finally {
+                setIsUploading(false);
+            }
+        }
+    };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -70,8 +151,8 @@ const BannerEditorModal: React.FC<BannerEditorModalProps> = ({ isOpen, onClose, 
         setIsSaving(true);
         setError(null);
 
-        if (!formData.title || !formData.imageUrl || !formData.targetValue) {
-            setError("Por favor preencha os campos obrigatórios.");
+        if (!formData.title || !formData.imageUrl) {
+            setError("Por favor preencha os campos obrigatórios (Título e Imagem).");
             setIsSaving(false);
             return;
         }
@@ -111,34 +192,43 @@ const BannerEditorModal: React.FC<BannerEditorModalProps> = ({ isOpen, onClose, 
                         <textarea name="description" value={formData.description} onChange={handleChange} className="w-full p-2 border rounded mt-1" placeholder="Ex: As melhores pizzas com 20% de desconto" rows={2} />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">URL da Imagem</label>
-                        <input name="imageUrl" value={formData.imageUrl} onChange={handleChange} required className="w-full p-2 border rounded mt-1" placeholder="https://..." />
+                        <label className="block text-sm font-medium text-gray-700">Imagem do Banner</label>
+                        <div className="mt-1 flex items-center gap-4">
+                            {formData.imageUrl && (
+                                <img src={formData.imageUrl} alt="Preview" className="h-16 w-16 object-cover rounded" />
+                            )}
+                            <input 
+                                type="file" 
+                                accept="image/*" 
+                                onChange={handleFileChange} 
+                                disabled={isUploading}
+                                className="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 cursor-pointer"
+                            />
+                        </div>
+                        {isUploading && <p className="text-xs text-gray-500 mt-1">Enviando...</p>}
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Texto do Botão (CTA)</label>
-                        <input name="ctaText" value={formData.ctaText} onChange={handleChange} required className="w-full p-2 border rounded mt-1" />
+                        <input name="ctaText" value={formData.ctaText} onChange={handleChange} className="w-full p-2 border rounded mt-1" />
                     </div>
                     
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700">Tipo de Link</label>
+                            <label className="block text-sm font-medium text-gray-700">Tipo de Link (Opcional)</label>
                             <select name="targetType" value={formData.targetType} onChange={handleChange} className="w-full p-2 border rounded mt-1">
                                 <option value="category">Categoria</option>
                                 <option value="restaurant">Restaurante</option>
                             </select>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700">Destino</label>
-                            <select name="targetValue" value={formData.targetValue} onChange={handleChange} className="w-full p-2 border rounded mt-1" required>
-                                <option value="" disabled>Selecione...</option>
+                            <label className="block text-sm font-medium text-gray-700">Destino (Opcional)</label>
+                            <select name="targetValue" value={formData.targetValue} onChange={handleChange} className="w-full p-2 border rounded mt-1">
+                                <option value="">Nenhum</option>
                                 {formData.targetType === 'restaurant' 
                                     ? restaurants.map(r => <option key={r.id} value={r.name}>{r.name}</option>)
                                     : categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)
                                 }
                             </select>
-                            {restaurants.length === 0 && formData.targetType === 'restaurant' && (
-                                <p className="text-xs text-red-500 mt-1">Nenhum restaurante carregado.</p>
-                            )}
                         </div>
                     </div>
 
@@ -163,6 +253,8 @@ const BannerEditorModal: React.FC<BannerEditorModalProps> = ({ isOpen, onClose, 
 
 
 const MarketingManagement: React.FC = () => {
+    const { currentUser } = useAuth();
+    const restaurantId = currentUser?.restaurantId;
     const [banners, setBanners] = useState<Banner[]>([]);
     const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
     const [categories, setCategories] = useState<RestaurantCategory[]>([]);
@@ -299,6 +391,7 @@ const MarketingManagement: React.FC = () => {
                     existingBanner={editingBanner}
                     restaurants={restaurants}
                     categories={categories}
+                    restaurantId={restaurantId}
                 />
             )}
         </div>
