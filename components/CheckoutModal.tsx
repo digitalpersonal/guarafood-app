@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, Coupon, Order, CartItem } from '../types';
 import { useCart } from '../hooks/useCart';
 import { useNotification } from '../hooks/useNotification';
-import { checkIfMensalista, getMensalistaByPhone } from '../services/mensalistaService';
+import { checkIfMensalista, getMensalistaByPhone, getMensalistaById, updateMensalista } from '../services/mensalistaService';
 import { createOrder, type NewOrderData } from '../services/orderService';
 import { validateCouponByCode, fetchCouponsForRestaurant } from '../services/databaseService';
 import { supabase } from '../services/api';
@@ -231,7 +231,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             ? [...restaurant.paymentGateways] 
             : ["Pix", "Cartão de Crédito", "Cartão de Débito", "Dinheiro"];
             
-        if (!options.includes("Mensalista")) {
+        if (restaurant.hasMensalistas && !options.includes("Mensalista")) {
             options.push("Mensalista");
         }
         return options;
@@ -421,6 +421,15 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         saveCustomerDataLocally(customerName, customerPhone, address);
 
         try {
+            if (orderData.paymentMethod === 'Mensalista' && orderData.mensalistaId) {
+                const mensalista = await getMensalistaById(orderData.mensalistaId);
+                if (mensalista) {
+                    await updateMensalista(mensalista.id, {
+                        ...mensalista,
+                        balance: mensalista.balance + orderData.totalPrice
+                    });
+                }
+            }
             const order = await createOrder(orderData);
             setSuccessfulOrder(order);
             persistOrderIdGlobally(order.id);

@@ -7,6 +7,7 @@ import CategoryManagement from './CategoryManagement';
 import MarketingManagement from './MarketingManagement';
 import MenuManagement from './MenuManagement';
 import GlobalCustomerList from './GlobalCustomerList';
+import MensalistasManager from './MensalistasManager';
 import HelpCenter from './HelpCenter';
 
 
@@ -29,7 +30,7 @@ import { fetchRestaurantsSecure, deleteRestaurant } from '../services/databaseSe
 const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { logout } = useAuth();
     const { addToast } = useNotification();
-    const [activeTab, setActiveTab] = useState<'restaurants' | 'categories' | 'marketing' | 'customers' | 'settings' | 'help'>('restaurants');
+    const [activeTab, setActiveTab] = useState<'restaurants' | 'categories' | 'marketing' | 'customers' | 'settings' | 'help' | 'mensalistas'>('restaurants');
     const [editingMenuRestaurantId, setEditingMenuRestaurantId] = useState<number | null>(null);
 
     // Se estiver editando um cardápio específico, mostra o componente de Menu
@@ -110,6 +111,8 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 return <MarketingManagement />;
             case 'customers':
                 return <GlobalCustomerList />;
+            case 'mensalistas':
+                return <MensalistasManager />;
             case 'settings':
                 return renderSettings();
             case 'help':
@@ -141,6 +144,7 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     <button onClick={() => setActiveTab('restaurants')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'restaurants' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Restaurantes</button>
                     <button onClick={() => setActiveTab('categories')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'categories' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Categorias</button>
                     <button onClick={() => setActiveTab('marketing')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'marketing' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Marketing</button>
+                    <button onClick={() => setActiveTab('mensalistas')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'mensalistas' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Mensalistas</button>
                     <button onClick={() => setActiveTab('customers')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'customers' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Clientes</button>
                     <button onClick={() => setActiveTab('settings')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'settings' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Config</button>
                     <button onClick={() => setActiveTab('help')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'help' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Ajuda</button>

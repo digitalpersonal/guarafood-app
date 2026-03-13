@@ -102,15 +102,11 @@ const BannerEditorModal: React.FC<BannerEditorModalProps> = ({ isOpen, onClose, 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
-            if (!restaurantId) {
-                setError("Erro ao identificar restaurante para upload.");
-                return;
-            }
             setIsUploading(true);
             try {
                 const compressed = await compressImage(file);
                 const fileName = `banner-${Date.now()}.jpg`;
-                const filePath = `${restaurantId}/${fileName}`;
+                const filePath = `${restaurantId || 'global'}/${fileName}`;
 
                 const { error: uploadError } = await supabase.storage
                     .from('product-images')
@@ -122,11 +118,12 @@ const BannerEditorModal: React.FC<BannerEditorModalProps> = ({ isOpen, onClose, 
                     .from('product-images')
                     .getPublicUrl(filePath);
 
+                console.log("Upload success. Public URL:", data.publicUrl);
                 setFormData(prev => ({ ...prev, imageUrl: data.publicUrl }));
                 addToast({ message: 'Imagem enviada!', type: 'success' });
             } catch (err: any) {
-                console.error(err);
-                setError('Erro ao enviar imagem.');
+                console.error("Upload error:", err);
+                setError(`Erro ao enviar imagem: ${err.message || 'Erro desconhecido'}`);
             } finally {
                 setIsUploading(false);
             }
