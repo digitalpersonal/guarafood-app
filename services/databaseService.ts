@@ -482,7 +482,7 @@ export const deleteCategory = async (restaurantId: number, name: string): Promis
 };
 
 export const updateCategoryOrder = async (restaurantId: number, categories: MenuCategory[]): Promise<void> => {
-    const updates = categories.map((cat, index) => ({ id: cat.id, restaurant_id: restaurantId, display_order: index }));
+    const updates = categories.map((cat, index) => ({ id: cat.id, name: cat.name, restaurant_id: restaurantId, display_order: index }));
     const { error } = await supabase.from('menu_categories').upsert(updates);
     handleSupabaseError({ error, customMessage: 'Failed to update category order' });
 };
