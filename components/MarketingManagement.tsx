@@ -36,11 +36,7 @@ interface BannerEditorModalProps {
 const BannerEditorModal: React.FC<BannerEditorModalProps> = ({ isOpen, onClose, onSaveSuccess, existingBanner, restaurants, categories, restaurantId }) => {
     const [formData, setFormData] = useState<Partial<Banner>>({
         title: '',
-        description: '',
         imageUrl: '',
-        ctaText: 'Ver Mais',
-        targetType: 'category',
-        targetValue: '',
         active: true
     });
     const [isSaving, setIsSaving] = useState(false);
@@ -54,11 +50,7 @@ const BannerEditorModal: React.FC<BannerEditorModalProps> = ({ isOpen, onClose, 
         } else {
             setFormData({
                 title: '',
-                description: '',
                 imageUrl: '',
-                ctaText: 'Ver Mais',
-                targetType: 'category',
-                targetValue: '',
                 active: true
             });
         }
@@ -158,11 +150,19 @@ const BannerEditorModal: React.FC<BannerEditorModalProps> = ({ isOpen, onClose, 
         }
 
         try {
+            const dataToSave = {
+                ...formData,
+                description: '',
+                ctaText: '',
+                targetType: 'category',
+                targetValue: '',
+            };
+
             if (existingBanner) {
-                await updateBanner(existingBanner.id, formData);
+                await updateBanner(existingBanner.id, dataToSave);
                 addToast({ message: 'Banner atualizado!', type: 'success' });
             } else {
-                await createBanner(formData as Omit<Banner, 'id'>);
+                await createBanner(dataToSave as Omit<Banner, 'id'>);
                 addToast({ message: 'Banner criado!', type: 'success' });
             }
             onSaveSuccess();
@@ -188,10 +188,6 @@ const BannerEditorModal: React.FC<BannerEditorModalProps> = ({ isOpen, onClose, 
                         <input name="title" value={formData.title} onChange={handleChange} required className="w-full p-2 border rounded mt-1" placeholder="Ex: Festival de Pizza" />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">Descrição</label>
-                        <textarea name="description" value={formData.description} onChange={handleChange} className="w-full p-2 border rounded mt-1" placeholder="Ex: As melhores pizzas com 20% de desconto" rows={2} />
-                    </div>
-                    <div>
                         <label className="block text-sm font-medium text-gray-700">Imagem do Banner</label>
                         <div className="mt-1 flex items-center gap-4">
                             {formData.imageUrl && (
@@ -206,30 +202,6 @@ const BannerEditorModal: React.FC<BannerEditorModalProps> = ({ isOpen, onClose, 
                             />
                         </div>
                         {isUploading && <p className="text-xs text-gray-500 mt-1">Enviando...</p>}
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Texto do Botão (CTA)</label>
-                        <input name="ctaText" value={formData.ctaText} onChange={handleChange} className="w-full p-2 border rounded mt-1" />
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Tipo de Link (Opcional)</label>
-                            <select name="targetType" value={formData.targetType} onChange={handleChange} className="w-full p-2 border rounded mt-1">
-                                <option value="category">Categoria</option>
-                                <option value="restaurant">Restaurante</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Destino (Opcional)</label>
-                            <select name="targetValue" value={formData.targetValue} onChange={handleChange} className="w-full p-2 border rounded mt-1">
-                                <option value="">Nenhum</option>
-                                {formData.targetType === 'restaurant' 
-                                    ? restaurants.map(r => <option key={r.id} value={r.name}>{r.name}</option>)
-                                    : categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)
-                                }
-                            </select>
-                        </div>
                     </div>
 
                     <div className="flex items-center mt-2">
