@@ -135,6 +135,7 @@ const BannerEditorModal: React.FC<BannerEditorModalProps> = ({ isOpen, onClose, 
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
+        console.log("handleChange:", name, value);
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
@@ -143,7 +144,10 @@ const BannerEditorModal: React.FC<BannerEditorModalProps> = ({ isOpen, onClose, 
         setIsSaving(true);
         setError(null);
 
+        console.log("Form Data:", formData);
+
         if (!formData.title || !formData.imageUrl) {
+            console.log("Validation failed. Title:", formData.title, "ImageUrl:", formData.imageUrl);
             setError("Por favor preencha os campos obrigatórios (Título e Imagem).");
             setIsSaving(false);
             return;
@@ -225,7 +229,7 @@ const BannerEditorModal: React.FC<BannerEditorModalProps> = ({ isOpen, onClose, 
 
 
 const MarketingManagement: React.FC = () => {
-    const { currentUser } = useAuth();
+    const { currentUser, loading: authLoading } = useAuth();
     const restaurantId = currentUser?.restaurantId;
     const [banners, setBanners] = useState<Banner[]>([]);
     const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
@@ -277,8 +281,10 @@ const MarketingManagement: React.FC = () => {
     };
 
     useEffect(() => {
-        loadData();
-    }, []);
+        if (!authLoading) {
+            loadData();
+        }
+    }, [authLoading]);
 
     const handleOpenModal = (banner: Banner | null) => {
         setEditingBanner(banner);
