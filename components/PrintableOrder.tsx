@@ -52,19 +52,14 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
             <style>
                 {`
                     @media print {
-                        @page {
-                            margin: 0 !important;
-                            size: ${paperSize} auto;
-                        }
                         body {
-                            margin: 0 !important;
-                            padding: 0 !important;
-                            width: ${paperSize} !important;
-                            background: #fff !important;
-                            -webkit-print-color-adjust: exact !important;
-                            print-color-adjust: exact !important;
+                            visibility: hidden;
                         }
                         #thermal-receipt-container {
+                            visibility: visible;
+                            position: absolute;
+                            left: 0;
+                            top: 0;
                             width: ${paperSize} !important;
                             margin: 0 !important;
                             padding: 0 !important;
