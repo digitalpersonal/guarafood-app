@@ -134,6 +134,10 @@ const MensalistasManager: React.FC = () => {
         <div className="p-6 bg-white rounded-3xl shadow-sm">
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tight">Mensalistas</h2>
+                <div className="text-right">
+                    <p className="text-xs text-gray-500 uppercase font-black">Total a Receber</p>
+                    <p className="text-xl font-black text-red-600">R$ {mensalistas.reduce((acc, m) => acc + m.balance, 0).toFixed(2)}</p>
+                </div>
                 <button 
                     onClick={() => setIsFormOpen(!isFormOpen)}
                     className="bg-orange-600 text-white font-black px-6 py-3 rounded-2xl hover:bg-orange-700 transition-all text-xs uppercase tracking-widest active:scale-95"

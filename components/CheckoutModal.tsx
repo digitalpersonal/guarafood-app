@@ -227,12 +227,20 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const isOpenNow = isRestaurantOpen(restaurant);
 
     const paymentOptions = useMemo(() => {
-        const options = restaurant.paymentGateways && restaurant.paymentGateways.length > 0 
+        let options = restaurant.paymentGateways && restaurant.paymentGateways.length > 0 
             ? [...restaurant.paymentGateways] 
             : ["Pix", "Cartão de Crédito", "Cartão de Débito", "Dinheiro"];
             
-        if (restaurant.hasMensalistas && !options.includes("Mensalista")) {
-            options.push("Mensalista");
+        // Remove "Fiado / Conta" if it exists
+        options = options.filter(opt => opt !== "Fiado / Conta");
+
+        // Ensure "Mensalista" is included only if enabled
+        if (restaurant.hasMensalistas) {
+            if (!options.includes("Mensalista")) {
+                options.push("Mensalista");
+            }
+        } else {
+            options = options.filter(opt => opt !== "Mensalista");
         }
         return options;
     }, [restaurant]);

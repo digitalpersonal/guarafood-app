@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
-import type { Order, OrderStatus, CartItem, StaffMember } from '../types';
+import type { Order, OrderStatus, CartItem, StaffMember, Restaurant } from '../types';
 import OrderDetailsModal from './OrderDetailsModal';
 import OrderEditorModal from './OrderEditorModal';
 import { updateOrderStatus, createOrder } from '../services/orderService';
@@ -297,9 +297,10 @@ interface OrdersViewProps {
     printerWidth?: number;
     onPrint: (order: Order) => void;
     currentStaffUser?: StaffMember | null;
+    restaurant: Restaurant | null;
 }
 
-const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPrint, currentStaffUser }) => {
+const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPrint, currentStaffUser, restaurant }) => {
     const { currentUser } = useAuth();
     const { addToast, prompt } = useNotification();
     const [searchTerm, setSearchTerm] = useState('');
@@ -628,7 +629,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                             <div>
                                 <label className="block text-xs font-black text-gray-500 uppercase mb-1">Forma de Pagamento</label>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Mensalista', 'Fiado / Conta'].map(m => (
+                                    {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Mensalista'].filter(m => m !== 'Mensalista' || restaurant?.hasMensalistas).map(m => (
                                         <button 
                                             key={m}
                                             type="button"
