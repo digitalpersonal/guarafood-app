@@ -52,6 +52,8 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
             <style>
                 {`
                     @media print {
+                        /* CONFIGURAÇÃO BLINDADA - NÃO ALTERAR */
+                        /* Esta configuração garante o alinhamento correto e evita páginas em branco. */
                         @page {
                             margin: 0 !important;
                             size: ${paperSize} auto;
@@ -73,7 +75,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                             justify-content: center !important;
                         }
                         #thermal-content {
-                            width: 95% !important; 
+                            width: ${contentWidth} !important; 
                             margin: 0 auto !important;
                             padding: 4mm 0 !important;
                             box-sizing: border-box !important;
