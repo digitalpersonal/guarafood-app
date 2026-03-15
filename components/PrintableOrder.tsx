@@ -27,12 +27,12 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
     // ÁREAS ÚTEIS SEGURAS:
     // 80mm -> Usamos 62mm de conteúdo útil
     // 58mm -> Usamos 48mm de conteúdo útil
-    const contentWidth = printerWidth === 80 ? '65mm' : '30mm';
+    const contentWidth = printerWidth === 80 ? '65mm' : '48mm';
     
-    const baseFontSize = printerWidth === 58 ? '12px' : '13px';
-    const headerFontSize = printerWidth === 58 ? '14px' : '15px';
-    const titleFontSize = printerWidth === 58 ? '18px' : '22px';
-    const smallFontSize = printerWidth === 58 ? '10px' : '11px';
+    const baseFontSize = printerWidth === 58 ? '18px' : '13px';
+    const headerFontSize = printerWidth === 58 ? '20px' : '15px';
+    const titleFontSize = printerWidth === 58 ? '26px' : '22px';
+    const smallFontSize = printerWidth === 58 ? '16px' : '11px';
     const lineHeight = printerWidth === 58 ? '1.2' : '1.1';
 
     const isPixPaid = order.paymentMethod.toLowerCase().includes('pix') && order.paymentStatus === 'paid';
@@ -52,8 +52,6 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
             <style>
                 {`
                     @media print {
-                        /* CONFIGURAÇÃO BLINDADA - NÃO ALTERAR */
-                        /* Esta configuração garante o alinhamento correto e evita páginas em branco. */
                         @page {
                             margin: 0 !important;
                             size: ${paperSize} auto;
@@ -67,22 +65,19 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                             print-color-adjust: exact !important;
                         }
                         #thermal-receipt-container {
-                            width: 100% !important;
-                            margin: 0 auto !important;
+                            width: ${paperSize} !important;
+                            margin: 0 !important;
                             padding: 0 !important;
                             background: #fff !important;
                             display: flex !important;
                             justify-content: center !important;
                         }
                         #thermal-content {
-                            width: 40mm !important; 
+                            width: 95% !important; 
                             margin: 0 auto !important;
-                            padding: 0 8mm !important;
+                            padding: 4mm 0 !important;
                             box-sizing: border-box !important;
                             background: #fff !important;
-                            overflow-x: hidden !important;
-                            transform: scale(0.9) !important;
-                            transform-origin: top center !important;
                         }
                     }
 
@@ -98,7 +93,6 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         background: #fff !important;
                         word-wrap: break-word !important;
                         overflow-wrap: break-word !important;
-                        word-break: break-all !important;
                         white-space: normal !important;
                         font-weight: 900 !important;
                     }
@@ -152,8 +146,8 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
 
                     .item-price-col {
                         text-align: right;
-                        min-width: ${printerWidth === 58 ? '40px' : '75px'};
-                        margin-left: 1mm;
+                        min-width: ${printerWidth === 58 ? '80px' : '75px'};
+                        margin-left: 2mm;
                     }
 
                     .payment-box {
