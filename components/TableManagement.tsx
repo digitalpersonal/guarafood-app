@@ -388,7 +388,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
             setPaymentAmount('');
             setChangeFor('');
             setIsPaymentModalOpen(false);
-            addToast({ message: 'Pagamento registrado!', type: 'success' });
+            addToast({ message: 'Pagamento registrado!', type: 'success', duration: 3000 });
 
             if (updated.paymentStatus === 'paid' || newTotalPaid >= dbTotalPrice - 0.01) {
                 addToast({ message: 'Conta quitada! O botão para encerrar a mesa foi liberado.', type: 'success' });
