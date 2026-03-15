@@ -16,14 +16,20 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     const [confirmOptions, setConfirmOptions] = useState<ConfirmOptions | null>(null);
     const [promptOptions, setPromptOptions] = useState<PromptOptions | null>(null);
 
-    const addToast = useCallback((options: ToastOptions) => {
-        const id = Date.now();
-        setToasts(prev => [...prev, { ...options, id }]);
-    }, []);
-
     const removeToast = useCallback((id: number) => {
         setToasts(prev => prev.filter(toast => toast.id !== id));
     }, []);
+
+    const addToast = useCallback((options: ToastOptions) => {
+        const id = Date.now();
+        setToasts(prev => [...prev, { ...options, id }]);
+        
+        // Automatic removal
+        const duration = options.duration || 3000; // Default to 3 seconds
+        setTimeout(() => {
+            removeToast(id);
+        }, duration);
+    }, [removeToast]);
 
     const confirm = useCallback((options: Omit<ConfirmOptions, 'onConfirm' | 'onCancel'>): Promise<boolean> => {
         return new Promise((resolve) => {
