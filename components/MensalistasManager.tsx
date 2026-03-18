@@ -6,7 +6,11 @@ import { Mensalista, Order } from '../types';
 import { useNotification } from '../hooks/useNotification';
 import Spinner from './Spinner';
 
-const MensalistasManager: React.FC = () => {
+interface MensalistasManagerProps {
+    restaurantId?: number;
+}
+
+const MensalistasManager: React.FC<MensalistasManagerProps> = ({ restaurantId }) => {
     const { currentUser } = useAuth();
     const { addToast, confirm, prompt } = useNotification();
     const [mensalistas, setMensalistas] = useState<Mensalista[]>([]);
@@ -21,22 +25,24 @@ const MensalistasManager: React.FC = () => {
     const [monthlyFee, setMonthlyFee] = useState('');
     const [nextPaymentDate, setNextPaymentDate] = useState(new Date().toISOString().split('T')[0]);
 
+    const effectiveRestaurantId = restaurantId || currentUser?.restaurantId;
+
     useEffect(() => {
         loadMensalistas();
-    }, [currentUser]);
+    }, [effectiveRestaurantId]);
 
     const loadMensalistas = async () => {
-        console.log("Loading mensalistas for restaurant:", currentUser?.restaurantId);
-        if (!currentUser?.restaurantId) {
+        console.log("Loading mensalistas for restaurant:", effectiveRestaurantId);
+        if (!effectiveRestaurantId) {
             console.log("No restaurantId found, stopping load.");
             setIsLoading(false);
             return;
         }
         setIsLoading(true);
         try {
-            const data = await fetchMensalistas(currentUser.restaurantId);
+            const data = await fetchMensalistas(effectiveRestaurantId);
             console.log("Mensalistas loaded:", data);
-            setMensalistas(data);
+            setMensalistas(Array.isArray(data) ? data : []);
         } catch (error) {
             console.error("Error loading mensalistas:", error);
             addToast({ message: 'Erro ao carregar mensalistas', type: 'error' });
@@ -47,11 +53,11 @@ const MensalistasManager: React.FC = () => {
 
     const handleAdd = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!currentUser?.restaurantId) return;
+        if (!effectiveRestaurantId) return;
 
         try {
             await createMensalista({
-                restaurantId: currentUser.restaurantId,
+                restaurantId: effectiveRestaurantId,
                 name,
                 phone,
                 startDate: new Date().toISOString().split('T')[0],
