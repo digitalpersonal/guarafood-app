@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../services/authService';
 import Spinner from './Spinner';
 import { Logo } from './Logo';
+import { importTokaDoPastelRestaurant } from '../utils/importTokaDoPastel';
 
 const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
@@ -164,6 +165,21 @@ const LoginScreen: React.FC<{ onLoginSuccess: () => void; onBack: () => void; }>
                             {error}
                         </div>
                     )}
+
+                    <button 
+                        type="button" 
+                        onClick={async () => {
+                            const result = await importTokaDoPastelRestaurant();
+                            if (result.success) {
+                                alert(`Restaurante Toka do Pastel criado com sucesso!\nEmail: ${result.email}\nSenha: ${result.password}`);
+                            } else {
+                                alert(`Erro ao criar restaurante: ${result.error}`);
+                            }
+                        }} 
+                        className="w-full mt-4 flex justify-center py-2 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all"
+                    >
+                        Criar Toka do Pastel (Admin)
+                    </button>
                 </div>
                 <div className="bg-gray-50 p-4 text-center border-t border-gray-100">
                     <p className="text-xs text-gray-500">
