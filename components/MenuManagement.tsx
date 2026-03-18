@@ -29,6 +29,7 @@ import {
     updateAddon,
     deleteAddon,
 } from '../services/databaseService';
+import MenuImporter from './MenuImporter';
 import Spinner from './Spinner';
 import ComboEditorModal from './ComboEditorModal';
 import MenuItemEditorModal from './MenuItemEditorModal';
@@ -734,6 +735,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                         <button onClick={handleCreateCategory} className="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 w-full sm:w-auto">
                             Criar Categoria
                         </button>
+                        <MenuImporter />
                     </div>
                 </div>
 
