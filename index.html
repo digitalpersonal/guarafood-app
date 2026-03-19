@@ -23,6 +23,17 @@
     <title>GuaraFood - Delivery da Cidade</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://aistudiocdn.com/react@^19.2.0",
+        "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+        "react/": "https://aistudiocdn.com/react@^19.2.0/",
+        "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.0",
+        "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.80.0"
+      }
+    }
+    </script>
     <style>
       :root {
         --sat: env(safe-area-inset-top);
@@ -93,6 +104,7 @@
             </div>
         </div>
     </div>
+    <script type="module" src="index.tsx"></script>
     <script>
       function hideSplash() {
         const splash = document.getElementById('splash-screen');
@@ -102,6 +114,13 @@
         }
       }
       setTimeout(hideSplash, 3000);
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('sw.js')
+            .then(reg => console.log('SW registrado'))
+            .catch(err => console.warn('SW falhou:', err.message));
+        });
+      }
     </script>
   <script type="module" src="/index.tsx"></script>
 </body>

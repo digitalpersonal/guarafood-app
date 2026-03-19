@@ -33,56 +33,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const meta = authUser.user_metadata;
       
       if (meta && meta.role && meta.name) {
-          const profile: User = {
+          return {
               id: authUser.id,
               email: authUser.email!,
               role: meta.role as Role,
               name: meta.name,
               restaurantId: meta.restaurantId,
           };
-
-          // VERIFICAÇÃO DE INTEGRIDADE: O restaurante ainda existe?
-          // Se o ID mudou (por causa de um seed), o metadado está obsoleto.
-          if (profile.restaurantId) {
-              const { data: resExists, error: resError } = await supabase
-                  .from('restaurants')
-                  .select('id')
-                  .eq('id', profile.restaurantId)
-                  .maybeSingle();
-              
-              if (resExists && !resError) return profile;
-              
-              // Se não existe, vamos tentar achar o novo ID pelo staff
-              console.warn(`Restaurant ID ${profile.restaurantId} not found. Searching for new ID...`);
-          } else {
-              return profile;
-          }
       }
       
       // Fallback para tabela profiles apenas se necessário
       const { data, error } = await supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle();
       
       if (data) {
-          const profile: User = {
+          return {
               id: data.id,
               email: authUser.email!,
               role: data.role as Role,
               name: data.name,
               restaurantId: data.restaurantId
           };
-
-          // Verifica se o restaurante do profile ainda existe
-          if (profile.restaurantId) {
-              const { data: resExists } = await supabase
-                  .from('restaurants')
-                  .select('id')
-                  .eq('id', profile.restaurantId)
-                  .maybeSingle();
-              
-              if (resExists) return profile;
-          } else {
-              return profile;
-          }
       }
 
       // 3. SENIOR MOVE: Busca na lista de staff de todos os restaurantes
@@ -97,28 +67,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const staffList = res.staff as any[];
               const member = staffList.find(s => s.email?.toLowerCase() === authUser.email?.toLowerCase() && s.active);
               if (member) {
-                  const newProfile: User = {
+                  return {
                       id: authUser.id,
                       email: authUser.email!,
                       role: member.role as Role,
                       name: member.name,
                       restaurantId: res.id
                   };
-                  
-                  // SENIOR MOVE: Atualiza os metadados para o novo ID correto
-                  // Isso evita que o erro se repita no próximo login
-                  await supabase.auth.updateUser({
-                      data: { restaurantId: res.id }
-                  });
-
-                  return newProfile;
               }
           }
       }
 
       // Se nada funcionar, mas o cara está autenticado, monta um perfil básico para não travar
-      if (authUser.email === 'admin@guarafood.com.br' || authUser.email === 'digitalpersonal@gmail.com') {
-          return { id: authUser.id, email: authUser.email!, role: 'admin', name: 'Administrador' };
+      if (authUser.email === 'admin@guarafood.com.br') {
+          return { id: authUser.id, email: authUser.email, role: 'admin', name: 'Administrador' };
       }
 
       return null;

@@ -6,11 +6,7 @@ import { Mensalista, Order } from '../types';
 import { useNotification } from '../hooks/useNotification';
 import Spinner from './Spinner';
 
-interface MensalistasManagerProps {
-    restaurantId?: number;
-}
-
-const MensalistasManager: React.FC<MensalistasManagerProps> = ({ restaurantId }) => {
+const MensalistasManager: React.FC = () => {
     const { currentUser } = useAuth();
     const { addToast, confirm, prompt } = useNotification();
     const [mensalistas, setMensalistas] = useState<Mensalista[]>([]);
@@ -25,24 +21,22 @@ const MensalistasManager: React.FC<MensalistasManagerProps> = ({ restaurantId })
     const [monthlyFee, setMonthlyFee] = useState('');
     const [nextPaymentDate, setNextPaymentDate] = useState(new Date().toISOString().split('T')[0]);
 
-    const effectiveRestaurantId = restaurantId || currentUser?.restaurantId;
-
     useEffect(() => {
         loadMensalistas();
-    }, [effectiveRestaurantId]);
+    }, [currentUser]);
 
     const loadMensalistas = async () => {
-        console.log("Loading mensalistas for restaurant:", effectiveRestaurantId);
-        if (!effectiveRestaurantId) {
+        console.log("Loading mensalistas for restaurant:", currentUser?.restaurantId);
+        if (!currentUser?.restaurantId) {
             console.log("No restaurantId found, stopping load.");
             setIsLoading(false);
             return;
         }
         setIsLoading(true);
         try {
-            const data = await fetchMensalistas(effectiveRestaurantId);
+            const data = await fetchMensalistas(currentUser.restaurantId);
             console.log("Mensalistas loaded:", data);
-            setMensalistas(Array.isArray(data) ? data : []);
+            setMensalistas(data);
         } catch (error) {
             console.error("Error loading mensalistas:", error);
             addToast({ message: 'Erro ao carregar mensalistas', type: 'error' });
@@ -53,11 +47,11 @@ const MensalistasManager: React.FC<MensalistasManagerProps> = ({ restaurantId })
 
     const handleAdd = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!effectiveRestaurantId) return;
+        if (!currentUser?.restaurantId) return;
 
         try {
             await createMensalista({
-                restaurantId: effectiveRestaurantId,
+                restaurantId: currentUser.restaurantId,
                 name,
                 phone,
                 startDate: new Date().toISOString().split('T')[0],
