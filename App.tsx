@@ -397,17 +397,12 @@ const AppContent = () => {
             <HeaderGlobal 
                 onOrdersClick={() => setView('history')} 
                 onHomeClick={() => { setView('customer'); setSelectedRestaurant(null); }} 
-                className="print:hidden"
             />
-            <div className="flex-grow relative">
+            <div className="flex-grow relative print-container">
                 {renderContent()}
             </div>
-            <div className="print:hidden">
-                <OrderTracker />
-            </div>
-            <div className="print:hidden">
-                <Footer onLoginClick={() => setView('login')} onHelpClick={() => setView('help')} />
-            </div>
+            <OrderTracker />
+            <Footer onLoginClick={() => setView('login')} onHelpClick={() => setView('help')} />
         </div>
     );
 };
