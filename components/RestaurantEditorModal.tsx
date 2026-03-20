@@ -111,22 +111,15 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
 
     useEffect(() => {
         if (existingRestaurant) {
-            const opHours = Array.isArray(existingRestaurant.operatingHours) && existingRestaurant.operatingHours.length === 7 
-                ? existingRestaurant.operatingHours.map((d, i) => (d && typeof d === 'object' ? d : { dayOfWeek: i, opens: '18:00', closes: '23:00', isOpen: false }))
-                : getDefaultOperatingHours();
-            setShowSecondShift(opHours.map(d => !!(d && d.opens2 || d && d.closes2)));
+            const opHours = existingRestaurant.operatingHours && existingRestaurant.operatingHours.length === 7 
+                ? existingRestaurant.operatingHours : getDefaultOperatingHours();
+            setShowSecondShift(opHours.map(d => !!(d.opens2 || d.closes2)));
             setFormData({
                 ...existingRestaurant,
-                mercado_pago_credentials: typeof existingRestaurant.mercado_pago_credentials === 'object' && existingRestaurant.mercado_pago_credentials !== null ? existingRestaurant.mercado_pago_credentials : { accessToken: '' },
+                mercado_pago_credentials: existingRestaurant.mercado_pago_credentials || { accessToken: '' },
                 operatingHours: opHours,
                 manualPixKey: existingRestaurant.manualPixKey || '',
-                active: existingRestaurant.active !== false,
-                paymentGateways: Array.isArray(existingRestaurant.paymentGateways) ? existingRestaurant.paymentGateways : [],
-                category: typeof existingRestaurant.category === 'string' ? existingRestaurant.category : '',
-                name: existingRestaurant.name || '',
-                address: existingRestaurant.address || '',
-                phone: existingRestaurant.phone || '',
-                deliveryFee: existingRestaurant.deliveryFee || 0,
+                active: existingRestaurant.active !== false
             });
             setLogoPreview(existingRestaurant.imageUrl);
             setChangeCredentials(false);
@@ -275,7 +268,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                                 <label key={method} className="flex items-center gap-2">
                                     <input
                                         type="checkbox"
-                                        checked={(formData.paymentGateways || []).includes(method)}
+                                        checked={formData.paymentGateways.includes(method)}
                                         onChange={(e) => {
                                             if (e.target.checked) {
                                                 setFormData(prev => ({ ...prev, paymentGateways: [...prev.paymentGateways, method] }));
@@ -316,10 +309,10 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                         <h3 className="font-bold mb-2">Funcionamento</h3>
                         {formData.operatingHours?.map((day, i) => (
                             <div key={i} className="flex items-center gap-2 mb-1 text-xs">
-                                <input type="checkbox" checked={!!day.isOpen} onChange={e => handleOperatingHoursChange(i, 'isOpen', e.target.checked)} />
+                                <input type="checkbox" checked={day.isOpen} onChange={e => handleOperatingHoursChange(i, 'isOpen', e.target.checked)} />
                                 <span className="w-20">{daysOfWeek[i]}</span>
-                                <input type="time" value={day.opens || ''} onChange={e => handleOperatingHoursChange(i, 'opens', e.target.value)} disabled={!day.isOpen} className="border rounded p-1" />
-                                <input type="time" value={day.closes || ''} onChange={e => handleOperatingHoursChange(i, 'closes', e.target.value)} disabled={!day.isOpen} className="border rounded p-1" />
+                                <input type="time" value={day.opens} onChange={e => handleOperatingHoursChange(i, 'opens', e.target.value)} disabled={!day.isOpen} className="border rounded p-1" />
+                                <input type="time" value={day.closes} onChange={e => handleOperatingHoursChange(i, 'closes', e.target.value)} disabled={!day.isOpen} className="border rounded p-1" />
                             </div>
                         ))}
                     </div>
