@@ -29,7 +29,6 @@ import {
     updateAddon,
     deleteAddon,
 } from '../services/databaseService';
-
 import Spinner from './Spinner';
 import ComboEditorModal from './ComboEditorModal';
 import MenuItemEditorModal from './MenuItemEditorModal';
@@ -98,7 +97,6 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
 
     // Category editing state
     const [editingCategory, setEditingCategory] = useState<{ id: number; oldName: string; newName: string; newIconUrl: string | null } | null>(null);
-    const [restaurantName, setRestaurantName] = useState<string | null>(null);
 
     const restaurantId = propRestaurantId || currentUser?.restaurantId;
 
@@ -112,11 +110,6 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
         }
         try {
             setIsLoading(true);
-            
-            // Fetch restaurant name to check for seeds
-            const { data: restData } = await supabase.from('restaurants').select('name').eq('id', restaurantId).single();
-            if (restData) setRestaurantName(restData.name);
-
             const [menuData, promoData, couponData, addonData] = await Promise.all([
                 fetchMenuForRestaurant(restaurantId, true), // Pass true to ignore day filter
                 fetchPromotionsForRestaurant(restaurantId),
@@ -544,7 +537,6 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
     };
 
 
-
     if (isLoading) return <Spinner message="Carregando cardápio..." />;
     if (error) return <div className="p-4 text-red-500 text-center">{error}</div>;
 
@@ -579,9 +571,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             {/* --- PROMOTIONS --- */}
             <div className="bg-white rounded-lg shadow-md p-6">
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
-                    <div className="flex items-center gap-3">
-                        <h2 className="text-2xl font-bold text-gray-800">Promoções de Itens</h2>
-                    </div>
+                    <h2 className="text-2xl font-bold text-gray-800">Promoções de Itens</h2>
                     <button onClick={() => handleOpenPromoModal()} className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 w-full sm:w-auto">
                         Criar Promoção
                     </button>
@@ -744,7 +734,6 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                         <button onClick={handleCreateCategory} className="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 w-full sm:w-auto">
                             Criar Categoria
                         </button>
-
                     </div>
                 </div>
 

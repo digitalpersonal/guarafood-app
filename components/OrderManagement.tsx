@@ -54,11 +54,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [staffList, setStaffList] = useState<StaffMember[]>([]);
     const [currentStaffUser, setCurrentStaffUser] = useState<StaffMember | null>(null);
     const [isPinPadOpen, setIsPinPadOpen] = useState(false);
-    const [isLocked, setIsLocked] = useState(false);
-
-    useEffect(() => {
-        localStorage.setItem('guarafood-panel-locked', 'false');
-    }, []);
+    const [isLocked, setIsLocked] = useState(localStorage.getItem('guarafood-panel-locked') === 'true');
 
     const lastSuccessfulSyncRef = useRef<number>(Date.now());
     const previousOrdersStatusRef = useRef<Map<string, string>>(new Map());
