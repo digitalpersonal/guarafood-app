@@ -17,17 +17,7 @@ const getDefaultOperatingHours = (): OperatingHours[] =>
     }));
 
 const ensureOperatingHours = (hours: any): OperatingHours[] => {
-    let parsedHours = hours;
-    if (typeof hours === 'string') {
-        try {
-            parsedHours = JSON.parse(hours);
-        } catch (e) {
-            return getDefaultOperatingHours();
-        }
-    }
-    if (Array.isArray(parsedHours) && parsedHours.length === 7) {
-        return parsedHours.map((d, i) => (d && typeof d === 'object' ? d : { dayOfWeek: i, opens: '18:00', closes: '23:00', isOpen: false }));
-    }
+    if (Array.isArray(hours) && hours.length === 7) return hours;
     return getDefaultOperatingHours();
 };
 
@@ -62,16 +52,7 @@ const normalizeOrder = (data: any): Order => {
 // Normalizer for public views (Masks sensitive data)
 const normalizeRestaurant = (data: any): Restaurant => {
     if (!data) return data;
-    
-    let mpCreds = data.mercado_pago_credentials;
-    if (typeof mpCreds === 'string') {
-        try { mpCreds = JSON.parse(mpCreds); } catch(e) { mpCreds = { accessToken: '' }; }
-    }
-    if (!mpCreds || typeof mpCreds !== 'object') {
-        mpCreds = { accessToken: '' };
-    }
-    
-    const hasMpToken = !!mpCreds?.accessToken && typeof mpCreds.accessToken === 'string' && mpCreds.accessToken.trim().length > 0;
+    const hasMpToken = !!data.mercado_pago_credentials?.accessToken && data.mercado_pago_credentials.accessToken.trim().length > 0;
     
     return {
         id: data.id,
@@ -106,16 +87,7 @@ const normalizeRestaurant = (data: any): Restaurant => {
 // Normalizer for Admin/Settings (Keeps sensitive data)
 const normalizeRestaurantSecure = (data: any): Restaurant => {
     if (!data) return data;
-    
-    let mpCreds = data.mercado_pago_credentials;
-    if (typeof mpCreds === 'string') {
-        try { mpCreds = JSON.parse(mpCreds); } catch(e) { mpCreds = { accessToken: '' }; }
-    }
-    if (!mpCreds || typeof mpCreds !== 'object') {
-        mpCreds = { accessToken: '' };
-    }
-    
-    const hasMpToken = !!mpCreds?.accessToken && typeof mpCreds.accessToken === 'string' && mpCreds.accessToken.trim().length > 0;
+    const hasMpToken = !!data.mercado_pago_credentials?.accessToken && data.mercado_pago_credentials.accessToken.trim().length > 0;
     
     return {
         id: data.id,
@@ -132,7 +104,7 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         closingHours: data.closing_hours,
         deliveryFee: data.delivery_fee,
         operatingHours: ensureOperatingHours(data.operating_hours),
-        mercado_pago_credentials: mpCreds,
+        mercado_pago_credentials: data.mercado_pago_credentials || { accessToken: '' },
         manualPixKey: data.manual_pix_key,
         hasPixConfigured: hasMpToken,
         active: data.active !== false,

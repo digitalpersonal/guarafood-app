@@ -54,6 +54,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [staffList, setStaffList] = useState<StaffMember[]>([]);
     const [currentStaffUser, setCurrentStaffUser] = useState<StaffMember | null>(null);
     const [isPinPadOpen, setIsPinPadOpen] = useState(false);
+    const [isLocked, setIsLocked] = useState(localStorage.getItem('guarafood-panel-locked') === 'true');
 
     const lastSuccessfulSyncRef = useRef<number>(Date.now());
     const previousOrdersStatusRef = useRef<Map<string, string>>(new Map());
@@ -97,17 +98,29 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setCurrentStaffUser(member);
         setIsPinPadOpen(false);
         
-        if (member.role !== 'manager') {
+        if (member.role === 'manager') {
+            setIsLocked(false);
+            localStorage.setItem('guarafood-panel-locked', 'false');
+        } else {
             // Waiters are always locked to the Tables tab
+            setIsLocked(true);
+            localStorage.setItem('guarafood-panel-locked', 'true');
             setActiveTab('tables');
         }
+    };
+
+    const handleLockScreen = () => {
+        setCurrentStaffUser(null);
+        setIsLocked(true);
+        localStorage.setItem('guarafood-panel-locked', 'true');
+        setActiveTab('tables');
     };
 
     const handleUnlockClick = () => {
         setIsPinPadOpen(true);
     };
 
-    // Determine visible tabs based on role
+    // Determine visible tabs based on role and lock state
     const visibleTabs = useMemo(() => {
         const allTabs = ['orders', 'tables', 'menu', 'financial', 'customers', 'staff', 'settings', 'help', 'mensalistas'] as const;
         
@@ -115,17 +128,22 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         if (currentUser?.role === 'waiter') {
             return ['tables', 'help'];
         }
+
+        // Se o painel estiver travado (Modo Garçom compartilhado), só mostra mesas
+        if (isLocked) {
+            return ['tables', 'help'];
+        }
         
         // Manager ou Merchant (Dono) vê tudo
         return restaurant?.hasMensalistas ? allTabs : allTabs.filter(t => t !== 'mensalistas');
-    }, [currentUser, restaurant]);
+    }, [currentUser, isLocked, restaurant]);
 
     // Force tab if current is not allowed
     useEffect(() => {
-        if (currentUser?.role === 'waiter' && activeTab !== 'tables') {
+        if ((isLocked || currentUser?.role === 'waiter') && activeTab !== 'tables') {
             setActiveTab('tables');
         }
-    }, [currentUser, activeTab]);
+    }, [currentUser, isLocked, activeTab]);
 
     const processOrdersUpdate = useCallback((allOrders: Order[]) => {
         const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
@@ -383,6 +401,30 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
+                    {currentUser?.role !== 'waiter' && (
+                        isLocked ? (
+                            <button 
+                                onClick={handleUnlockClick}
+                                className="flex items-center gap-2 px-3 py-2 bg-orange-100 text-orange-600 rounded-xl hover:bg-orange-200 transition-all font-black text-[10px] uppercase tracking-wider shadow-sm"
+                                title="Desbloquear Painel Completo"
+                            >
+                                <LockClosedIcon className="w-5 h-5" />
+                                Modo Garçom
+                            </button>
+                        ) : (
+                            staffList.length > 0 && (
+                                <button 
+                                    onClick={handleLockScreen}
+                                    className="p-2 rounded-lg text-gray-400 hover:text-orange-600 transition-all"
+                                    title="Ativar Modo Garçom (Restrito)"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                                    </svg>
+                                </button>
+                            )
+                        )
+                    )}
                     <button 
                         onClick={forceSync}
                         className={`p-2 rounded-lg transition-all ${connectionStatus === 'CONNECTED' ? 'text-gray-400 hover:text-orange-600' : 'text-white bg-red-500'}`}
@@ -438,10 +480,23 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
             <PinPadModal 
                 isOpen={isPinPadOpen}
-                onClose={() => setIsPinPadOpen(false)}
+                onClose={() => {
+                    // If locked and no user is set, we can't just close without login unless it's the owner cancelling the lock action?
+                    // But if we are in "Locked Mode", we must stay locked.
+                    // If we just clicked "Lock" and want to cancel, we can.
+                    if (isLocked && !currentStaffUser) {
+                        // If we are truly locked out (e.g. initial load), we might want to prevent close.
+                        // But here, 'isLocked' is just UI state.
+                        // Let's allow closing if user is the Owner (which they are if they are seeing this component).
+                        setIsPinPadOpen(false);
+                        setIsLocked(false);
+                    } else {
+                        setIsPinPadOpen(false);
+                    }
+                }}
                 staff={staffList}
                 onSuccess={handleStaffLogin}
-                title="Acesso Restrito"
+                title={isLocked ? "Desbloquear Gerente" : "Acesso Restrito"}
             />
         </div>
     );
