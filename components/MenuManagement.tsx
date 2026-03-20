@@ -29,7 +29,7 @@ import {
     updateAddon,
     deleteAddon,
 } from '../services/databaseService';
-import MenuImporter from './MenuImporter';
+
 import Spinner from './Spinner';
 import ComboEditorModal from './ComboEditorModal';
 import MenuItemEditorModal from './MenuItemEditorModal';
@@ -37,7 +37,6 @@ import PromotionEditorModal from './PromotionEditorModal';
 import CouponEditorModal from './CouponEditorModal';
 import AddonEditorModal from './AddonEditorModal';
 import { getErrorMessage, supabase } from '../services/api';
-import { seedRestaurantMenu, TOKA_DO_PASTEL_MENU, PASTELARIA_RENOVACAO_MENU } from '../utils/menuSeeds';
 
 const EditIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
@@ -100,7 +99,6 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
     // Category editing state
     const [editingCategory, setEditingCategory] = useState<{ id: number; oldName: string; newName: string; newIconUrl: string | null } | null>(null);
     const [restaurantName, setRestaurantName] = useState<string | null>(null);
-    const [isSeeding, setIsSeeding] = useState(false);
 
     const restaurantId = propRestaurantId || currentUser?.restaurantId;
 
@@ -546,36 +544,6 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
     };
 
 
-    const handleSeedMenu = async () => {
-        if (!restaurantId || !restaurantName) return;
-        
-        let seedData = null;
-        if (restaurantName.toLowerCase().includes('toka')) {
-            seedData = TOKA_DO_PASTEL_MENU;
-        } else if (restaurantName.toLowerCase().includes('renovação')) {
-            seedData = PASTELARIA_RENOVACAO_MENU;
-        }
-
-        if (!seedData) {
-            addToast({ message: 'Nenhum backup encontrado para este restaurante.', type: 'error' });
-            return;
-        }
-
-        if (!window.confirm(`Deseja restaurar o cardápio original de "${restaurantName}"? Isso adicionará as categorias e itens padrão.`)) {
-            return;
-        }
-
-        setIsSeeding(true);
-        const result = await seedRestaurantMenu(restaurantId, seedData);
-        setIsSeeding(false);
-
-        if (result.success) {
-            addToast({ message: 'Cardápio restaurado com sucesso!', type: 'success' });
-            loadData();
-        } else {
-            addToast({ message: 'Erro ao restaurar cardápio.', type: 'error' });
-        }
-    };
 
     if (isLoading) return <Spinner message="Carregando cardápio..." />;
     if (error) return <div className="p-4 text-red-500 text-center">{error}</div>;
@@ -613,15 +581,6 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
                     <div className="flex items-center gap-3">
                         <h2 className="text-2xl font-bold text-gray-800">Promoções de Itens</h2>
-                        {menuCategories.length === 0 && (restaurantName?.toLowerCase().includes('toka') || restaurantName?.toLowerCase().includes('renovação')) && (
-                            <button
-                                onClick={handleSeedMenu}
-                                disabled={isSeeding}
-                                className="flex items-center gap-2 px-3 py-1 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-all font-bold text-xs"
-                            >
-                                {isSeeding ? 'Restaurando...' : 'Restaurar Cardápio Original'}
-                            </button>
-                        )}
                     </div>
                     <button onClick={() => handleOpenPromoModal()} className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 w-full sm:w-auto">
                         Criar Promoção
@@ -785,7 +744,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                         <button onClick={handleCreateCategory} className="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 w-full sm:w-auto">
                             Criar Categoria
                         </button>
-                        <MenuImporter />
+
                     </div>
                 </div>
 

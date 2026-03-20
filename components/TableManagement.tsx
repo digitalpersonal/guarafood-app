@@ -440,11 +440,20 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
 
         // Restrição: Apenas administradores/gerentes podem cancelar mesa
         if (currentStaffUser && currentStaffUser.role !== 'manager') {
-            addToast({ 
-                message: 'Apenas o gerente pode cancelar mesas. Por favor, solicite a autorização.', 
-                type: 'warning' 
+            const pin = await prompt({
+                title: 'Autorização Necessária',
+                message: 'Digite o PIN de liberação:',
+                submitText: 'Confirmar',
+                cancelText: 'Cancelar'
             });
-            return;
+            
+            if (pin !== '1171') {
+                addToast({ 
+                    message: 'PIN incorreto.', 
+                    type: 'error' 
+                });
+                return;
+            }
         }
 
         const confirmed = await confirm({
