@@ -23,6 +23,17 @@
     <title>GuaraFood - Delivery da Cidade</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://aistudiocdn.com/react@^19.2.0",
+        "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+        "react/": "https://aistudiocdn.com/react@^19.2.0/",
+        "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.0",
+        "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.80.0"
+      }
+    }
+    </script>
     <style>
       :root {
         --sat: env(safe-area-inset-top);
@@ -72,48 +83,45 @@
 
       @media print {
         body * { visibility: hidden; }
-        #root { height: 0 !important; overflow: visible !important; }
-        #printable-order, #printable-order *, #thermal-report-closing, #thermal-report-closing * { visibility: visible !important; }
-        #printable-order, #thermal-report-closing { position: absolute; left: 0; top: 0; width: 100%; height: auto !important; }
+        /* Adicionado #thermal-report-closing para permitir impressão do fechamento */
+        #printable-order, #printable-order *, #thermal-report-closing, #thermal-report-closing * { visibility: visible; }
+        #printable-order, #thermal-report-closing { position: absolute; left: 0; top: 0; width: 100%; }
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       }
     </style>
+  <link rel="stylesheet" href="/index.css">
 </head>
   <body class="bg-gray-50">
-    <div id="splash-screen">
-        <div class="splash-logo" style="display: flex; flex-direction: column; align-items: center;">
-            <svg width="80" height="80" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="white">
-                <path d="M21 13H3c-1.103 0-2 .897-2 2v2c0 1.103.897 2 2 2h18c1.103 0 2-.897 2-2v-2c0-1.103-.897-2-2-2zM1 9V7c0-1.103.897-2 2-2h2v4H3c-1.103 0-2 .897-2 2v2h4V9H1zM19 5h2c1.103 0 2 .897 2 2v2h-4V5zM11 5h2v4h-2V5zm-4 0h2v4H7V5z"/>
-                <path d="M12 2c-4.963 0-9 4.037-9 9 0 4.148 3.037 7.6 7 8.722V21h4v-1.278c3.963-1.122 7-4.574 7-8.722 0-4.963-4.037-9-9-9zm0 16a7 7 0 1 1 0-14 7 7 0 0 1 0 14z"/>
-            </svg>
-            <h1 style="font-size: 2rem; font-weight: 800; margin-top: 1rem; letter-spacing: 0.05em;">GuaraFood</h1>
-            <p style="margin-top: 1rem; font-size: 0.8rem; opacity: 0.8;">Carregando sua fome...</p>
+    <div id="root">
+        <div id="splash-screen">
+            <div class="splash-logo" style="display: flex; flex-direction: column; align-items: center;">
+                <svg width="80" height="80" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="white">
+                    <path d="M21 13H3c-1.103 0-2 .897-2 2v2c0 1.103.897 2 2 2h18c1.103 0 2-.897 2-2v-2c0-1.103-.897-2-2-2zM1 9V7c0-1.103.897-2 2-2h2v4H3c-1.103 0-2 .897-2 2v2h4V9H1zM19 5h2c1.103 0 2 .897 2 2v2h-4V5zM11 5h2v4h-2V5zm-4 0h2v4H7V5z"/>
+                    <path d="M12 2c-4.963 0-9 4.037-9 9 0 4.148 3.037 7.6 7 8.722V21h4v-1.278c3.963-1.122 7-4.574 7-8.722 0-4.963-4.037-9-9-9zm0 16a7 7 0 1 1 0-14 7 7 0 0 1 0 14z"/>
+                </svg>
+                <h1 style="font-size: 2rem; font-weight: 800; margin-top: 1rem; letter-spacing: 0.05em;">GuaraFood</h1>
+                <p style="margin-top: 1rem; font-size: 0.8rem; opacity: 0.8;">Carregando sua fome...</p>
+            </div>
         </div>
     </div>
-
-    <div id="root"></div>
-
-    <script type="module" src="/index.tsx"></script>
+    <script type="module" src="index.tsx"></script>
     <script>
       function hideSplash() {
         const splash = document.getElementById('splash-screen');
         if (splash) {
-          splash.style.opacity = '0';
-          setTimeout(() => {
-            splash.style.display = 'none';
-          }, 500);
+          splash.classList.add('hidden');
+          splash.style.pointerEvents = 'none';
         }
       }
-      // Fallback: esconde o splash após 6 segundos se o React não carregar
-      setTimeout(hideSplash, 6000);
-      
-      window.addEventListener('load', () => {
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('/sw.js')
+      setTimeout(hideSplash, 3000);
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('sw.js')
             .then(reg => console.log('SW registrado'))
             .catch(err => console.warn('SW falhou:', err.message));
-        }
-      });
+        });
+      }
     </script>
+  <script type="module" src="/index.tsx"></script>
 </body>
 </html>

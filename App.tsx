@@ -89,7 +89,7 @@ const categoryBackgrounds: Record<string, string> = {
     'Sorvetes': 'https://images.unsplash.com/photo-1501443762994-82bd5dace89a?q=80&w=1000&auto=format&fit=crop',
 };
 
-const RestaurantMenu = ({ restaurant, onBack }: { restaurant: Restaurant, onBack: () => void }) => {
+const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> = ({ restaurant, onBack }) => {
     const [menu, setMenu] = useState<MenuCategory[]>([]);
     const [dailySpecials, setDailySpecials] = useState<MenuItem[]>([]);
     const [addons, setAddons] = useState<Addon[]>([]);
@@ -229,7 +229,7 @@ const RestaurantMenu = ({ restaurant, onBack }: { restaurant: Restaurant, onBack
     );
 };
 
-const CustomerView = ({ selectedRestaurant, onSelectRestaurant }: { selectedRestaurant: Restaurant | null; onSelectRestaurant: (r: Restaurant | null) => void }) => {
+const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRestaurant: (r: Restaurant | null) => void }> = ({ selectedRestaurant, onSelectRestaurant }) => {
     const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedCategories, setSelectedCategories] = useState<string[]>(['Todos']);
@@ -347,11 +347,10 @@ const CustomerView = ({ selectedRestaurant, onSelectRestaurant }: { selectedRest
     );
 };
 
-const AppContent = () => {
+const AppContent: React.FC = () => {
     const [view, setView] = useState<'customer' | 'login' | 'history' | 'help'>('customer');
     const { currentUser, loading } = useAuth();
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
-    const initError = getInitializationError();
 
     useEffect(() => {
         window.scrollTo(0, 0);
@@ -376,43 +375,14 @@ const AppContent = () => {
 
     // Remove Splash Screen on mount
     useEffect(() => {
-        const removeSplash = () => {
-            const splash = document.getElementById('splash-screen');
-            if (splash) {
-                splash.style.opacity = '0';
-                setTimeout(() => splash.remove(), 500);
-            }
-        };
-
-        // Tenta remover imediatamente
-        removeSplash();
-
-        // Fallback: Garante que remova mesmo se houver delay no render
-        const timeout = setTimeout(removeSplash, 2000);
-        return () => clearTimeout(timeout);
+        const splash = document.getElementById('splash-screen');
+        if (splash) {
+            splash.style.opacity = '0';
+            setTimeout(() => splash.remove(), 500);
+        }
     }, []);
 
     const renderContent = () => {
-        if (initError) {
-            return (
-                <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-6 text-center">
-                    <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full border-t-8 border-red-600">
-                        <h1 className="text-2xl font-black text-gray-800 mb-2">Erro de Configuração</h1>
-                        <p className="text-gray-600 mb-6">Não foi possível conectar ao banco de dados.</p>
-                        <div className="bg-red-50 p-4 rounded-xl text-left text-xs font-mono text-red-800 overflow-auto mb-6 max-h-40 border border-red-100">
-                            {initError.message}
-                        </div>
-                        <button 
-                            onClick={() => window.location.reload()}
-                            className="bg-red-600 text-white font-black py-4 px-6 rounded-xl hover:bg-red-700 transition-all w-full shadow-lg active:scale-95"
-                        >
-                            Tentar Novamente
-                        </button>
-                    </div>
-                </div>
-            );
-        }
-
         if (loading) return <div className="h-screen flex items-center justify-center"><Spinner /></div>;
         if (currentUser?.role === 'admin') return <AdminDashboard onBack={() => setView('customer')} />;
         if (currentUser?.role === 'merchant' || currentUser?.role === 'waiter' || currentUser?.role === 'manager') return <OrderManagement onBack={() => setView('customer')} />;
@@ -437,7 +407,7 @@ const AppContent = () => {
     );
 };
 
-const App = () => {
+const App: React.FC = () => {
     const supabaseError = getInitializationError();
     if (supabaseError) return <div className="h-screen flex items-center justify-center p-4 text-center">Erro crítico de configuração do banco de dados.</div>;
     return (

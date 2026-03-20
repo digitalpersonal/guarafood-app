@@ -54,11 +54,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [staffList, setStaffList] = useState<StaffMember[]>([]);
     const [currentStaffUser, setCurrentStaffUser] = useState<StaffMember | null>(null);
     const [isPinPadOpen, setIsPinPadOpen] = useState(false);
-    const [isLocked, setIsLocked] = useState(false);
-
-    useEffect(() => {
-        localStorage.setItem('guarafood-panel-locked', 'false');
-    }, []);
+    const [isLocked, setIsLocked] = useState(localStorage.getItem('guarafood-panel-locked') === 'true');
 
     const lastSuccessfulSyncRef = useRef<number>(Date.now());
     const previousOrdersStatusRef = useRef<Map<string, string>>(new Map());
@@ -162,7 +158,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         if (!isFirstLoadRef.current) {
             const ordersToAlert = visibleOrders.filter(order => {
                 const prevStatus = previousOrdersStatusRef.current.get(order.id);
-                const isNewDelivery = (order.status === 'Novo Pedido' || order.status === 'Aguardando Pagamento') && prevStatus !== order.status;
+                const isNewDelivery = order.status === 'Novo Pedido' && prevStatus !== 'Novo Pedido';
                 const isNewTable = order.tableNumber && !previousOrdersStatusRef.current.has(order.id);
                 return isNewDelivery || isNewTable;
             });
@@ -183,10 +179,8 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     }
                     playNotification(); 
                 }
-                
-                // AUTO-PRINT: Only for 'Novo Pedido' (Confirmed/Paid) to avoid double printing Pix orders
-                // or printing unpaid attempts.
-                if (!newestOrder.tableNumber && newestOrder.status === 'Novo Pedido') {
+                // Only auto-print delivery orders, not empty table openings
+                if (!newestOrder.tableNumber) {
                     setPrintJob({ order: newestOrder, mode: 'full' });
                 }
             }
@@ -385,14 +379,14 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     return (
         <div className="w-full min-h-screen bg-gray-50" onClick={enableAudio} onTouchStart={enableAudio}>
             <div 
-                className={`text-white text-center text-[10px] uppercase tracking-widest font-black p-1.5 cursor-pointer flex items-center justify-center gap-2 transition-all duration-500 print:hidden ${connectionStatus === 'CONNECTED' ? 'bg-green-600' : 'bg-red-600 animate-pulse'}`} 
+                className={`text-white text-center text-[10px] uppercase tracking-widest font-black p-1.5 cursor-pointer flex items-center justify-center gap-2 transition-all duration-500 ${connectionStatus === 'CONNECTED' ? 'bg-green-600' : 'bg-red-600 animate-pulse'}`} 
                 onClick={forceSync}
             >
                 <div className={`w-2.5 h-2.5 rounded-full bg-white ${connectionStatus === 'CONNECTED' ? 'opacity-100' : 'animate-ping'}`}></div>
                 {connectionStatus === 'CONNECTED' ? <span>Painel Conectado</span> : <span>Conectando...</span>}
             </div>
 
-            <header className="p-4 sticky top-0 bg-gray-50 z-20 border-b flex justify-between items-center gap-4 print:hidden">
+            <header className="p-4 sticky top-0 bg-gray-50 z-20 border-b flex justify-between items-center gap-4">
                 <div className="flex items-center space-x-4 flex-grow min-w-0">
                     <button onClick={onBack} className="bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition-colors flex-shrink-0">
                         <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
@@ -440,7 +434,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
                         </svg>
                     </button>
-                    <button onClick={() => logout()} className="flex items-center space-x-2 p-2 text-gray-500 hover:text-red-600 rounded-lg transition-colors font-bold flex-shrink-0">
+                    <button onClick={logout} className="flex items-center space-x-2 p-2 text-gray-500 hover:text-red-600 rounded-lg transition-colors font-bold flex-shrink-0">
                         <LogoutIcon className="w-6 h-6" />
                         <span className="hidden sm:inline">Sair</span>
                     </button>
@@ -448,7 +442,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             </header>
 
              {visibleTabs.length > 1 && (
-                <nav className="p-4 border-b sticky top-[95px] bg-gray-50 z-10 overflow-x-auto no-scrollbar print:hidden">
+                <nav className="p-4 border-b sticky top-[95px] bg-gray-50 z-10 overflow-x-auto no-scrollbar">
                     <div className="flex space-x-2 rounded-xl bg-gray-200 p-1 min-w-max">
                         {visibleTabs.map((tab) => {
                             const labels: Record<string, string> = { 
@@ -470,7 +464,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 </nav>
             )}
 
-            <main className="flex-grow print:hidden">{renderContent()}</main>
+            <main className="flex-grow">{renderContent()}</main>
 
             <div className="hidden print:block">
                 <div id="printable-order">

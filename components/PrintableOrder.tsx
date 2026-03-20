@@ -54,29 +54,28 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                     @media print {
                         @page {
                             margin: 0 !important;
-                            size: auto;
+                            size: ${paperSize} auto;
                         }
-                        html, body {
+                        body {
                             margin: 0 !important;
                             padding: 0 !important;
-                            height: auto !important;
-                            min-height: 0 !important;
                             width: ${paperSize} !important;
                             background: #fff !important;
-                            overflow: visible !important;
+                            -webkit-print-color-adjust: exact !important;
+                            print-color-adjust: exact !important;
                         }
                         #thermal-receipt-container {
                             width: ${paperSize} !important;
                             margin: 0 !important;
                             padding: 0 !important;
                             background: #fff !important;
-                            display: block !important;
-                            height: auto !important;
+                            display: flex !important;
+                            justify-content: center !important;
                         }
                         #thermal-content {
-                            width: 100% !important; 
-                            margin: 0 !important;
-                            padding: 1mm 0 0 0 !important;
+                            width: 95% !important; 
+                            margin: 0 auto !important;
+                            padding: 4mm 0 !important;
                             box-sizing: border-box !important;
                             background: #fff !important;
                         }
@@ -306,35 +305,12 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                                 </div>
                             )}
                             {isPixPaid && <div style={{ fontSize: smallFontSize, marginTop: '2px' }}>(PAGO PELO APP)</div>}
-                            
-                            {/* HISTÓRICO DE PAGAMENTOS E SALDO */}
-                            {order.paymentHistory && order.paymentHistory.length > 0 && (
-                                <div style={{ marginTop: '8px', borderTop: '1px solid #000', paddingTop: '4px', fontSize: smallFontSize }}>
-                                    <div style={{ fontWeight: 'bold' }}>HISTÓRICO DE PAGAMENTOS:</div>
-                                    {order.paymentHistory.map((p, i) => (
-                                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span>{new Date(p.timestamp).toLocaleDateString()} {p.method}</span>
-                                            <span>R$ {p.amount.toFixed(2)}</span>
-                                        </div>
-                                    ))}
-                                    <div style={{ marginTop: '4px', borderTop: '1px solid #000', paddingTop: '2px', fontWeight: '900', fontSize: baseFontSize }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span>TOTAL PAGO:</span>
-                                            <span>R$ {order.paymentHistory.reduce((acc, p) => acc + p.amount, 0).toFixed(2)}</span>
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#f00' }}>
-                                            <span>SALDO RESTANTE:</span>
-                                            <span>R$ {(order.totalPrice - order.paymentHistory.reduce((acc, p) => acc + p.amount, 0)).toFixed(2)}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
                         </div>
                     </>
                 )}
 
                 {/* RODAPÉ */}
-                <div style={{ textAlign: 'center', fontSize: smallFontSize, marginTop: '5px', borderTop: '1px dashed #000', paddingTop: '2px' }}>
+                <div style={{ textAlign: 'center', fontSize: smallFontSize, marginTop: '15px', borderTop: '1px dashed #000', paddingTop: '6px' }}>
                     GUARA-FOOD PDV
                 </div>
             </div>

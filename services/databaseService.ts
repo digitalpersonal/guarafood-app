@@ -2,16 +2,6 @@
 import { supabase, supabaseAnon, handleSupabaseError } from './api';
 import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory, Expense, Order, OperatingHours } from '../types';
 
-// Helper to prevent queries from hanging indefinitely
-const withTimeout = <T>(promise: PromiseLike<T>, timeoutMs: number = 10000): Promise<T> => {
-    return Promise.race([
-        Promise.resolve(promise),
-        new Promise<T>((_, reject) => 
-            setTimeout(() => reject(new Error("Database query timed out")), timeoutMs)
-        )
-    ]);
-};
-
 // ==============================================================================
 // 🔄 NORMALIZADORES (Banco de Dados -> App)
 // ==============================================================================
@@ -27,17 +17,7 @@ const getDefaultOperatingHours = (): OperatingHours[] =>
     }));
 
 const ensureOperatingHours = (hours: any): OperatingHours[] => {
-    let parsedHours = hours;
-    if (typeof hours === 'string') {
-        try {
-            parsedHours = JSON.parse(hours);
-        } catch (e) {
-            return getDefaultOperatingHours();
-        }
-    }
-    if (Array.isArray(parsedHours) && parsedHours.length === 7) {
-        return parsedHours.map((d, i) => (d && typeof d === 'object' ? d : { dayOfWeek: i, opens: '18:00', closes: '23:00', isOpen: false }));
-    }
+    if (Array.isArray(hours) && hours.length === 7) return hours;
     return getDefaultOperatingHours();
 };
 
@@ -72,16 +52,7 @@ const normalizeOrder = (data: any): Order => {
 // Normalizer for public views (Masks sensitive data)
 const normalizeRestaurant = (data: any): Restaurant => {
     if (!data) return data;
-    
-    let mpCreds = data.mercado_pago_credentials;
-    if (typeof mpCreds === 'string') {
-        try { mpCreds = JSON.parse(mpCreds); } catch(e) { mpCreds = { accessToken: '' }; }
-    }
-    if (!mpCreds || typeof mpCreds !== 'object') {
-        mpCreds = { accessToken: '' };
-    }
-    
-    const hasMpToken = !!mpCreds?.accessToken && typeof mpCreds.accessToken === 'string' && mpCreds.accessToken.trim().length > 0;
+    const hasMpToken = !!data.mercado_pago_credentials?.accessToken && data.mercado_pago_credentials.accessToken.trim().length > 0;
     
     return {
         id: data.id,
@@ -116,16 +87,7 @@ const normalizeRestaurant = (data: any): Restaurant => {
 // Normalizer for Admin/Settings (Keeps sensitive data)
 const normalizeRestaurantSecure = (data: any): Restaurant => {
     if (!data) return data;
-    
-    let mpCreds = data.mercado_pago_credentials;
-    if (typeof mpCreds === 'string') {
-        try { mpCreds = JSON.parse(mpCreds); } catch(e) { mpCreds = { accessToken: '' }; }
-    }
-    if (!mpCreds || typeof mpCreds !== 'object') {
-        mpCreds = { accessToken: '' };
-    }
-    
-    const hasMpToken = !!mpCreds?.accessToken && typeof mpCreds.accessToken === 'string' && mpCreds.accessToken.trim().length > 0;
+    const hasMpToken = !!data.mercado_pago_credentials?.accessToken && data.mercado_pago_credentials.accessToken.trim().length > 0;
     
     return {
         id: data.id,
@@ -142,7 +104,7 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         closingHours: data.closing_hours,
         deliveryFee: data.delivery_fee,
         operatingHours: ensureOperatingHours(data.operating_hours),
-        mercado_pago_credentials: mpCreds,
+        mercado_pago_credentials: data.mercado_pago_credentials || { accessToken: '' },
         manualPixKey: data.manual_pix_key,
         hasPixConfigured: hasMpToken,
         active: data.active !== false,
@@ -238,13 +200,13 @@ const normalizeRestaurantCategory = (data: any): RestaurantCategory => data;
 // ==============================================================================
 
 export const fetchRestaurants = async (): Promise<Restaurant[]> => {
-    const { data, error } = await withTimeout(supabaseAnon.from('restaurants').select('*'));
+    const { data, error } = await supabaseAnon.from('restaurants').select('*');
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants' });
     return (data || []).map(normalizeRestaurant);
 };
 
 export const fetchRestaurantsSecure = async (): Promise<Restaurant[]> => {
-    const { data, error } = await withTimeout(supabase.from('restaurants').select('*'));
+    const { data, error } = await supabase.from('restaurants').select('*');
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants (secure)' });
     return (data || []).map(normalizeRestaurantSecure);
 };
@@ -438,15 +400,15 @@ export const deleteBanner = async (id: number): Promise<void> => {
 // ==============================================================================
 
 export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilter = false): Promise<MenuCategory[]> => {
-    const { data: categoriesData, error: catError } = await withTimeout(supabaseAnon
-        .from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true }));
+    const { data: categoriesData, error: catError } = await supabaseAnon
+        .from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true });
     handleSupabaseError({ error: catError, customMessage: 'Failed to fetch menu categories' });
 
-    const { data: itemsData, error: itemError } = await withTimeout(supabaseAnon
-        .from('menu_items').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true }));
+    const { data: itemsData, error: itemError } = await supabaseAnon
+        .from('menu_items').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true });
     handleSupabaseError({ error: itemError, customMessage: 'Failed to fetch menu items' });
 
-    const { data: combosData, error: comboError } = await withTimeout(supabaseAnon.from('combos').select('*').eq('restaurant_id', restaurantId));
+    const { data: combosData, error: comboError } = await supabaseAnon.from('combos').select('*').eq('restaurant_id', restaurantId);
     handleSupabaseError({ error: comboError, customMessage: 'Failed to fetch combos' });
 
     const today = new Date().toISOString();

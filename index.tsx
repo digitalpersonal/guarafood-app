@@ -1,6 +1,5 @@
 import React, { Component, ReactNode, ErrorInfo } from 'react';
 import { createRoot } from 'react-dom/client';
-import './index.css';
 import App from './App';
 
 interface ErrorBoundaryProps {
@@ -17,6 +16,9 @@ interface ErrorBoundaryState {
  * log those errors, and display a fallback UI.
  */
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Explicitly declare the props property to resolve TypeScript error if it fails to infer from React.Component.
+  // This is usually implicitly available via `extends Component<ErrorBoundaryProps, ErrorBoundaryState>`.
+  public readonly props: Readonly<ErrorBoundaryProps>;
   // Initializing state directly as a class property (modern React/TypeScript syntax)
   // This implicitly calls super(props) with an empty constructor if none is defined,
   // or merges with a constructor's state if present.
@@ -39,18 +41,12 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
    */
   public componentDidCatch(error: any, errorInfo: ErrorInfo) {
     console.error("GuaraFood Critical Error:", error, errorInfo);
-    // Ensure splash screen is hidden if it crashes
-    if (typeof (window as any).hideSplash === 'function') {
-        (window as any).hideSplash();
-    }
   }
 
   public render(): ReactNode {
+    // FIX: Destructure `children` from `this.props` to resolve TypeScript error "Property 'props' does not exist on type 'ErrorBoundary'".
+    const { children } = this.props;
     if (this.state.hasError) {
-      // Ensure splash screen is hidden if it crashes
-      if (typeof (window as any).hideSplash === 'function') {
-          (window as any).hideSplash();
-      }
       const errorMessage = this.state.error instanceof Error ? this.state.error.message : String(this.state.error);
 
       return (
@@ -72,7 +68,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
-    return (this as any).props.children;
+    return children;
   }
 }
 

@@ -4,16 +4,16 @@ import React, { useEffect, useState, useRef } from 'react';
 import type { ToastOptions, ConfirmOptions, PromptOptions } from '../types';
 
 // --- ICONS ---
-const SuccessIcon = ({ className }: { className?: string }) => (
+const SuccessIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
 );
-const ErrorIcon = ({ className }: { className?: string }) => (
+const ErrorIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
 );
-const InfoIcon = ({ className }: { className?: string }) => (
+const InfoIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>
 );
-const WarningIcon = ({ className }: { className?: string }) => (
+const WarningIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
 );
 
@@ -53,7 +53,7 @@ const Toast: React.FC<{ options: ToastOptions; onRemove: (id: number) => void }>
 };
 
 // --- MODAL COMPONENTS ---
-const ConfirmationModal = ({ options }: { options: ConfirmOptions }) => {
+const ConfirmationModal: React.FC<{ options: ConfirmOptions }> = ({ options }) => {
     const { title, message, onConfirm, onCancel, confirmText = 'Confirm', cancelText = 'Cancel', isDestructive = false } = options;
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex justify-center items-center p-4">
@@ -69,7 +69,7 @@ const ConfirmationModal = ({ options }: { options: ConfirmOptions }) => {
     );
 };
 
-const PromptModal = ({ options }: { options: PromptOptions }) => {
+const PromptModal: React.FC<{ options: PromptOptions }> = ({ options }) => {
     const [value, setValue] = useState('');
     const { title, message, placeholder, onSubmit, onCancel, submitText = 'Submit', cancelText = 'Cancel' } = options;
     const inputRef = useRef<HTMLInputElement>(null);
@@ -114,7 +114,7 @@ interface NotificationsProps {
     promptOptions: PromptOptions | null;
 }
 
-const Notifications = ({ toasts, removeToast, confirmOptions, promptOptions }: NotificationsProps) => {
+const Notifications: React.FC<NotificationsProps> = ({ toasts, removeToast, confirmOptions, promptOptions }) => {
     return (
         <>
             <div className="fixed top-4 right-4 z-[200] space-y-2">

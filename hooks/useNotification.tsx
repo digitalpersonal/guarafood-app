@@ -11,7 +11,7 @@ interface NotificationContextType {
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
-export function NotificationProvider({ children }: { children: ReactNode }) {
+export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [toasts, setToasts] = useState<ToastOptions[]>([]);
     const [confirmOptions, setConfirmOptions] = useState<ConfirmOptions | null>(null);
     const [promptOptions, setPromptOptions] = useState<PromptOptions | null>(null);
