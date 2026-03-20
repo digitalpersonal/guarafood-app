@@ -241,7 +241,11 @@ const RestaurantSettings: React.FC = () => {
     const restaurantId = currentUser?.restaurantId;
 
     const loadData = useCallback(async () => {
-        if (!restaurantId) return;
+        if (!restaurantId) {
+            setIsLoading(false);
+            addToast({ message: 'Erro: ID do restaurante não encontrado no perfil do usuário.', type: 'error' });
+            return;
+        }
         try {
             setIsLoading(true);
             const data = await fetchRestaurantByIdSecure(restaurantId);
@@ -414,15 +418,15 @@ const RestaurantSettings: React.FC = () => {
                                 <div key={index} className="space-y-2">
                                     <div className="grid grid-cols-12 gap-2 items-center p-3 rounded-xl bg-gray-50 border border-gray-100">
                                         <div className="col-span-5 flex items-center">
-                                            <input type="checkbox" checked={day.isOpen} onChange={e => handleOperatingHoursChange(index, 'isOpen', e.target.checked)} className="h-5 w-5 mr-3" />
+                                            <input type="checkbox" checked={!!day.isOpen} onChange={e => handleOperatingHoursChange(index, 'isOpen', e.target.checked)} className="h-5 w-5 mr-3" />
                                             <span className="font-bold text-xs text-gray-700">{daysOfWeek[index]}</span>
                                         </div>
                                         <div className="col-span-3">
-                                            <input type="time" value={day.opens} onChange={e => handleOperatingHoursChange(index, 'opens', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
+                                            <input type="time" value={day.opens || ''} onChange={e => handleOperatingHoursChange(index, 'opens', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
                                         </div>
                                         <div className="col-span-1 text-center text-gray-400 font-bold text-xs">às</div>
                                         <div className="col-span-3">
-                                            <input type="time" value={day.closes} onChange={e => handleOperatingHoursChange(index, 'closes', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
+                                            <input type="time" value={day.closes || ''} onChange={e => handleOperatingHoursChange(index, 'closes', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-12 gap-2 items-center p-3 rounded-xl bg-gray-50 border border-gray-100">
