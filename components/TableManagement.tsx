@@ -864,7 +864,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                     </button>
                                 ) : (
                                     <button 
-                                        onClick={handleCloseTable}
+                                        onClick={handleCloseTableList}
                                         className="bg-green-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-green-100 hover:bg-green-700 active:scale-95 transition-all text-sm uppercase tracking-widest animate-pulse"
                                     >
                                         Encerrar Comanda

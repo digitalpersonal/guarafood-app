@@ -6,6 +6,7 @@ import RestaurantManagement from './RestaurantManagement';
 import CategoryManagement from './CategoryManagement';
 import MarketingManagement from './MarketingManagement';
 import MenuManagement from './MenuManagement';
+import RestaurantSettings from './RestaurantSettings';
 import GlobalCustomerList from './GlobalCustomerList';
 import MensalistasManager from './MensalistasManager';
 import HelpCenter from './HelpCenter';
@@ -32,6 +33,7 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { addToast } = useNotification();
     const [activeTab, setActiveTab] = useState<'restaurants' | 'categories' | 'marketing' | 'customers' | 'settings' | 'help' | 'mensalistas'>('restaurants');
     const [editingMenuRestaurantId, setEditingMenuRestaurantId] = useState<number | null>(null);
+    const [editingSettingsRestaurantId, setEditingSettingsRestaurantId] = useState<number | null>(null);
 
     // Se estiver editando um cardápio específico, mostra o componente de Menu
     if (editingMenuRestaurantId) {
@@ -39,6 +41,16 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <MenuManagement 
                 restaurantId={editingMenuRestaurantId} 
                 onBack={() => setEditingMenuRestaurantId(null)} 
+            />
+        );
+    }
+
+    // Se estiver editando as configurações de um restaurante específico
+    if (editingSettingsRestaurantId) {
+        return (
+            <RestaurantSettings 
+                restaurantIdOverride={editingSettingsRestaurantId} 
+                onBack={() => setEditingSettingsRestaurantId(null)} 
             />
         );
     }
@@ -104,7 +116,12 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const renderContent = () => {
         switch (activeTab) {
             case 'restaurants':
-                return <RestaurantManagement onEditMenu={(restaurant) => setEditingMenuRestaurantId(restaurant.id)} />;
+                return (
+                    <RestaurantManagement 
+                        onEditMenu={(restaurant) => setEditingMenuRestaurantId(restaurant.id)} 
+                        onEditSettings={(restaurant) => setEditingSettingsRestaurantId(restaurant.id)}
+                    />
+                );
             case 'categories':
                 return <CategoryManagement />;
             case 'marketing':
