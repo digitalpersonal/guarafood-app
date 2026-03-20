@@ -56,26 +56,27 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                             margin: 0 !important;
                             size: ${paperSize} auto;
                         }
-                        body {
+                        html, body {
+                            height: auto !important;
+                            min-height: 0 !important;
                             margin: 0 !important;
                             padding: 0 !important;
                             width: ${paperSize} !important;
                             background: #fff !important;
-                            -webkit-print-color-adjust: exact !important;
-                            print-color-adjust: exact !important;
+                            overflow: visible !important;
                         }
                         #thermal-receipt-container {
                             width: ${paperSize} !important;
+                            height: auto !important;
                             margin: 0 !important;
                             padding: 0 !important;
                             background: #fff !important;
-                            display: flex !important;
-                            justify-content: center !important;
+                            display: block !important;
                         }
                         #thermal-content {
-                            width: 98% !important; 
-                            margin: 0 auto !important;
-                            padding: 1mm 0 !important;
+                            width: 100% !important; 
+                            margin: 0 !important;
+                            padding: 0 !important;
                             box-sizing: border-box !important;
                             background: #fff !important;
                         }

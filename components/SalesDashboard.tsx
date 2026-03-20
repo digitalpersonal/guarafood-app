@@ -618,11 +618,20 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                 <style>{`
                     @media print {
                         @page { margin: 0 !important; size: ${printerWidth}mm auto; }
-                        body { margin: 0 !important; padding: 0 !important; width: ${printerWidth}mm !important; background: #fff !important; }
+                        html, body { 
+                            height: auto !important; 
+                            min-height: 0 !important; 
+                            margin: 0 !important; 
+                            padding: 0 !important; 
+                            width: ${printerWidth}mm !important; 
+                            background: #fff !important; 
+                            overflow: visible !important;
+                        }
                         #thermal-report-closing, #thermal-report-motoboy { 
-                            width: ${printableWidth} !important; 
-                            margin: 0 auto !important; 
-                            padding: 5mm 0 !important; 
+                            width: 100% !important; 
+                            height: auto !important;
+                            margin: 0 !important; 
+                            padding: 0 !important; 
                             font-size: 11px; 
                             line-height: 1.2; 
                             display: none; 
