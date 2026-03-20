@@ -162,7 +162,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         if (!isFirstLoadRef.current) {
             const ordersToAlert = visibleOrders.filter(order => {
                 const prevStatus = previousOrdersStatusRef.current.get(order.id);
-                const isNewDelivery = order.status === 'Novo Pedido' && prevStatus !== 'Novo Pedido';
+                const isNewDelivery = (order.status === 'Novo Pedido' || order.status === 'Aguardando Pagamento') && prevStatus !== order.status;
                 const isNewTable = order.tableNumber && !previousOrdersStatusRef.current.has(order.id);
                 return isNewDelivery || isNewTable;
             });
@@ -183,8 +183,10 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     }
                     playNotification(); 
                 }
-                // Only auto-print delivery orders, not empty table openings
-                if (!newestOrder.tableNumber) {
+                
+                // AUTO-PRINT: Only for 'Novo Pedido' (Confirmed/Paid) to avoid double printing Pix orders
+                // or printing unpaid attempts.
+                if (!newestOrder.tableNumber && newestOrder.status === 'Novo Pedido') {
                     setPrintJob({ order: newestOrder, mode: 'full' });
                 }
             }
@@ -438,7 +440,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
                         </svg>
                     </button>
-                    <button onClick={logout} className="flex items-center space-x-2 p-2 text-gray-500 hover:text-red-600 rounded-lg transition-colors font-bold flex-shrink-0">
+                    <button onClick={() => logout()} className="flex items-center space-x-2 p-2 text-gray-500 hover:text-red-600 rounded-lg transition-colors font-bold flex-shrink-0">
                         <LogoutIcon className="w-6 h-6" />
                         <span className="hidden sm:inline">Sair</span>
                     </button>

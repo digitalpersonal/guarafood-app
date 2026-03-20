@@ -259,9 +259,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const logout = useCallback(async () => {
-      await supabase.auth.signOut();
-      localStorage.removeItem(USER_STORAGE_KEY);
-      setCurrentUser(null);
+      try {
+          await supabase.auth.signOut();
+      } catch (e) {
+          console.warn("Error during signOut:", e);
+      } finally {
+          localStorage.removeItem(USER_STORAGE_KEY);
+          setCurrentUser(null);
+          // Force a clean state by reloading
+          window.location.href = '/';
+      }
   }, []);
 
   const value = useMemo(() => ({

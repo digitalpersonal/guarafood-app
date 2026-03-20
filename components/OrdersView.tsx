@@ -230,6 +230,11 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                         PIX PAGO
                     </span>
                 )}
+                {!isPixPaid && order.paymentMethod.toLowerCase().includes('pix') && order.status === 'Aguardando Pagamento' && (
+                    <span className="bg-yellow-100 text-yellow-800 text-[10px] font-bold px-1.5 py-0.5 rounded border border-yellow-200 shadow-sm animate-pulse">
+                        AGUARDANDO PIX
+                    </span>
+                )}
                 <span className="block font-bold text-sm text-gray-900">R$ {order.totalPrice.toFixed(2)}</span>
             </div>
 
@@ -432,8 +437,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
 
     const { activeOrders, historyOrders, groupedActiveOrders, groupedHistoryOrders } = useMemo(() => {
         const active = filteredOrders.filter(o => 
-            ['Novo Pedido', 'Preparando', 'A Caminho'].includes(o.status) && 
-            o.status !== 'Aguardando Pagamento'
+            ['Aguardando Pagamento', 'Novo Pedido', 'Preparando', 'A Caminho'].includes(o.status)
         );
         
         const history = filteredOrders.filter(o => ['Entregue', 'Cancelado'].includes(o.status));
@@ -454,6 +458,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
     }, [filteredOrders]);
 
     const activeSections = [
+        { title: 'Pendentes', status: 'Aguardando Pagamento' as OrderStatus, bgColor: 'bg-gray-50' },
         { title: 'Novos', status: 'Novo Pedido' as OrderStatus, bgColor: 'bg-blue-50' },
         { title: 'Cozinha', status: 'Preparando' as OrderStatus, bgColor: 'bg-yellow-50' },
         { title: 'Entrega/Retirada', status: 'A Caminho' as OrderStatus, bgColor: 'bg-orange-50' },
