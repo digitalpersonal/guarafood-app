@@ -96,17 +96,36 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const handleStaffLogin = (member: StaffMember) => {
         setCurrentStaffUser(member);
         setIsPinPadOpen(false);
+        
+        if (member.role !== 'manager') {
+            // Waiters are always locked to the Tables tab
+            setActiveTab('tables');
+        }
+    };
+
+    const handleUnlockClick = () => {
+        setIsPinPadOpen(true);
     };
 
     // Determine visible tabs based on role
     const visibleTabs = useMemo(() => {
         const allTabs = ['orders', 'tables', 'menu', 'financial', 'customers', 'staff', 'settings', 'help', 'mensalistas'] as const;
         
+        // Se o usuário logado for garçom, ele só vê mesas
+        if (currentUser?.role === 'waiter') {
+            return ['tables', 'help'];
+        }
+        
         // Manager ou Merchant (Dono) vê tudo
         return restaurant?.hasMensalistas ? allTabs : allTabs.filter(t => t !== 'mensalistas');
     }, [currentUser, restaurant]);
 
-
+    // Force tab if current is not allowed
+    useEffect(() => {
+        if (currentUser?.role === 'waiter' && activeTab !== 'tables') {
+            setActiveTab('tables');
+        }
+    }, [currentUser, activeTab]);
 
     const processOrdersUpdate = useCallback((allOrders: Order[]) => {
         const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
@@ -422,7 +441,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 onClose={() => setIsPinPadOpen(false)}
                 staff={staffList}
                 onSuccess={handleStaffLogin}
-                title="Acesso"
+                title="Acesso Restrito"
             />
         </div>
     );
