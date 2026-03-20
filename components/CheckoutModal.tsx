@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, Coupon, Order, CartItem } from '../types';
 import { useCart } from '../hooks/useCart';
 import { useNotification } from '../hooks/useNotification';
-import { checkIfMensalista, getMensalistaByPhone, getMensalistaById, updateMensalista } from '../services/mensalistaService';
+import { checkIfMensalista, getMensalistaByPhone } from '../services/mensalistaService';
 import { createOrder, type NewOrderData } from '../services/orderService';
 import { validateCouponByCode, fetchCouponsForRestaurant } from '../services/databaseService';
 import { supabase } from '../services/api';
@@ -227,20 +227,12 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const isOpenNow = isRestaurantOpen(restaurant);
 
     const paymentOptions = useMemo(() => {
-        let options = restaurant.paymentGateways && restaurant.paymentGateways.length > 0 
+        const options = restaurant.paymentGateways && restaurant.paymentGateways.length > 0 
             ? [...restaurant.paymentGateways] 
             : ["Pix", "Cartão de Crédito", "Cartão de Débito", "Dinheiro"];
             
-        // Remove "Fiado / Conta" if it exists
-        options = options.filter(opt => opt !== "Fiado / Conta");
-
-        // Ensure "Mensalista" is included only if enabled
-        if (restaurant.hasMensalistas) {
-            if (!options.includes("Mensalista")) {
-                options.push("Mensalista");
-            }
-        } else {
-            options = options.filter(opt => opt !== "Mensalista");
+        if (!options.includes("Mensalista")) {
+            options.push("Mensalista");
         }
         return options;
     }, [restaurant]);
@@ -429,15 +421,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         saveCustomerDataLocally(customerName, customerPhone, address);
 
         try {
-            if (orderData.paymentMethod === 'Mensalista' && orderData.mensalistaId) {
-                const mensalista = await getMensalistaById(orderData.mensalistaId);
-                if (mensalista) {
-                    await updateMensalista(mensalista.id, {
-                        ...mensalista,
-                        balance: mensalista.balance + orderData.totalPrice
-                    });
-                }
-            }
             const order = await createOrder(orderData);
             setSuccessfulOrder(order);
             persistOrderIdGlobally(order.id);

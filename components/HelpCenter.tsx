@@ -97,41 +97,37 @@ const HelpCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             content: (
                 <div className="space-y-6">
                     <section>
-                        <h4 className="font-black text-gray-800 mb-2">1. Abrindo uma Mesa</h4>
+                        <h4 className="font-black text-gray-800 mb-2">Abrindo uma Mesa</h4>
                         <p className="text-sm text-gray-600">Clique em uma mesa livre, informe o nome do cliente e adicione os itens iniciais. A mesa ficará com o status "Ocupada".</p>
                     </section>
                     <section>
-                        <h4 className="font-black text-gray-800 mb-2">2. Comandas Individuais</h4>
-                        <p className="text-sm text-gray-600">Dentro de uma mesa, você pode abrir múltiplas comandas para diferentes clientes. Isso permite que cada um pague o que consumiu separadamente.</p>
+                        <h4 className="font-black text-gray-800 mb-2">Adicionando Itens</h4>
+                        <p className="text-sm text-gray-600">Você pode adicionar novos itens à mesa a qualquer momento. O sistema mantém o histórico de tudo o que foi pedido.</p>
                     </section>
                     <section>
-                        <h4 className="font-black text-gray-800 mb-2">3. Comandas por Peso</h4>
-                        <p className="text-sm text-gray-600">Ideal para self-service ou buffet. Ao adicionar um item por peso, o sistema solicita o valor em KG (ex: 0.450) e calcula automaticamente o preço com base no valor do quilo configurado no restaurante.</p>
-                    </section>
-                    <section>
-                        <h4 className="font-black text-gray-800 mb-2">4. Fechamento e Pagamento</h4>
-                        <p className="text-sm text-gray-600">Ao solicitar a conta, você pode registrar pagamentos parciais ou o total. O sistema aceita Dinheiro, Pix, Cartões e <strong>Mensalista</strong>.</p>
+                        <h4 className="font-black text-gray-800 mb-2">Fechamento e Pagamento</h4>
+                        <p className="text-sm text-gray-600">Ao solicitar a conta, você pode registrar pagamentos parciais (ex: um cliente paga sua parte) ou o total. O sistema aceita Dinheiro, Pix, Cartões e <strong>Mensalista</strong>.</p>
                     </section>
                 </div>
             )
         },
         {
             id: 'mensalistas',
-            title: 'Mensalistas',
+            title: 'Mensalistas (Vendedores)',
             icon: '🤝',
             content: (
                 <div className="space-y-6">
                     <section>
                         <h4 className="font-black text-gray-800 mb-2">O que são?</h4>
-                        <p className="text-sm text-gray-600">São clientes cadastrados (como funcionários de lojas vizinhas) que consomem diariamente e pagam o total acumulado no final do mês.</p>
+                        <p className="text-sm text-gray-600">São clientes especiais (como vendedores de lojas vizinhas) que consomem diariamente e pagam tudo de uma vez no final do mês.</p>
                     </section>
                     <section>
                         <h4 className="font-black text-gray-800 mb-2">Como usar?</h4>
                         <ol className="list-decimal list-inside text-sm text-gray-600 space-y-2">
-                            <li>Cadastre o mensalista na aba "Mensalistas".</li>
-                            <li>Ao realizar um pedido (delivery ou mesa), selecione a opção de pagamento "Mensalista" e identifique o cliente.</li>
-                            <li>O valor é somado ao saldo devedor do cliente automaticamente.</li>
-                            <li>Para receber, acesse o painel de Mensalistas, veja o total devido e registre o pagamento para zerar ou abater o saldo.</li>
+                            <li>Cadastre o mensalista com nome e WhatsApp.</li>
+                            <li>Ao fazer um pedido, informe o WhatsApp dele.</li>
+                            <li>O valor será somado ao "Saldo Devedor" do mensalista.</li>
+                            <li>No final do mês, acesse o painel de Mensalistas para ver o total e registrar o pagamento (baixa no saldo).</li>
                         </ol>
                     </section>
                 </div>

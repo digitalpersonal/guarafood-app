@@ -4,7 +4,7 @@ import type { Order, CartItem, MenuItem, Combo, Addon } from '../types';
 import { useNotification } from '../hooks/useNotification';
 import { updateOrderDetails } from '../services/orderService';
 import { getMensalistaByPhone } from '../services/mensalistaService';
-import { fetchMenuForRestaurant, fetchAddonsForRestaurant, fetchRestaurantByIdSecure } from '../services/databaseService';
+import { fetchMenuForRestaurant, fetchAddonsForRestaurant } from '../services/databaseService';
 import Spinner from './Spinner';
 import OptimizedImage from './OptimizedImage';
 import AddItemToOrderModal from './AddItemToOrderModal';
@@ -56,21 +56,6 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
     const [isAcaiModalOpen, setIsAcaiModalOpen] = useState(false);
     const [isGenericModalOpen, setIsGenericModalOpen] = useState(false);
     const [itemToCustomize, setItemToCustomize] = useState<MenuItem | null>(null);
-    const [hasMensalistas, setHasMensalistas] = useState(false);
-
-    useEffect(() => {
-        const fetchRestaurant = async () => {
-            try {
-                const rest = await fetchRestaurantByIdSecure(restaurantId);
-                if (rest) {
-                    setHasMensalistas(rest.hasMensalistas || false);
-                }
-            } catch (error) {
-                console.error("Error fetching restaurant:", error);
-            }
-        };
-        fetchRestaurant();
-    }, [restaurantId]);
 
     useEffect(() => {
         if (isOpen) {
@@ -345,7 +330,7 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                         <div className="space-y-2">
                             <label className="block text-xs font-black text-gray-500 uppercase">Forma de Pagamento</label>
                             <div className="grid grid-cols-2 gap-2">
-                                {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Mensalista'].filter(m => m !== 'Mensalista' || hasMensalistas).map(m => (
+                                {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Mensalista', 'Fiado / Conta'].map(m => (
                                     <button 
                                         key={m}
                                         type="button"

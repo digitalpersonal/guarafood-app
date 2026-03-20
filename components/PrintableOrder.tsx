@@ -69,11 +69,11 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                             margin: 0 !important;
                             padding: 0 !important;
                             background: #fff !important;
-                            display: flex !important;
-                            justify-content: center !important;
+                            display: flex;
+                            justify-content: center;
                         }
                         #thermal-content {
-                            width: 95% !important; 
+                            width: ${contentWidth} !important; 
                             margin: 0 auto !important;
                             padding: 4mm 0 !important;
                             box-sizing: border-box !important;

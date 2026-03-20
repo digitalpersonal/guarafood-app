@@ -3,14 +3,13 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { subscribeToOrders, fetchOrders } from '../services/orderService';
 import { useAuth } from '../services/authService'; 
 import { fetchRestaurantByIdSecure } from '../services/databaseService';
-import type { Order, StaffMember, CartItem, Restaurant } from '../types';
+import type { Order, StaffMember, CartItem } from '../types';
 import OrdersView from './OrdersView';
 import MenuManagement from './MenuManagement';
 import RestaurantSettings from './RestaurantSettings';
 import PrintableOrder from './PrintableOrder';
 import TableManagement from './TableManagement';
 import StaffManagement from './StaffManagement';
-import MensalistasManager from './MensalistasManager';
 import PinPadModal from './PinPadModal';
 import HelpCenter from './HelpCenter';
 import { useSound } from '../hooks/useSound';
@@ -38,9 +37,8 @@ const CustomerList = React.lazy(() => import('./CustomerList'));
 
 const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { currentUser, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'help' | 'mensalistas'>('orders');
+    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'help'>('orders');
     const [orders, setOrders] = useState<Order[]>([]);
-    const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
     const [printJob, setPrintJob] = useState<{ 
         order: Order, 
         mode: 'full' | 'kitchen', 
@@ -74,7 +72,6 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             try {
                 const rest = await fetchRestaurantByIdSecure(currentUser.restaurantId);
                 if (rest) {
-                    setRestaurant(rest);
                     if (rest.printerWidth) {
                         setPrinterWidth(rest.printerWidth);
                         localStorage.setItem('guarafood-printer-width', rest.printerWidth.toString());
@@ -122,7 +119,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     // Determine visible tabs based on role and lock state
     const visibleTabs = useMemo(() => {
-        const allTabs = ['orders', 'tables', 'menu', 'financial', 'customers', 'staff', 'settings', 'help', 'mensalistas'] as const;
+        const allTabs = ['orders', 'tables', 'menu', 'financial', 'customers', 'staff', 'settings', 'help'] as const;
         
         // Se o usuário logado for garçom, ele só vê mesas
         if (currentUser?.role === 'waiter') {
@@ -135,8 +132,8 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }
         
         // Manager ou Merchant (Dono) vê tudo
-        return restaurant?.hasMensalistas ? allTabs : allTabs.filter(t => t !== 'mensalistas');
-    }, [currentUser, isLocked, restaurant]);
+        return allTabs;
+    }, [currentUser, isLocked]);
 
     // Force tab if current is not allowed
     useEffect(() => {
@@ -352,9 +349,9 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const renderContent = () => {
         switch (activeTab) {
             case 'orders':
-                return <OrdersView orders={orders} printerWidth={printerWidth} onPrint={handleManualPrint} currentStaffUser={currentStaffUser} restaurant={restaurant} />;
+                return <OrdersView orders={orders} printerWidth={printerWidth} onPrint={handleManualPrint} currentStaffUser={currentStaffUser} />;
             case 'tables':
-                return <TableManagement orders={orders} currentStaffUser={currentStaffUser} onPrint={handleManualPrint} restaurant={restaurant} />;
+                return <TableManagement orders={orders} currentStaffUser={currentStaffUser} onPrint={handleManualPrint} />;
             case 'menu': return <MenuManagement />;
             case 'financial':
                 return (
@@ -369,7 +366,6 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     </React.Suspense>
                 );
             case 'staff': return <StaffManagement />;
-            case 'mensalistas': return <MensalistasManager />;
             case 'settings': return <RestaurantSettings />;
             case 'help': return <HelpCenter onBack={() => setActiveTab('orders')} />;
             default: return null;
@@ -448,7 +444,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             const labels: Record<string, string> = { 
                                 orders: 'Pedidos', tables: 'Mesas', menu: 'Cardápio', 
                                 financial: 'Financeiro', customers: 'Clientes', staff: 'Equipe', 
-                                settings: 'Config', help: 'Ajuda', mensalistas: 'Mensalistas'
+                                settings: 'Config', help: 'Ajuda'
                             };
                             return (
                                 <button 

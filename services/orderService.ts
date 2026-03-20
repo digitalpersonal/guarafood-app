@@ -108,21 +108,6 @@ export const fetchOrders = async (restaurantId?: number, options?: { limit?: num
     return (data || []).map(normalizeOrder);
 };
 
-export const fetchOrdersByMensalistaId = async (mensalistaId: string): Promise<Order[]> => {
-    const { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('mensalista_id', mensalistaId)
-        .order('timestamp', { ascending: false });
-    
-    if (error) {
-        handleSupabaseError({ error, customMessage: 'Failed to fetch orders for mensalista' });
-        return [];
-    }
-    
-    return (data || []).map(normalizeOrder);
-};
-
 export interface NewOrderData {
     customerName: string;
     customerPhone: string;

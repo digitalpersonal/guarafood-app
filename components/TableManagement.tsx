@@ -32,6 +32,7 @@ const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
 );
 
+import PrintableOrder from './PrintableOrder';
 
 interface TableManagementProps {
     orders: Order[];
@@ -303,31 +304,25 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
         setTableOrders([]);
     };
 
-    const triggerKitchenPrint = async (order: Order) => {
-        // Filter only items not yet printed for kitchen
-        const unprintedItems = order.items.filter(item => !printedItems.has(`${order.id}-${item.name}-${item.price}`));
-        if (unprintedItems.length === 0) {
-            addToast({ message: 'Todos os itens já foram enviados para a cozinha.', type: 'info' });
-            return;
-        }
-        try {
-            await requestKitchenPrint(order.id, unprintedItems);
-            addToast({ message: 'Pedido enviado para a impressora da cozinha.', type: 'success' });
+    const triggerKitchenPrint = (order: Order) => {
+        if (onPrint) {
+            // Filter only items not yet printed for kitchen
+            const unprintedItems = order.items.filter(item => !printedItems.has(`${order.id}-${item.name}-${item.price}`));
+            if (unprintedItems.length === 0) {
+                addToast({ message: 'Todos os itens já foram enviados para a cozinha.', type: 'info' });
+                return;
+            }
+            onPrint(order, 'kitchen', unprintedItems);
             // Mark as printed locally
             const newPrinted = new Set(printedItems);
             unprintedItems.forEach(item => newPrinted.add(`${order.id}-${item.name}-${item.price}`));
             setPrintedItems(newPrinted);
-        } catch (e: any) {
-            addToast({ message: `Erro ao enviar para cozinha: ${e.message}`, type: 'error' });
         }
     };
 
-    const triggerBillPrint = async (order: Order) => {
-        try {
-            await requestBillPrint(order.id);
-            addToast({ message: 'Conta enviada para impressão.', type: 'success' });
-        } catch (e: any) {
-            addToast({ message: `Erro ao enviar conta para impressão: ${e.message}`, type: 'error' });
+    const triggerBillPrint = (order: Order) => {
+        if (onPrint) {
+            onPrint(order, 'full');
         }
     };
 
@@ -388,7 +383,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
             setPaymentAmount('');
             setChangeFor('');
             setIsPaymentModalOpen(false);
-            addToast({ message: 'Pagamento registrado!', type: 'success', duration: 3000 });
+            addToast({ message: 'Pagamento registrado!', type: 'success' });
 
             if (updated.paymentStatus === 'paid' || newTotalPaid >= dbTotalPrice - 0.01) {
                 addToast({ message: 'Conta quitada! O botão para encerrar a mesa foi liberado.', type: 'success' });
