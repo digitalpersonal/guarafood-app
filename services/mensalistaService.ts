@@ -8,7 +8,7 @@ export const fetchMensalistas = async (restaurantId: number): Promise<Mensalista
     .eq('restaurant_id', restaurantId);
 
   if (error) throw error;
-  return data.map(m => ({
+  return (data || []).map(m => ({
     ...m,
     restaurantId: m.restaurant_id,
     startDate: m.start_date,
