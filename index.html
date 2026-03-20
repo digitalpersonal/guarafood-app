@@ -71,26 +71,10 @@
       }
 
       @media print {
-        html, body, #root, .container, .flex-grow, .print-container { 
-          height: auto !important; 
-          min-height: 0 !important; 
-          margin: 0 !important; 
-          padding: 0 !important; 
-          overflow: visible !important;
-          display: block !important;
-          position: relative !important;
-        }
         body * { visibility: hidden; }
-        /* Adicionado #thermal-report-closing para permitir impressão do fechamento */
-        #printable-order, #printable-order *, #thermal-report-closing, #thermal-report-closing * { visibility: visible; }
-        #printable-order, #thermal-report-closing { 
-          position: relative !important; 
-          display: block !important;
-          width: 100% !important; 
-          height: auto !important;
-          margin: 0 !important;
-          padding: 0 !important;
-        }
+        #root { height: 0 !important; overflow: visible !important; }
+        #printable-order, #printable-order *, #thermal-report-closing, #thermal-report-closing * { visibility: visible !important; }
+        #printable-order, #thermal-report-closing { position: absolute; left: 0; top: 0; width: 100%; height: auto !important; }
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       }
     </style>
