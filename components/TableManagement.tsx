@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Order, CartItem, PaymentEntry, StaffMember, Restaurant } from '../types';
-import { createOrder, recordOrderPayment, updateOrderStatus, fetchOpenTableOrder, fetchOpenTableOrders, requestKitchenPrint, requestBillPrint, markPrintJobAsDone, updateOrderDetails } from '../services/orderService';
+import { createOrder, recordOrderPayment, deleteOrderPayment, updateOrderStatus, fetchOpenTableOrder, fetchOpenTableOrders, requestKitchenPrint, requestBillPrint, markPrintJobAsDone, updateOrderDetails } from '../services/orderService';
 import { getMensalistaByPhone } from '../services/mensalistaService';
 import { fetchRestaurantByIdSecure } from '../services/databaseService';
 import { supabase } from '../services/api';
@@ -48,6 +48,8 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
     const [selectedTableOrder, setSelectedTableOrder] = useState<Order | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+    const [isConfirmationModalOpen, setIsConfirmationModalOpen] = useState(false);
+    const [pendingPayment, setPendingPayment] = useState<{ amount: number; method: string } | null>(null);
     const [paymentAmount, setPaymentAmount] = useState('');
     const [changeFor, setChangeFor] = useState('');
     const [paymentMethod, setPaymentMethod] = useState('Dinheiro');
@@ -336,73 +338,47 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
         const amount = parseFloat(paymentAmount);
         if (isNaN(amount) || amount <= 0) return;
 
-        try {
-            // Fetch fresh order data to ensure we have the latest total price and history
-            const { data: latestOrderRaw, error: fetchError } = await supabase.from('orders').select('*').eq('id', selectedTableOrder.id).single();
-            
-            if (fetchError || !latestOrderRaw) {
-                throw new Error('Falha ao buscar dados atualizados do pedido.');
+        let finalMethod = paymentMethod;
+        if (paymentMethod === 'Dinheiro' && changeFor) {
+            const changeVal = parseFloat(changeFor.replace(',', '.').trim());
+            if (!isNaN(changeVal) && changeVal > amount) {
+                finalMethod = `Dinheiro (Troco para R$ ${changeVal.toFixed(2)})`;
             }
-
-            const dbTotalPrice = latestOrderRaw.total_price;
-            const dbHistory = latestOrderRaw.payment_history || latestOrderRaw.payment_details?.history || [];
+        } else if (paymentMethod === 'Mensalista') {
+            const phone = await prompt({
+                title: 'Identificar Mensalista',
+                message: 'Digite o WhatsApp do mensalista (somente números):',
+                submitText: 'Confirmar',
+                cancelText: 'Cancelar'
+            });
+            if (!phone) return;
             
-            const currentPaid = dbHistory.reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
-            const newTotalPaid = currentPaid + amount;
-
-            let finalMethod = paymentMethod;
-            let mensalistaId: string | undefined = undefined;
-            if (paymentMethod === 'Dinheiro' && changeFor) {
-                const changeVal = parseFloat(changeFor.replace(',', '.').trim());
-                if (!isNaN(changeVal) && changeVal > amount) {
-                    finalMethod = `Dinheiro (Troco para R$ ${changeVal.toFixed(2)})`;
-                }
-            } else if (paymentMethod === 'Mensalista') {
-                const phone = await prompt({
-                    title: 'Identificar Mensalista',
-                    message: 'Digite o WhatsApp do mensalista (somente números):',
-                    submitText: 'Confirmar',
-                    cancelText: 'Cancelar'
-                });
-                if (!phone) return;
-                
-                const mensalista = await getMensalistaByPhone(phone.replace(/\D/g, ''), currentUser!.restaurantId!);
-                if (!mensalista) {
-                    addToast({ message: 'Mensalista não encontrado ou inativo.', type: 'error' });
-                    return;
-                }
-                
-                finalMethod = `Mensalista (${mensalista.name})`;
-                mensalistaId = mensalista.id;
+            const mensalista = await getMensalistaByPhone(phone.replace(/\D/g, ''), currentUser!.restaurantId!);
+            if (!mensalista) {
+                addToast({ message: 'Mensalista não encontrado ou inativo.', type: 'error' });
+                return;
             }
-
-            const entry: PaymentEntry = {
-                amount,
-                method: finalMethod,
-                timestamp: new Date().toISOString()
-            };
             
-            const updated = await recordOrderPayment(selectedTableOrder.id, entry, newTotalPaid, dbTotalPrice, mensalistaId);
-            
-            setSelectedTableOrder(updated);
-            setPaymentAmount('');
-            setChangeFor('');
-            setIsPaymentModalOpen(false);
-            addToast({ message: 'Pagamento registrado!', type: 'success', duration: 3000 });
-
-            if (updated.paymentStatus === 'paid' || newTotalPaid >= dbTotalPrice - 0.01) {
-                addToast({ message: 'Conta quitada! O botão para encerrar a mesa foi liberado.', type: 'success' });
-            }
-        } catch (e: any) {
-            console.error("Payment error:", e);
-            addToast({ message: `Erro ao processar pagamento: ${e.message || 'Erro desconhecido'}`, type: 'error' });
+            finalMethod = `Mensalista (${mensalista.name})`;
         }
+
+        setPendingPayment({ amount, method: finalMethod });
+        setIsConfirmationModalOpen(true);
+        setIsPaymentModalOpen(false);
     };
 
     const handleQuickPayment = async (method: string) => {
         if (!selectedTableOrder || balance <= 0) return;
         
         const amount = balance;
+        setPendingPayment({ amount, method });
+        setIsConfirmationModalOpen(true);
+    };
+
+    const confirmPayment = async () => {
+        if (!selectedTableOrder || !pendingPayment) return;
+        
+        const { amount, method } = pendingPayment;
         const entry: PaymentEntry = {
             amount,
             method,
@@ -425,27 +401,32 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
             if (newTotalPaid >= dbTotalPrice - 0.01) {
                 addToast({ message: 'Conta quitada!', type: 'success' });
             }
+            setIsConfirmationModalOpen(false);
+            setPendingPayment(null);
         } catch (e: any) {
             addToast({ message: `Erro: ${e.message}`, type: 'error' });
         }
     };
 
-    const handleCloseTable = async () => {
+    const handleDeletePayment = async (index: number) => {
         if (!selectedTableOrder) return;
         
-        const totalPaid = (selectedTableOrder.paymentHistory || []).reduce((acc, p) => acc + p.amount, 0);
-        const balance = selectedTableOrder.totalPrice - totalPaid;
+        const confirmed = await confirm({
+            title: 'Excluir Pagamento',
+            message: 'Tem certeza que deseja excluir este pagamento?',
+            confirmText: 'Sim, Excluir',
+            cancelText: 'Cancelar',
+            isDestructive: true
+        });
 
-        if (selectedTableOrder.items.length > 0 && balance > 0.01) {
-            addToast({ message: 'Não é possível encerrar a mesa com saldo pendente. Por favor, registre o pagamento.', type: 'warning' });
-            return;
-        }
-        try {
-             await updateOrderStatus(selectedTableOrder.id, 'Entregue');
-             addToast({ message: 'Comanda encerrada com sucesso!', type: 'success' });
-             setSelectedTableOrder(null);
-        } catch (e: any) {
-             addToast({ message: `Erro ao encerrar mesa: ${e.message}`, type: 'error' });
+        if (confirmed) {
+            try {
+                const updated = await deleteOrderPayment(selectedTableOrder.id, index);
+                setSelectedTableOrder(updated);
+                addToast({ message: 'Pagamento excluído!', type: 'success' });
+            } catch (e: any) {
+                addToast({ message: `Erro ao excluir pagamento: ${e.message}`, type: 'error' });
+            }
         }
     };
 
@@ -800,7 +781,12 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                                     <span className="font-black text-emerald-800 text-xs">{p.method}</span>
                                                     <span className="text-[9px] text-emerald-600/70">{new Date(p.timestamp).toLocaleTimeString()}</span>
                                                 </div>
-                                                <span className="font-black text-emerald-700">R$ {p.amount.toFixed(2)}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-black text-emerald-700">R$ {p.amount.toFixed(2)}</span>
+                                                    <button onClick={() => handleDeletePayment(i)} className="text-red-500 hover:text-red-700">
+                                                        <TrashIcon className="w-4 h-4" />
+                                                    </button>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
