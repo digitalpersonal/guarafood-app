@@ -2,6 +2,16 @@
 import { supabase, supabaseAnon, handleSupabaseError } from './api';
 import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory, Expense, Order, OperatingHours } from '../types';
 
+// Helper to prevent queries from hanging indefinitely
+const withTimeout = <T>(promise: PromiseLike<T>, timeoutMs: number = 10000): Promise<T> => {
+    return Promise.race([
+        Promise.resolve(promise),
+        new Promise<T>((_, reject) => 
+            setTimeout(() => reject(new Error("Database query timed out")), timeoutMs)
+        )
+    ]);
+};
+
 // ==============================================================================
 // 🔄 NORMALIZADORES (Banco de Dados -> App)
 // ==============================================================================
@@ -228,13 +238,13 @@ const normalizeRestaurantCategory = (data: any): RestaurantCategory => data;
 // ==============================================================================
 
 export const fetchRestaurants = async (): Promise<Restaurant[]> => {
-    const { data, error } = await supabaseAnon.from('restaurants').select('*');
+    const { data, error } = await withTimeout(supabaseAnon.from('restaurants').select('*'));
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants' });
     return (data || []).map(normalizeRestaurant);
 };
 
 export const fetchRestaurantsSecure = async (): Promise<Restaurant[]> => {
-    const { data, error } = await supabase.from('restaurants').select('*');
+    const { data, error } = await withTimeout(supabase.from('restaurants').select('*'));
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants (secure)' });
     return (data || []).map(normalizeRestaurantSecure);
 };
@@ -428,15 +438,15 @@ export const deleteBanner = async (id: number): Promise<void> => {
 // ==============================================================================
 
 export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilter = false): Promise<MenuCategory[]> => {
-    const { data: categoriesData, error: catError } = await supabaseAnon
-        .from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true });
+    const { data: categoriesData, error: catError } = await withTimeout(supabaseAnon
+        .from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true }));
     handleSupabaseError({ error: catError, customMessage: 'Failed to fetch menu categories' });
 
-    const { data: itemsData, error: itemError } = await supabaseAnon
-        .from('menu_items').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true });
+    const { data: itemsData, error: itemError } = await withTimeout(supabaseAnon
+        .from('menu_items').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true }));
     handleSupabaseError({ error: itemError, customMessage: 'Failed to fetch menu items' });
 
-    const { data: combosData, error: comboError } = await supabaseAnon.from('combos').select('*').eq('restaurant_id', restaurantId);
+    const { data: combosData, error: comboError } = await withTimeout(supabaseAnon.from('combos').select('*').eq('restaurant_id', restaurantId));
     handleSupabaseError({ error: comboError, customMessage: 'Failed to fetch combos' });
 
     const today = new Date().toISOString();

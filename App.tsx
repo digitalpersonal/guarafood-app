@@ -351,6 +351,7 @@ const AppContent = () => {
     const [view, setView] = useState<'customer' | 'login' | 'history' | 'help'>('customer');
     const { currentUser, loading } = useAuth();
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
+    const initError = getInitializationError();
 
     useEffect(() => {
         window.scrollTo(0, 0);
@@ -375,14 +376,43 @@ const AppContent = () => {
 
     // Remove Splash Screen on mount
     useEffect(() => {
-        const splash = document.getElementById('splash-screen');
-        if (splash) {
-            splash.style.opacity = '0';
-            setTimeout(() => splash.remove(), 500);
-        }
+        const removeSplash = () => {
+            const splash = document.getElementById('splash-screen');
+            if (splash) {
+                splash.style.opacity = '0';
+                setTimeout(() => splash.remove(), 500);
+            }
+        };
+
+        // Tenta remover imediatamente
+        removeSplash();
+
+        // Fallback: Garante que remova mesmo se houver delay no render
+        const timeout = setTimeout(removeSplash, 2000);
+        return () => clearTimeout(timeout);
     }, []);
 
     const renderContent = () => {
+        if (initError) {
+            return (
+                <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-6 text-center">
+                    <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full border-t-8 border-red-600">
+                        <h1 className="text-2xl font-black text-gray-800 mb-2">Erro de Configuração</h1>
+                        <p className="text-gray-600 mb-6">Não foi possível conectar ao banco de dados.</p>
+                        <div className="bg-red-50 p-4 rounded-xl text-left text-xs font-mono text-red-800 overflow-auto mb-6 max-h-40 border border-red-100">
+                            {initError.message}
+                        </div>
+                        <button 
+                            onClick={() => window.location.reload()}
+                            className="bg-red-600 text-white font-black py-4 px-6 rounded-xl hover:bg-red-700 transition-all w-full shadow-lg active:scale-95"
+                        >
+                            Tentar Novamente
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
         if (loading) return <div className="h-screen flex items-center justify-center"><Spinner /></div>;
         if (currentUser?.role === 'admin') return <AdminDashboard onBack={() => setView('customer')} />;
         if (currentUser?.role === 'merchant' || currentUser?.role === 'waiter' || currentUser?.role === 'manager') return <OrderManagement onBack={() => setView('customer')} />;

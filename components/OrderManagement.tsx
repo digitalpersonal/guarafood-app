@@ -383,14 +383,14 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     return (
         <div className="w-full min-h-screen bg-gray-50" onClick={enableAudio} onTouchStart={enableAudio}>
             <div 
-                className={`text-white text-center text-[10px] uppercase tracking-widest font-black p-1.5 cursor-pointer flex items-center justify-center gap-2 transition-all duration-500 ${connectionStatus === 'CONNECTED' ? 'bg-green-600' : 'bg-red-600 animate-pulse'}`} 
+                className={`text-white text-center text-[10px] uppercase tracking-widest font-black p-1.5 cursor-pointer flex items-center justify-center gap-2 transition-all duration-500 print:hidden ${connectionStatus === 'CONNECTED' ? 'bg-green-600' : 'bg-red-600 animate-pulse'}`} 
                 onClick={forceSync}
             >
                 <div className={`w-2.5 h-2.5 rounded-full bg-white ${connectionStatus === 'CONNECTED' ? 'opacity-100' : 'animate-ping'}`}></div>
                 {connectionStatus === 'CONNECTED' ? <span>Painel Conectado</span> : <span>Conectando...</span>}
             </div>
 
-            <header className="p-4 sticky top-0 bg-gray-50 z-20 border-b flex justify-between items-center gap-4">
+            <header className="p-4 sticky top-0 bg-gray-50 z-20 border-b flex justify-between items-center gap-4 print:hidden">
                 <div className="flex items-center space-x-4 flex-grow min-w-0">
                     <button onClick={onBack} className="bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition-colors flex-shrink-0">
                         <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
@@ -446,7 +446,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             </header>
 
              {visibleTabs.length > 1 && (
-                <nav className="p-4 border-b sticky top-[95px] bg-gray-50 z-10 overflow-x-auto no-scrollbar">
+                <nav className="p-4 border-b sticky top-[95px] bg-gray-50 z-10 overflow-x-auto no-scrollbar print:hidden">
                     <div className="flex space-x-2 rounded-xl bg-gray-200 p-1 min-w-max">
                         {visibleTabs.map((tab) => {
                             const labels: Record<string, string> = { 
@@ -468,7 +468,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 </nav>
             )}
 
-            <main className="flex-grow">{renderContent()}</main>
+            <main className="flex-grow print:hidden">{renderContent()}</main>
 
             <div className="hidden print:block">
                 <div id="printable-order">

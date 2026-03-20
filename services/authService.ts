@@ -138,7 +138,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     window.addEventListener('auth:session-expired', handleSessionExpired);
 
     setLoading(true);
+    
+    // SAFETY TIMEOUT: Se o Supabase demorar mais de 8 segundos para responder, 
+    // liberamos o carregamento para não travar o usuário na tela de splash.
+    const safetyTimeout = setTimeout(() => {
+        if (loading) {
+            console.warn("Auth initialization taking too long. Releasing loading state.");
+            setLoading(false);
+        }
+    }, 8000);
+
     supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      clearTimeout(safetyTimeout);
       if (error) {
         console.warn("Session check error:", error.message);
         if (error.message.includes("Refresh Token") || error.message.includes("refresh_token")) {

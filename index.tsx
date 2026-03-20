@@ -16,7 +16,7 @@ interface ErrorBoundaryState {
  * ErrorBoundary component to catch JavaScript errors anywhere in its child component tree,
  * log those errors, and display a fallback UI.
  */
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   // Initializing state directly as a class property (modern React/TypeScript syntax)
   // This implicitly calls super(props) with an empty constructor if none is defined,
   // or merges with a constructor's state if present.
@@ -39,12 +39,18 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
    */
   public componentDidCatch(error: any, errorInfo: ErrorInfo) {
     console.error("GuaraFood Critical Error:", error, errorInfo);
+    // Ensure splash screen is hidden if it crashes
+    if (typeof (window as any).hideSplash === 'function') {
+        (window as any).hideSplash();
+    }
   }
 
   public render(): ReactNode {
-    // FIX: Destructure `children` from `this.props` to resolve TypeScript error "Property 'props' does not exist on type 'ErrorBoundary'".
-    const { children } = (this as any).props;
     if (this.state.hasError) {
+      // Ensure splash screen is hidden if it crashes
+      if (typeof (window as any).hideSplash === 'function') {
+          (window as any).hideSplash();
+      }
       const errorMessage = this.state.error instanceof Error ? this.state.error.message : String(this.state.error);
 
       return (
@@ -66,7 +72,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
       );
     }
 
-    return children;
+    return (this as any).props.children;
   }
 }
 
