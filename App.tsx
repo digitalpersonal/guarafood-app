@@ -89,7 +89,7 @@ const categoryBackgrounds: Record<string, string> = {
     'Sorvetes': 'https://images.unsplash.com/photo-1501443762994-82bd5dace89a?q=80&w=1000&auto=format&fit=crop',
 };
 
-const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> = ({ restaurant, onBack }) => {
+const RestaurantMenu = ({ restaurant, onBack }: { restaurant: Restaurant, onBack: () => void }) => {
     const [menu, setMenu] = useState<MenuCategory[]>([]);
     const [dailySpecials, setDailySpecials] = useState<MenuItem[]>([]);
     const [addons, setAddons] = useState<Addon[]>([]);
@@ -229,7 +229,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     );
 };
 
-const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRestaurant: (r: Restaurant | null) => void }> = ({ selectedRestaurant, onSelectRestaurant }) => {
+const CustomerView = ({ selectedRestaurant, onSelectRestaurant }: { selectedRestaurant: Restaurant | null; onSelectRestaurant: (r: Restaurant | null) => void }) => {
     const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedCategories, setSelectedCategories] = useState<string[]>(['Todos']);
@@ -347,7 +347,7 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
     );
 };
 
-const AppContent: React.FC = () => {
+const AppContent = () => {
     const [view, setView] = useState<'customer' | 'login' | 'history' | 'help'>('customer');
     const { currentUser, loading } = useAuth();
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
@@ -407,7 +407,7 @@ const AppContent: React.FC = () => {
     );
 };
 
-const App: React.FC = () => {
+const App = () => {
     const supabaseError = getInitializationError();
     if (supabaseError) return <div className="h-screen flex items-center justify-center p-4 text-center">Erro crítico de configuração do banco de dados.</div>;
     return (

@@ -1,5 +1,6 @@
 import React, { Component, ReactNode, ErrorInfo } from 'react';
 import { createRoot } from 'react-dom/client';
+import './index.css';
 import App from './App';
 
 interface ErrorBoundaryProps {
@@ -15,10 +16,7 @@ interface ErrorBoundaryState {
  * ErrorBoundary component to catch JavaScript errors anywhere in its child component tree,
  * log those errors, and display a fallback UI.
  */
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Explicitly declare the props property to resolve TypeScript error if it fails to infer from React.Component.
-  // This is usually implicitly available via `extends Component<ErrorBoundaryProps, ErrorBoundaryState>`.
-  public readonly props: Readonly<ErrorBoundaryProps>;
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   // Initializing state directly as a class property (modern React/TypeScript syntax)
   // This implicitly calls super(props) with an empty constructor if none is defined,
   // or merges with a constructor's state if present.
@@ -45,7 +43,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   public render(): ReactNode {
     // FIX: Destructure `children` from `this.props` to resolve TypeScript error "Property 'props' does not exist on type 'ErrorBoundary'".
-    const { children } = this.props;
+    const { children } = (this as any).props;
     if (this.state.hasError) {
       const errorMessage = this.state.error instanceof Error ? this.state.error.message : String(this.state.error);
 

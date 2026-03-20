@@ -783,7 +783,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                             pixData ? (
                                 <>
                                     <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="PIX" className="w-48 h-48 mx-auto my-2 border-4 border-gray-700 p-1 rounded-lg" />
-                                    <button type="button" onClick={() => { navigator.clipboard.writeText(pixData.qrCode); addToast({ message: 'Código copiado!', type: 'success' }); }} className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg my-2 w-full max-xs shadow-lg flex justify-center items-center gap-2 active:scale-95 transition-all"><ClipboardIcon className="w-5 h-5"/>Copiar Código</button>
+                                    <button type="button" onClick={() => { navigator.clipboard.writeText(pixData.qrCode); addToast({ message: 'Código copiado!', type: 'success' }); }} className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg my-2 w-full max-w-xs shadow-lg flex justify-center items-center gap-2 active:scale-95 transition-all"><ClipboardIcon className="w-5 h-5"/>Copiar Código</button>
                                     <p className="text-2xl font-bold text-orange-600 mt-2">R$ {Number(finalPriceWithFee).toFixed(2)}</p>
                                     <div className="mt-4 text-[10px] font-bold text-gray-500">Tempo restante: {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}</div>
                                 </>

@@ -181,122 +181,104 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
                         </div>
                     )}
 
-                    {freePool.length > 0 && (
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <div className="flex flex-col mb-4 sticky top-0 bg-white z-10 pb-2 border-b">
-                                <div className="flex justify-between items-center mb-2">
-                                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                                        <span className="bg-purple-100 text-purple-700 w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold">2</span>
-                                        Itens Inclusos
-                                        <span className="bg-gray-100 text-gray-500 text-[10px] px-2 py-0.5 rounded-full border border-gray-200">
-                                            {currentFreeCount}/{freeAddonCountLimit}
-                                        </span>
-                                    </h3>
+                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                        <h3 className="font-bold text-gray-800 mb-4 text-lg border-b pb-2">Adicionais</h3>
+                        
+                        {freePool.length > 0 && (
+                            <div className="mb-6">
+                                <div className="flex flex-col mb-4 sticky top-0 bg-white z-10 pb-2">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <h4 className="font-bold text-gray-700 flex items-center gap-2">
+                                            Itens Inclusos
+                                            <span className="bg-gray-100 text-gray-500 text-[10px] px-2 py-0.5 rounded-full border border-gray-200">
+                                                {currentFreeCount}/{freeAddonCountLimit}
+                                            </span>
+                                        </h4>
+                                        {freeAddonCountLimit > 0 && (
+                                            <span className={`text-[11px] font-black uppercase tracking-tight ${remainingFree > 0 ? 'text-green-600' : 'text-purple-600 animate-pulse'}`}>
+                                                {remainingFree > 0 ? `Restam ${remainingFree}` : 'Tudo pronto!'}
+                                            </span>
+                                        )}
+                                    </div>
                                     {freeAddonCountLimit > 0 && (
-                                        <span className={`text-[11px] font-black uppercase tracking-tight ${remainingFree > 0 ? 'text-green-600' : 'text-purple-600 animate-pulse'}`}>
-                                            {remainingFree > 0 ? `Restam ${remainingFree}` : 'Tudo pronto!'}
-                                        </span>
+                                        <div className="relative w-full h-2 bg-gray-100 rounded-full overflow-hidden border border-gray-200">
+                                            <div 
+                                                className={`h-full transition-all duration-500 ease-out ${
+                                                    isLimitReached ? 'bg-gradient-to-r from-green-400 to-green-600' : 'bg-gradient-to-r from-purple-400 to-purple-600'
+                                                }`} 
+                                                style={{ width: `${progressPercent}%` }}
+                                            />
+                                        </div>
                                     )}
                                 </div>
-                                {freeAddonCountLimit > 0 && (
-                                    <div className="relative w-full h-3 bg-gray-100 rounded-full overflow-hidden border border-gray-200">
-                                        <div 
-                                            className={`h-full transition-all duration-500 ease-out ${
-                                                isLimitReached ? 'bg-gradient-to-r from-green-400 to-green-600' : 'bg-gradient-to-r from-purple-400 to-purple-600'
-                                            }`} 
-                                            style={{ width: `${progressPercent}%` }}
-                                        >
-                                            {progressPercent > 15 && (
-                                                <div className="w-full h-full flex items-center justify-end pr-2">
-                                                    <div className="w-1 h-1 bg-white/40 rounded-full animate-ping"></div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                                <p className="text-[10px] text-gray-400 mt-2 italic">
-                                    {isLimitReached 
-                                        ? "Você atingiu o limite de itens inclusos para este tamanho." 
-                                        : `Selecione até ${freeAddonCountLimit} itens sem custo adicional.`}
-                                </p>
-                            </div>
 
-                            <div className="grid grid-cols-1 gap-2">
-                                {freePool.map(addon => {
-                                    const isSelected = selectedAddonIds.has(addon.id);
-                                    const isDisabled = !isSelected && isLimitReached;
-                                    
-                                    return (
-                                     <label key={addon.id} className={`flex items-center justify-between p-3 border rounded-xl transition-all ${
-                                         isDisabled ? 'opacity-40 bg-gray-50 cursor-not-allowed border-gray-100' : 'cursor-pointer hover:bg-purple-50/30'
-                                     } ${isSelected ? 'bg-purple-50 border-purple-400 ring-1 ring-purple-400 shadow-sm' : 'border-gray-200'}`}>
-                                        <div className="flex items-center gap-3 w-full">
-                                            <div className={`w-6 h-6 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all ${
-                                                isSelected ? 'bg-purple-600 border-purple-600 scale-110' : 'border-gray-300 bg-white'
-                                            }`}>
-                                                {isSelected && <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
-                                            </div>
-                                            <input
-                                                type="checkbox"
-                                                checked={isSelected}
-                                                onChange={() => handleAddonToggle(addon)}
-                                                disabled={isDisabled}
-                                                className="hidden"
-                                            />
-                                            <div className="flex flex-col">
-                                                <span className={`font-bold text-sm ${isSelected ? 'text-purple-900' : 'text-gray-700'}`}>{addon.name}</span>
-                                                <span className="text-[10px] text-green-600 font-bold uppercase tracking-wider">Incluso</span>
-                                            </div>
-                                        </div>
-                                    </label>
-                                )})}
-                            </div>
-                        </div>
-                    )}
-
-                    {paidPool.length > 0 && (
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                                    <span className="bg-purple-100 text-purple-700 w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold">{freePool.length > 0 ? 3 : 2}</span>
-                                    Turbinar (Extras)
-                                </h3>
-                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Opcional</span>
-                            </div>
-                            <div className="grid grid-cols-1 gap-2">
-                                {paidPool.map(addon => {
-                                    const isSelected = selectedAddonIds.has(addon.id);
-                                    
-                                    return (
-                                     <label key={addon.id} className={`flex items-center justify-between p-3 border rounded-xl cursor-pointer transition-all ${
-                                         isSelected ? 'bg-orange-50 border-orange-400 ring-1 ring-orange-400 shadow-sm' : 'hover:bg-orange-50/20 border-gray-200'
-                                     }`}>
-                                        <div className="flex items-center gap-3">
-                                            <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
-                                                isSelected ? 'bg-orange-500 border-orange-500 scale-110' : 'border-gray-300 bg-white'
-                                            }`}>
-                                                {isSelected && <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
-                                            </div>
-                                            <input
-                                                type="checkbox"
-                                                checked={isSelected}
-                                                onChange={() => handleAddonToggle(addon)}
-                                                className="hidden"
-                                            />
-                                            <div className="flex flex-col">
-                                                <span className={`font-bold text-sm ${isSelected ? 'text-orange-900' : 'text-gray-700'}`}>{addon.name}</span>
-                                                <span className="text-[10px] text-orange-600 font-bold uppercase tracking-wider">+ Sabor</span>
-                                            </div>
-                                        </div>
+                                <div className="grid grid-cols-1 gap-2">
+                                    {freePool.map(addon => {
+                                        const isSelected = selectedAddonIds.has(addon.id);
+                                        const isDisabled = !isSelected && isLimitReached;
                                         
-                                        <div className={`px-3 py-1 rounded-full text-xs font-black ${isSelected ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600'}`}>
-                                            + R$ {Number(addon.price).toFixed(2)}
-                                        </div>
-                                    </label>
-                                )})}
+                                        return (
+                                            <label key={addon.id} className={`flex items-center justify-between p-3 border rounded-xl transition-all ${
+                                                isDisabled ? 'opacity-40 bg-gray-50 cursor-not-allowed border-gray-100' : 'cursor-pointer hover:bg-purple-50/30'
+                                            } ${isSelected ? 'bg-purple-50 border-purple-400 ring-1 ring-purple-400 shadow-sm' : 'border-gray-200'}`}>
+                                                <div className="flex items-center gap-3 w-full">
+                                                    <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all ${
+                                                        isSelected ? 'bg-purple-600 border-purple-600' : 'border-gray-300 bg-white'
+                                                    }`}>
+                                                        {isSelected && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                                    </div>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={() => handleAddonToggle(addon)}
+                                                        disabled={isDisabled}
+                                                        className="hidden"
+                                                    />
+                                                    <span className={`font-bold text-sm ${isSelected ? 'text-purple-900' : 'text-gray-700'}`}>{addon.name}</span>
+                                                </div>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        )}
+
+                        {paidPool.length > 0 && (
+                            <div>
+                                <h4 className="font-bold text-gray-700 mb-3">Turbinar (Extras)</h4>
+                                <div className="grid grid-cols-1 gap-2">
+                                    {paidPool.map(addon => {
+                                        const isSelected = selectedAddonIds.has(addon.id);
+                                        
+                                        return (
+                                            <label key={addon.id} className={`flex items-center justify-between p-3 border rounded-xl cursor-pointer transition-all ${
+                                                isSelected ? 'bg-orange-50 border-orange-400 ring-1 ring-orange-400 shadow-sm' : 'hover:bg-orange-50/20 border-gray-200'
+                                            }`}>
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all ${
+                                                        isSelected ? 'bg-orange-500 border-orange-500' : 'border-gray-300 bg-white'
+                                                    }`}>
+                                                        {isSelected && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                                    </div>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={() => handleAddonToggle(addon)}
+                                                        className="hidden"
+                                                    />
+                                                    <span className={`font-bold text-sm ${isSelected ? 'text-orange-900' : 'text-gray-700'}`}>{addon.name}</span>
+                                                </div>
+                                                
+                                                <div className={`px-2 py-0.5 rounded text-[10px] font-black ${isSelected ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                                                    + R$ {Number(addon.price).toFixed(2)}
+                                                </div>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </div>
 
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                         <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">

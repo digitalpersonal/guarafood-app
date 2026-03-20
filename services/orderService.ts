@@ -263,6 +263,54 @@ export const recordOrderPayment = async (orderId: string, payment: PaymentEntry,
     return normalizeOrder(data);
 };
 
+export const deleteOrderPayment = async (orderId: string, paymentIndex: number): Promise<Order> => {
+    // Busca o histórico atual
+    const { data: currentOrder } = await supabase.from('orders').select('payment_history, payment_details, total_price, mensalista_id').eq('id', orderId).single();
+    
+    const history = currentOrder?.payment_history || currentOrder?.payment_details?.history || [];
+    const paymentToDelete = history[paymentIndex];
+    
+    if (!paymentToDelete) throw new Error('Pagamento não encontrado.');
+
+    const newHistory = history.filter((_: any, i: number) => i !== paymentIndex);
+    
+    const newTotalPaid = newHistory.reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
+    const originalTotal = currentOrder.total_price;
+    
+    const isFullyPaid = newTotalPaid >= originalTotal - 0.01;
+    const paymentStatus = newTotalPaid <= 0 ? 'pending' : (isFullyPaid ? 'paid' : 'partial');
+
+    const updateData: any = { 
+        payment_history: newHistory,
+        payment_status: paymentStatus
+    };
+
+    // Also update payment_details for backward compatibility if needed
+    if (currentOrder?.payment_details) {
+        updateData.payment_details = {
+            ...currentOrder.payment_details,
+            history: newHistory
+        };
+    }
+
+    if (currentOrder.mensalista_id) {
+        // Adjust mensalista balance
+        const { data: mensalista } = await supabase.from('mensalistas').select('balance').eq('id', currentOrder.mensalista_id).single();
+        if (mensalista) {
+            await supabase.from('mensalistas').update({ balance: Number(mensalista.balance || 0) - paymentToDelete.amount }).eq('id', currentOrder.mensalista_id);
+        }
+    }
+
+    const { data, error } = await supabase.from('orders')
+        .update(updateData)
+        .eq('id', orderId)
+        .select()
+        .single();
+
+    handleSupabaseError({ error, customMessage: 'Failed to delete payment' });
+    return normalizeOrder(data);
+};
+
 export const updateOrderDetails = async (
     orderId: string,
     updatedDetails: {
