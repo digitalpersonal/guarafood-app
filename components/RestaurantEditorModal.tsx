@@ -5,6 +5,7 @@ import { useNotification } from '../hooks/useNotification';
 import { supabase } from '../services/api';
 import { fetchRestaurantCategories } from '../services/databaseService';
 import { SUPABASE_URL } from '../config';
+import ImageUploadField from './ImageUploadField';
 
 interface RestaurantEditorModalProps {
     isOpen: boolean;
@@ -23,12 +24,6 @@ const PREDEFINED_PAYMENT_METHODS = [
     "Cartão de Débito",
     "Dinheiro"
 ];
-
-const PlusIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-    </svg>
-);
 
 const ClipboardIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -68,8 +63,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
     const [merchantEmail, setMerchantEmail] = useState('');
     const [merchantPassword, setMerchantPassword] = useState('');
     const [changeCredentials, setChangeCredentials] = useState(false);
-    const [logoFile, setLogoFile] = useState<File | null>(null);
-    const [logoPreview, setLogoPreview] = useState<string | null>(null);
     const [error, setError] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const [categories, setCategories] = useState<RestaurantCategory[]>([]);
@@ -85,43 +78,25 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         if (isOpen) loadCategories();
     }, [isOpen]);
 
-    const compressLogo = async (file: File): Promise<File> => {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.src = URL.createObjectURL(file);
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                if (!ctx) { reject(new Error("Canvas error")); return; }
-                const MAX_SIZE = 400;
-                let width = img.width, height = img.height;
-                if (width > height) { if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; } }
-                else { if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; } }
-                canvas.width = width; canvas.height = height;
-                ctx.drawImage(img, 0, 0, width, height);
-                canvas.toBlob((blob) => {
-                    URL.revokeObjectURL(img.src);
-                    if (blob) resolve(new File([blob], "logo.jpg", { type: 'image/jpeg' }));
-                    else reject(new Error("Blob error"));
-                }, 'image/jpeg', 0.5);
-            };
-            img.onerror = () => reject(new Error("Load error"));
-        });
-    };
-
     useEffect(() => {
         if (existingRestaurant) {
-            const opHours = existingRestaurant.operatingHours && existingRestaurant.operatingHours.length === 7 
-                ? existingRestaurant.operatingHours : getDefaultOperatingHours();
-            setShowSecondShift(opHours.map(d => !!(d.opens2 || d.closes2)));
+            const opHours = Array.isArray(existingRestaurant.operatingHours) && existingRestaurant.operatingHours.length === 7 
+                ? existingRestaurant.operatingHours.map((d, i) => (d && typeof d === 'object' ? d : { dayOfWeek: i, opens: '18:00', closes: '23:00', isOpen: false }))
+                : getDefaultOperatingHours();
+            setShowSecondShift(opHours.map(d => !!(d && d.opens2 || d && d.closes2)));
             setFormData({
                 ...existingRestaurant,
-                mercado_pago_credentials: existingRestaurant.mercado_pago_credentials || { accessToken: '' },
+                mercado_pago_credentials: typeof existingRestaurant.mercado_pago_credentials === 'object' && existingRestaurant.mercado_pago_credentials !== null ? existingRestaurant.mercado_pago_credentials : { accessToken: '' },
                 operatingHours: opHours,
                 manualPixKey: existingRestaurant.manualPixKey || '',
-                active: existingRestaurant.active !== false
+                active: existingRestaurant.active !== false,
+                paymentGateways: Array.isArray(existingRestaurant.paymentGateways) ? existingRestaurant.paymentGateways : [],
+                category: typeof existingRestaurant.category === 'string' ? existingRestaurant.category : '',
+                name: existingRestaurant.name || '',
+                address: existingRestaurant.address || '',
+                phone: existingRestaurant.phone || '',
+                deliveryFee: existingRestaurant.deliveryFee || 0,
             });
-            setLogoPreview(existingRestaurant.imageUrl);
             setChangeCredentials(false);
         } else {
             setFormData({
@@ -132,9 +107,8 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             });
             setShowSecondShift(Array(7).fill(false));
             setChangeCredentials(true); 
-            setLogoPreview(null);
         }
-        setMerchantEmail(''); setMerchantPassword(''); setLogoFile(null); setError('');
+        setMerchantEmail(''); setMerchantPassword(''); setError('');
     }, [existingRestaurant, isOpen]);
     
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -163,21 +137,11 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             setError('Campos obrigatórios faltando (Nome, Endereço, Telefone).'); return;
         }
         setIsSaving(true);
-        let finalImageUrl = existingRestaurant?.imageUrl || '';
-        if (logoFile) {
-            try {
-                const fileName = `${crypto.randomUUID()}.jpg`;
-                const { error: upErr } = await supabase.storage.from('restaurant-logos').upload(`public/${fileName}`, logoFile);
-                if (upErr) throw upErr;
-                const { data } = supabase.storage.from('restaurant-logos').getPublicUrl(`public/${fileName}`);
-                finalImageUrl = data.publicUrl;
-            } catch (err: any) { setError(err.message); setIsSaving(false); return; }
-        }
-
+        
         const openDays = formData.operatingHours?.filter(d => d.isOpen) || [];
         const dbPayload = {
             name: formData.name, category: formData.category, delivery_time: formData.deliveryTime,
-            rating: formData.rating, image_url: finalImageUrl, payment_gateways: formData.paymentGateways,
+            rating: formData.rating, image_url: formData.imageUrl, payment_gateways: formData.paymentGateways,
             address: formData.address, phone: formData.phone, 
             opening_hours: openDays.length > 0 ? openDays[0].opens : '',
             closing_hours: openDays.length > 0 ? openDays[0].closes : '',
@@ -215,19 +179,12 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 </div>
                 
                 <div className="overflow-y-auto space-y-6 pr-2">
-                    <div className="flex gap-4 items-center">
-                        {logoPreview ? (
-                            <img src={logoPreview} alt="Logo Preview" className="w-20 h-20 bg-gray-100 rounded border object-cover" />
-                        ) : (
-                            <div className="w-20 h-20 bg-gray-100 rounded border flex items-center justify-center text-gray-400 text-xs text-center">Sem Logo</div>
-                        )}
-                        <input type="file" accept="image/*" onChange={async e => {
-                            if(e.target.files?.[0]) {
-                                const comp = await compressLogo(e.target.files[0]);
-                                setLogoFile(comp); setLogoPreview(URL.createObjectURL(comp));
-                            }
-                        }} className="text-xs" />
-                    </div>
+                    <ImageUploadField 
+                        restaurantId={existingRestaurant?.id || 0}
+                        currentImageUrl={formData.imageUrl}
+                        onImageUploaded={(url) => setFormData(prev => ({ ...prev, imageUrl: url }))}
+                        label="Logo do Restaurante"
+                    />
 
                     <input name="name" value={formData.name} onChange={handleChange} placeholder="Nome" className="w-full p-2 border rounded" />
                     <input name="address" value={formData.address} onChange={handleChange} placeholder="Endereço" className="w-full p-2 border rounded" />
@@ -268,7 +225,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                                 <label key={method} className="flex items-center gap-2">
                                     <input
                                         type="checkbox"
-                                        checked={formData.paymentGateways.includes(method)}
+                                        checked={(formData.paymentGateways || []).includes(method)}
                                         onChange={(e) => {
                                             if (e.target.checked) {
                                                 setFormData(prev => ({ ...prev, paymentGateways: [...prev.paymentGateways, method] }));
@@ -309,10 +266,10 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                         <h3 className="font-bold mb-2">Funcionamento</h3>
                         {formData.operatingHours?.map((day, i) => (
                             <div key={i} className="flex items-center gap-2 mb-1 text-xs">
-                                <input type="checkbox" checked={day.isOpen} onChange={e => handleOperatingHoursChange(i, 'isOpen', e.target.checked)} />
+                                <input type="checkbox" checked={!!day.isOpen} onChange={e => handleOperatingHoursChange(i, 'isOpen', e.target.checked)} />
                                 <span className="w-20">{daysOfWeek[i]}</span>
-                                <input type="time" value={day.opens} onChange={e => handleOperatingHoursChange(i, 'opens', e.target.value)} disabled={!day.isOpen} className="border rounded p-1" />
-                                <input type="time" value={day.closes} onChange={e => handleOperatingHoursChange(i, 'closes', e.target.value)} disabled={!day.isOpen} className="border rounded p-1" />
+                                <input type="time" value={day.opens || ''} onChange={e => handleOperatingHoursChange(i, 'opens', e.target.value)} disabled={!day.isOpen} className="border rounded p-1" />
+                                <input type="time" value={day.closes || ''} onChange={e => handleOperatingHoursChange(i, 'closes', e.target.value)} disabled={!day.isOpen} className="border rounded p-1" />
                             </div>
                         ))}
                     </div>

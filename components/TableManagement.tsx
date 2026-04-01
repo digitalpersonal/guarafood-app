@@ -1,9 +1,9 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Order, CartItem, PaymentEntry, StaffMember, Restaurant } from '../types';
-import { createOrder, recordOrderPayment, updateOrderStatus, fetchOpenTableOrder, fetchOpenTableOrders, requestKitchenPrint, requestBillPrint, markPrintJobAsDone, updateOrderDetails } from '../services/orderService';
-import { getMensalistaByPhone } from '../services/mensalistaService';
+import { createOrder, recordOrderPayment, deleteOrderPayment, updateOrderStatus, fetchOpenTableOrder, fetchOpenTableOrders, requestKitchenPrint, requestBillPrint, markPrintJobAsDone, updateOrderDetails } from '../services/orderService';
 import { fetchRestaurantByIdSecure } from '../services/databaseService';
+import { verifyMensalistaByPhone } from '../services/mensalistaService';
 import { supabase } from '../services/api';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
@@ -32,30 +32,31 @@ const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
 );
 
-import PrintableOrder from './PrintableOrder';
 
 interface TableManagementProps {
     orders: Order[];
     currentStaffUser?: StaffMember | null;
     onPrint?: (order: Order, mode: 'full' | 'kitchen', items?: CartItem[]) => void;
+    restaurant?: Restaurant | null;
 }
 
-const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffUser, onPrint }) => {
+const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffUser, onPrint, restaurant: propRestaurant }) => {
     const { currentUser } = useAuth();
     const { addToast, confirm, prompt } = useNotification();
     const [selectedTable, setSelectedTable] = useState<string | null>(null);
     const [tableOrders, setTableOrders] = useState<Order[]>([]);
-    const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+    const [restaurant, setRestaurant] = useState<Restaurant | null>(propRestaurant || null);
     const [selectedTableOrder, setSelectedTableOrder] = useState<Order | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+    const [isConfirmationModalOpen, setIsConfirmationModalOpen] = useState(false);
+    const [pendingPayment, setPendingPayment] = useState<{ amount: number; method: string } | null>(null);
     const [paymentAmount, setPaymentAmount] = useState('');
     const [changeFor, setChangeFor] = useState('');
     const [paymentMethod, setPaymentMethod] = useState('Dinheiro');
+    const [customerPhone, setCustomerPhone] = useState('');
+    const [mensalistaId, setMensalistaId] = useState<string | null>(null);
     
-    // Printing States
-    const [printedItems, setPrintedItems] = useState<Set<string>>(new Set());
-
     const tableNumbers = Array.from({ length: 30 }, (_, i) => (i + 1).toString());
 
     useEffect(() => {
@@ -148,7 +149,8 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                 paymentMethod: 'Dinheiro',
                 tableNumber: selectedTable,
                 comandaNumber: comandaNum || undefined,
-                status: 'Aguardando Pagamento'
+                status: 'Aguardando Pagamento',
+                waiterName: currentUser.name
             });
             
             addToast({ message: `Comanda para ${comandaName} aberta na Mesa ${selectedTable}!`, type: 'success' });
@@ -209,7 +211,8 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                 description: `Peso: ${weight.toFixed(3)}kg (R$ ${restaurant.pricePerKilo.toFixed(2)}/kg)`,
                 weight: weight,
                 isKiloItem: true,
-                served: true
+                served: true,
+                restaurantId: currentUser.restaurantId
             };
 
             const newOrder = await createOrder({
@@ -231,7 +234,8 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                 paymentMethod: 'Dinheiro',
                 tableNumber: selectedTable,
                 comandaNumber: comandaNum || undefined,
-                status: 'Aguardando Pagamento'
+                status: 'Aguardando Pagamento',
+                waiterName: currentUser.name
             });
             
             addToast({ message: `Comanda de peso para ${comandaName} aberta!`, type: 'success' });
@@ -274,18 +278,21 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                 description: `Peso: ${weight.toFixed(3)}kg (R$ ${restaurant.pricePerKilo.toFixed(2)}/kg)`,
                 weight: weight,
                 isKiloItem: true,
-                served: true
+                served: true,
+                restaurantId: currentUser.restaurantId
             };
 
             const updatedItems = [...selectedTableOrder.items, kiloItem];
             const updatedSubtotal = updatedItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-            const updatedTotal = updatedSubtotal - (selectedTableOrder.discountAmount || 0);
+            const serviceCharge = restaurant?.hasServiceCharge ? (updatedSubtotal * 0.1) : 0;
+            const updatedTotal = updatedSubtotal + serviceCharge;
 
             const updatedOrder = await updateOrderDetails(selectedTableOrder.id, {
                 items: updatedItems,
                 totalPrice: updatedTotal,
                 subtotal: updatedSubtotal,
-                discountAmount: selectedTableOrder.discountAmount
+                waiterName: currentUser.name,
+                serviceCharge: serviceCharge
             });
 
             setSelectedTableOrder(updatedOrder);
@@ -304,25 +311,30 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
         setTableOrders([]);
     };
 
-    const triggerKitchenPrint = (order: Order) => {
-        if (onPrint) {
-            // Filter only items not yet printed for kitchen
-            const unprintedItems = order.items.filter(item => !printedItems.has(`${order.id}-${item.name}-${item.price}`));
-            if (unprintedItems.length === 0) {
-                addToast({ message: 'Todos os itens já foram enviados para a cozinha.', type: 'info' });
-                return;
-            }
-            onPrint(order, 'kitchen', unprintedItems);
-            // Mark as printed locally
-            const newPrinted = new Set(printedItems);
-            unprintedItems.forEach(item => newPrinted.add(`${order.id}-${item.name}-${item.price}`));
-            setPrintedItems(newPrinted);
+    const triggerKitchenPrint = async (order: Order) => {
+        // Filter only items not yet printed for kitchen
+        const unprintedItems = order.items.filter(item => !item.kitchenPrinted);
+        if (unprintedItems.length === 0) {
+            addToast({ message: 'Todos os itens já foram enviados para a cozinha.', type: 'info' });
+            return;
+        }
+        try {
+            await requestKitchenPrint(order.id, unprintedItems);
+            addToast({ message: 'Pedido enviado para a impressora da cozinha.', type: 'success' });
+            
+            // The order will be updated via the guarafood:update-orders event
+            // which will refresh the orders and update the UI
+        } catch (e: any) {
+            addToast({ message: `Erro ao enviar para cozinha: ${e.message}`, type: 'error' });
         }
     };
 
-    const triggerBillPrint = (order: Order) => {
-        if (onPrint) {
-            onPrint(order, 'full');
+    const triggerBillPrint = async (order: Order) => {
+        try {
+            await requestBillPrint(order.id);
+            addToast({ message: 'Conta enviada para impressão.', type: 'success' });
+        } catch (e: any) {
+            addToast({ message: `Erro ao enviar conta para impressão: ${e.message}`, type: 'error' });
         }
     };
 
@@ -331,73 +343,49 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
         const amount = parseFloat(paymentAmount);
         if (isNaN(amount) || amount <= 0) return;
 
-        try {
-            // Fetch fresh order data to ensure we have the latest total price and history
-            const { data: latestOrderRaw, error: fetchError } = await supabase.from('orders').select('*').eq('id', selectedTableOrder.id).single();
-            
-            if (fetchError || !latestOrderRaw) {
-                throw new Error('Falha ao buscar dados atualizados do pedido.');
+        let finalMethod = paymentMethod;
+        if (paymentMethod === 'Dinheiro' && changeFor) {
+            const changeVal = parseFloat(changeFor.replace(',', '.').trim());
+            if (!isNaN(changeVal) && changeVal > amount) {
+                finalMethod = `Dinheiro (Troco para R$ ${changeVal.toFixed(2)})`;
             }
+        }
 
-            const dbTotalPrice = latestOrderRaw.total_price;
-            const dbHistory = latestOrderRaw.payment_history || latestOrderRaw.payment_details?.history || [];
-            
-            const currentPaid = dbHistory.reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
-            const newTotalPaid = currentPaid + amount;
-
-            let finalMethod = paymentMethod;
-            let mensalistaId: string | undefined = undefined;
-            if (paymentMethod === 'Dinheiro' && changeFor) {
-                const changeVal = parseFloat(changeFor.replace(',', '.').trim());
-                if (!isNaN(changeVal) && changeVal > amount) {
-                    finalMethod = `Dinheiro (Troco para R$ ${changeVal.toFixed(2)})`;
-                }
-            } else if (paymentMethod === 'Mensalista') {
-                const phone = await prompt({
-                    title: 'Identificar Mensalista',
-                    message: 'Digite o WhatsApp do mensalista (somente números):',
-                    submitText: 'Confirmar',
-                    cancelText: 'Cancelar'
-                });
-                if (!phone) return;
-                
-                const mensalista = await getMensalistaByPhone(phone.replace(/\D/g, ''), currentUser!.restaurantId!);
+        if (paymentMethod === 'Mensalista') {
+            if (!customerPhone || customerPhone.length < 10) {
+                addToast({ message: 'Informe um número de WhatsApp válido.', type: 'error' });
+                return;
+            }
+            try {
+                const mensalista = await verifyMensalistaByPhone(restaurant?.id || 0, customerPhone);
                 if (!mensalista) {
-                    addToast({ message: 'Mensalista não encontrado ou inativo.', type: 'error' });
+                    addToast({ message: 'Mensalista não encontrado para este número.', type: 'error' });
                     return;
                 }
-                
-                finalMethod = `Mensalista (${mensalista.name})`;
-                mensalistaId = mensalista.id;
+                setMensalistaId(mensalista.id);
+            } catch (error: any) {
+                addToast({ message: error.message || 'Erro ao verificar mensalista.', type: 'error' });
+                return;
             }
-
-            const entry: PaymentEntry = {
-                amount,
-                method: finalMethod,
-                timestamp: new Date().toISOString()
-            };
-            
-            const updated = await recordOrderPayment(selectedTableOrder.id, entry, newTotalPaid, dbTotalPrice, mensalistaId);
-            
-            setSelectedTableOrder(updated);
-            setPaymentAmount('');
-            setChangeFor('');
-            setIsPaymentModalOpen(false);
-            addToast({ message: 'Pagamento registrado!', type: 'success' });
-
-            if (updated.paymentStatus === 'paid' || newTotalPaid >= dbTotalPrice - 0.01) {
-                addToast({ message: 'Conta quitada! O botão para encerrar a mesa foi liberado.', type: 'success' });
-            }
-        } catch (e: any) {
-            console.error("Payment error:", e);
-            addToast({ message: `Erro ao processar pagamento: ${e.message || 'Erro desconhecido'}`, type: 'error' });
         }
+
+        setPendingPayment({ amount, method: finalMethod });
+        setIsConfirmationModalOpen(true);
+        setIsPaymentModalOpen(false);
     };
 
     const handleQuickPayment = async (method: string) => {
         if (!selectedTableOrder || balance <= 0) return;
         
         const amount = balance;
+        setPendingPayment({ amount, method });
+        setIsConfirmationModalOpen(true);
+    };
+
+    const confirmPayment = async () => {
+        if (!selectedTableOrder || !pendingPayment) return;
+        
+        const { amount, method } = pendingPayment;
         const entry: PaymentEntry = {
             amount,
             method,
@@ -413,34 +401,39 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
             const currentPaid = history.reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
             const newTotalPaid = currentPaid + amount;
 
-            const updated = await recordOrderPayment(selectedTableOrder.id, entry, newTotalPaid, dbTotalPrice);
+            const updated = await recordOrderPayment(selectedTableOrder.id, entry, newTotalPaid, dbTotalPrice, mensalistaId);
             setSelectedTableOrder(updated);
             addToast({ message: `Pagamento de R$ ${amount.toFixed(2)} (${method}) registrado!`, type: 'success' });
             
             if (newTotalPaid >= dbTotalPrice - 0.01) {
                 addToast({ message: 'Conta quitada!', type: 'success' });
             }
+            setIsConfirmationModalOpen(false);
+            setPendingPayment(null);
         } catch (e: any) {
             addToast({ message: `Erro: ${e.message}`, type: 'error' });
         }
     };
 
-    const handleCloseTable = async () => {
+    const handleDeletePayment = async (index: number) => {
         if (!selectedTableOrder) return;
         
-        const totalPaid = (selectedTableOrder.paymentHistory || []).reduce((acc, p) => acc + p.amount, 0);
-        const balance = selectedTableOrder.totalPrice - totalPaid;
+        const confirmed = await confirm({
+            title: 'Excluir Pagamento',
+            message: 'Tem certeza que deseja excluir este pagamento?',
+            confirmText: 'Sim, Excluir',
+            cancelText: 'Cancelar',
+            isDestructive: true
+        });
 
-        if (selectedTableOrder.items.length > 0 && balance > 0.01) {
-            addToast({ message: 'Não é possível encerrar a mesa com saldo pendente. Por favor, registre o pagamento.', type: 'warning' });
-            return;
-        }
-        try {
-             await updateOrderStatus(selectedTableOrder.id, 'Entregue');
-             addToast({ message: 'Comanda encerrada com sucesso!', type: 'success' });
-             setSelectedTableOrder(null);
-        } catch (e: any) {
-             addToast({ message: `Erro ao encerrar mesa: ${e.message}`, type: 'error' });
+        if (confirmed) {
+            try {
+                const updated = await deleteOrderPayment(selectedTableOrder.id, index);
+                setSelectedTableOrder(updated);
+                addToast({ message: 'Pagamento excluído!', type: 'success' });
+            } catch (e: any) {
+                addToast({ message: `Erro ao excluir pagamento: ${e.message}`, type: 'error' });
+            }
         }
     };
 
@@ -496,13 +489,12 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                 newItems.splice(index, 1);
                 
                 const newSubtotal = newItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-                const newTotal = newSubtotal - (selectedTableOrder.discountAmount || 0);
+                const newTotal = newSubtotal;
                 
                 const updated = await updateOrderDetails(selectedTableOrder.id, {
                     items: newItems,
                     totalPrice: newTotal,
-                    subtotal: newSubtotal,
-                    discountAmount: selectedTableOrder.discountAmount
+                    subtotal: newSubtotal
                 });
                 
                 setSelectedTableOrder(updated);
@@ -523,8 +515,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
             const updated = await updateOrderDetails(selectedTableOrder.id, {
                 items: newItems,
                 totalPrice: selectedTableOrder.totalPrice,
-                subtotal: selectedTableOrder.subtotal || selectedTableOrder.totalPrice,
-                discountAmount: selectedTableOrder.discountAmount
+                subtotal: selectedTableOrder.subtotal || selectedTableOrder.totalPrice
             });
             
             setSelectedTableOrder(updated);
@@ -795,7 +786,12 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                                     <span className="font-black text-emerald-800 text-xs">{p.method}</span>
                                                     <span className="text-[9px] text-emerald-600/70">{new Date(p.timestamp).toLocaleTimeString()}</span>
                                                 </div>
-                                                <span className="font-black text-emerald-700">R$ {p.amount.toFixed(2)}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-black text-emerald-700">R$ {p.amount.toFixed(2)}</span>
+                                                    <button onClick={() => handleDeletePayment(i)} className="text-red-500 hover:text-red-700">
+                                                        <TrashIcon className="w-4 h-4" />
+                                                    </button>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
@@ -873,7 +869,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                     </button>
                                 ) : (
                                     <button 
-                                        onClick={handleCloseTable}
+                                        onClick={handleCloseTableList}
                                         className="bg-green-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-green-100 hover:bg-green-700 active:scale-95 transition-all text-sm uppercase tracking-widest animate-pulse"
                                     >
                                         Encerrar Comanda
@@ -968,7 +964,10 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                             <div>
                                 <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Forma de Pagamento</label>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Mensalista'].map(m => (
+                                    {(restaurant?.paymentGateways && restaurant.paymentGateways.length > 0 ? 
+                                        (restaurant.hasMensalistas && !restaurant.paymentGateways.includes("Mensalista") ? [...restaurant.paymentGateways, "Mensalista"] : restaurant.paymentGateways) : 
+                                        ['Dinheiro', 'Pix', 'Cartão de Débito', 'Cartão de Crédito', ...(restaurant?.hasMensalistas ? ['Mensalista'] : [])]
+                                    ).map(m => (
                                         <button 
                                             key={m}
                                             onClick={() => setPaymentMethod(m)}
@@ -983,6 +982,20 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                     ))}
                                 </div>
                             </div>
+
+                            {paymentMethod === 'Mensalista' && (
+                                <div className="animate-fadeIn">
+                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">WhatsApp do Mensalista</label>
+                                    <input 
+                                        type="tel" 
+                                        value={customerPhone}
+                                        onChange={e => setCustomerPhone(e.target.value.replace(/\D/g, ''))}
+                                        placeholder="Ex: 11999999999"
+                                        className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-orange-500 outline-none transition-all font-bold"
+                                    />
+                                    <p className="text-[10px] text-gray-400 mt-1 ml-1">Apenas números, com DDD.</p>
+                                </div>
+                            )}
                         </div>
 
                         <div className="flex flex-col gap-2 pt-4">
@@ -1014,6 +1027,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                     onSave={(updated) => setSelectedTableOrder(updated)}
                     restaurantId={currentUser.restaurantId!}
                     restaurantName={currentUser.name}
+                    hasServiceCharge={restaurant?.hasServiceCharge}
                 />
             )}
             

@@ -295,11 +295,12 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
 interface OrdersViewProps {
     orders: Order[];
     printerWidth?: number;
-    onPrint: (order: Order) => void;
+    onPrint: (order: Order, mode?: "kitchen" | "full") => void;
     currentStaffUser?: StaffMember | null;
+    restaurant?: any; // or import Restaurant and use it
 }
 
-const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPrint, currentStaffUser }) => {
+const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPrint, currentStaffUser, restaurant }) => {
     const { currentUser } = useAuth();
     const { addToast, prompt } = useNotification();
     const [searchTerm, setSearchTerm] = useState('');
@@ -352,7 +353,8 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                 restaurantPhone: '',
                 paymentMethod: finalPaymentMethod,
                 status: 'Novo Pedido',
-                mensalistaId: mensalistaId
+                mensalistaId: mensalistaId,
+                waiterName: currentUser.name
             });
             
             addToast({ message: 'Pedido criado! Adicione os itens agora.', type: 'success' });
@@ -502,7 +504,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                         />
                         <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" aria-hidden="true" />
                     </div>
-                    {(!currentStaffUser || currentStaffUser.role === 'admin' || currentStaffUser.role === 'manager') && (
+                    {(!currentStaffUser || currentStaffUser.role === 'manager') && (
                         <button
                             onClick={() => setIsManualModalOpen(true)}
                             disabled={isCreatingOrder}
@@ -584,7 +586,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                     </div>
                 )}
             </main>
-            {selectedOrder && <OrderDetailsModal order={selectedOrder} onClose={() => setSelectedOrder(null)} printerWidth={printerWidth} />}
+            {selectedOrder && <OrderDetailsModal order={selectedOrder} restaurant={restaurant} onClose={() => setSelectedOrder(null)} printerWidth={printerWidth} />}
             {orderToEdit && currentUser && (
                 <OrderEditorModal
                     isOpen={!!orderToEdit}
@@ -596,6 +598,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                     }}
                     restaurantId={currentUser.restaurantId!}
                     restaurantName={currentUser.name}
+                    hasServiceCharge={restaurant?.hasServiceCharge}
                 />
             )}
 

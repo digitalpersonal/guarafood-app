@@ -6,6 +6,7 @@ import { useSound } from '../hooks/useSound';
 import { supabase } from '../services/api';
 import { fetchRestaurantByIdSecure, updateRestaurant } from '../services/databaseService';
 import { clearTodayTableOrders } from '../services/orderService';
+import { forceSystemUpdate } from '../utils/systemUpdate';
 import type { Restaurant, OperatingHours, Order } from '../types';
 import Spinner from './Spinner';
 import PrintableOrder from './PrintableOrder';
@@ -221,16 +222,24 @@ const getDefaultOperatingHours = (): OperatingHours[] =>
         isOpen: false,
     }));
 
-const RestaurantSettings: React.FC = () => {
+interface RestaurantSettingsProps {
+    restaurantIdOverride?: number | null;
+    onBack?: () => void;
+}
+
+const RestaurantSettings: React.FC<RestaurantSettingsProps> = ({ restaurantIdOverride, onBack }) => {
     const { currentUser } = useAuth();
     const { addToast, confirm } = useNotification();
     const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+    const restaurantId = restaurantIdOverride || currentUser?.restaurantId;
     const [mercadoPagoToken, setMercadoPagoToken] = useState('');
     const [manualPixKey, setManualPixKey] = useState('');
     const [bannerImageUrl, setBannerImageUrl] = useState('');
     const [hasMensalistas, setHasMensalistas] = useState(false);
+    const [hasCleanupButton, setHasCleanupButton] = useState(false);
     const [hasKiloService, setHasKiloService] = useState(false);
     const [pricePerKilo, setPricePerKilo] = useState(0);
+    const [deliveryZones, setDeliveryZones] = useState<{ id: string; name: string; fee: number }[]>([]);
     const [printerWidth, setPrinterWidth] = useState(80);
     const [isPrintServer, setIsPrintServer] = useState(false);
     const [operatingHours, setOperatingHours] = useState<OperatingHours[]>(getDefaultOperatingHours());
@@ -238,10 +247,12 @@ const RestaurantSettings: React.FC = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [testOrder, setTestOrder] = useState<Order | null>(null);
 
-    const restaurantId = currentUser?.restaurantId;
-
     const loadData = useCallback(async () => {
-        if (!restaurantId) return;
+        if (!restaurantId) {
+            setIsLoading(false);
+            addToast({ message: 'Erro: ID do restaurante não encontrado no perfil do usuário.', type: 'error' });
+            return;
+        }
         try {
             setIsLoading(true);
             const data = await fetchRestaurantByIdSecure(restaurantId);
@@ -251,8 +262,10 @@ const RestaurantSettings: React.FC = () => {
                 setManualPixKey(data.manualPixKey || '');
                 setBannerImageUrl(data.bannerImageUrl || '');
                 setHasMensalistas(data.hasMensalistas || false);
+                setHasCleanupButton(data.hasCleanupButton || false);
                 setHasKiloService(data.hasKiloService || false);
                 setPricePerKilo(data.pricePerKilo || 0);
+                setDeliveryZones(data.deliveryZones || []);
                 setOperatingHours(data.operatingHours || getDefaultOperatingHours());
                 
                 // Força o estado da impressora a partir do banco e sincroniza LocalStorage
@@ -294,8 +307,10 @@ const RestaurantSettings: React.FC = () => {
                 printerWidth: printerWidth,
                 bannerImageUrl: bannerImageUrl,
                 hasMensalistas: hasMensalistas,
+                hasCleanupButton: hasCleanupButton,
                 hasKiloService: hasKiloService,
-                pricePerKilo: pricePerKilo
+                pricePerKilo: pricePerKilo,
+                deliveryZones: deliveryZones
             });
             localStorage.setItem('guarafood-printer-width', printerWidth.toString());
             localStorage.setItem('guarafood-is-print-server', isPrintServer.toString());
@@ -306,6 +321,18 @@ const RestaurantSettings: React.FC = () => {
         } finally { setIsSaving(false); }
     };
     
+    const handleAddDeliveryZone = () => {
+        setDeliveryZones([...deliveryZones, { id: Date.now().toString(), name: '', fee: 0 }]);
+    };
+
+    const handleUpdateDeliveryZone = (id: string, field: 'name' | 'fee', value: string | number) => {
+        setDeliveryZones(zones => zones.map(z => z.id === id ? { ...z, [field]: value } : z));
+    };
+
+    const handleRemoveDeliveryZone = (id: string) => {
+        setDeliveryZones(zones => zones.filter(z => z.id !== id));
+    };
+
     const handleCleanupTableOrders = async () => {
         if (!restaurantId) return;
         
@@ -335,7 +362,7 @@ const RestaurantSettings: React.FC = () => {
         const dummyOrder: Order = {
             id: 'TESTE-01', timestamp: new Date().toISOString(), status: 'Novo Pedido',
             customerName: 'Teste Layout Jerê/Renovação', customerPhone: '(35) 99999-9999',
-            items: [{ id: '1', name: 'Pastel de Carne com Queijo', price: 15.00, basePrice: 15.00, quantity: 2, imageUrl: '', description: '' }],
+            items: [{ id: '1', name: 'Pastel de Carne com Queijo', price: 15.00, basePrice: 15.00, quantity: 2, imageUrl: '', description: '', restaurantId: restaurant.id }],
             totalPrice: 35.00, subtotal: 30.00, deliveryFee: 5.00,
             restaurantId: restaurant.id, restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
             paymentMethod: 'Dinheiro',
@@ -350,7 +377,16 @@ const RestaurantSettings: React.FC = () => {
     return (
         <main className="p-4 max-w-2xl mx-auto space-y-6 pb-32">
             <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
-                <h2 className="text-xl font-black text-gray-800 border-b pb-4 mb-6 uppercase tracking-widest">Painel de Configuração</h2>
+                <div className="flex items-center gap-4 border-b pb-4 mb-6">
+                    {onBack && (
+                        <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 text-gray-600">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+                            </svg>
+                        </button>
+                    )}
+                    <h2 className="text-xl font-black text-gray-800 uppercase tracking-widest">Painel de Configuração</h2>
+                </div>
                 
                 <NotificationSettings />
 
@@ -393,6 +429,23 @@ const RestaurantSettings: React.FC = () => {
                     </button>
                     
                     <div className="mt-6 pt-6 border-t border-orange-200">
+                        <label className="flex items-center justify-between cursor-pointer mb-4">
+                            <div>
+                                <span className="font-bold text-orange-900 block">Taxa de Serviço (10%)</span>
+                                <span className="text-xs text-orange-700">Adicionar automaticamente 10% em pedidos de mesa.</span>
+                            </div>
+                            <div className="relative">
+                                <input type="checkbox" className="sr-only peer" checked={restaurant?.hasServiceCharge || false} onChange={async (e) => {
+                                    if (!restaurant) return;
+                                    const updated = { ...restaurant, hasServiceCharge: e.target.checked };
+                                    setRestaurant(updated);
+                                    await updateRestaurant(restaurant.id, { hasServiceCharge: e.target.checked });
+                                    addToast({ message: 'Taxa de serviço atualizada!', type: 'success' });
+                                }} />
+                                <div className="w-11 h-6 bg-orange-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
+                            </div>
+                        </label>
+
                         <label className="flex items-center justify-between cursor-pointer">
                             <div>
                                 <span className="font-bold text-orange-900 block">Modo Servidor de Impressão</span>
@@ -414,15 +467,15 @@ const RestaurantSettings: React.FC = () => {
                                 <div key={index} className="space-y-2">
                                     <div className="grid grid-cols-12 gap-2 items-center p-3 rounded-xl bg-gray-50 border border-gray-100">
                                         <div className="col-span-5 flex items-center">
-                                            <input type="checkbox" checked={day.isOpen} onChange={e => handleOperatingHoursChange(index, 'isOpen', e.target.checked)} className="h-5 w-5 mr-3" />
+                                            <input type="checkbox" checked={!!day.isOpen} onChange={e => handleOperatingHoursChange(index, 'isOpen', e.target.checked)} className="h-5 w-5 mr-3" />
                                             <span className="font-bold text-xs text-gray-700">{daysOfWeek[index]}</span>
                                         </div>
                                         <div className="col-span-3">
-                                            <input type="time" value={day.opens} onChange={e => handleOperatingHoursChange(index, 'opens', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
+                                            <input type="time" value={day.opens || ''} onChange={e => handleOperatingHoursChange(index, 'opens', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
                                         </div>
                                         <div className="col-span-1 text-center text-gray-400 font-bold text-xs">às</div>
                                         <div className="col-span-3">
-                                            <input type="time" value={day.closes} onChange={e => handleOperatingHoursChange(index, 'closes', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
+                                            <input type="time" value={day.closes || ''} onChange={e => handleOperatingHoursChange(index, 'closes', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-12 gap-2 items-center p-3 rounded-xl bg-gray-50 border border-gray-100">
@@ -457,7 +510,7 @@ const RestaurantSettings: React.FC = () => {
                                 </div>
                             </label>
                         </div>
-                        <MensalistasManager />
+                        <MensalistasManager restaurant={restaurant} />
                     </div>
 
                     {/* --- CONFIGURAÇÃO DE COMIDA POR KILO --- */}
@@ -512,16 +565,70 @@ const RestaurantSettings: React.FC = () => {
                     </div>
 
                     <div className="border-t pt-8">
-                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Manutenção de Dados</h3>
-                        <div className="bg-red-50 border border-red-100 rounded-xl p-4">
-                            <h4 className="font-bold text-red-800 mb-2 text-sm">Zona de Perigo</h4>
-                            <p className="text-xs text-red-600 mb-4">Ações irreversíveis para correção de dados.</p>
+                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Taxas de Entrega por Bairro</h3>
+                        <p className="text-sm text-gray-500 mb-4">Se você configurar bairros aqui, o cliente terá que escolher um deles e a taxa será aplicada. Se deixar vazio, será usada a taxa padrão do restaurante.</p>
+                        <div className="space-y-3">
+                            {deliveryZones.map(zone => (
+                                <div key={zone.id} className="flex gap-2 items-center">
+                                    <input 
+                                        type="text" 
+                                        value={zone.name} 
+                                        onChange={e => handleUpdateDeliveryZone(zone.id, 'name', e.target.value)} 
+                                        placeholder="Nome do Bairro/Empresa" 
+                                        className="flex-1 p-3 border rounded-xl font-semibold text-sm bg-gray-50" 
+                                    />
+                                    <div className="relative w-32">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-sm">R$</span>
+                                        <input 
+                                            type="number" 
+                                            value={zone.fee} 
+                                            onChange={e => handleUpdateDeliveryZone(zone.id, 'fee', parseFloat(e.target.value) || 0)} 
+                                            className="w-full p-3 pl-9 border rounded-xl font-bold text-sm bg-gray-50" 
+                                        />
+                                    </div>
+                                    <button 
+                                        onClick={() => handleRemoveDeliveryZone(zone.id)}
+                                        className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                                    >
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                    </button>
+                                </div>
+                            ))}
                             <button 
-                                onClick={handleCleanupTableOrders}
-                                className="w-full py-3 bg-white border border-red-200 text-red-600 font-bold rounded-lg text-xs uppercase hover:bg-red-600 hover:text-white transition-colors shadow-sm"
+                                onClick={handleAddDeliveryZone}
+                                className="w-full py-3 border-2 border-dashed border-gray-300 text-gray-500 font-bold rounded-xl text-sm uppercase hover:bg-gray-50 transition-colors"
                             >
-                                Limpar Pedidos de Mesa (Hoje)
+                                + Adicionar Bairro
                             </button>
+                        </div>
+                    </div>
+
+                    <div className="border-t pt-8">
+                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Manutenção de Dados</h3>
+                        <div className="space-y-4">
+                            <label className="flex items-center justify-between cursor-pointer p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                <div>
+                                    <span className="font-bold text-gray-800 block">Ativar Botão de Limpeza</span>
+                                    <span className="text-xs text-gray-500">Exibe o botão para limpar todos os pedidos de mesa de hoje.</span>
+                                </div>
+                                <div className="relative">
+                                    <input type="checkbox" className="sr-only peer" checked={hasCleanupButton} onChange={e => setHasCleanupButton(e.target.checked)} />
+                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                                </div>
+                            </label>
+
+                            {hasCleanupButton && (
+                                <div className="bg-red-50 border border-red-100 rounded-xl p-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <h4 className="font-bold text-red-800 mb-2 text-sm">Zona de Perigo</h4>
+                                    <p className="text-xs text-red-600 mb-4">Ações irreversíveis para correção de dados.</p>
+                                    <button 
+                                        onClick={handleCleanupTableOrders}
+                                        className="w-full py-3 bg-white border border-red-200 text-red-600 font-bold rounded-lg text-xs uppercase hover:bg-red-600 hover:text-white transition-colors shadow-sm"
+                                    >
+                                        Limpar Pedidos de Mesa (Hoje)
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -548,12 +655,27 @@ const RestaurantSettings: React.FC = () => {
                     >
                         {isSaving ? 'Salvando...' : 'Sincronizar Lojas'}
                     </button>
+                    
+                    <div className="mt-8 p-4 border border-red-200 rounded-xl bg-red-50">
+                        <h4 className="text-red-800 font-bold mb-1">Manutenção do Sistema</h4>
+                        <p className="text-[10px] text-red-600 mb-4">Se o sistema parecer desatualizado, clique abaixo para limpar o cache e recarregar.</p>
+                        <button 
+                            onClick={async () => {
+                                if (window.confirm('Tem certeza que deseja atualizar o sistema? Isso irá recarregar a página.')) {
+                                    await forceSystemUpdate();
+                                }
+                            }}
+                            className="w-full bg-red-600 text-white font-black py-3 rounded-xl hover:bg-red-700 transition-all text-sm uppercase tracking-widest"
+                        >
+                            Atualizar Sistema Agora
+                        </button>
+                    </div>
                 </div>
             </div>
 
             <div className="hidden print:block">
                 <div id="printable-order">
-                    {testOrder && <PrintableOrder order={testOrder} printerWidth={printerWidth} />}
+                    {testOrder && <PrintableOrder order={testOrder} restaurant={restaurant} printerWidth={printerWidth} />}
                 </div>
             </div>
         </main>

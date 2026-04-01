@@ -138,8 +138,10 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, is
 
       <div className="px-4 py-3 bg-gray-50/50 border-t border-gray-100 flex justify-between items-center">
         <div className="flex items-center gap-1.5">
-            <span className={`text-xs font-black ${restaurant.deliveryFee === 0 ? 'text-emerald-600' : 'text-gray-700'}`}>
-                {restaurant.deliveryFee > 0 ? `Entrega R$ ${restaurant.deliveryFee.toFixed(2)}` : 'Entrega Grátis'}
+            <span className={`text-xs font-black ${(restaurant.deliveryZones && restaurant.deliveryZones.length > 0) ? 'text-gray-700' : (restaurant.deliveryFee === 0 ? 'text-emerald-600' : 'text-gray-700')}`}>
+                {(restaurant.deliveryZones && restaurant.deliveryZones.length > 0) 
+                    ? 'Taxa Variável' 
+                    : (restaurant.deliveryFee > 0 ? `Entrega R$ ${restaurant.deliveryFee.toFixed(2)}` : 'Entrega Grátis')}
             </span>
         </div>
         

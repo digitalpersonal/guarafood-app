@@ -1,57 +1,69 @@
 @import "tailwindcss";
 
 @theme {
-  --animate-fadeIn: fadeIn 0.3s ease-out;
-  --animate-slideUp: slideUp 0.4s ease-out;
-  --animate-shake: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
 
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+/* Custom Animations for Toasts */
+@keyframes toast-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
   }
-
-  @keyframes slideUp {
-    from { transform: translateY(20px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-  }
-
-  @keyframes shake {
-    10%, 90% { transform: translate3d(-1px, 0, 0); }
-    20%, 80% { transform: translate3d(2px, 0, 0); }
-    30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
-    40%, 60% { transform: translate3d(4px, 0, 0); }
+  to {
+    transform: translateX(0);
+    opacity: 1;
   }
 }
 
-@layer utilities {
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
+@keyframes toast-out {
+  from {
+    transform: translateX(0);
+    opacity: 1;
   }
-  .no-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+  to {
+    transform: translateX(100%);
+    opacity: 0;
   }
+}
 
-  /* Impressão Térmica */
-  @media print {
-    .print-container {
-      font-family: monospace;
-      color: black;
-      background: white;
-      width: 80mm;
-      margin: 0 auto;
-      padding: 0;
-    }
-    .thermal-header, .receipt-header, .label-center { text-align: center; }
-    .thermal-title { font-size: 1.5em; font-weight: bold; }
-    .thermal-bold { font-weight: bold; }
-    .thermal-divider, .section-divider { border-top: 1px dashed black; margin: 5px 0; }
-    .thermal-row, .item-row { display: flex; justify-content: space-between; margin: 2px 0; }
-    .thermal-left { text-align: left; }
-    .thermal-right, .item-price-col { text-align: right; }
-    .thermal-footer { text-align: center; margin-top: 10px; font-size: 0.9em; }
-    .order-number-box { border: 1px solid black; padding: 5px; text-align: center; font-size: 1.2em; font-weight: bold; margin: 10px 0; }
-    .mode-indicator { font-weight: bold; text-align: center; font-size: 1.1em; margin: 5px 0; }
-    .condiments-box, .payment-box { border: 1px solid black; padding: 5px; margin: 10px 0; font-weight: bold; }
-  }
+.toast-in {
+  animation: toast-in 0.3s ease-out forwards;
+}
+
+.toast-out {
+  animation: toast-out 0.3s ease-in forwards;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #ea580c;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #c2410c;
+}
+
+/* Global Styles */
+body {
+  @apply bg-gray-50 text-gray-900 antialiased;
+  font-family: var(--font-sans);
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
 }

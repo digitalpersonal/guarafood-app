@@ -130,7 +130,7 @@ const CategoryEditorModal: React.FC<CategoryEditorModalProps> = ({ isOpen, onClo
                             className="px-4 py-2 text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-colors font-medium flex items-center gap-2"
                             disabled={isLoading}
                         >
-                            {isLoading && <Spinner size="sm" color="white" />}
+                            {isLoading && <Spinner message="Carregando..." />}
                             {existingCategory ? 'Salvar Alterações' : 'Criar Categoria'}
                         </button>
                     </div>

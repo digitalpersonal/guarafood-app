@@ -15,7 +15,9 @@ const HomePromotionalBanner: React.FC<HomePromotionalBannerProps> = ({ onBannerC
         const loadBanners = async () => {
             try {
                 const activeBanners = await fetchActiveBanners();
-                setBanners(activeBanners);
+                // Filter for top banners (or those without type for backward compatibility)
+                const topBanners = activeBanners.filter(b => b.type === 'top' || !b.type);
+                setBanners(topBanners);
             } catch (err) {
                 console.error('Erro ao carregar banners:', err);
             } finally {
@@ -42,8 +44,8 @@ const HomePromotionalBanner: React.FC<HomePromotionalBannerProps> = ({ onBannerC
         targetValue: 'Todos'
     };
 
-    // Usamos o banner fixo como prioridade visual no topo
-    const banner = defaultBanner;
+    // Usamos o primeiro banner do banco se existir, senão o fallback
+    const banner = banners.length > 0 ? banners[0] : defaultBanner;
 
     // Função para renderizar o título com "Food" em destaque
     const renderStyledTitle = (title: string) => {

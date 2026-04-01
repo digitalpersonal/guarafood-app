@@ -2,6 +2,16 @@
 import { supabase, supabaseAnon, handleSupabaseError } from './api';
 import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory, Expense, Order, OperatingHours } from '../types';
 
+// Helper to prevent queries from hanging indefinitely
+const withTimeout = <T>(promise: PromiseLike<T>, timeoutMs: number = 10000): Promise<T> => {
+    return Promise.race([
+        Promise.resolve(promise),
+        new Promise<T>((_, reject) => 
+            setTimeout(() => reject(new Error("Database query timed out")), timeoutMs)
+        )
+    ]);
+};
+
 // ==============================================================================
 // 🔄 NORMALIZADORES (Banco de Dados -> App)
 // ==============================================================================
@@ -17,7 +27,17 @@ const getDefaultOperatingHours = (): OperatingHours[] =>
     }));
 
 const ensureOperatingHours = (hours: any): OperatingHours[] => {
-    if (Array.isArray(hours) && hours.length === 7) return hours;
+    let parsedHours = hours;
+    if (typeof hours === 'string') {
+        try {
+            parsedHours = JSON.parse(hours);
+        } catch (e) {
+            return getDefaultOperatingHours();
+        }
+    }
+    if (Array.isArray(parsedHours) && parsedHours.length === 7) {
+        return parsedHours.map((d, i) => (d && typeof d === 'object' ? d : { dayOfWeek: i, opens: '18:00', closes: '23:00', isOpen: false }));
+    }
     return getDefaultOperatingHours();
 };
 
@@ -52,7 +72,16 @@ const normalizeOrder = (data: any): Order => {
 // Normalizer for public views (Masks sensitive data)
 const normalizeRestaurant = (data: any): Restaurant => {
     if (!data) return data;
-    const hasMpToken = !!data.mercado_pago_credentials?.accessToken && data.mercado_pago_credentials.accessToken.trim().length > 0;
+    
+    let mpCreds = data.mercado_pago_credentials;
+    if (typeof mpCreds === 'string') {
+        try { mpCreds = JSON.parse(mpCreds); } catch(e) { mpCreds = { accessToken: '' }; }
+    }
+    if (!mpCreds || typeof mpCreds !== 'object') {
+        mpCreds = { accessToken: '' };
+    }
+    
+    const hasMpToken = !!mpCreds?.accessToken && typeof mpCreds.accessToken === 'string' && mpCreds.accessToken.trim().length > 0;
     
     return {
         id: data.id,
@@ -68,6 +97,7 @@ const normalizeRestaurant = (data: any): Restaurant => {
         openingHours: data.opening_hours,
         closingHours: data.closing_hours,
         deliveryFee: data.delivery_fee,
+        deliveryZones: data.delivery_zones || [],
         operatingHours: ensureOperatingHours(data.operating_hours),
         mercado_pago_credentials: { accessToken: hasMpToken ? "PROTECTED" : "" },
         manualPixKey: data.manual_pix_key,
@@ -78,6 +108,7 @@ const normalizeRestaurant = (data: any): Restaurant => {
         marmitaStartTime: data.marmita_start_time,
         marmitaEndTime: data.marmita_end_time,
         hasMensalistas: data.has_mensalistas,
+        hasCleanupButton: data.has_cleanup_button,
         hasKiloService: data.has_kilo_service,
         pricePerKilo: data.price_per_kilo,
         staff: data.staff || [] // NEW
@@ -87,7 +118,16 @@ const normalizeRestaurant = (data: any): Restaurant => {
 // Normalizer for Admin/Settings (Keeps sensitive data)
 const normalizeRestaurantSecure = (data: any): Restaurant => {
     if (!data) return data;
-    const hasMpToken = !!data.mercado_pago_credentials?.accessToken && data.mercado_pago_credentials.accessToken.trim().length > 0;
+    
+    let mpCreds = data.mercado_pago_credentials;
+    if (typeof mpCreds === 'string') {
+        try { mpCreds = JSON.parse(mpCreds); } catch(e) { mpCreds = { accessToken: '' }; }
+    }
+    if (!mpCreds || typeof mpCreds !== 'object') {
+        mpCreds = { accessToken: '' };
+    }
+    
+    const hasMpToken = !!mpCreds?.accessToken && typeof mpCreds.accessToken === 'string' && mpCreds.accessToken.trim().length > 0;
     
     return {
         id: data.id,
@@ -103,8 +143,9 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         openingHours: data.opening_hours,
         closingHours: data.closing_hours,
         deliveryFee: data.delivery_fee,
+        deliveryZones: data.delivery_zones || [],
         operatingHours: ensureOperatingHours(data.operating_hours),
-        mercado_pago_credentials: data.mercado_pago_credentials || { accessToken: '' },
+        mercado_pago_credentials: mpCreds,
         manualPixKey: data.manual_pix_key,
         hasPixConfigured: hasMpToken,
         active: data.active !== false,
@@ -113,6 +154,7 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         marmitaStartTime: data.marmita_start_time,
         marmitaEndTime: data.marmita_end_time,
         hasMensalistas: data.has_mensalistas,
+        hasCleanupButton: data.has_cleanup_button,
         hasKiloService: data.has_kilo_service,
         pricePerKilo: data.price_per_kilo,
         staff: data.staff || [] // NEW
@@ -200,13 +242,20 @@ const normalizeRestaurantCategory = (data: any): RestaurantCategory => data;
 // ==============================================================================
 
 export const fetchRestaurants = async (): Promise<Restaurant[]> => {
-    const { data, error } = await supabaseAnon.from('restaurants').select('*');
-    handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants' });
-    return (data || []).map(normalizeRestaurant);
+    try {
+        console.log("DB: Fetching restaurants from anon client...");
+        const { data, error } = await withTimeout(supabaseAnon.from('restaurants').select('*'));
+        console.log("DB: Fetch result:", { count: data?.length, error: error?.message });
+        handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants' });
+        return (data || []).map(normalizeRestaurant);
+    } catch (err) {
+        console.error("DB: fetchRestaurants error:", err);
+        throw err;
+    }
 };
 
 export const fetchRestaurantsSecure = async (): Promise<Restaurant[]> => {
-    const { data, error } = await supabase.from('restaurants').select('*');
+    const { data, error } = await withTimeout(supabase.from('restaurants').select('*'));
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants (secure)' });
     return (data || []).map(normalizeRestaurantSecure);
 };
@@ -233,6 +282,7 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     if (updates.openingHours !== undefined) dbUpdates.opening_hours = updates.openingHours;
     if (updates.closingHours !== undefined) dbUpdates.closing_hours = updates.closingHours;
     if (updates.deliveryFee !== undefined) dbUpdates.delivery_fee = updates.deliveryFee;
+    if (updates.deliveryZones !== undefined) dbUpdates.delivery_zones = updates.deliveryZones;
     if (updates.operatingHours !== undefined) {
         dbUpdates.operating_hours = updates.operatingHours;
         
@@ -252,6 +302,7 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     if (updates.printerWidth !== undefined) dbUpdates.printer_width = updates.printerWidth;
     if (updates.bannerImageUrl !== undefined) dbUpdates.banner_image_url = updates.bannerImageUrl;
     if (updates.hasMensalistas !== undefined) dbUpdates.has_mensalistas = updates.hasMensalistas;
+    if (updates.hasCleanupButton !== undefined) dbUpdates.has_cleanup_button = updates.hasCleanupButton;
     if (updates.hasKiloService !== undefined) dbUpdates.has_kilo_service = updates.hasKiloService;
     if (updates.pricePerKilo !== undefined) dbUpdates.price_per_kilo = updates.pricePerKilo;
     if (updates.staff !== undefined) dbUpdates.staff = updates.staff;
@@ -259,7 +310,7 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     // Clean up all camelCase keys to prevent Supabase "column does not exist" errors
     const keysToRemove = [
         'deliveryTime', 'imageUrl', 'paymentGateways', 'openingHours', 
-        'closingHours', 'deliveryFee', 'operatingHours', 'manualPixKey', 
+        'closingHours', 'deliveryFee', 'deliveryZones', 'operatingHours', 'manualPixKey', 
         'hasPixConfigured', 'printerWidth', 'bannerImageUrl', 'marmitaStartTime', 'marmitaEndTime'
     ];
     keysToRemove.forEach(key => delete dbUpdates[key]);
@@ -370,7 +421,8 @@ export const createBanner = async (banner: Omit<Banner, 'id'>): Promise<Banner> 
         cta_text: banner.ctaText,
         target_type: banner.targetType,
         target_value: banner.targetValue,
-        active: banner.active
+        active: banner.active,
+        type: banner.type || 'top'
     };
     const { data, error } = await supabase.from('banners').insert(payload).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to create banner' });
@@ -383,7 +435,8 @@ export const updateBanner = async (id: number, banner: Partial<Banner>): Promise
     if (banner.ctaText) payload.cta_text = banner.ctaText;
     if (banner.targetType) payload.target_type = banner.targetType;
     if (banner.targetValue) payload.target_value = banner.targetValue;
-    delete payload.imageUrl; delete payload.ctaText; delete payload.targetType; delete payload.targetValue;
+    if (banner.type) payload.type = banner.type;
+    delete payload.imageUrl; delete payload.ctaText; delete payload.targetType; delete payload.targetValue; delete payload.type;
 
     const { data, error } = await supabase.from('banners').update(payload).eq('id', id).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to update banner' });
@@ -400,15 +453,15 @@ export const deleteBanner = async (id: number): Promise<void> => {
 // ==============================================================================
 
 export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilter = false): Promise<MenuCategory[]> => {
-    const { data: categoriesData, error: catError } = await supabaseAnon
-        .from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true });
+    const { data: categoriesData, error: catError } = await withTimeout(supabaseAnon
+        .from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true }));
     handleSupabaseError({ error: catError, customMessage: 'Failed to fetch menu categories' });
 
-    const { data: itemsData, error: itemError } = await supabaseAnon
-        .from('menu_items').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true });
+    const { data: itemsData, error: itemError } = await withTimeout(supabaseAnon
+        .from('menu_items').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true }));
     handleSupabaseError({ error: itemError, customMessage: 'Failed to fetch menu items' });
 
-    const { data: combosData, error: comboError } = await supabaseAnon.from('combos').select('*').eq('restaurant_id', restaurantId);
+    const { data: combosData, error: comboError } = await withTimeout(supabaseAnon.from('combos').select('*').eq('restaurant_id', restaurantId));
     handleSupabaseError({ error: comboError, customMessage: 'Failed to fetch combos' });
 
     const today = new Date().toISOString();

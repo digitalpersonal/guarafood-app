@@ -16,6 +16,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const USER_STORAGE_KEY = 'guara-food-user-profile-v3';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  console.log("AuthProvider rendered - VERSION 1.0.3");
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
       try {
           const storedUser = localStorage.getItem(USER_STORAGE_KEY);
@@ -33,26 +34,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const meta = authUser.user_metadata;
       
       if (meta && meta.role && meta.name) {
-          return {
+          const profile: User = {
               id: authUser.id,
               email: authUser.email!,
               role: meta.role as Role,
               name: meta.name,
               restaurantId: meta.restaurantId,
           };
+
+          // VERIFICAÇÃO DE INTEGRIDADE: O restaurante ainda existe?
+          // Se o ID mudou (por causa de um seed), o metadado está obsoleto.
+          if (profile.restaurantId) {
+              const { data: resExists, error: resError } = await supabase
+                  .from('restaurants')
+                  .select('id')
+                  .eq('id', profile.restaurantId)
+                  .maybeSingle();
+              
+              if (resExists && !resError) return profile;
+              
+              // Se não existe, vamos tentar achar o novo ID pelo staff
+              console.warn(`Restaurant ID ${profile.restaurantId} not found. Searching for new ID...`);
+          } else {
+              return profile;
+          }
       }
       
       // Fallback para tabela profiles apenas se necessário
       const { data, error } = await supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle();
       
       if (data) {
-          return {
+          const profile: User = {
               id: data.id,
               email: authUser.email!,
               role: data.role as Role,
               name: data.name,
               restaurantId: data.restaurantId
           };
+
+          // Verifica se o restaurante do profile ainda existe
+          if (profile.restaurantId) {
+              const { data: resExists } = await supabase
+                  .from('restaurants')
+                  .select('id')
+                  .eq('id', profile.restaurantId)
+                  .maybeSingle();
+              
+              if (resExists) return profile;
+          } else {
+              return profile;
+          }
       }
 
       // 3. SENIOR MOVE: Busca na lista de staff de todos os restaurantes
@@ -67,20 +98,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const staffList = res.staff as any[];
               const member = staffList.find(s => s.email?.toLowerCase() === authUser.email?.toLowerCase() && s.active);
               if (member) {
-                  return {
+                  const newProfile: User = {
                       id: authUser.id,
                       email: authUser.email!,
                       role: member.role as Role,
                       name: member.name,
                       restaurantId: res.id
                   };
+                  
+                  // SENIOR MOVE: Atualiza os metadados para o novo ID correto
+                  // Isso evita que o erro se repita no próximo login
+                  await supabase.auth.updateUser({
+                      data: { restaurantId: res.id }
+                  });
+
+                  return newProfile;
               }
           }
       }
 
       // Se nada funcionar, mas o cara está autenticado, monta um perfil básico para não travar
-      if (authUser.email === 'admin@guarafood.com.br') {
-          return { id: authUser.id, email: authUser.email, role: 'admin', name: 'Administrador' };
+      if (authUser.email === 'admin@guarafood.com.br' || authUser.email === 'digitalpersonal@gmail.com') {
+          return { id: authUser.id, email: authUser.email!, role: 'admin', name: 'Administrador' };
       }
 
       return null;
@@ -100,7 +139,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     window.addEventListener('auth:session-expired', handleSessionExpired);
 
     setLoading(true);
+    
+    // SAFETY TIMEOUT: Se o Supabase demorar mais de 8 segundos para responder, 
+    // liberamos o carregamento para não travar o usuário na tela de splash.
+    const safetyTimeout = setTimeout(() => {
+        if (loading) {
+            console.warn("Auth initialization taking too long. Releasing loading state.");
+            setLoading(false);
+        }
+    }, 8000);
+
     supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      clearTimeout(safetyTimeout);
       if (error) {
         console.warn("Session check error:", error.message);
         if (error.message.includes("Refresh Token") || error.message.includes("refresh_token")) {
@@ -210,9 +260,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const logout = useCallback(async () => {
-      await supabase.auth.signOut();
-      localStorage.removeItem(USER_STORAGE_KEY);
-      setCurrentUser(null);
+      console.log("Logout function called - Aggressive mode");
+      try {
+          // Tenta deslogar do Supabase
+          await supabase.auth.signOut();
+          console.log("Supabase signOut completed");
+      } catch (e) {
+          console.warn("Error during signOut:", e);
+      } finally {
+          // Limpa TUDO do localStorage para garantir que nada persista
+          localStorage.clear();
+          console.log("LocalStorage cleared completely");
+          
+          // Limpa o estado local
+          setCurrentUser(null);
+          
+          // Forçar recarregamento total da página
+          window.location.href = window.location.origin;
+      }
   }, []);
 
   const value = useMemo(() => ({

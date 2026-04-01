@@ -34,9 +34,11 @@ const LockClosedIcon: React.FC<{ className?: string }> = ({ className }) => (
 interface FooterProps {
     onLoginClick?: () => void;
     onHelpClick?: () => void;
+    onLogoutClick?: () => void;
+    userRole?: string;
 }
 
-const Footer: React.FC<FooterProps> = ({ onLoginClick, onHelpClick }) => {
+const Footer: React.FC<FooterProps> = ({ onLoginClick, onHelpClick, onLogoutClick, userRole }) => {
   const [showInstallModal, setShowInstallModal] = useState(false);
 
   return (
@@ -113,16 +115,31 @@ const Footer: React.FC<FooterProps> = ({ onLoginClick, onHelpClick }) => {
           </div>
 
           {/* Botão de Acesso Restrito (Discreto) */}
-          {onLoginClick && (
-            <button 
-              onClick={onLoginClick}
-              className="mt-6 flex items-center gap-1.5 text-[9px] text-white/20 hover:text-white/60 transition-colors uppercase font-black tracking-widest p-2 border border-white/5 rounded-lg hover:bg-white/5"
-              title="Acesso Restrito para Lojistas"
-            >
-              <LockClosedIcon className="w-3 h-3" />
-              <span>Portal do Parceiro</span>
-            </button>
-          )}
+          <div className="mt-6 flex flex-wrap justify-center gap-4">
+            {onLoginClick && !userRole && (
+              <button 
+                onClick={onLoginClick}
+                className="flex items-center gap-1.5 text-[9px] text-white/20 hover:text-white/60 transition-colors uppercase font-black tracking-widest p-2 border border-white/5 rounded-lg hover:bg-white/5"
+                title="Acesso Restrito para Lojistas"
+              >
+                <LockClosedIcon className="w-3 h-3" />
+                <span>Portal do Parceiro</span>
+              </button>
+            )}
+            
+            {onLogoutClick && userRole && (
+              <button 
+                onClick={onLogoutClick}
+                className="flex items-center gap-1.5 text-[10px] text-red-400 hover:text-red-300 transition-colors uppercase font-black tracking-widest p-2.5 border border-red-900/30 rounded-xl bg-red-950/20 hover:bg-red-900/30"
+                title="Sair da Conta"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+                </svg>
+                <span>Sair da Conta</span>
+              </button>
+            )}
+          </div>
         </div>
       </footer>
 

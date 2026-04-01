@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
-import type { MenuItem, Combo, MenuCategory, Promotion, Coupon, Addon } from '../types';
+import type { MenuItem, Combo, MenuCategory, Promotion, Addon } from '../types';
 import {
     fetchMenuForRestaurant,
     createCombo,
@@ -20,20 +20,16 @@ import {
     createPromotion,
     updatePromotion,
     deletePromotion,
-    fetchCouponsForRestaurant,
-    createCoupon,
-    updateCoupon,
-    deleteCoupon,
     fetchAddonsForRestaurant,
     createAddon,
     updateAddon,
     deleteAddon,
 } from '../services/databaseService';
+
 import Spinner from './Spinner';
 import ComboEditorModal from './ComboEditorModal';
 import MenuItemEditorModal from './MenuItemEditorModal';
 import PromotionEditorModal from './PromotionEditorModal';
-import CouponEditorModal from './CouponEditorModal';
 import AddonEditorModal from './AddonEditorModal';
 import { getErrorMessage, supabase } from '../services/api';
 
@@ -75,7 +71,6 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
     const { addToast, confirm, prompt } = useNotification();
     const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([]);
     const [promotions, setPromotions] = useState<Promotion[]>([]);
-    const [coupons, setCoupons] = useState<Coupon[]>([]);
     const [addons, setAddons] = useState<Addon[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -87,8 +82,6 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
     const [editingItem, setEditingItem] = useState<{ item: MenuItem; categoryName: string } | null>(null);
     const [isPromoModalOpen, setIsPromoModalOpen] = useState(false);
     const [editingPromo, setEditingPromo] = useState<Promotion | null>(null);
-    const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
-    const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
     const [isAddonModalOpen, setIsAddonModalOpen] = useState(false);
     const [editingAddon, setEditingAddon] = useState<Addon | null>(null);
 
@@ -97,6 +90,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
 
     // Category editing state
     const [editingCategory, setEditingCategory] = useState<{ id: number; oldName: string; newName: string; newIconUrl: string | null } | null>(null);
+    const [restaurantName, setRestaurantName] = useState<string | null>(null);
 
     const restaurantId = propRestaurantId || currentUser?.restaurantId;
 
@@ -110,15 +104,18 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
         }
         try {
             setIsLoading(true);
-            const [menuData, promoData, couponData, addonData] = await Promise.all([
+            
+            // Fetch restaurant name to check for seeds
+            const { data: restData } = await supabase.from('restaurants').select('name').eq('id', restaurantId).single();
+            if (restData) setRestaurantName(restData.name);
+
+            const [menuData, promoData, addonData] = await Promise.all([
                 fetchMenuForRestaurant(restaurantId, true), // Pass true to ignore day filter
                 fetchPromotionsForRestaurant(restaurantId),
-                fetchCouponsForRestaurant(restaurantId),
                 fetchAddonsForRestaurant(restaurantId)
             ]);
             setMenuCategories(menuData);
             setPromotions(promoData);
-            setCoupons(couponData);
             setAddons(addonData);
             setError(null);
         } catch (err) {
@@ -181,45 +178,6 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
         }
     };
 
-    // --- Coupon Handlers ---
-    const handleOpenCouponModal = (coupon: Coupon | null = null) => {
-        setEditingCoupon(coupon);
-        setIsCouponModalOpen(true);
-    };
-
-    const handleSaveCoupon = async (couponData: Omit<Coupon, 'id' | 'restaurantId'>) => {
-        if (!restaurantId) return;
-        try {
-            if (editingCoupon) {
-                await updateCoupon(restaurantId, editingCoupon.id, couponData);
-                addToast({ message: 'Cupom atualizado!', type: 'success' });
-            } else {
-                await createCoupon(restaurantId, couponData);
-                addToast({ message: 'Cupom criado!', type: 'success' });
-            }
-            setIsCouponModalOpen(false);
-            await loadData();
-        } catch (error) {
-            console.error("Failed to save coupon:", error);
-            addToast({ message: `Erro ao salvar cupom: ${getErrorMessage(error)}`, type: 'error' });
-        }
-    };
-
-    const handleDeleteCoupon = async (couponId: number) => {
-        if (!restaurantId) return;
-        const confirmed = await confirm({ title: 'Excluir Cupom', message: 'Tem certeza?', confirmText: 'Excluir', isDestructive: true });
-        if (!confirmed) return;
-
-        try {
-            await deleteCoupon(restaurantId, couponId);
-            addToast({ message: 'Cupom excluído.', type: 'info' });
-            await loadData();
-        } catch (error) {
-            console.error("Failed to delete coupon:", error);
-            addToast({ message: `Erro ao excluir cupom: ${getErrorMessage(error)}`, type: 'error' });
-        }
-    };
-    
     const handleCopyCode = (code: string) => {
         navigator.clipboard.writeText(code)
             .then(() => addToast({ message: `Código "${code}" copiado!`, type: 'success' }))
@@ -537,6 +495,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
     };
 
 
+
     if (isLoading) return <Spinner message="Carregando cardápio..." />;
     if (error) return <div className="p-4 text-red-500 text-center">{error}</div>;
 
@@ -549,13 +508,6 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
         endDate.setHours(23,59,59,999);
         return now >= startDate && now <= endDate;
     }
-
-    const isCouponActive = (coupon: Coupon) => {
-        const now = new Date();
-        const expirationDate = new Date(coupon.expirationDate);
-        expirationDate.setHours(23, 59, 59, 999);
-        return coupon.isActive && now <= expirationDate;
-    };
 
     return (
         <main className="p-4 space-y-8">
@@ -571,7 +523,9 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             {/* --- PROMOTIONS --- */}
             <div className="bg-white rounded-lg shadow-md p-6">
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
-                    <h2 className="text-2xl font-bold text-gray-800">Promoções de Itens</h2>
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-gray-800">Promoções de Itens</h2>
+                    </div>
                     <button onClick={() => handleOpenPromoModal()} className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 w-full sm:w-auto">
                         Criar Promoção
                     </button>
@@ -599,47 +553,6 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                     </div>
                  ) : (
                      <div className="text-center py-10 bg-gray-100 rounded-lg"><p className="text-gray-500">Nenhuma promoção de item cadastrada.</p></div>
-                 )}
-            </div>
-
-            {/* --- COUPONS --- */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
-                    <h2 className="text-2xl font-bold text-gray-800">Cupons de Desconto</h2>
-                    <button onClick={() => handleOpenCouponModal()} className="bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-700 w-full sm:w-auto">
-                        Criar Cupom
-                    </button>
-                </div>
-                 {coupons.length > 0 ? (
-                    <div className="space-y-3">
-                        {coupons.map(coupon => (
-                            <div key={coupon.id} className="bg-gray-50 p-4 rounded-lg border flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-                                <div className="flex-grow">
-                                    <div className="flex items-center gap-3 mb-1">
-                                        <span className={`text-xs font-bold text-white px-2 py-0.5 rounded-full ${isCouponActive(coupon) ? 'bg-green-500' : 'bg-gray-500'}`}>{isCouponActive(coupon) ? 'ATIVO' : 'INATIVO'}</span>
-                                        <div className="flex items-center gap-2">
-                                            <h4 className="text-lg font-bold text-gray-900 font-mono tracking-wider">{coupon.code}</h4>
-                                            <button onClick={() => handleCopyCode(coupon.code)} className="p-1 text-gray-400 hover:text-blue-600" title="Copiar código">
-                                                <ClipboardIcon className="w-4 h-4"/>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <p className="text-sm text-gray-600">{coupon.description}</p>
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        {coupon.discountType === 'PERCENTAGE' ? `${coupon.discountValue}% OFF` : `R$ ${coupon.discountValue.toFixed(2)} OFF`}
-                                        {coupon.minOrderValue && ` | Pedido Mínimo: R$ ${coupon.minOrderValue.toFixed(2)}`}
-                                        | Expira em: {new Date(coupon.expirationDate).toLocaleDateString()}
-                                    </p>
-                                </div>
-                                <div className="flex space-x-2 flex-shrink-0 self-end sm:self-center">
-                                    <button onClick={() => handleOpenCouponModal(coupon)} className="p-2 text-gray-500 hover:text-blue-600" title="Editar Cupom"><EditIcon className="w-5 h-5"/></button>
-                                    <button onClick={() => handleDeleteCoupon(coupon.id)} className="p-2 text-gray-500 hover:text-red-600" title="Excluir Cupom"><TrashIcon className="w-5 h-5"/></button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                 ) : (
-                     <div className="text-center py-10 bg-gray-100 rounded-lg"><p className="text-gray-500">Nenhum cupom cadastrado.</p></div>
                  )}
             </div>
 
@@ -734,6 +647,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                         <button onClick={handleCreateCategory} className="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 w-full sm:w-auto">
                             Criar Categoria
                         </button>
+
                     </div>
                 </div>
 
@@ -887,10 +801,10 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                 )}
             </div>
 
-            {isComboModalOpen && <ComboEditorModal isOpen={isComboModalOpen} onClose={() => setIsComboModalOpen(false)} onSave={handleSaveCombo} existingCombo={editingCombo} menuItems={allMenuItems} />}
+            {isComboModalOpen && <ComboEditorModal isOpen={isComboModalOpen} onClose={() => setIsComboModalOpen(false)} onSave={handleSaveCombo} existingCombo={editingCombo} menuItems={allMenuItems} restaurantId={restaurantId!} />}
             {isItemModalOpen && restaurantId && <MenuItemEditorModal isOpen={isItemModalOpen} onClose={() => setIsItemModalOpen(false)} onSave={handleSaveItem} existingItem={editingItem?.item} initialCategory={editingItem?.categoryName} restaurantCategories={menuCategories.map(c => c.name)} allAddons={addons} restaurantId={restaurantId} />}
             {isPromoModalOpen && <PromotionEditorModal isOpen={isPromoModalOpen} onClose={() => setIsPromoModalOpen(false)} onSave={handleSavePromo} existingPromotion={editingPromo} menuItems={allMenuItems} combos={allCombos} categories={menuCategories.map(c => c.name)}/>}
-            {isCouponModalOpen && <CouponEditorModal isOpen={isCouponModalOpen} onClose={() => setIsCouponModalOpen(false)} onSave={handleSaveCoupon} existingCoupon={editingCoupon} />}
+
             {isAddonModalOpen && <AddonEditorModal isOpen={isAddonModalOpen} onClose={() => setIsAddonModalOpen(false)} onSave={handleSaveAddon} existingAddon={editingAddon} />}
         </main>
     );

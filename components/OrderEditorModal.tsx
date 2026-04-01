@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Order, CartItem, MenuItem, Combo, Addon } from '../types';
 import { useNotification } from '../hooks/useNotification';
 import { updateOrderDetails } from '../services/orderService';
-import { getMensalistaByPhone } from '../services/mensalistaService';
+import { verifyMensalistaByPhone } from '../services/mensalistaService';
 import { fetchMenuForRestaurant, fetchAddonsForRestaurant } from '../services/databaseService';
 import Spinner from './Spinner';
 import OptimizedImage from './OptimizedImage';
@@ -19,6 +19,7 @@ interface OrderEditorModalProps {
     onSave: (updatedOrder: Order) => void;
     restaurantId: number;
     restaurantName: string;
+    hasServiceCharge?: boolean;
     playNotification?: () => void;
 }
 
@@ -36,7 +37,7 @@ const PlusIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
-const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, order, onSave, restaurantId, restaurantName, playNotification }) => {
+const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, order, onSave, restaurantId, restaurantName, hasServiceCharge, playNotification }) => {
     const { addToast } = useNotification();
     const [editedItems, setEditedItems] = useState<CartItem[]>([]);
     const [editedPaymentMethod, setEditedPaymentMethod] = useState(order.paymentMethod);
@@ -92,6 +93,21 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
 
     const handleQuantityChange = useCallback((itemId: string, newQuantity: number) => {
         setEditedItems(prevItems => {
+            const itemToUpdate = prevItems.find(i => i.id === itemId);
+            if (!itemToUpdate) return prevItems;
+
+            // If increasing quantity of an already printed item, split it to track the new items
+            if (itemToUpdate.kitchenPrinted && newQuantity > itemToUpdate.quantity) {
+                const diff = newQuantity - itemToUpdate.quantity;
+                const newItem = { 
+                    ...itemToUpdate, 
+                    id: `${itemToUpdate.id.split('-')[0]}-${Date.now()}`, 
+                    quantity: diff, 
+                    kitchenPrinted: false 
+                };
+                return [...prevItems, newItem];
+            }
+
             const updated = prevItems.map(item =>
                 item.id === itemId ? { ...item, quantity: Math.max(0, newQuantity) } : item
             );
@@ -105,17 +121,19 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
 
     const handleAddItemToOrder = useCallback((newItem: CartItem) => {
         setEditedItems(prevItems => {
-            // Check if it's the exact same custom item (same ID)
-            const existingItemIndex = prevItems.findIndex(item => item.id === newItem.id);
+            // Check if it's the exact same custom item (same ID) AND it hasn't been printed yet
+            const existingItemIndex = prevItems.findIndex(item => item.id === newItem.id && !item.kitchenPrinted);
 
             if (existingItemIndex > -1) {
-                // If it exists, just increment quantity
+                // If it exists and not printed, just increment quantity
                 return prevItems.map((item, index) =>
                     index === existingItemIndex ? { ...item, quantity: item.quantity + newItem.quantity } : item
                 );
             } else {
-                // Otherwise, add as a new item
-                return [...prevItems, { ...newItem }];
+                // Otherwise, add as a new item (even if another item with same ID exists but was already printed)
+                // We need a unique ID for the new entry to avoid React key conflicts and merging issues
+                const uniqueNewItem = { ...newItem, id: `${newItem.id}-${Date.now()}`, kitchenPrinted: false };
+                return [...prevItems, uniqueNewItem];
             }
         });
         addToast({ message: `${newItem.name} adicionado!`, type: "success" });
@@ -136,8 +154,10 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
     const discountAmount = order.discountAmount || 0;
 
     const finalTotalPrice = useMemo(() => {
-        return Math.max(0, (subtotal - discountAmount) + deliveryFee);
-    }, [subtotal, discountAmount, deliveryFee]);
+        const baseTotal = (subtotal - discountAmount) + deliveryFee;
+        const serviceCharge = (order.tableNumber && hasServiceCharge) ? (subtotal * 0.1) : 0;
+        return Math.max(0, baseTotal + serviceCharge);
+    }, [subtotal, discountAmount, deliveryFee, order.tableNumber, hasServiceCharge]);
 
     const handleSave = async () => {
         setError(null);
@@ -157,7 +177,7 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                     setIsSaving(false);
                     return;
                 }
-                const mensalista = await getMensalistaByPhone(editedCustomerPhone.replace(/\D/g, ''), restaurantId);
+                const mensalista = await verifyMensalistaByPhone(restaurantId, editedCustomerPhone.replace(/\D/g, ''));
                 if (mensalista) {
                     mensalistaIdToUpdate = mensalista.id;
                     finalPaymentMethod = `Mensalista (${mensalista.name})`;
@@ -166,10 +186,12 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                     setIsSaving(false);
                     return;
                 }
-            } else if (order.mensalista_id) {
+            } else if (order.mensalistaId) {
                 // Se era mensalista e mudou para outra forma, removemos o ID do mensalista
                 mensalistaIdToUpdate = null;
             }
+
+            const serviceCharge = (order.tableNumber && hasServiceCharge) ? (subtotal * 0.1) : 0;
 
             const updatedOrder = await updateOrderDetails(order.id, {
                 items: editedItems,
@@ -180,6 +202,8 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                 customerName: editedCustomerName,
                 customerPhone: editedCustomerPhone,
                 mensalistaId: mensalistaIdToUpdate,
+                waiterName: restaurantName,
+                serviceCharge: serviceCharge,
             });
             
             // Play notification if it's a table order
@@ -212,6 +236,7 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
     const handleAddComboToOrder = useCallback((combo: Combo) => {
         const comboCartItem: CartItem = {
             id: `combo-${combo.id}-${Date.now()}`, // Unique ID
+            restaurantId: restaurantId,
             name: combo.name,
             price: combo.price,
             basePrice: combo.price,
@@ -220,7 +245,7 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
             description: combo.description,
         };
         handleAddItemToOrder(comboCartItem);
-    }, [handleAddItemToOrder]);
+    }, [handleAddItemToOrder, restaurantId]);
 
 
     if (!isOpen) return null;
@@ -402,6 +427,7 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                     initialPizza={itemToCustomize}
                     allPizzas={allRestaurantMenuItems.filter(i => i.isPizza)}
                     allAddons={allRestaurantAddons}
+                    restaurantId={restaurantId}
                 />
             )}
             {isAcaiModalOpen && itemToCustomize && (
@@ -411,6 +437,7 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                     onAddToCart={handleAddItemToOrder}
                     initialItem={itemToCustomize}
                     allAddons={allRestaurantAddons}
+                    restaurantId={restaurantId}
                 />
             )}
             {isGenericModalOpen && itemToCustomize && (
@@ -420,6 +447,7 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                     onAddToCart={handleAddItemToOrder}
                     initialItem={itemToCustomize}
                     allAddons={allRestaurantAddons}
+                    restaurantId={restaurantId}
                 />
             )}
         </>

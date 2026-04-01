@@ -11,6 +11,22 @@ interface HelpSection {
 const HelpCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [activeSection, setActiveSection] = useState('introducao');
 
+    const handleClearCache = async () => {
+        if (window.confirm("Tem certeza que deseja limpar o cache do sistema? Você precisará fazer login novamente.")) {
+            localStorage.clear();
+            sessionStorage.clear();
+            
+            if ('serviceWorker' in navigator) {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                for (let registration of registrations) {
+                    await registration.unregister();
+                }
+            }
+            
+            window.location.reload();
+        }
+    };
+
     const sections: HelpSection[] = [
         {
             id: 'introducao',
@@ -97,38 +113,20 @@ const HelpCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             content: (
                 <div className="space-y-6">
                     <section>
-                        <h4 className="font-black text-gray-800 mb-2">Abrindo uma Mesa</h4>
+                        <h4 className="font-black text-gray-800 mb-2">1. Abrindo uma Mesa</h4>
                         <p className="text-sm text-gray-600">Clique em uma mesa livre, informe o nome do cliente e adicione os itens iniciais. A mesa ficará com o status "Ocupada".</p>
                     </section>
                     <section>
-                        <h4 className="font-black text-gray-800 mb-2">Adicionando Itens</h4>
-                        <p className="text-sm text-gray-600">Você pode adicionar novos itens à mesa a qualquer momento. O sistema mantém o histórico de tudo o que foi pedido.</p>
+                        <h4 className="font-black text-gray-800 mb-2">2. Comandas Individuais</h4>
+                        <p className="text-sm text-gray-600">Dentro de uma mesa, você pode abrir múltiplas comandas para diferentes clientes. Isso permite que cada um pague o que consumiu separadamente.</p>
                     </section>
                     <section>
-                        <h4 className="font-black text-gray-800 mb-2">Fechamento e Pagamento</h4>
-                        <p className="text-sm text-gray-600">Ao solicitar a conta, você pode registrar pagamentos parciais (ex: um cliente paga sua parte) ou o total. O sistema aceita Dinheiro, Pix, Cartões e <strong>Mensalista</strong>.</p>
-                    </section>
-                </div>
-            )
-        },
-        {
-            id: 'mensalistas',
-            title: 'Mensalistas (Vendedores)',
-            icon: '🤝',
-            content: (
-                <div className="space-y-6">
-                    <section>
-                        <h4 className="font-black text-gray-800 mb-2">O que são?</h4>
-                        <p className="text-sm text-gray-600">São clientes especiais (como vendedores de lojas vizinhas) que consomem diariamente e pagam tudo de uma vez no final do mês.</p>
+                        <h4 className="font-black text-gray-800 mb-2">3. Comandas por Peso</h4>
+                        <p className="text-sm text-gray-600">Ideal para self-service ou buffet. Ao adicionar um item por peso, o sistema solicita o valor em KG (ex: 0.450) e calcula automaticamente o preço com base no valor do quilo configurado no restaurante.</p>
                     </section>
                     <section>
-                        <h4 className="font-black text-gray-800 mb-2">Como usar?</h4>
-                        <ol className="list-decimal list-inside text-sm text-gray-600 space-y-2">
-                            <li>Cadastre o mensalista com nome e WhatsApp.</li>
-                            <li>Ao fazer um pedido, informe o WhatsApp dele.</li>
-                            <li>O valor será somado ao "Saldo Devedor" do mensalista.</li>
-                            <li>No final do mês, acesse o painel de Mensalistas para ver o total e registrar o pagamento (baixa no saldo).</li>
-                        </ol>
+                        <h4 className="font-black text-gray-800 mb-2">4. Fechamento e Pagamento</h4>
+                        <p className="text-sm text-gray-600">Ao solicitar a conta, você pode registrar pagamentos parciais ou o total. O sistema aceita Dinheiro, Pix e Cartões.</p>
                     </section>
                 </div>
             )
@@ -163,6 +161,38 @@ const HelpCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     <section>
                         <h4 className="font-black text-gray-800 mb-2">Impressão Térmica</h4>
                         <p className="text-sm text-gray-600">Para que a impressão funcione, você deve configurar o nome da impressora exatamente como aparece no Windows/Mac nas configurações do restaurante dentro do painel administrativo.</p>
+                    </section>
+                </div>
+            )
+        },
+        {
+            id: 'solucao-problemas',
+            title: 'Solução de Problemas',
+            icon: '🛠️',
+            content: (
+                <div className="space-y-6">
+                    <section>
+                        <h4 className="font-black text-gray-800 mb-2">Problemas após Atualizações</h4>
+                        <p className="text-sm text-gray-600 mb-4">
+                            Se o sistema foi atualizado recentemente e você está enfrentando lentidão, botões que não funcionam ou informações desatualizadas, o navegador pode estar usando uma versão antiga (em cache).
+                        </p>
+                        <div className="bg-red-50 p-6 rounded-2xl border border-red-100 flex flex-col items-start gap-4">
+                            <div>
+                                <h5 className="font-black text-red-800 text-lg">Limpar Cache do Sistema</h5>
+                                <p className="text-sm text-red-700 mt-1">
+                                    Isso forçará o navegador a baixar a versão mais recente do sistema. <strong>Atenção:</strong> Você será desconectado e precisará fazer login novamente.
+                                </p>
+                            </div>
+                            <button 
+                                onClick={handleClearCache}
+                                className="bg-red-600 hover:bg-red-700 text-white font-black py-3 px-6 rounded-xl shadow-lg shadow-red-200 transition-all active:scale-95 flex items-center gap-2"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                </svg>
+                                Limpar Cache e Atualizar
+                            </button>
+                        </div>
                     </section>
                 </div>
             )

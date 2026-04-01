@@ -1,13 +1,17 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
+import { forceSystemUpdate } from '../utils/systemUpdate';
 import RestaurantManagement from './RestaurantManagement';
 import CategoryManagement from './CategoryManagement';
 import MarketingManagement from './MarketingManagement';
 import MenuManagement from './MenuManagement';
+import RestaurantSettings from './RestaurantSettings';
 import GlobalCustomerList from './GlobalCustomerList';
+import MensalistasManager from './MensalistasManager';
 import HelpCenter from './HelpCenter';
+import type { Restaurant } from '../types';
 
 
 // Re-usable Icons
@@ -29,8 +33,15 @@ import { fetchRestaurantsSecure, deleteRestaurant } from '../services/databaseSe
 const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { logout } = useAuth();
     const { addToast } = useNotification();
-    const [activeTab, setActiveTab] = useState<'restaurants' | 'categories' | 'marketing' | 'customers' | 'settings' | 'help'>('restaurants');
+    const [activeTab, setActiveTab] = useState<'restaurants' | 'categories' | 'marketing' | 'customers' | 'settings' | 'help' | 'mensalistas'>('restaurants');
     const [editingMenuRestaurantId, setEditingMenuRestaurantId] = useState<number | null>(null);
+    const [editingSettingsRestaurantId, setEditingSettingsRestaurantId] = useState<number | null>(null);
+    const [isUpdating, setIsUpdating] = useState(false);
+    const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+
+    useEffect(() => {
+        fetchRestaurantsSecure().then(data => setRestaurants(data));
+    }, []);
 
     // Se estiver editando um cardápio específico, mostra o componente de Menu
     if (editingMenuRestaurantId) {
@@ -38,6 +49,16 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <MenuManagement 
                 restaurantId={editingMenuRestaurantId} 
                 onBack={() => setEditingMenuRestaurantId(null)} 
+            />
+        );
+    }
+
+    // Se estiver editando as configurações de um restaurante específico
+    if (editingSettingsRestaurantId) {
+        return (
+            <RestaurantSettings 
+                restaurantIdOverride={editingSettingsRestaurantId} 
+                onBack={() => setEditingSettingsRestaurantId(null)} 
             />
         );
     }
@@ -79,8 +100,25 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     };
 
     const renderSettings = () => (
-        <div className="bg-white p-6 rounded-lg shadow-md max-w-2xl mx-auto">
+        <div className="bg-white p-6 rounded-lg shadow-md max-w-2xl mx-auto space-y-6">
             <h2 className="text-xl font-bold text-gray-800 mb-4">Configurações do Sistema</h2>
+            
+            <div className="border rounded-lg bg-red-50 p-4 border-red-200">
+                <h3 className="text-lg font-semibold text-red-700 mb-3">Atualização Forçada</h3>
+                <p className="text-sm text-red-600 mb-4">
+                    Se o sistema parecer desatualizado ou apresentar erros após uma nova versão, clique abaixo para limpar o cache e recarregar.
+                </p>
+                <button 
+                    onClick={() => {
+                        alert("Botão clicado!");
+                        forceSystemUpdate();
+                    }}
+                    className={`bg-red-600 text-white font-bold px-4 py-2.5 rounded-lg hover:bg-red-700 text-sm shadow-sm transition-colors ${isUpdating ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                    {isUpdating ? 'Atualizando...' : 'Atualizar Sistema Agora'}
+                </button>
+            </div>
+
             <div className="border rounded-lg bg-gray-50 p-4 border-gray-200">
                 <h3 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
                     <img src="/vite.svg" alt="Icon" className="w-6 h-6" />
@@ -103,13 +141,20 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const renderContent = () => {
         switch (activeTab) {
             case 'restaurants':
-                return <RestaurantManagement onEditMenu={(restaurant) => setEditingMenuRestaurantId(restaurant.id)} />;
+                return (
+                    <RestaurantManagement 
+                        onEditMenu={(restaurant) => setEditingMenuRestaurantId(restaurant.id)} 
+                        onEditSettings={(restaurant) => setEditingSettingsRestaurantId(restaurant.id)}
+                    />
+                );
             case 'categories':
                 return <CategoryManagement />;
             case 'marketing':
                 return <MarketingManagement />;
             case 'customers':
                 return <GlobalCustomerList />;
+            case 'mensalistas':
+                return <MensalistasManager restaurant={restaurants.find(r => r.id === editingSettingsRestaurantId) || restaurants[0]} />;
             case 'settings':
                 return renderSettings();
             case 'help':
@@ -129,9 +174,22 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         </button>
                         <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Administração GuaraFood</h1>
                     </div>
-                     <button onClick={logout} className="flex items-center space-x-2 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition-colors font-semibold" title="Sair">
-                        <LogoutIcon className="w-6 h-6" />
-                        <span className="hidden sm:inline">Sair</span>
+                     <button 
+                        onClick={async () => {
+                          console.log("Logout button clicked in AdminDashboard");
+                          try {
+                            await logout();
+                          } catch (e) {
+                            console.error("Logout error:", e);
+                            localStorage.clear();
+                            window.location.href = window.location.origin;
+                          }
+                        }} 
+                        className="flex items-center space-x-2 px-3 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-all font-black text-[10px] uppercase tracking-wider shadow-sm flex-shrink-0" 
+                        title="Sair da Administração"
+                      >
+                        <LogoutIcon className="w-5 h-5" />
+                        <span>Sair</span>
                     </button>
                 </div>
             </header>
@@ -141,6 +199,7 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     <button onClick={() => setActiveTab('restaurants')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'restaurants' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Restaurantes</button>
                     <button onClick={() => setActiveTab('categories')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'categories' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Categorias</button>
                     <button onClick={() => setActiveTab('marketing')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'marketing' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Marketing</button>
+                    <button onClick={() => setActiveTab('mensalistas')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'mensalistas' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Mensalistas</button>
                     <button onClick={() => setActiveTab('customers')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'customers' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Clientes</button>
                     <button onClick={() => setActiveTab('settings')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'settings' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Config</button>
                     <button onClick={() => setActiveTab('help')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'help' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Ajuda</button>

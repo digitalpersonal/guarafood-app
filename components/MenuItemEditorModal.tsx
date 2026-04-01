@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { MenuItem, SizeOption, Addon } from '../types';
 import { supabase } from '../services/api';
+import ImageUploadField from './ImageUploadField';
 
 // Icon for the Combobox dropdown
 const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -11,11 +12,6 @@ const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
-);
-const PlusIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-    </svg>
 );
 
 const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -129,8 +125,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
     const [error, setError] = useState('');
     const [available, setAvailable] = useState(true);
 
-    const [imageFile, setImageFile] = useState<File | null>(null);
-    const [imagePreview, setImagePreview] = useState<string | null>(null);
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
 
 
@@ -140,7 +135,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             setDescription(existingItem.description);
             setPrice(String(existingItem.price));
             setOriginalPrice(String(existingItem.originalPrice || ''));
-            setImagePreview(existingItem.imageUrl || null);
+            setImageUrl(existingItem.imageUrl || null);
             setCategory(initialCategory);
             setIsAcai(existingItem.isAcai || false);
             setIsPizza(existingItem.isPizza || false);
@@ -158,7 +153,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             setDescription('');
             setPrice('');
             setOriginalPrice('');
-            setImagePreview(null);
+            setImageUrl(null);
             setCategory(initialCategory);
             setIsAcai(false);
             setIsPizza(false);
@@ -172,95 +167,9 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             setAvailable(true);
         }
         setAddonSearchTerm('');
-        setImageFile(null);
         setError('');
         setIsSaving(false);
     }, [existingItem, initialCategory, isOpen]);
-
-    // Cleanup for image preview object URL
-    useEffect(() => {
-        return () => {
-            if (imagePreview && imagePreview.startsWith('blob:')) {
-                URL.revokeObjectURL(imagePreview);
-            }
-        };
-    }, [imagePreview]);
-
-    // --- COMPRESSÃO DE IMAGEM ULTRA LEVE ---
-    const compressImage = async (file: File): Promise<File> => {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.src = URL.createObjectURL(file);
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                if (!ctx) {
-                    URL.revokeObjectURL(img.src);
-                    reject(new Error("Não foi possível processar a imagem."));
-                    return;
-                }
-
-                // Configurações de otimização AGRESSIVA (Foco em mobile)
-                const MAX_WIDTH = 600; 
-                const MAX_HEIGHT = 600;
-                let width = img.width;
-                let height = img.height;
-
-                if (width > height) {
-                    if (width > MAX_WIDTH) {
-                        height *= MAX_WIDTH / width;
-                        width = MAX_WIDTH;
-                    }
-                } else {
-                    if (height > MAX_HEIGHT) {
-                        width *= MAX_HEIGHT / height;
-                        height = MAX_HEIGHT;
-                    }
-                }
-
-                canvas.width = width;
-                canvas.height = height;
-                ctx.drawImage(img, 0, 0, width, height);
-
-                // JPEG 50% de qualidade - Extremamente leve para listas de comida
-                canvas.toBlob((blob) => {
-                    URL.revokeObjectURL(img.src);
-                    if (blob) {
-                        const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
-                            type: 'image/jpeg',
-                            lastModified: Date.now(),
-                        });
-                        resolve(compressedFile);
-                    } else {
-                        reject(new Error("Falha na compressão."));
-                    }
-                }, 'image/jpeg', 0.5); 
-            };
-            img.onerror = (err) => {
-                URL.revokeObjectURL(img.src);
-                reject(err);
-            };
-        });
-    };
-
-
-    const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const originalFile = e.target.files[0];
-            try {
-                const compressedFile = await compressImage(originalFile);
-                setImageFile(compressedFile);
-                
-                if (imagePreview && imagePreview.startsWith('blob:')) {
-                    URL.revokeObjectURL(imagePreview);
-                }
-                setImagePreview(URL.createObjectURL(compressedFile));
-            } catch (err) {
-                console.error("Erro ao otimizar imagem:", err);
-                setError("Erro ao processar imagem. Tente outra.");
-            }
-        }
-    };
 
     const handlePriceChange = (value: string, setter: React.Dispatch<React.SetStateAction<string>>) => {
         setter((value || '').replace(',', '.'));
@@ -344,37 +253,8 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
         }
 
         setIsSaving(true);
-        let finalImageUrl = existingItem?.imageUrl || '';
 
         try {
-            if (imageFile) {
-                try {
-                    const fileExt = 'jpg'; 
-                    const fileName = `${crypto.randomUUID()}.${fileExt}`;
-                    const filePath = `${restaurantId}/${fileName}`;
-
-                    const { error: uploadError } = await supabase.storage
-                        .from('product-images')
-                        .upload(filePath, imageFile, {
-                            contentType: 'image/jpeg',
-                            cacheControl: '3600',
-                            upsert: false
-                        });
-
-                    if (uploadError) throw uploadError;
-
-                    const { data } = supabase.storage
-                        .from('product-images')
-                        .getPublicUrl(filePath);
-
-                    finalImageUrl = data.publicUrl;
-                } catch (uploadError: any) {
-                    setError(`Erro no upload: ${uploadError.message}`);
-                    return; 
-                }
-            }
-
-
             const numericOriginalPrice = parseFloat(originalPrice);
 
             await onSave({
@@ -382,7 +262,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                 description,
                 price: basePrice,
                 originalPrice: numericOriginalPrice > 0 ? numericOriginalPrice : undefined,
-                imageUrl: finalImageUrl,
+                imageUrl: imageUrl || '',
                 isAcai,
                 isPizza,
                 isDailySpecial,
@@ -428,36 +308,12 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                         </label>
                     </div>
 
-                    <div className="flex flex-col md:flex-row items-start gap-4">
-                         <div className="flex-shrink-0">
-                            {imagePreview ? (
-                                <img src={imagePreview} alt="Preview" className="w-24 h-24 rounded-md object-cover" loading="lazy" />
-                            ) : (
-                                <div className="w-24 h-24 rounded-md bg-gray-100 flex items-center justify-center text-gray-400 text-sm text-center p-2">
-                                    Sem Imagem
-                                </div>
-                            )}
-                        </div>
-                        <div className="flex-grow">
-                             <label htmlFor="imageUpload" className="block text-sm font-medium text-gray-700 mb-1">
-                                Foto do Produto
-                            </label>
-                            <input
-                                id="imageUpload"
-                                type="file"
-                                accept="image/*"
-                                onChange={handleImageChange}
-                                className="block w-full text-sm text-gray-500
-                                    file:mr-4 file:py-2 file:px-4
-                                    file:rounded-full file:border-0
-                                    file:text-sm file:font-semibold
-                                    file:bg-orange-50 file:text-orange-700
-                                    hover:file:bg-orange-100"
-                            />
-                            <p className="text-[10px] text-orange-600 font-bold mt-1 uppercase tracking-tighter">O App reduzirá o peso da foto automaticamente para economizar espaço.</p>
-                        </div>
-                    </div>
-
+                    <ImageUploadField 
+                        restaurantId={restaurantId}
+                        currentImageUrl={imageUrl}
+                        onImageUploaded={setImageUrl}
+                        label="Foto do Produto"
+                    />
 
                     <input type="text" placeholder="Nome do Item (ex: X-Bacon)" value={name} onChange={(e) => setName(e.target.value)} className="w-full p-3 border rounded-lg bg-gray-50"/>
                     <textarea placeholder="Descrição do Item" value={description} onChange={(e) => setDescription(e.target.value)} className="w-full p-3 border rounded-lg bg-gray-50" rows={3}/>

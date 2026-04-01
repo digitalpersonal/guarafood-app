@@ -1,151 +1,222 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../services/authService';
-import { fetchMensalistas, createMensalista, updateMensalista, deleteMensalista } from '../services/mensalistaService';
-import { Mensalista } from '../types';
+import { supabase } from '../services/api';
+import type { Restaurant } from '../types';
+import type { Mensalista } from '../services/mensalistaService';
 import { useNotification } from '../hooks/useNotification';
-import Spinner from './Spinner';
 
-const MensalistasManager: React.FC = () => {
-    const { currentUser } = useAuth();
-    const { addToast, confirm, prompt } = useNotification();
-    const [mensalistas, setMensalistas] = useState<Mensalista[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isFormOpen, setIsFormOpen] = useState(false);
+interface MensalistasManagerProps {
+  restaurant: Restaurant;
+}
+
+const MensalistasManager: React.FC<MensalistasManagerProps> = ({ restaurant }) => {
+  const [mensalistas, setMensalistas] = useState<Mensalista[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAdding, setIsAdding] = useState(false);
+  const { addToast } = useNotification();
+
+  // Form state
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [monthlyFee, setMonthlyFee] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [nextPaymentDate, setNextPaymentDate] = useState('');
+
+  useEffect(() => {
+    fetchMensalistas();
+  }, [restaurant.id]);
+
+  const fetchMensalistas = async () => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('mensalistas')
+        .select('*')
+        .eq('restaurant_id', restaurant.id)
+        .order('name');
+
+      if (error) throw error;
+      setMensalistas(data || []);
+    } catch (error) {
+      console.error('Error fetching mensalistas:', error);
+      addToast({ message: 'Erro ao carregar mensalistas', type: 'error' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAddMensalista = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const cleanPhone = phone.replace(/\D/g, '');
+      
+      const newMensalista = {
+        restaurant_id: restaurant.id,
+        name,
+        phone: cleanPhone,
+        monthly_fee: parseFloat(monthlyFee),
+        start_date: startDate,
+        next_payment_date: nextPaymentDate,
+        status: 'active'
+      };
+
+      const { error } = await supabase.from('mensalistas').insert(newMensalista);
+      if (error) throw error;
+
+      addToast({ message: 'Mensalista adicionado com sucesso', type: 'success' });
+      setIsAdding(false);
+      resetForm();
+      fetchMensalistas();
+    } catch (error) {
+      console.error('Error adding mensalista:', error);
+      addToast({ message: 'Erro ao adicionar mensalista', type: 'error' });
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Tem certeza que deseja remover este mensalista?')) return;
     
-    // Form state
-    const [name, setName] = useState('');
-    const [phone, setPhone] = useState('');
-    const [monthlyFee, setMonthlyFee] = useState('');
-    const [nextPaymentDate, setNextPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+    try {
+      const { error } = await supabase.from('mensalistas').delete().eq('id', id);
+      if (error) throw error;
+      
+      addToast({ message: 'Mensalista removido', type: 'success' });
+      fetchMensalistas();
+    } catch (error) {
+      console.error('Error deleting mensalista:', error);
+      addToast({ message: 'Erro ao remover mensalista', type: 'error' });
+    }
+  };
 
-    useEffect(() => {
-        loadMensalistas();
-    }, [currentUser]);
+  const resetForm = () => {
+    setName('');
+    setPhone('');
+    setMonthlyFee('');
+    setStartDate('');
+    setNextPaymentDate('');
+  };
 
-    const loadMensalistas = async () => {
-        if (!currentUser?.restaurantId) return;
-        setIsLoading(true);
-        try {
-            const data = await fetchMensalistas(currentUser.restaurantId);
-            setMensalistas(data);
-        } catch (error) {
-            addToast({ message: 'Erro ao carregar mensalistas', type: 'error' });
-        } finally {
-            setIsLoading(false);
-        }
-    };
+  return (
+    <div className="bg-white rounded-lg shadow-sm p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-xl font-semibold">Gerenciar Mensalistas</h2>
+        <button
+          onClick={() => setIsAdding(!isAdding)}
+          className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary-dark transition-colors"
+        >
+          {isAdding ? 'Cancelar' : 'Adicionar Mensalista'}
+        </button>
+      </div>
 
-    const handleAdd = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!currentUser?.restaurantId) return;
-
-        try {
-            await createMensalista({
-                restaurantId: currentUser.restaurantId,
-                name,
-                phone,
-                startDate: new Date().toISOString().split('T')[0],
-                nextPaymentDate,
-                status: 'active',
-                monthlyFee: Number(monthlyFee),
-                balance: 0,
-            });
-            addToast({ message: 'Mensalista adicionado!', type: 'success' });
-            setIsFormOpen(false);
-            setName('');
-            setPhone('');
-            setMonthlyFee('');
-            loadMensalistas();
-        } catch (error) {
-            addToast({ message: 'Erro ao adicionar mensalista', type: 'error' });
-        }
-    };
-
-    const handleDelete = async (id: string) => {
-        const confirmed = await confirm({
-            title: 'Remover mensalista?',
-            message: 'Tem certeza que deseja remover este mensalista?',
-            confirmText: 'Remover',
-            isDestructive: true
-        });
-
-        if (confirmed) {
-            try {
-                await deleteMensalista(id);
-                addToast({ message: 'Mensalista removido!', type: 'success' });
-                loadMensalistas();
-            } catch (error) {
-                addToast({ message: 'Erro ao remover mensalista', type: 'error' });
-            }
-        }
-    };
-
-    const handleSettle = async (mensalista: Mensalista) => {
-        const amountStr = await prompt({
-            title: 'Registrar pagamento',
-            message: `Saldo atual: R$ ${mensalista.balance.toFixed(2)}. Informe o valor do pagamento:`,
-            placeholder: '0.00',
-            submitText: 'Registrar'
-        });
-
-        if (amountStr) {
-            const amount = parseFloat(amountStr.replace(',', '.'));
-            if (isNaN(amount) || amount <= 0) {
-                addToast({ message: 'Valor inválido', type: 'error' });
-                return;
-            }
-            
-            try {
-                const newBalance = Math.max(0, mensalista.balance - amount);
-                await updateMensalista(mensalista.id, { ...mensalista, balance: newBalance });
-                addToast({ message: 'Pagamento registrado!', type: 'success' });
-                loadMensalistas();
-            } catch (error) {
-                addToast({ message: 'Erro ao registrar pagamento', type: 'error' });
-            }
-        }
-    };
-
-    if (isLoading) return <Spinner />;
-
-    return (
-        <div className="p-6 bg-white rounded-3xl shadow-sm">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tight">Mensalistas</h2>
-                <button 
-                    onClick={() => setIsFormOpen(!isFormOpen)}
-                    className="bg-orange-600 text-white font-black px-6 py-3 rounded-2xl hover:bg-orange-700 transition-all text-xs uppercase tracking-widest active:scale-95"
-                >
-                    {isFormOpen ? 'Cancelar' : 'Novo Mensalista'}
-                </button>
+      {isAdding && (
+        <form onSubmit={handleAddMensalista} className="mb-8 p-4 border border-gray-200 rounded-lg bg-gray-50">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
+              <input
+                type="text"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              />
             </div>
-
-            {isFormOpen && (
-                <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 p-4 bg-gray-50 rounded-2xl">
-                    <input type="text" placeholder="Nome" value={name} onChange={e => setName(e.target.value)} className="p-3 rounded-xl border" required />
-                    <input type="text" placeholder="Telefone" value={phone} onChange={e => setPhone(e.target.value)} className="p-3 rounded-xl border" required />
-                    <input type="number" placeholder="Valor Mensal" value={monthlyFee} onChange={e => setMonthlyFee(e.target.value)} className="p-3 rounded-xl border" required />
-                    <input type="date" value={nextPaymentDate} onChange={e => setNextPaymentDate(e.target.value)} className="p-3 rounded-xl border" required />
-                    <button type="submit" className="md:col-span-2 bg-emerald-600 text-white font-black py-3 rounded-xl hover:bg-emerald-700">Salvar</button>
-                </form>
-            )}
-
-            <div className="space-y-4">
-                {mensalistas.map(m => (
-                    <div key={m.id} className="flex justify-between items-center p-4 border rounded-2xl">
-                        <div>
-                            <p className="font-bold text-gray-800">{m.name}</p>
-                            <p className="text-xs text-gray-500">{m.phone} | Saldo: <span className="font-black text-red-600">R$ {m.balance.toFixed(2)}</span></p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <button onClick={() => handleSettle(m)} className="bg-emerald-600 text-white text-[10px] font-black px-3 py-2 rounded-lg hover:bg-emerald-700 uppercase">Dar Baixa</button>
-                            <button onClick={() => handleDelete(m.id)} className="text-red-500 hover:text-red-700 text-xs">Remover</button>
-                        </div>
-                    </div>
-                ))}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp (apenas números)</label>
+              <input
+                type="text"
+                required
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Ex: 35999999999"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Valor Mensal (R$)</label>
+              <input
+                type="number"
+                step="0.01"
+                required
+                value={monthlyFee}
+                onChange={(e) => setMonthlyFee(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Data de Início</label>
+              <input
+                type="date"
+                required
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Próximo Vencimento</label>
+              <input
+                type="date"
+                required
+                value={nextPaymentDate}
+                onChange={(e) => setNextPaymentDate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              />
+            </div>
+          </div>
+          <div className="mt-4 flex justify-end">
+            <button
+              type="submit"
+              className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors"
+            >
+              Salvar Mensalista
+            </button>
+          </div>
+        </form>
+      )}
+
+      {isLoading ? (
+        <div className="text-center py-8 text-gray-500">Carregando...</div>
+      ) : mensalistas.length === 0 ? (
+        <div className="text-center py-8 text-gray-500 border border-dashed border-gray-300 rounded-lg">
+          Nenhum mensalista cadastrado.
         </div>
-    );
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nome</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">WhatsApp</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valor</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vencimento</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {mensalistas.map((mensalista) => (
+                <tr key={mensalista.id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{mensalista.name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{mensalista.phone}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">R$ {mensalista.monthly_fee.toFixed(2)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {new Date(mensalista.next_payment_date).toLocaleDateString('pt-BR')}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button
+                      onClick={() => handleDelete(mensalista.id)}
+                      className="text-red-600 hover:text-red-900"
+                    >
+                      Remover
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default MensalistasManager;

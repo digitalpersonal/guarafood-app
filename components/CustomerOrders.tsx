@@ -150,7 +150,7 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ onBack }) => {
 
         if (confirmed) {
             clearCart();
-            orderItems.forEach(item => addToCart(item));
+            orderItems.forEach(item => addToCart(item, item.restaurantId));
             addToast({ message: 'Itens adicionados ao carrinho!', type: 'success' });
             onBack(); 
         }

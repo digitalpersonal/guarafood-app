@@ -4,11 +4,12 @@ import type { CartItem, MenuItem, Combo } from '../types';
 
 interface CartContextType {
   cartItems: CartItem[];
-  addToCart: (item: MenuItem | Combo | CartItem) => void;
+  addToCart: (item: MenuItem | Combo | CartItem, restaurantId: number) => void;
   removeFromCart: (itemId: string) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
   updateItemNotes: (itemId: string, notes: string) => void;
   clearCart: () => void;
+  clearRestaurantCart: (restaurantId: number) => void;
   totalPrice: number;
   totalItems: number;
 }
@@ -31,7 +32,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
   }, [cartItems]);
 
-  const addToCart = useCallback((item: MenuItem | Combo | CartItem) => {
+  const addToCart = useCallback((item: MenuItem | Combo | CartItem, restaurantId: number) => {
     if ('basePrice' in item) {
         const customItem = item as CartItem;
         setCartItems(prevItems => {
@@ -41,7 +42,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     cartItem.id === customItem.id ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
                 );
             }
-            return [...prevItems, { ...customItem, quantity: 1 }];
+            return [...prevItems, { ...customItem, restaurantId, quantity: 1 }];
         });
         return;
     }
@@ -58,6 +59,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       const newCartItem: CartItem = {
           id: cartId,
+          restaurantId,
           name: item.name,
           price: Number(item.price),
           basePrice: Number(item.price),
@@ -99,6 +101,10 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCartItems([]);
   }, []);
 
+  const clearRestaurantCart = useCallback((restaurantId: number) => {
+    setCartItems(prevItems => prevItems.filter(item => item.restaurantId !== restaurantId));
+  }, []);
+
   const totalPrice = useMemo(() => {
     return cartItems.reduce((total, item) => total + (Number(item.price) * item.quantity), 0);
   }, [cartItems]);
@@ -114,6 +120,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     updateQuantity,
     updateItemNotes,
     clearCart,
+    clearRestaurantCart,
     totalPrice,
     totalItems,
   }), [cartItems, addToCart, removeFromCart, updateQuantity, updateItemNotes, clearCart, totalPrice, totalItems]);

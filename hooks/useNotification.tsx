@@ -11,18 +11,18 @@ interface NotificationContextType {
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
-export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export function NotificationProvider({ children }: { children: ReactNode }) {
     const [toasts, setToasts] = useState<ToastOptions[]>([]);
     const [confirmOptions, setConfirmOptions] = useState<ConfirmOptions | null>(null);
     const [promptOptions, setPromptOptions] = useState<PromptOptions | null>(null);
 
-    const addToast = useCallback((options: ToastOptions) => {
-        const id = Date.now();
-        setToasts(prev => [...prev, { ...options, id }]);
-    }, []);
-
     const removeToast = useCallback((id: number) => {
         setToasts(prev => prev.filter(toast => toast.id !== id));
+    }, []);
+
+    const addToast = useCallback((options: ToastOptions) => {
+        const id = Date.now() + Math.random();
+        setToasts(prev => [...prev, { ...options, id }]);
     }, []);
 
     const confirm = useCallback((options: Omit<ConfirmOptions, 'onConfirm' | 'onCancel'>): Promise<boolean> => {

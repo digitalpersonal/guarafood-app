@@ -11,8 +11,6 @@ import OptimizedImage from './OptimizedImage';
 
 // Mapa de imagens genéricas por categoria
 const genericImages: Record<string, string> = {
-  'Pastel': 'https://images.pexels.com/photos/1230931/pexels-photo-1230931.jpeg?auto=compress&cs=tinysrgb&w=400',
-  'Pastelaria': 'https://images.pexels.com/photos/1230931/pexels-photo-1230931.jpeg?auto=compress&cs=tinysrgb&w=400',
   'Lanches': 'https://images.pexels.com/photos/1633578/pexels-photo-1633578.jpeg?auto=compress&cs=tinysrgb&w=400',
   'Sanduíche': 'https://images.pexels.com/photos/1633578/pexels-photo-1633578.jpeg?auto=compress&cs=tinysrgb&w=400',
   'Pizza': 'https://images.pexels.com/photos/1146760/pexels-photo-1146760.jpeg?auto=compress&cs=tinysrgb&w=400',
@@ -100,7 +98,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
       
       const rect = event.currentTarget.getBoundingClientRect();
       addFlyingItem(finalImageUrl, rect);
-      addToCart(item);
+      addToCart(item, item.restaurantId);
     }
   };
 
@@ -108,7 +106,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
     setIsAdding(true);
     setTimeout(() => setIsAdding(false), 500);
     
-    addToCart(customizedItem);
+    addToCart(customizedItem, customizedItem.restaurantId);
     setIsPizzaModalOpen(false);
     setIsAcaiModalOpen(false);
     setIsGenericModalOpen(false);
@@ -212,6 +210,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
           initialPizza={item}
           allPizzas={allPizzas}
           allAddons={allAddons}
+          restaurantId={item.restaurantId}
         />
       )}
        {isAcaiModalOpen && (
@@ -221,6 +220,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
           onAddToCart={handleCustomizedItemAddToCart}
           initialItem={item}
           allAddons={allAddons}
+          restaurantId={item.restaurantId}
         />
       )}
        {isGenericModalOpen && (
@@ -230,6 +230,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
           onAddToCart={handleCustomizedItemAddToCart}
           initialItem={item}
           allAddons={allAddons}
+          restaurantId={item.restaurantId}
         />
       )}
     </>

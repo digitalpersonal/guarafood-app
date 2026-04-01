@@ -57,8 +57,6 @@ serve(async (req: Request) => {
       restaurant_address: orderData.restaurantAddress,
       restaurant_phone: orderData.restaurantPhone,
       payment_method: 'Pix Automático',
-      coupon_code: orderData.couponCode,
-      discount_amount: orderData.discountAmount,
       subtotal: orderData.subtotal,
       delivery_fee: orderData.deliveryFee,
       status: 'Aguardando Pagamento',

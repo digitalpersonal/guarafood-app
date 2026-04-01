@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import type { Restaurant, Coupon, Order, CartItem } from '../types';
+import type { Restaurant, Order, CartItem } from '../types';
 import { useCart } from '../hooks/useCart';
 import { useNotification } from '../hooks/useNotification';
-import { checkIfMensalista, getMensalistaByPhone } from '../services/mensalistaService';
 import { createOrder, type NewOrderData } from '../services/orderService';
-import { validateCouponByCode, fetchCouponsForRestaurant } from '../services/databaseService';
+import { verifyMensalistaByPhone } from '../services/mensalistaService';
 import { supabase } from '../services/api';
 import { isRestaurantOpen } from '../utils/restaurantUtils';
 import Spinner from './Spinner';
@@ -74,10 +73,11 @@ const normalizeOrder = (data: any): Order => {
         customerName: data.customer_name, customerPhone: data.customer_phone, customerAddress: data.customer_address,
         wantsSachets: wantsSachets, items: data.items, totalPrice: data.total_price, restaurantId: data.restaurant_id,
         restaurantName: data.restaurant_name, restaurantAddress: data.restaurant_address, restaurantPhone: data.restaurant_phone,
-        paymentMethod: data.payment_method, couponCode: data.coupon_code, discountAmount: data.discount_amount,
+        paymentMethod: data.payment_method,
         subtotal: data.subtotal, deliveryFee: data.delivery_fee, payment_id: data.payment_id,
         payment_details: data.payment_details,
-        paymentStatus: data.payment_status || 'paid'
+        paymentStatus: data.payment_status || 'paid',
+        mensalistaId: data.mensalista_id
     };
 };
 
@@ -106,9 +106,6 @@ const formatOrderDetailsForWhatsApp = (order: Order): string => {
     if (order.deliveryFee && Number(order.deliveryFee) > 0) {
         detailsMessage += `Entrega: R$ ${Number(order.deliveryFee).toFixed(2)}\n`;
     }
-    if (order.discountAmount && Number(order.discountAmount) > 0) {
-        detailsMessage += `Desconto (${order.couponCode || 'Cupom'}): - R$ ${Number(order.discountAmount).toFixed(2)}\n`;
-    }
     detailsMessage += `*TOTAL: R$ ${order.totalPrice.toFixed(2)}*\n\n`;
     detailsMessage += `*Pagamento:* ${order.paymentMethod}\n`;
     if (order.wantsSachets === false) {
@@ -126,7 +123,7 @@ const formatOrderDetailsForWhatsApp = (order: Order): string => {
 };
 
 const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaurant }) => {
-    const { cartItems, totalPrice, clearCart } = useCart();
+    const { cartItems, clearRestaurantCart } = useCart();
     const { addToast } = useNotification();
     const [currentStep, setCurrentStep] = useState<CheckoutStep>('SUMMARY');
     const [customerName, setCustomerName] = useState('');
@@ -136,6 +133,15 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('DELIVERY');
     const [wantsSachets, setWantsSachets] = useState(false);
+    
+    const restaurantCartItems = useMemo(() => {
+        return cartItems.filter(item => item.restaurantId === restaurant.id);
+    }, [cartItems, restaurant.id]);
+
+    const totalPrice = useMemo(() => {
+        return restaurantCartItems.reduce((acc, item) => acc + (Number(item.price) * item.quantity), 0);
+    }, [restaurantCartItems]);
+
     const [address, setAddress] = useState({
         zipCode: '37810-000', 
         street: '',
@@ -149,14 +155,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [countdown, setCountdown] = useState(300);
     const countdownIntervalRef = useRef<number | null>(null);
     const pixChannelRef = useRef<any>(null);
-    const [couponCodeInput, setCouponCodeInput] = useState('');
-    const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
     const [formError, setFormError] = useState<string | null>(null);
-    const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
-    const [hasAvailableCoupons, setHasAvailableCoupons] = useState(false);
-
-    const [isMensalista, setIsMensalista] = useState(false);
-    const [mensalistaId, setMensalistaId] = useState<string | undefined>(undefined);
     const [knownCustomers, setKnownCustomers] = useState<Record<string, { phone: string, address: any }>>({});
     const [highlightFields, setHighlightFields] = useState(false);
     const [stepTransitionLock, setStepTransitionLock] = useState(false);
@@ -231,7 +230,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             ? [...restaurant.paymentGateways] 
             : ["Pix", "Cartão de Crédito", "Cartão de Débito", "Dinheiro"];
             
-        if (!options.includes("Mensalista")) {
+        if (restaurant.hasMensalistas && !options.includes("Mensalista")) {
             options.push("Mensalista");
         }
         return options;
@@ -242,8 +241,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setPaymentMethod(''); // FIX: Inicia vazio para forçar escolha do cliente
         setChangeFor('');
         setIsSubmitting(false);
-        setCouponCodeInput('');
-        setAppliedCoupon(null);
         setFormError(null);
         setPixData(null);
         setPixError(null);
@@ -253,7 +250,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setDeliveryMethod('DELIVERY');
         setStepTransitionLock(false);
         setSuccessfulOrder(null);
-        setMensalistaId(undefined);
         if (countdownIntervalRef.current) {
             clearInterval(countdownIntervalRef.current);
             countdownIntervalRef.current = null;
@@ -265,80 +261,30 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     };
 
     useEffect(() => {
-        const check = async () => {
-            if (customerPhone.length >= 8) {
-                const mensalista = await getMensalistaByPhone(customerPhone, restaurant.id);
-                const isM = !!mensalista;
-                setIsMensalista(isM);
-                setMensalistaId(mensalista?.id);
-                if (isM) {
-                    setPaymentMethod('Mensalista');
-                } else if (paymentMethod === 'Mensalista') {
-                    setPaymentMethod('');
-                }
-            } else {
-                setIsMensalista(false);
-                setMensalistaId(undefined);
-                if (paymentMethod === 'Mensalista') {
-                    setPaymentMethod('');
-                }
-            }
-        };
-        check();
-    }, [customerPhone, restaurant.id]);
-
-    useEffect(() => {
         if (isOpen) {
             resetState();
-            const checkCoupons = async () => {
-                try {
-                    const coupons = await fetchCouponsForRestaurant(restaurant.id);
-                    const hasActive = coupons.some(c => {
-                        const now = new Date();
-                        const expirationDate = new Date(c.expirationDate);
-                        expirationDate.setHours(23, 59, 59, 999);
-                        return c.isActive && now <= expirationDate;
-                    });
-                    setHasAvailableCoupons(hasActive);
-                } catch (e) { console.error("Failed to check coupons", e); }
-            };
-            checkCoupons();
         }
     }, [isOpen, restaurant.id]);
 
-    const { finalPrice, discountAmount } = useMemo(() => {
+    const { finalPrice } = useMemo(() => {
         const totalNum = Number(totalPrice || 0);
-        if (!appliedCoupon) return { finalPrice: totalNum, discountAmount: 0 };
-        let discount = appliedCoupon.discountType === 'PERCENTAGE' ? totalNum * (Number(appliedCoupon.discountValue) / 100) : Number(appliedCoupon.discountValue);
-        return { finalPrice: Math.max(0, totalNum - discount), discountAmount: discount };
-    }, [totalPrice, appliedCoupon]);
+        return { finalPrice: totalNum };
+    }, [totalPrice]);
 
-    const effectiveDeliveryFee = deliveryMethod === 'PICKUP' ? 0 : Number(restaurant.deliveryFee || 0);
+    const effectiveDeliveryFee = useMemo(() => {
+        if (deliveryMethod === 'PICKUP') return 0;
+        if (restaurant.deliveryZones && restaurant.deliveryZones.length > 0) {
+            const zone = restaurant.deliveryZones.find(z => z.name === address.neighborhood);
+            if (zone) return Number(zone.fee);
+        }
+        return Number(restaurant.deliveryFee || 0);
+    }, [deliveryMethod, restaurant.deliveryFee, restaurant.deliveryZones, address.neighborhood]);
+
     const finalPriceWithFee = Number(finalPrice) + Number(effectiveDeliveryFee);
     
-    const handleAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleAddressChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setAddress(prev => ({ ...prev, [name]: value }));
-    };
-    
-    const handleApplyCoupon = async () => {
-        if (!couponCodeInput.trim()) { setFormError("Por favor, insira um código."); return; }
-        setIsApplyingCoupon(true);
-        setFormError(null);
-        setAppliedCoupon(null);
-        try {
-            const coupon = await validateCouponByCode(couponCodeInput, restaurant.id);
-            if (!coupon || !coupon.isActive || new Date(coupon.expirationDate) < new Date()) throw new Error("Cupom inválido ou expirado.");
-            if (coupon.minOrderValue && Number(totalPrice) < Number(coupon.minOrderValue)) throw new Error(`Pedido mínimo de R$ ${Number(coupon.minOrderValue).toFixed(2)}.`);
-            setAppliedCoupon(coupon);
-            addToast({ message: 'Cupom aplicado!', type: 'success' });
-        } catch (err: any) { setFormError(err.message); } finally { setIsApplyingCoupon(false); }
-    };
-
-    const handleRemoveCoupon = () => {
-        setAppliedCoupon(null);
-        setCouponCodeInput('');
-        setFormError(null);
     };
 
     const persistOrderIdGlobally = (orderId: string) => {
@@ -397,7 +343,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
                         setSuccessfulOrder(normalizeOrder(updatedOrder));
                         setCurrentStep('SUCCESS');
-                        clearCart();
+                        clearRestaurantCart(restaurant.id);
                     }
                 }
             ).subscribe();
@@ -425,7 +371,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             setSuccessfulOrder(order);
             persistOrderIdGlobally(order.id);
             addToast({ message: 'Pedido enviado!', type: 'success' });
-            clearCart();
+            clearRestaurantCart(restaurant.id);
             setCurrentStep('SUCCESS');
         } catch (err: any) {
             console.error('Failed to create order:', err);
@@ -442,10 +388,10 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             : { zipCode: address.zipCode, street: address.street, number: address.number, neighborhood: address.neighborhood, complement: address.complement };
 
         const orderData: NewOrderData = {
-            customerName, customerPhone, items: cartItems, totalPrice: Number(finalPriceWithFee), subtotal: Number(totalPrice),
-            discountAmount: Number(discountAmount), couponCode: appliedCoupon?.code, deliveryFee: Number(effectiveDeliveryFee), restaurantId: restaurant.id,
+            customerName, customerPhone, items: restaurantCartItems, totalPrice: Number(finalPriceWithFee), subtotal: Number(totalPrice),
+            deliveryFee: Number(effectiveDeliveryFee), restaurantId: restaurant.id,
             restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
-            paymentMethod: "Pix (Comprovante via WhatsApp)", customerAddress, wantsSachets, mensalistaId
+            paymentMethod: "Pix (Comprovante via WhatsApp)", customerAddress, wantsSachets
         };
         await handlePayOnDelivery(orderData);
     };
@@ -458,10 +404,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         if (!customerName || !customerPhone || !paymentMethod) { 
             setFormError('Por favor, preencha seu nome, telefone e selecione uma forma de pagamento.'); 
             return; 
-        }
-        if (paymentMethod === 'Mensalista' && !mensalistaId) {
-            setFormError('Por favor, insira um telefone válido de mensalista.');
-            return;
         }
         if (deliveryMethod === 'DELIVERY' && (!address.street || !address.number || !address.neighborhood)) { setFormError('Endereço incompleto.'); return; }
         
@@ -481,14 +423,25 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
         const changeValue = parseFloat(changeFor.replace(',', '.').trim());
         const orderData: NewOrderData = {
-            customerName, customerPhone, items: cartItems, totalPrice: Number(finalPriceWithFee), subtotal: Number(totalPrice),
-            discountAmount: Number(discountAmount), couponCode: appliedCoupon?.code, deliveryFee: Number(effectiveDeliveryFee), restaurantId: restaurant.id,
+            customerName, customerPhone, items: restaurantCartItems, totalPrice: Number(finalPriceWithFee), subtotal: Number(totalPrice),
+            deliveryFee: Number(effectiveDeliveryFee), restaurantId: restaurant.id,
             restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
             paymentMethod: finalPaymentMethod, customerAddress, wantsSachets,
             changeFor: !isNaN(changeValue) && changeValue > 0 ? changeValue : undefined,
-            status: paymentMethod === 'Pix' ? 'Aguardando Pagamento' : 'Novo Pedido',
-            mensalistaId
+            status: paymentMethod === 'Pix' ? 'Aguardando Pagamento' : 'Novo Pedido'
         };
+
+        if (paymentMethod === 'Mensalista') {
+            setIsSubmitting(true);
+            const mensalista = await verifyMensalistaByPhone(restaurant.id, customerPhone);
+            if (!mensalista) {
+                setFormError('Número de WhatsApp não encontrado no cadastro de mensalistas. Por favor, verifique o número ou escolha outra forma de pagamento.');
+                setIsSubmitting(false);
+                return;
+            }
+            orderData.mensalistaId = mensalista.id;
+            setIsSubmitting(false);
+        }
 
         if (paymentMethod === 'Pix') await handlePixPayment(orderData);
         else await handlePayOnDelivery(orderData);
@@ -559,7 +512,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                     <div className="flex justify-between items-center px-4 py-3 bg-gray-50 border-b">
                         {steps.map((step, index) => {
                             if (step.id === 'PIX_PAYMENT' && paymentMethod !== 'Pix' && index > currentStepIndex) return null;
-                            if (step.id === 'SUCCESS' && currentStep !== 'SUCCESS' && index > currentStepIndex) return null;
+                            if (step.id === 'SUCCESS' && index > currentStepIndex) return null;
                             const isCurrent = index === currentStepIndex;
                             const isCompleted = index < currentStepIndex;
                             const textColor = isCompleted ? 'text-orange-600' : isCurrent ? 'text-orange-500' : 'text-gray-400';
@@ -590,7 +543,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                     <div className="overflow-y-auto p-4 space-y-4">
                         <h3 className="text-xl font-bold text-gray-800">Seu Pedido</h3>
                         <div className="space-y-3">
-                            {cartItems.map(item => (
+                        {restaurantCartItems.map(item => (
                                 <div key={item.id} className="flex items-start space-x-3 border-b pb-3 last:border-b-0">
                                     <OptimizedImage src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-md object-cover flex-shrink-0" />
                                     <div className="flex-grow">
@@ -602,8 +555,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         </div>
                         <div className="border-t pt-4 space-y-2 text-sm">
                             <div className="flex justify-between text-gray-600"><span>Subtotal</span><span>R$ {Number(totalPrice).toFixed(2)}</span></div>
-                            {appliedCoupon && <div className="flex justify-between text-green-600 font-semibold"><span>Desconto</span><span>- R$ {Number(discountAmount).toFixed(2)}</span></div>}
-                            <div className="flex justify-between text-gray-600"><span>Entrega</span><span>{deliveryMethod === 'PICKUP' ? 'Grátis' : `R$ ${Number(restaurant.deliveryFee || 0).toFixed(2)}`}</span></div>
+                            <div className="flex justify-between text-gray-600"><span>Entrega</span><span>{deliveryMethod === 'PICKUP' ? 'Grátis' : `R$ ${Number(effectiveDeliveryFee).toFixed(2)}`}</span></div>
                             <div className="flex justify-between font-bold text-lg text-gray-800 border-t pt-2"><span>Total</span><span>R$ {Number(finalPriceWithFee).toFixed(2)}</span></div>
                         </div>
                     </div>
@@ -665,7 +617,16 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                     <input name="number" placeholder="Nº" type="text" value={address.number} onChange={handleAddressChange} required className={`p-3 border-2 rounded-xl bg-gray-50 text-sm font-bold text-center transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} />
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <input name="neighborhood" placeholder="Bairro" type="text" value={address.neighborhood} onChange={handleAddressChange} required className={`p-3 border-2 rounded-xl bg-gray-50 text-sm font-semibold transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} />
+                                    {restaurant.deliveryZones && restaurant.deliveryZones.length > 0 ? (
+                                        <select name="neighborhood" value={address.neighborhood} onChange={handleAddressChange} required className={`p-3 border-2 rounded-xl bg-gray-50 text-sm font-semibold transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`}>
+                                            <option value="" disabled>Selecione o Bairro</option>
+                                            {restaurant.deliveryZones.map(zone => (
+                                                <option key={zone.id} value={zone.name}>{zone.name} (+ R$ {Number(zone.fee).toFixed(2)})</option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <input name="neighborhood" placeholder="Bairro" type="text" value={address.neighborhood} onChange={handleAddressChange} required className={`p-3 border-2 rounded-xl bg-gray-50 text-sm font-semibold transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} />
+                                    )}
                                     <input name="complement" placeholder="Apto / Bloco / Referência" type="text" value={address.complement} onChange={handleAddressChange} className={`p-3 border-2 rounded-xl bg-gray-50 text-sm transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} />
                                 </div>
                             </div>
@@ -688,55 +649,33 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
                         <div className="border-t pt-4">
                             <span className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-3">Forma de Pagamento</span>
-                            {isMensalista ? (
-                                <div className="bg-emerald-100 p-4 rounded-xl border-2 border-emerald-500 text-emerald-900 font-bold text-sm">
-                                    ✅ Cliente Mensalista identificado! O pagamento será processado conforme o plano mensal.
-                                </div>
-                            ) : (
-                                <div className="space-y-3">
-                                    {paymentOptions.map(gateway => {
-                                        const isSelected = paymentMethod === gateway;
-                                        const isCash = gateway.toLowerCase().includes('dinheiro');
-                                        return (
-                                            <div key={gateway} className={`border-2 rounded-xl transition-all ${isSelected ? 'border-orange-500 bg-orange-50/30' : 'border-gray-100 hover:border-orange-200'}`}>
-                                                <label className="flex items-center p-3 cursor-pointer">
-                                                    <input type="radio" name="payment" value={gateway} checked={isSelected} onChange={e => { setPaymentMethod(e.target.value); setFormError(null); }} className="h-5 w-5 text-orange-600" />
-                                                    <div className="ml-3 flex flex-col">
-                                                        <span className="text-sm font-bold text-gray-700">{gateway}</span>
-                                                        {gateway.toLowerCase().includes('cartão') && <span className="text-[10px] text-blue-600">ⓘ Maquininha na entrega.</span>}
+                            <div className="space-y-3">
+                                {paymentOptions.map(gateway => {
+                                    const isSelected = paymentMethod === gateway;
+                                    const isCash = gateway.toLowerCase().includes('dinheiro');
+                                    return (
+                                        <div key={gateway} className={`border-2 rounded-xl transition-all ${isSelected ? 'border-orange-500 bg-orange-50/30' : 'border-gray-100 hover:border-orange-200'}`}>
+                                            <label className="flex items-center p-3 cursor-pointer">
+                                                <input type="radio" name="payment" value={gateway} checked={isSelected} onChange={e => { setPaymentMethod(e.target.value); setFormError(null); }} className="h-5 w-5 text-orange-600" />
+                                                <div className="ml-3 flex flex-col">
+                                                    <span className="text-sm font-bold text-gray-700">{gateway}</span>
+                                                    {gateway.toLowerCase().includes('cartão') && <span className="text-[10px] text-blue-600">ⓘ Maquininha na entrega.</span>}
+                                                </div>
+                                            </label>
+                                            {isSelected && isCash && (
+                                                <div className="p-3 border-t border-orange-200 bg-white/50 animate-fadeIn">
+                                                    <label htmlFor="changeFor" className="block text-[10px] font-black text-orange-800 uppercase mb-1 tracking-wider">Precisa de troco para quanto?</label>
+                                                    <div className="flex items-center bg-white border-2 border-orange-100 rounded-lg px-3 py-2 focus-within:border-orange-400 transition-colors">
+                                                        <span className="text-orange-400 mr-1 font-black">R$</span>
+                                                        <input id="changeFor" type="number" step="0.01" placeholder="Ex: 50.00" value={changeFor} onChange={(e) => setChangeFor(e.target.value)} className="w-full bg-transparent outline-none font-black text-gray-800 placeholder-gray-300"/>
                                                     </div>
-                                                </label>
-                                                {isSelected && isCash && (
-                                                    <div className="p-3 border-t border-orange-200 bg-white/50 animate-fadeIn">
-                                                        <label htmlFor="changeFor" className="block text-[10px] font-black text-orange-800 uppercase mb-1 tracking-wider">Precisa de troco para quanto?</label>
-                                                        <div className="flex items-center bg-white border-2 border-orange-100 rounded-lg px-3 py-2 focus-within:border-orange-400 transition-colors">
-                                                            <span className="text-orange-400 mr-1 font-black">R$</span>
-                                                            <input id="changeFor" type="number" step="0.01" placeholder="Ex: 50.00" value={changeFor} onChange={(e) => setChangeFor(e.target.value)} className="w-full bg-transparent outline-none font-black text-gray-800 placeholder-gray-300"/>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                        {hasAvailableCoupons && (
-                            <div className="pt-2">
-                                <label className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-1">Cupom</label>
-                                {appliedCoupon ? (
-                                    <div className="flex justify-between items-center p-3 border rounded-xl bg-green-50 border-green-300 animate-fadeIn">
-                                        <p className="text-green-800 text-xs font-bold">Cupom "{appliedCoupon.code}" ativo!</p>
-                                        <button type="button" onClick={handleRemoveCoupon} className="text-red-600 font-bold p-2 active:scale-90">&times;</button>
-                                    </div>
-                                ) : (
-                                    <div className="flex gap-2">
-                                        <input type="text" value={couponCodeInput} onChange={e => setCouponCodeInput(e.target.value.toUpperCase())} placeholder="CÓDIGO" className="flex-grow p-3 border-2 border-gray-100 rounded-xl bg-gray-50 uppercase text-sm font-black" />
-                                        <button type="button" onClick={handleApplyCoupon} disabled={isApplyingCoupon} className="bg-gray-800 text-white font-black px-6 rounded-xl disabled:opacity-50 text-xs active:scale-95 transition-transform uppercase">{isApplyingCoupon ? '...' : 'Aplicar'}</button>
-                                    </div>
-                                )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
-                        )}
+                        </div>
                         {formError && <p className="text-red-500 text-xs mt-2 font-bold animate-shake">{formError}</p>}
                     </form>
                 )}
@@ -808,7 +747,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                 <button 
                                     onClick={handleNextStep} 
                                     type="button"
-                                    disabled={isSubmitting || cartItems.length === 0 || !isOpenNow} 
+                                    disabled={isSubmitting || restaurantCartItems.length === 0 || !isOpenNow} 
                                     className="mt-1 bg-orange-600 text-white font-bold py-2.5 px-8 rounded-lg shadow-lg disabled:opacity-50 text-sm active:scale-95 transition-all"
                                 >
                                     {isSubmitting ? '...' : 'Continuar'}

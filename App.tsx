@@ -4,8 +4,9 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from './types';
 import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant, fetchRestaurantById } from './services/databaseService';
 import { AuthProvider, useAuth } from './services/authService';
+import { forceSystemUpdate } from './utils/systemUpdate';
 import { getInitializationError, getErrorMessage } from './services/api';
-import { isRestaurantOpen } from './utils/restaurantUtils';
+import { isRestaurantOpen, shuffleRestaurants } from './utils/restaurantUtils';
 
 import RestaurantCard from './components/RestaurantCard';
 import Spinner from './components/Spinner';
@@ -21,6 +22,7 @@ import { AnimationProvider } from './hooks/useAnimation';
 import { NotificationProvider } from './hooks/useNotification';
 import OptimizedImage from './components/OptimizedImage';
 import OrderTracker from './components/OrderTracker';
+import BottomBannerCarousel from './components/BottomBannerCarousel';
 import CustomerOrders from './components/CustomerOrders';
 import HelpCenter from './components/HelpCenter';
 import HeaderGlobal from './components/HeaderGlobal';
@@ -38,18 +40,6 @@ const FunnelIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
-const PastelIcon = () => (
-    <svg width="42" height="42" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12 20C12 18.8954 12.8954 18 14 18H50C51.1046 18 52 18.8954 52 20V44C52 45.1046 51.1046 46 50 46H14C12.8954 46 12 45.1046 12 44V20Z" fill="#FBBF24" stroke="#D97706" strokeWidth="2.5"/>
-        <circle cx="20" cy="26" r="2" fill="#D97706" opacity="0.6"/>
-        <circle cx="44" cy="30" r="1.5" fill="#D97706" opacity="0.6"/>
-        <circle cx="32" cy="38" r="2.5" fill="#D97706" opacity="0.5"/>
-        <circle cx="24" cy="40" r="1.5" fill="#D97706" opacity="0.6"/>
-        <path d="M12 22H15M12 26H15M12 30H15M12 34H15M12 38H15M12 42H15" stroke="#D97706" strokeWidth="1.5" strokeLinecap="round"/>
-        <path d="M49 22H52M49 26H52M49 30H52M49 34H52M49 38H52M49 42H52" stroke="#D97706" strokeWidth="1.5" strokeLinecap="round"/>
-    </svg>
-);
-
 const categoryIcons: Record<string, React.ReactNode> = {
     'Lanches': '🍔',
     'Pizza': '🍕',
@@ -61,8 +51,6 @@ const categoryIcons: Record<string, React.ReactNode> = {
     'Saudável': '🥗',
     'Italiana': '🍝',
     'Marmita': '🍱',
-    'Pastelaria': <PastelIcon />,
-    'Pastel': <PastelIcon />,
     'Supermercado': '🛒',
     'Todos': '✨'
 };
@@ -81,8 +69,6 @@ const categoryBackgrounds: Record<string, string> = {
     'Saudável': 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?q=80&w=1000&auto=format&fit=crop',
     'Italiana': 'https://images.unsplash.com/photo-1473093226795-af9932fe5856?q=80&w=1000&auto=format&fit=crop',
     'Marmita': 'https://images.unsplash.com/photo-1543339308-43e59d6b73a6?q=80&w=1000&auto=format&fit=crop',
-    'Pastelaria': 'https://images.unsplash.com/photo-1626074353765-517a681e40be?q=80&w=1000&auto=format&fit=crop',
-    'Pastel': 'https://images.unsplash.com/photo-1626074353765-517a681e40be?q=80&w=1000&auto=format&fit=crop',
     'Supermercado': 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=1000&auto=format&fit=crop',
     'Hambúrguer': 'https://images.unsplash.com/photo-1571091718767-18b5b1457add?q=80&w=1000&auto=format&fit=crop',
     'Churrasco': 'https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=1000&auto=format&fit=crop',
@@ -130,14 +116,22 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
 
                 const allItems = menuData.flatMap(c => c.items);
                 
-                // Filtra destaques (marmitas) para exibir apenas se estiver no horário
-                const lunchItems = allItems.filter(item => item.isDailySpecial);
-                setDailySpecials(isLunchTime ? lunchItems : []);
+                // Destaques (Featured items) aparecem sempre no topo
+                const featuredItems = allItems.filter(item => item.isDailySpecial);
+                setDailySpecials(featuredItems);
                 setAllPizzas(allItems.filter(item => item.isPizza));
                 
                 const filteredMenu = menuData.map(cat => ({
                     ...cat,
-                    items: cat.items.filter(item => !item.isDailySpecial && !item.isWeeklySpecial && !item.isMarmita)
+                    items: cat.items.filter(item => {
+                        // Se for marmita e não for horário de almoço, não exibe
+                        if (item.isMarmita && !isLunchTime) return false;
+                        
+                        // Não exibe os destaques nas categorias normais para evitar duplicidade
+                        if (item.isDailySpecial) return false;
+                        
+                        return true;
+                    })
                 })).filter(cat => cat.items.length > 0 || (cat.combos && cat.combos.length > 0));
 
                 setMenu(filteredMenu);
@@ -211,7 +205,11 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
             )}
             
             <div className="p-4">
-                {isLoading ? <Spinner /> : (
+                {isLoading ? (
+                    <div className="flex justify-center items-center py-12">
+                        <h1 className="text-xl font-black text-gray-400 animate-pulse">Carregando cardápio...</h1>
+                    </div>
+                ) : (
                     <div className="space-y-8">
                         {menu.map((category) => (
                             <div key={category.name} id={slugify(category.name)} className="scroll-mt-44 rounded-lg">
@@ -232,16 +230,37 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
 const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRestaurant: (r: Restaurant | null) => void }> = ({ selectedRestaurant, onSelectRestaurant }) => {
     const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [debugInfo, setDebugInfo] = useState<string>("");
     const [selectedCategories, setSelectedCategories] = useState<string[]>(['Todos']);
     const [showOpenOnly, setShowOpenOnly] = useState(false);
 
+    const loadInitialData = async () => {
+        setIsLoading(true);
+        setError(null);
+        setDebugInfo("");
+        try {
+            console.log("CustomerView: Loading restaurants...");
+            const data = await fetchRestaurants();
+            console.log("CustomerView: Restaurants loaded:", data.length);
+            
+            if (data.length === 0) {
+                console.warn("CustomerView: No restaurants returned from DB");
+                setDebugInfo("O banco de dados retornou 0 registros.");
+            }
+            
+            // Randomize the restaurants list for the home screen
+            setRestaurants(shuffleRestaurants(data));
+        } catch (err: any) { 
+            console.error("CustomerView: Error loading restaurants:", err); 
+            setError(err.message || "Erro ao carregar restaurantes. Por favor, tente novamente.");
+            setDebugInfo(`Erro: ${err.message || "Desconhecido"}`);
+        } finally { 
+            setIsLoading(false); 
+        }
+    };
+
     useEffect(() => {
-        const loadInitialData = async () => {
-            try {
-                const data = await fetchRestaurants();
-                setRestaurants(data);
-            } catch (err) { console.error(err); } finally { setIsLoading(false); }
-        };
         loadInitialData();
     }, []);
 
@@ -276,6 +295,26 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
     };
 
     if (isLoading) return <div className="h-screen flex items-center justify-center"><Spinner /></div>;
+
+    if (error) {
+        return (
+            <div className="h-screen flex flex-col items-center justify-center p-6 text-center bg-gray-50">
+                <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                    </svg>
+                </div>
+                <h2 className="text-xl font-bold text-gray-800 mb-2">Ops! Algo deu errado</h2>
+                <p className="text-gray-600 mb-6 max-w-xs">{error}</p>
+                <button 
+                    onClick={loadInitialData}
+                    className="bg-orange-600 text-white px-8 py-3 rounded-full font-bold shadow-lg active:scale-95 transition-transform"
+                >
+                    Tentar Novamente
+                </button>
+            </div>
+        );
+    }
 
     if (selectedRestaurant) return (
         <>
@@ -325,6 +364,15 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
 
             <div className="p-4 pt-6">
                 <h2 className="text-xl font-black text-gray-800 mb-6">Escolha o lugar e faça seu pedido!</h2>
+                
+                {restaurants.length === 0 && !isLoading && !error && (
+                    <div className="mb-6 p-4 bg-amber-50 border-2 border-amber-200 rounded-2xl text-amber-800 text-sm font-bold flex flex-col items-center text-center">
+                        <p>Atenção: Não conseguimos carregar nenhum restaurante do banco de dados.</p>
+                        <p className="mt-1 text-[10px] opacity-70">Isso pode ser um problema de permissão (RLS) ou o banco está vazio.</p>
+                        <button onClick={loadInitialData} className="mt-3 bg-amber-600 text-white px-4 py-1.5 rounded-full text-xs">Tentar Carregar Novamente</button>
+                    </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredRestaurants.map(restaurant => (
                         <RestaurantCard 
@@ -337,8 +385,25 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
                 </div>
                 {filteredRestaurants.length === 0 && (
                     <div className="text-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
-                        <p className="text-gray-400 font-bold">Nenhum restaurante encontrado.</p>
-                        <button onClick={() => { setSelectedCategories(['Todos']); setShowOpenOnly(false); }} className="mt-4 text-orange-600 font-black underline">Limpar Filtros</button>
+                        <p className="text-gray-800 font-black text-xl mb-2">Nenhum restaurante encontrado.</p>
+                        <p className="text-gray-500 mb-6 font-medium">Tente mudar os filtros ou recarregar a lista.</p>
+                        <div className="flex flex-col gap-3 items-center">
+                            <button 
+                                onClick={loadInitialData} 
+                                className="bg-orange-600 text-white px-8 py-3 rounded-full font-bold shadow-lg active:scale-95 transition-transform"
+                            >
+                                Recarregar Lista
+                            </button>
+                            <button 
+                                onClick={() => { setSelectedCategories(['Todos']); setShowOpenOnly(false); }} 
+                                className="text-orange-600 font-black underline"
+                            >
+                                Limpar Filtros
+                            </button>
+                        </div>
+                        {debugInfo && (
+                            <p className="mt-8 text-[10px] text-gray-300 font-mono">Debug: {debugInfo}</p>
+                        )}
                     </div>
                 )}
             </div>
@@ -348,9 +413,70 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
 };
 
 const AppContent: React.FC = () => {
-    const [view, setView] = useState<'customer' | 'login' | 'history' | 'help'>('customer');
-    const { currentUser, loading } = useAuth();
+    const [view, setView] = useState<'customer' | 'login' | 'history' | 'help' | 'admin' | 'merchant'>('customer');
+    const { currentUser, loading, logout } = useAuth();
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
+    const [isUpdating, setIsUpdating] = useState(false);
+
+    useEffect(() => {
+        const checkVersion = async () => {
+            try {
+                const response = await fetch('/version.json?t=' + Date.now());
+                const data = await response.json();
+                const currentVersion = data.version;
+                const storedVersion = localStorage.getItem('app-version');
+
+                if (storedVersion && storedVersion !== currentVersion) {
+                    console.log(`NEW VERSION DETECTED: ${currentVersion}. RELOADING...`);
+                    localStorage.setItem('app-version', currentVersion);
+                    setIsUpdating(true);
+                    setTimeout(() => {
+                        forceSystemUpdate();
+                    }, 3000);
+                } else if (!storedVersion) {
+                    localStorage.setItem('app-version', currentVersion);
+                }
+            } catch (err) {
+                console.error('Failed to check version:', err);
+            }
+        };
+
+        checkVersion();
+        
+        // Verifica atualizações a cada 15 minutos (900000 ms)
+        const intervalId = setInterval(checkVersion, 900000);
+        
+        // Verifica atualizações sempre que a aba do navegador voltar a ficar ativa
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                checkVersion();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        // Handle force logout if needed
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('forceLogout') === '1') {
+            console.log("FORCE LOGOUT TRIGGERED VIA URL");
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.href = window.location.origin;
+        }
+
+        return () => {
+            clearInterval(intervalId);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [selectedRestaurant?.id]);
+
+    useEffect(() => {
+        if (currentUser?.role === 'admin') setView('admin');
+        else if (['merchant', 'waiter', 'manager'].includes(currentUser?.role || '')) setView('merchant');
+        else {
+            setView('customer');
+            if (!currentUser) setSelectedRestaurant(null);
+        }
+    }, [currentUser]);
 
     useEffect(() => {
         window.scrollTo(0, 0);
@@ -384,26 +510,64 @@ const AppContent: React.FC = () => {
 
     const renderContent = () => {
         if (loading) return <div className="h-screen flex items-center justify-center"><Spinner /></div>;
-        if (currentUser?.role === 'admin') return <AdminDashboard onBack={() => setView('customer')} />;
-        if (currentUser?.role === 'merchant' || currentUser?.role === 'waiter' || currentUser?.role === 'manager') return <OrderManagement onBack={() => setView('customer')} />;
+        if (view === 'admin') return <AdminDashboard onBack={() => setView('customer')} />;
+        if (view === 'merchant') return (
+            <OrderManagement 
+                onViewStore={(r) => {
+                    setSelectedRestaurant(r);
+                    setView('customer');
+                }} 
+            />
+        );
         if (view === 'login') return <LoginScreen onLoginSuccess={() => setView('customer')} onBack={() => setView('customer')} />;
         if (view === 'history') return <CustomerOrders onBack={() => setView('customer')} />;
         if (view === 'help') return <HelpCenter onBack={() => setView('customer')} />;
-        return <CustomerView selectedRestaurant={selectedRestaurant} onSelectRestaurant={setSelectedRestaurant} />;
+        return <CustomerView key={view} selectedRestaurant={selectedRestaurant} onSelectRestaurant={setSelectedRestaurant} />;
     };
 
     return (
-        <div className="container mx-auto max-w-7xl bg-white min-h-screen flex flex-col shadow-xl overflow-x-hidden">
-            <HeaderGlobal 
-                onOrdersClick={() => setView('history')} 
-                onHomeClick={() => { setView('customer'); setSelectedRestaurant(null); }} 
-            />
-            <div className="flex-grow relative print-container">
-                {renderContent()}
+        <>
+            {isUpdating && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+                    <div className="bg-white p-8 rounded-2xl shadow-2xl flex flex-col items-center max-w-sm w-full mx-4 text-center">
+                        <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-6"></div>
+                        <h2 className="text-2xl font-bold text-gray-900 mb-2">Atualizando GuaraFood</h2>
+                        <p className="text-gray-600">Estamos preparando as novidades para você. O aplicativo irá reiniciar em instantes...</p>
+                    </div>
+                </div>
+            )}
+            <div className="container mx-auto max-w-7xl bg-white min-h-screen flex flex-col shadow-xl overflow-x-hidden pb-[var(--bottom-banner-height,0px)]">
+                {view !== 'admin' && view !== 'merchant' && (
+                    <HeaderGlobal 
+                        onOrdersClick={() => setView('history')} 
+                        onHomeClick={() => { setView('customer'); setSelectedRestaurant(null); }} 
+                        onDashboardClick={() => {
+                            if (currentUser?.role === 'admin') setView('admin');
+                            else setView('merchant');
+                        }}
+                        onLogoutClick={logout}
+                        userRole={currentUser?.role}
+                    />
+                )}
+                <div className="flex-grow relative print-container">
+                    {/* Version Indicator for Debugging */}
+                    <div className="absolute top-0 right-0 p-1 text-[8px] text-gray-300 pointer-events-none z-50">
+                        v1.0.4
+                    </div>
+                    {renderContent()}
+                </div>
+                {view !== 'admin' && view !== 'merchant' && (
+                    <Footer 
+                        onLoginClick={() => setView('login')} 
+                        onHelpClick={() => setView('help')} 
+                        onLogoutClick={logout}
+                        userRole={currentUser?.role}
+                    />
+                )}
             </div>
             <OrderTracker />
-            <Footer onLoginClick={() => setView('login')} onHelpClick={() => setView('help')} />
-        </div>
+            <BottomBannerCarousel isVisible={view === 'customer'} />
+        </>
     );
 };
 

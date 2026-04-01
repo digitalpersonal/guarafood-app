@@ -9,6 +9,7 @@ interface GenericCustomizationModalProps {
     onAddToCart: (customizedItem: CartItem) => void;
     initialItem: MenuItem;
     allAddons: Addon[];
+    restaurantId: number;
 }
 
 const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
@@ -17,6 +18,7 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
     onAddToCart,
     initialItem,
     allAddons,
+    restaurantId,
 }) => {
     const [selectedSize, setSelectedSize] = useState<SizeOption | null>(null);
     const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
@@ -76,6 +78,7 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
         
         const customizedItem: CartItem = {
             id: cartId,
+            restaurantId: restaurantId,
             name: name,
             price: totalPrice,
             basePrice: Number(selectedSize.price),

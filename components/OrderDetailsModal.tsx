@@ -1,6 +1,6 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import type { Order, OrderStatus, PaymentEntry } from '../types';
+import type { Order, OrderStatus, PaymentEntry, Restaurant } from '../types';
 import PrintableOrder from './PrintableOrder';
 import OrderEditorModal from './OrderEditorModal'; // Import the new modal
 import { recordOrderPayment } from '../services/orderService';
@@ -43,10 +43,11 @@ const statusConfig: { [key in OrderStatus]: { text: string; color: string; } } =
 interface OrderDetailsModalProps { 
     order: Order; 
     onClose: () => void; 
+    restaurant?: Restaurant | null;
     printerWidth?: number; // Keep printerWidth for printable order
 }
 
-const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, printerWidth = 80 }) => {
+const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, restaurant, printerWidth = 80 }) => {
     const { addToast } = useNotification();
     const { text, color } = statusConfig[order.status];
     const [isEditing, setIsEditing] = useState(false); // State to control editing modal
@@ -88,7 +89,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
     return (
         <>
             <div
-                className="fixed inset-0 bg-black/60 z-[100] flex justify-center items-center p-4 backdrop-blur-sm transition-opacity duration-200"
+                className="fixed inset-0 bg-black/60 z-[100] flex justify-center items-center p-4 backdrop-blur-sm transition-opacity duration-200 print:hidden"
                 onClick={onClose}
                 aria-modal="true"
                 role="dialog"
@@ -122,6 +123,9 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                             <div className="space-y-1">
                                 <h3 className="font-bold text-gray-700 border-b pb-1 mb-2">Cliente</h3>
                                 <p className="font-semibold text-gray-900">{currentOrder.customerName}</p>
+                                {currentOrder.waiterName && (
+                                    <p className="text-xs font-bold text-blue-600 uppercase">Atendido por: {currentOrder.waiterName}</p>
+                                )}
                                 <p className="text-sm text-gray-600">Telefone: {currentOrder.customerPhone}</p>
                                  {currentOrder.customerAddress && currentOrder.customerAddress.street !== 'Consumo Local' && (
                                     <p className="text-sm text-gray-600 mt-1">
@@ -220,16 +224,16 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                                 <span>R$ {Number(currentOrder.subtotal).toFixed(2)}</span>
                               </div>
                             )}
-                            {currentOrder.discountAmount && Number(currentOrder.discountAmount) > 0 && (
-                              <div className="flex justify-between text-green-600 text-sm font-semibold">
-                                <span>Desconto ({currentOrder.couponCode})</span>
-                                <span>- R$ {Number(currentOrder.discountAmount).toFixed(2)}</span>
-                              </div>
-                            )}
                             {currentOrder.deliveryFee != null && Number(currentOrder.deliveryFee) > 0 && (
                                 <div className="flex justify-between text-gray-600 text-sm">
                                     <span>Taxa de Entrega</span>
                                     <span>R$ {Number(currentOrder.deliveryFee).toFixed(2)}</span>
+                                </div>
+                            )}
+                            {currentOrder.serviceCharge != null && currentOrder.serviceCharge > 0 && (
+                                <div className="flex justify-between text-gray-600 text-sm">
+                                    <span>Taxa de Serviço (10%)</span>
+                                    <span>R$ {currentOrder.serviceCharge.toFixed(2)}</span>
                                 </div>
                             )}
                             <div className="flex justify-between items-center font-bold text-lg sm:text-xl text-gray-900 border-t pt-2 mt-1">
@@ -286,7 +290,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
             </div>
             <div className="hidden print:block">
                 <div id="printable-order">
-                    <PrintableOrder order={currentOrder} printerWidth={printerWidth} /> 
+                    <PrintableOrder order={currentOrder} restaurant={restaurant} printerWidth={printerWidth} /> 
                 </div>
             </div>
 
@@ -298,6 +302,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                     onSave={handleOrderUpdated}
                     restaurantId={currentOrder.restaurantId}
                     restaurantName={currentOrder.restaurantName}
+                    hasServiceCharge={restaurant?.hasServiceCharge}
                 />
             )}
         </>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useCart } from '../hooks/useCart';
 import type { Restaurant } from '../types';
 import { useAnimation } from '../hooks/useAnimation';
@@ -28,7 +28,7 @@ const PencilIcon: React.FC<{ className?: string }> = ({ className }) => (
 
 
 const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
-    const { cartItems, updateQuantity, updateItemNotes, removeFromCart, totalPrice, totalItems, clearCart } = useCart();
+    const { cartItems, updateQuantity, updateItemNotes, removeFromCart, clearCart } = useCart();
     const { addToast } = useNotification();
     const { setCartElement } = useAnimation();
     const cartButtonRef = useRef<HTMLButtonElement>(null);
@@ -37,19 +37,32 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
     
     const [activeNoteInputId, setActiveNoteInputId] = useState<string | null>(null);
 
+    const restaurantCartItems = useMemo(() => {
+        if (!restaurant) return cartItems;
+        return cartItems.filter(item => item.restaurantId === restaurant.id);
+    }, [cartItems, restaurant]);
+
+    const restaurantTotalPrice = useMemo(() => {
+        return restaurantCartItems.reduce((acc, item) => acc + (Number(item.price) * item.quantity), 0);
+    }, [restaurantCartItems]);
+
+    const restaurantTotalItems = useMemo(() => {
+        return restaurantCartItems.reduce((acc, item) => acc + item.quantity, 0);
+    }, [restaurantCartItems]);
+
     const isOpen = restaurant ? isRestaurantOpen(restaurant) : true;
 
     const [isBumping, setIsBumping] = useState(false);
-    const prevTotalItems = useRef(totalItems);
+    const prevTotalItems = useRef(restaurantTotalItems);
 
     useEffect(() => {
-        if (totalItems > prevTotalItems.current) {
+        if (restaurantTotalItems > prevTotalItems.current) {
             setIsBumping(true);
             const timer = setTimeout(() => setIsBumping(false), 300);
             return () => clearTimeout(timer);
         }
-        prevTotalItems.current = totalItems;
-    }, [totalItems]);
+        prevTotalItems.current = restaurantTotalItems;
+    }, [restaurantTotalItems]);
 
     useEffect(() => {
         if (cartButtonRef.current) {
@@ -58,7 +71,7 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
         return () => {
             setCartElement(null);
         };
-    }, [totalItems, setCartElement]);
+    }, [restaurantTotalItems, setCartElement]);
 
 
     const handleCheckout = () => {
@@ -73,21 +86,24 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
         setIsCheckoutOpen(true);
     };
 
-    if (totalItems === 0 && !isCartOpen) {
+    if (restaurantTotalItems === 0 && !isCartOpen) {
         return null;
     }
     
     if (!isCartOpen) {
         return (
-            <div className="fixed bottom-5 right-5 z-[101]">
+            <div 
+                className="fixed right-5 z-[101] transition-all duration-300"
+                style={{ bottom: 'calc(20px + var(--bottom-banner-height, 0px))' }}
+            >
                 <button
                     ref={cartButtonRef}
                     onClick={() => setIsCartOpen(true)}
                     className={`bg-orange-600 text-white rounded-full shadow-lg p-4 flex items-center justify-center space-x-2 hover:bg-orange-700 transition-all duration-300 ${isBumping ? 'scale-125 rotate-12' : 'scale-100'}`}
-                    aria-label={`Abrir carrinho com ${totalItems} itens`}
+                    aria-label={`Abrir carrinho com ${restaurantTotalItems} itens`}
                 >
                     <CartIcon className="w-8 h-8"/>
-                    <span className={`absolute -top-1 -right-1 bg-white text-orange-600 rounded-full text-xs font-bold w-6 h-6 flex items-center justify-center border-2 border-orange-600 transition-transform duration-300 ${isBumping ? 'scale-110' : 'scale-100'}`}>{totalItems}</span>
+                    <span className={`absolute -top-1 -right-1 bg-white text-orange-600 rounded-full text-xs font-bold w-6 h-6 flex items-center justify-center border-2 border-orange-600 transition-transform duration-300 ${isBumping ? 'scale-110' : 'scale-100'}`}>{restaurantTotalItems}</span>
                 </button>
             </div>
         )
@@ -107,7 +123,7 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
                             )}
                         </div>
                         <div className="flex items-center space-x-4 flex-shrink-0">
-                            {cartItems.length > 0 && (
+                            {restaurantCartItems.length > 0 && (
                                 <button 
                                     onClick={clearCart} 
                                     className="text-sm text-orange-600 font-semibold hover:underline flex items-center space-x-1"
@@ -121,14 +137,14 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
                         </div>
                     </div>
                     
-                    {cartItems.length === 0 ? (
+                    {restaurantCartItems.length === 0 ? (
                         <div className="p-8 text-center text-gray-500 flex-grow flex flex-col justify-center items-center">
                             <CartIcon className="w-16 h-16 mx-auto text-gray-300 mb-4"/>
                             Sua sacola está vazia.
                         </div>
                     ) : (
                         <div className="overflow-y-auto p-4 flex-grow space-y-6">
-                            {cartItems.map(item => {
+                            {restaurantCartItems.map(item => {
                                 const hasNotes = item.notes && item.notes.trim().length > 0;
                                 const isNoteOpen = hasNotes || activeNoteInputId === item.id;
 
@@ -201,7 +217,7 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
                         </div>
                     )}
 
-                    {cartItems.length > 0 && (
+                    {restaurantCartItems.length > 0 && (
                          <div className="p-4 border-t bg-gray-50 rounded-b-lg">
                             <button
                                 onClick={handleCheckout}
@@ -209,7 +225,7 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
                                 className={`w-full text-white font-bold py-3 px-4 rounded-lg transition-all flex justify-between items-center ${isOpen ? 'bg-orange-600 hover:bg-orange-700' : 'bg-gray-400 cursor-not-allowed shadow-inner'}`}
                             >
                                 <span>{isOpen ? 'Finalizar Pedido' : 'Restaurante Fechado'}</span>
-                                <span>R$ {totalPrice.toFixed(2)}</span>
+                                <span>R$ {restaurantTotalPrice.toFixed(2)}</span>
                             </button>
                             {!isOpen && (
                                 <p className="text-[10px] text-red-500 font-bold mt-2 text-center">Infelizmente este restaurante encerrou o expediente.</p>

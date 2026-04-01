@@ -1,93 +1,65 @@
 import { supabase } from './api';
-import { Mensalista } from '../types';
 
-export const fetchMensalistas = async (restaurantId: number): Promise<Mensalista[]> => {
-  const { data, error } = await supabase
-    .from('mensalistas')
-    .select('*')
-    .eq('restaurant_id', restaurantId);
-
-  if (error) throw error;
-  return data.map(m => ({
-    ...m,
-    restaurantId: m.restaurant_id,
-    startDate: m.start_date,
-    nextPaymentDate: m.next_payment_date,
-    monthlyFee: Number(m.monthly_fee),
-    balance: Number(m.balance || 0)
-  }));
-};
-
-export const createMensalista = async (mensalista: Omit<Mensalista, 'id'>) => {
-  const { data, error } = await supabase
-    .from('mensalistas')
-    .insert({
-      restaurant_id: mensalista.restaurantId,
-      name: mensalista.name,
-      phone: mensalista.phone,
-      start_date: mensalista.startDate,
-      next_payment_date: mensalista.nextPaymentDate,
-      status: mensalista.status,
-      monthly_fee: mensalista.monthlyFee,
-      notes: mensalista.notes
-    })
-    .select();
-
-  if (error) throw error;
-  return data;
-};
-
-export const updateMensalista = async (id: string, updates: Partial<Mensalista>) => {
-  const { data, error } = await supabase
-    .from('mensalistas')
-    .update({
-      name: updates.name,
-      phone: updates.phone,
-      next_payment_date: updates.nextPaymentDate,
-      status: updates.status,
-      monthly_fee: updates.monthlyFee,
-      balance: updates.balance,
-      notes: updates.notes
-    })
-    .eq('id', id)
-    .select();
-
-  if (error) throw error;
-  return data;
-};
-
-export const deleteMensalista = async (id: string) => {
-  const { error } = await supabase
-    .from('mensalistas')
-    .delete()
-    .eq('id', id);
-
-  if (error) throw error;
-};
+export interface Mensalista {
+  id: string;
+  restaurant_id: number;
+  name: string;
+  phone: string;
+  start_date: string;
+  next_payment_date: string;
+  status: string;
+  monthly_fee: number;
+  notes?: string;
+  created_at: string;
+}
 
 export const getMensalistaByPhone = async (phone: string, restaurantId: number): Promise<Mensalista | null> => {
-  const { data, error } = await supabase
-    .from('mensalistas')
-    .select('*')
-    .eq('restaurant_id', restaurantId)
-    .eq('phone', phone)
-    .eq('status', 'active')
-    .maybeSingle();
+  try {
+    const cleanPhone = phone.replace(/\D/g, '');
+    
+    if (cleanPhone.length < 10) {
+      return null;
+    }
 
-  if (error) throw error;
-  if (!data) return null;
-  
-  return {
-    ...data,
-    restaurantId: data.restaurant_id,
-    startDate: data.start_date,
-    nextPaymentDate: data.next_payment_date,
-    monthlyFee: Number(data.monthly_fee),
-    balance: Number(data.balance || 0)
-  } as Mensalista;
+    const { data, error } = await supabase
+      .from('mensalistas')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .eq('status', 'active')
+      .ilike('phone', `%${cleanPhone}%`)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null;
+      }
+      throw error;
+    }
+
+    return data as Mensalista;
+  } catch (error) {
+    console.error('Error getting mensalista by phone:', error);
+    return null;
+  }
 };
 
-export const checkIfMensalista = async (phone: string, restaurantId: number): Promise<boolean> => {
-  const mensalista = await getMensalistaByPhone(phone, restaurantId);
-  return !!mensalista;
+export const verifyMensalistaByPhone = async (restaurantId: number, phone: string): Promise<Mensalista | null> => {
+  return getMensalistaByPhone(phone, restaurantId);
 };
+
+export const fetchMensalistas = async (restaurantId: number): Promise<Mensalista[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('mensalistas')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .order('name');
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching mensalistas:', error);
+    return [];
+  }
+};
+

@@ -80,7 +80,7 @@ const OrderTracker: React.FC = () => {
 
             const { data, error } = await supabase
                 .from('orders')
-                .select('id, order_number, status, restaurant_name, total_price, timestamp')
+                .select('id, order_number, status, restaurant_name, total_price, timestamp, customer_address')
                 .in('id', storedOrderIds)
                 .order('timestamp', { ascending: false });
 
@@ -119,6 +119,7 @@ const OrderTracker: React.FC = () => {
     useEffect(() => {
         loadOrders();
         
+        const handleUpdateOrders = () => { loadOrders(); };
         const handleHandshake = () => {
             loadOrders(); 
             setIsExpanded(true); 
@@ -131,7 +132,7 @@ const OrderTracker: React.FC = () => {
             loadOrders();
         };
 
-        window.addEventListener('guarafood:update-orders', () => loadOrders());
+        window.addEventListener('guarafood:update-orders', handleUpdateOrders);
         window.addEventListener('guarafood:open-tracker', handleHandshake);
         window.addEventListener('focus', handleFocus);
         
@@ -152,7 +153,7 @@ const OrderTracker: React.FC = () => {
             .subscribe();
 
         return () => {
-            window.removeEventListener('guarafood:update-orders', loadOrders);
+            window.removeEventListener('guarafood:update-orders', handleUpdateOrders);
             window.removeEventListener('guarafood:open-tracker', handleHandshake);
             window.removeEventListener('focus', handleFocus);
             if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
@@ -189,6 +190,8 @@ const OrderTracker: React.FC = () => {
     if (activeOrders.length === 0) return null;
 
     const mainOrder = activeOrders[0];
+    const isPickup = !mainOrder.customer_address || mainOrder.customer_address.street === 'Retirada no Local';
+    
     const currentStep = statusSteps[mainOrder.status] ?? 1;
     const progress = currentStep === 0 ? 8 : (currentStep / 4) * 100;
     const isPending = mainOrder.status === 'Aguardando Pagamento';
@@ -197,8 +200,15 @@ const OrderTracker: React.FC = () => {
         ? `#${String(mainOrder.order_number).padStart(3, '0')}`
         : `#${mainOrder.id.substring(mainOrder.id.length - 4).toUpperCase()}`;
 
+    const statusLabel = mainOrder.status === 'A Caminho' 
+        ? (isPickup ? 'Pode vir retirar' : 'Saiu para Entrega')
+        : (statusLabels[mainOrder.status] || mainOrder.status);
+
     return (
-        <div className="fixed bottom-0 left-0 right-0 z-[100] px-4 pb-4 pb-safe pointer-events-none">
+        <div 
+            className="fixed left-0 right-0 z-[100] px-4 pb-4 pb-safe pointer-events-none transition-all duration-300"
+            style={{ bottom: 'var(--bottom-banner-height, 0px)' }}
+        >
             <div 
                 className="relative max-w-md mx-auto pointer-events-auto"
                 onClick={initAudioContext}
@@ -222,7 +232,7 @@ const OrderTracker: React.FC = () => {
                             <div>
                                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1.5">Rastreamento Ativo</p>
                                 <p className={`text-sm font-black uppercase tracking-tight ${isPending ? 'text-yellow-700' : 'text-orange-600'}`}>
-                                    {statusLabels[mainOrder.status] || mainOrder.status}
+                                    {statusLabel}
                                 </p>
                             </div>
                         </div>
@@ -292,7 +302,7 @@ const OrderTracker: React.FC = () => {
                                 <div className="flex justify-between text-[9px] text-gray-400 font-black mt-4 uppercase tracking-widest">
                                     <span className={currentStep >= 1 ? 'text-orange-600' : ''}>Recebido</span>
                                     <span className={currentStep >= 2 ? 'text-orange-600' : ''}>Preparo</span>
-                                    <span className={currentStep >= 3 ? 'text-orange-600' : ''}>Entrega</span>
+                                    <span className={currentStep >= 3 ? 'text-orange-600' : ''}>{isPickup ? 'Retirada' : 'Entrega'}</span>
                                     <span className={currentStep >= 4 ? 'text-orange-600' : ''}>Fim</span>
                                 </div>
                             </div>

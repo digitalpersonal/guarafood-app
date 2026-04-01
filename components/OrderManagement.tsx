@@ -3,13 +3,15 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { subscribeToOrders, fetchOrders } from '../services/orderService';
 import { useAuth } from '../services/authService'; 
 import { fetchRestaurantByIdSecure } from '../services/databaseService';
-import type { Order, StaffMember, CartItem } from '../types';
+import type { Order, StaffMember, CartItem, Restaurant } from '../types';
 import OrdersView from './OrdersView';
 import MenuManagement from './MenuManagement';
 import RestaurantSettings from './RestaurantSettings';
 import PrintableOrder from './PrintableOrder';
 import TableManagement from './TableManagement';
 import StaffManagement from './StaffManagement';
+import MensalistasManager from './MensalistasManager';
+import Spinner from './Spinner';
 import PinPadModal from './PinPadModal';
 import HelpCenter from './HelpCenter';
 import { useSound } from '../hooks/useSound';
@@ -35,10 +37,15 @@ const LockClosedIcon: React.FC<{ className?: string }> = ({ className }) => (
 const SalesDashboard = React.lazy(() => import('./SalesDashboard'));
 const CustomerList = React.lazy(() => import('./CustomerList'));
 
-const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+interface OrderManagementProps {
+    onViewStore?: (restaurant: Restaurant) => void;
+}
+
+const OrderManagement: React.FC<OrderManagementProps> = ({ onViewStore }) => {
     const { currentUser, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'help'>('orders');
+    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'help' | 'mensalistas'>('orders');
     const [orders, setOrders] = useState<Order[]>([]);
+    const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
     const [printJob, setPrintJob] = useState<{ 
         order: Order, 
         mode: 'full' | 'kitchen', 
@@ -52,7 +59,11 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [staffList, setStaffList] = useState<StaffMember[]>([]);
     const [currentStaffUser, setCurrentStaffUser] = useState<StaffMember | null>(null);
     const [isPinPadOpen, setIsPinPadOpen] = useState(false);
-    const [isLocked, setIsLocked] = useState(localStorage.getItem('guarafood-panel-locked') === 'true');
+    const [isLocked, setIsLocked] = useState(false);
+
+    useEffect(() => {
+        localStorage.setItem('guarafood-panel-locked', 'false');
+    }, []);
 
     const lastSuccessfulSyncRef = useRef<number>(Date.now());
     const previousOrdersStatusRef = useRef<Map<string, string>>(new Map());
@@ -72,6 +83,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             try {
                 const rest = await fetchRestaurantByIdSecure(currentUser.restaurantId);
                 if (rest) {
+                    setRestaurant(rest);
                     if (rest.printerWidth) {
                         setPrinterWidth(rest.printerWidth);
                         localStorage.setItem('guarafood-printer-width', rest.printerWidth.toString());
@@ -119,7 +131,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     // Determine visible tabs based on role and lock state
     const visibleTabs = useMemo(() => {
-        const allTabs = ['orders', 'tables', 'menu', 'financial', 'customers', 'staff', 'settings', 'help'] as const;
+        const allTabs = ['orders', 'tables', 'menu', 'financial', 'customers', 'staff', 'settings', 'help', 'mensalistas'] as const;
         
         // Se o usuário logado for garçom, ele só vê mesas
         if (currentUser?.role === 'waiter') {
@@ -132,8 +144,8 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }
         
         // Manager ou Merchant (Dono) vê tudo
-        return allTabs;
-    }, [currentUser, isLocked]);
+        return restaurant?.hasMensalistas ? allTabs : allTabs.filter(t => t !== 'mensalistas');
+    }, [currentUser, isLocked, restaurant]);
 
     // Force tab if current is not allowed
     useEffect(() => {
@@ -155,7 +167,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         if (!isFirstLoadRef.current) {
             const ordersToAlert = visibleOrders.filter(order => {
                 const prevStatus = previousOrdersStatusRef.current.get(order.id);
-                const isNewDelivery = order.status === 'Novo Pedido' && prevStatus !== 'Novo Pedido';
+                const isNewDelivery = (order.status === 'Novo Pedido' || order.status === 'Aguardando Pagamento') && prevStatus !== order.status;
                 const isNewTable = order.tableNumber && !previousOrdersStatusRef.current.has(order.id);
                 return isNewDelivery || isNewTable;
             });
@@ -176,9 +188,17 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     }
                     playNotification(); 
                 }
-                // Only auto-print delivery orders, not empty table openings
-                if (!newestOrder.tableNumber) {
-                    setPrintJob({ order: newestOrder, mode: 'full' });
+                
+                // AUTO-PRINT: Only for 'Novo Pedido' (Confirmed/Paid) to avoid double printing Pix orders
+                // or printing unpaid attempts.
+                if (newestOrder.status === 'Novo Pedido') {
+                    if (!newestOrder.tableNumber) {
+                        // Delivery/Takeout: Print full receipt
+                        setPrintJob({ order: newestOrder, mode: 'full' });
+                    } else {
+                        // Table Order: Print kitchen slip automatically
+                        setPrintJob({ order: newestOrder, mode: 'kitchen' });
+                    }
                 }
             }
         }
@@ -257,11 +277,18 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             const printTimer = setTimeout(async () => {
                 window.focus();
                 
-                if (printJob.mode === 'full' && !printJob.jobId) {
-                    printedOrderIdsRef.current.add(printJob.order.id);
-                }
+                // Verificação de segurança: não imprimir se não houver conteúdo (evita bobina infinita)
+                const printableEl = document.getElementById('printable-order');
+                const hasContent = printableEl && printableEl.textContent && printableEl.textContent.trim().length > 0;
                 
-                window.print();
+                if (hasContent) {
+                    if (printJob.mode === 'full' && !printJob.jobId) {
+                        printedOrderIdsRef.current.add(printJob.order.id);
+                    }
+                    window.print();
+                } else {
+                    console.warn("Impressão abortada: Nenhum item novo para imprimir.");
+                }
 
                 // Se era um trabalho da fila remota (jobId), marcamos como feito no banco
                 if (printJob.jobId) {
@@ -349,9 +376,9 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const renderContent = () => {
         switch (activeTab) {
             case 'orders':
-                return <OrdersView orders={orders} printerWidth={printerWidth} onPrint={handleManualPrint} currentStaffUser={currentStaffUser} />;
+                return <OrdersView orders={orders} printerWidth={printerWidth} onPrint={handleManualPrint} currentStaffUser={currentStaffUser} restaurant={restaurant} />;
             case 'tables':
-                return <TableManagement orders={orders} currentStaffUser={currentStaffUser} onPrint={handleManualPrint} />;
+                return <TableManagement orders={orders} currentStaffUser={currentStaffUser} onPrint={handleManualPrint} restaurant={restaurant} />;
             case 'menu': return <MenuManagement />;
             case 'financial':
                 return (
@@ -366,6 +393,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     </React.Suspense>
                 );
             case 'staff': return <StaffManagement />;
+            case 'mensalistas': return restaurant ? <MensalistasManager restaurant={restaurant} /> : <Spinner message="Carregando restaurante..." />;
             case 'settings': return <RestaurantSettings />;
             case 'help': return <HelpCenter onBack={() => setActiveTab('orders')} />;
             default: return null;
@@ -375,18 +403,15 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     return (
         <div className="w-full min-h-screen bg-gray-50" onClick={enableAudio} onTouchStart={enableAudio}>
             <div 
-                className={`text-white text-center text-[10px] uppercase tracking-widest font-black p-1.5 cursor-pointer flex items-center justify-center gap-2 transition-all duration-500 ${connectionStatus === 'CONNECTED' ? 'bg-green-600' : 'bg-red-600 animate-pulse'}`} 
+                className={`text-white text-center text-[10px] uppercase tracking-widest font-black p-1.5 cursor-pointer flex items-center justify-center gap-2 transition-all duration-500 print:hidden ${connectionStatus === 'CONNECTED' ? 'bg-green-600' : 'bg-red-600 animate-pulse'}`} 
                 onClick={forceSync}
             >
                 <div className={`w-2.5 h-2.5 rounded-full bg-white ${connectionStatus === 'CONNECTED' ? 'opacity-100' : 'animate-ping'}`}></div>
                 {connectionStatus === 'CONNECTED' ? <span>Painel Conectado</span> : <span>Conectando...</span>}
             </div>
 
-            <header className="p-4 sticky top-0 bg-gray-50 z-20 border-b flex justify-between items-center gap-4">
+            <header className="p-4 sticky top-0 bg-gray-50 z-20 border-b flex justify-between items-center gap-4 print:hidden">
                 <div className="flex items-center space-x-4 flex-grow min-w-0">
-                    <button onClick={onBack} className="bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition-colors flex-shrink-0">
-                        <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
-                    </button>
                     <div className="flex flex-col">
                         <h1 className="text-xl sm:text-2xl font-black text-gray-800 truncate">
                             {currentUser?.name || 'Painel Lojista'}
@@ -430,21 +455,47 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
                         </svg>
                     </button>
-                    <button onClick={logout} className="flex items-center space-x-2 p-2 text-gray-500 hover:text-red-600 rounded-lg transition-colors font-bold flex-shrink-0">
-                        <LogoutIcon className="w-6 h-6" />
-                        <span className="hidden sm:inline">Sair</span>
+                    {onViewStore && restaurant && (
+                        <button 
+                            onClick={() => onViewStore(restaurant)}
+                            className="flex items-center space-x-2 p-2 text-gray-500 hover:text-orange-600 rounded-lg transition-colors font-bold flex-shrink-0"
+                            title="Ver Loja como Cliente"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.644C3.399 8.049 7.21 5 12 5c4.79 0 8.601 3.049 9.964 6.678.117.311.117.644 0 .955C20.601 15.951 16.79 19 12 19c-4.79 0-8.601-3.049-9.964-6.678z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            <span className="hidden sm:inline">Ver Loja</span>
+                        </button>
+                    )}
+                    <button 
+                        onClick={async () => {
+                            console.log("Logout button clicked in OrderManagement");
+                            try {
+                                await logout();
+                            } catch (e) {
+                                console.error("Logout error:", e);
+                                localStorage.clear();
+                                window.location.href = window.location.origin;
+                            }
+                        }} 
+                        className="flex items-center space-x-2 px-3 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-all font-black text-[10px] uppercase tracking-wider shadow-sm flex-shrink-0"
+                        title="Sair do Painel"
+                    >
+                        <LogoutIcon className="w-5 h-5" />
+                        <span>Sair</span>
                     </button>
                 </div>
             </header>
 
              {visibleTabs.length > 1 && (
-                <nav className="p-4 border-b sticky top-[95px] bg-gray-50 z-10 overflow-x-auto no-scrollbar">
+                <nav className="p-4 border-b sticky top-[95px] bg-gray-50 z-10 overflow-x-auto no-scrollbar print:hidden">
                     <div className="flex space-x-2 rounded-xl bg-gray-200 p-1 min-w-max">
                         {visibleTabs.map((tab) => {
                             const labels: Record<string, string> = { 
                                 orders: 'Pedidos', tables: 'Mesas', menu: 'Cardápio', 
                                 financial: 'Financeiro', customers: 'Clientes', staff: 'Equipe', 
-                                settings: 'Config', help: 'Ajuda'
+                                settings: 'Config', help: 'Ajuda', mensalistas: 'Mensalistas'
                             };
                             return (
                                 <button 
@@ -460,13 +511,14 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 </nav>
             )}
 
-            <main className="flex-grow">{renderContent()}</main>
+            <main className="flex-grow print:hidden">{renderContent()}</main>
 
             <div className="hidden print:block">
                 <div id="printable-order">
                     {printJob && (
                         <PrintableOrder 
                             order={printJob.items ? { ...printJob.order, items: printJob.items } : printJob.order} 
+                            restaurant={restaurant}
                             printerWidth={printerWidth} 
                             printMode={printJob.mode}
                         />

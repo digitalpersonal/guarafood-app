@@ -10,6 +10,7 @@ interface PizzaCustomizationModalProps {
     initialPizza: MenuItem;
     allPizzas: MenuItem[];
     allAddons: Addon[];
+    restaurantId: number;
 }
 
 const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
@@ -19,6 +20,7 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
     initialPizza,
     allPizzas,
     allAddons,
+    restaurantId,
 }) => {
     const [selectedSize, setSelectedSize] = useState<SizeOption | null>(null);
     const [firstHalf, setFirstHalf] = useState<MenuItem>(initialPizza);
@@ -109,6 +111,7 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
         
         const customizedPizza: CartItem = {
             id: cartId,
+            restaurantId: restaurantId,
             name,
             price: totalPrice,
             basePrice,

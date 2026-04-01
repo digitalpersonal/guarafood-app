@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Combo, MenuItem } from '../types';
+import ImageUploadField from './ImageUploadField';
 
 interface ComboEditorModalProps {
     isOpen: boolean;
@@ -7,9 +8,10 @@ interface ComboEditorModalProps {
     onSave: (comboData: Omit<Combo, 'id' | 'restaurantId'>) => void;
     existingCombo: Combo | null;
     menuItems: MenuItem[];
+    restaurantId: number;
 }
 
-const ComboEditorModal: React.FC<ComboEditorModalProps> = ({ isOpen, onClose, onSave, existingCombo, menuItems }) => {
+const ComboEditorModal: React.FC<ComboEditorModalProps> = ({ isOpen, onClose, onSave, existingCombo, menuItems, restaurantId }) => {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [price, setPrice] = useState('');
@@ -99,13 +101,14 @@ const ComboEditorModal: React.FC<ComboEditorModalProps> = ({ isOpen, onClose, on
                             onChange={(e) => setPrice(e.target.value)}
                             className="w-1/2 p-3 border rounded-lg bg-gray-50"
                         />
-                        <input
-                            type="text"
-                            placeholder="URL da Imagem"
-                            value={imageUrl}
-                            onChange={(e) => setImageUrl(e.target.value)}
-                            className="w-1/2 p-3 border rounded-lg bg-gray-50"
-                        />
+                        <div className="w-1/2">
+                            <ImageUploadField 
+                                restaurantId={restaurantId}
+                                currentImageUrl={imageUrl}
+                                onImageUploaded={setImageUrl}
+                                label="Imagem do Combo"
+                            />
+                        </div>
                     </div>
 
                     <div>
