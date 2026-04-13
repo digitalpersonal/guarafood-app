@@ -58,6 +58,8 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         operatingHours: getDefaultOperatingHours(),
         manualPixKey: '',
         active: true,
+        hasKiloService: false,
+        pricePerKilo: 0,
     });
     
     const [merchantEmail, setMerchantEmail] = useState('');
@@ -90,6 +92,8 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 operatingHours: opHours,
                 manualPixKey: existingRestaurant.manualPixKey || '',
                 active: existingRestaurant.active !== false,
+                hasKiloService: existingRestaurant.hasKiloService || false,
+                pricePerKilo: existingRestaurant.pricePerKilo || 0,
                 paymentGateways: Array.isArray(existingRestaurant.paymentGateways) ? existingRestaurant.paymentGateways : [],
                 category: typeof existingRestaurant.category === 'string' ? existingRestaurant.category : '',
                 name: existingRestaurant.name || '',
@@ -103,7 +107,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 name: '', category: '', deliveryTime: '', rating: 0, imageUrl: '', paymentGateways: [],
                 address: '', phone: '', openingHours: '', closingHours: '', deliveryFee: 0,
                 mercado_pago_credentials: { accessToken: '' }, operatingHours: getDefaultOperatingHours(),
-                manualPixKey: '', active: true
+                manualPixKey: '', active: true, hasKiloService: false, pricePerKilo: 0
             });
             setShowSecondShift(Array(7).fill(false));
             setChangeCredentials(true); 
@@ -149,7 +153,9 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             mercado_pago_credentials: formData.mercado_pago_credentials,
             operating_hours: formData.operatingHours,
             manual_pix_key: formData.manualPixKey,
-            active: formData.active
+            active: formData.active,
+            has_kilo_service: formData.hasKiloService,
+            price_per_kilo: formData.pricePerKilo
         };
 
         try {
@@ -216,6 +222,34 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                     <div className="grid grid-cols-2 gap-4">
                         <input name="phone" value={formData.phone} onChange={handleChange} placeholder="Telefone" className="p-2 border rounded" />
                         <input name="deliveryFee" type="number" value={formData.deliveryFee} onChange={handleChange} placeholder="Taxa Entrega" className="p-2 border rounded" />
+                    </div>
+
+                    <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-black text-emerald-900 uppercase">Serviço por Quilo</h3>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    checked={formData.hasKiloService} 
+                                    onChange={(e) => setFormData(prev => ({ ...prev, hasKiloService: e.target.checked }))} 
+                                    className="sr-only peer" 
+                                />
+                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                            </label>
+                        </div>
+                        {formData.hasKiloService && (
+                            <div>
+                                <label className="text-[10px] font-bold text-emerald-700">PREÇO POR QUILO (R$)</label>
+                                <input 
+                                    type="number" 
+                                    step="0.01"
+                                    value={formData.pricePerKilo} 
+                                    onChange={(e) => setFormData(prev => ({ ...prev, pricePerKilo: parseFloat(e.target.value) || 0 }))}
+                                    placeholder="0,00"
+                                    className="w-full p-2 border border-emerald-200 rounded text-sm font-mono" 
+                                />
+                            </div>
+                        )}
                     </div>
 
                     <div className="border-t pt-4">

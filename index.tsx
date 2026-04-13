@@ -1,4 +1,4 @@
-import React, { Component, ReactNode, ErrorInfo } from 'react';
+import React, { Component, ReactNode, ErrorInfo, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App';
@@ -17,29 +17,20 @@ interface ErrorBoundaryState {
  * log those errors, and display a fallback UI.
  */
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Initializing state directly as a class property (modern React/TypeScript syntax)
-  // This implicitly calls super(props) with an empty constructor if none is defined,
-  // or merges with a constructor's state if present.
-  state: ErrorBoundaryState = {
-    hasError: false,
-    error: null
-  };
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null
+    };
+  }
 
-  /**
-   * getDerivedStateFromError is called after an error has been thrown in a descendant component.
-   * It receives the error that was thrown as a parameter and should return a value to update state.
-   */
   public static getDerivedStateFromError(error: any): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
-  /**
-   * componentDidCatch is called after an error has been thrown in a descendant component.
-   * This is the place to log error information.
-   */
   public componentDidCatch(error: any, errorInfo: ErrorInfo) {
     console.error("GuaraFood Critical Error:", error, errorInfo);
-    // Ensure splash screen is hidden if it crashes
     if (typeof (window as any).hideSplash === 'function') {
         (window as any).hideSplash();
     }
@@ -47,7 +38,6 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   public render(): ReactNode {
     if (this.state.hasError) {
-      // Ensure splash screen is hidden if it crashes
       if (typeof (window as any).hideSplash === 'function') {
           (window as any).hideSplash();
       }
@@ -72,7 +62,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
-    return (this as any).props.children;
+    return this.props.children;
   }
 }
 
@@ -81,10 +71,10 @@ const rootElement = document.getElementById('root');
 if (rootElement) {
   const root = createRoot(rootElement);
   root.render(
-    <React.StrictMode>
+    <StrictMode>
       <ErrorBoundary>
           <App />
       </ErrorBoundary>
-    </React.StrictMode>
+    </StrictMode>
   );
 }

@@ -111,19 +111,23 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
             if (isSelected) {
                 newSet.delete(idStr);
             } else {
-                // Check global maxAddons limit if set
-                if (initialItem.maxAddons !== undefined && initialItem.maxAddons !== null && initialItem.maxAddons > 0 && newSet.size >= initialItem.maxAddons) {
+                // 1. Check Global Limit (maxAddons)
+                const globalLimit = initialItem.maxAddons !== undefined && initialItem.maxAddons !== null ? Number(initialItem.maxAddons) : 99;
+                if (globalLimit > 0 && newSet.size >= globalLimit) {
                     return prev;
                 }
-                if (initialItem.maxAddons === 0) {
+                if (globalLimit === 0) {
                     return prev;
                 }
                 
+                // 2. Check Free Pool Limit
                 if (Number(addon.price) === 0) {
                     if (currentFreeCount >= freeAddonCountLimit) {
+                        // If free limit reached, don't allow selecting more free items
                         return prev;
                     }
                 }
+                
                 newSet.add(idStr);
             }
             return newSet;

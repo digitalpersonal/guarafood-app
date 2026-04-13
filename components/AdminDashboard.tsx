@@ -119,6 +119,28 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 </button>
             </div>
 
+            <div className="border rounded-lg bg-purple-50 p-4 border-purple-200">
+                <h3 className="text-lg font-semibold text-purple-700 mb-3">Importar MR. Açai</h3>
+                <p className="text-sm text-purple-600 mb-4">
+                    Clique abaixo para criar o restaurante MR. Açai e importar todo o seu cardápio.
+                </p>
+                <button 
+                    onClick={async () => {
+                        const { importMrAcaiRestaurant } = await import('../utils/importMrAcai');
+                        addToast({ message: 'Iniciando importação...', type: 'success' });
+                        const result = await importMrAcaiRestaurant();
+                        if (result.success) {
+                            addToast({ message: 'MR. Açai importado com sucesso!', type: 'success' });
+                        } else {
+                            addToast({ message: `Erro: ${result.error}`, type: 'error' });
+                        }
+                    }}
+                    className="bg-purple-600 text-white font-bold px-4 py-2.5 rounded-lg hover:bg-purple-700 text-sm shadow-sm transition-colors"
+                >
+                    Importar MR. Açai
+                </button>
+            </div>
+
             <div className="border rounded-lg bg-gray-50 p-4 border-gray-200">
                 <h3 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
                     <img src="/vite.svg" alt="Icon" className="w-6 h-6" />

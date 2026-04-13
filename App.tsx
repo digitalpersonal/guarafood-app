@@ -30,23 +30,30 @@ import HelpCenter from './components/HelpCenter';
 import HeaderGlobal from './components/HeaderGlobal';
 import Footer from './components/Footer';
 import UpdateNotification from './components/UpdateNotification';
+import AcaiCustomizationModal from './components/AcaiCustomizationModal';
+import KiloEntryModal from './components/KiloEntryModal';
+import { useCart } from './hooks/useCart';
 import * as serviceWorkerRegistration from './serviceWorkerRegistration';
 
-const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-  </svg>
-);
-
-const FunnelIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
+function ArrowLeftIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
     </svg>
-);
+  );
+}
+
+function FunnelIcon({ className }: { className?: string }) {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
+        </svg>
+    );
+}
 
 const slugify = (text: string) => `category-${text.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '')}`;
 
-const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> = ({ restaurant, onBack }) => {
+function RestaurantMenu({ restaurant, onBack }: { restaurant: Restaurant, onBack: () => void }) {
     const [menu, setMenu] = useState<MenuCategory[]>([]);
     const [dailySpecials, setDailySpecials] = useState<MenuItem[]>([]);
     const [addons, setAddons] = useState<Addon[]>([]);
@@ -54,6 +61,8 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     const [isLoading, setIsLoading] = useState(true);
     const [activeCategory, setActiveCategory] = useState<string | null>(null);
     const [categoryNameMap, setCategoryNameMap] = useState<Map<number, string>>(new Map());
+    const [isKiloModalOpen, setIsKiloModalOpen] = useState(false);
+    const { addToCart } = useCart();
 
     const bgImage = useMemo(() => {
         if (restaurant.bannerImageUrl) return restaurant.bannerImageUrl;
@@ -179,6 +188,33 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
             )}
             
             <div className="p-4">
+                {restaurant.hasKiloService && (
+                    <div className="mb-8">
+                        <h2 className="text-xl font-black text-emerald-800 uppercase mb-4 flex items-center gap-2">
+                            <div className="bg-emerald-600 text-white p-1.5 rounded-lg">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v17.25m0 0c-1.472 0-2.882.265-4.185.75M12 20.25c1.472 0 2.882.265 4.185.75M18.75 4.905c-.921-.154-1.862-.23-2.812-.23a20.235 20.235 0 0 0-4.703.54c-1.137.225-2.212.497-3.234.812m-2.773 4.402c.16.101.338.184.53.248a20.243 20.243 0 0 1 4.573 2.472c.156.103.322.199.5.289m-.012 0c.352.176.71.322 1.075.438a20.244 20.244 0 0 1 4.773 2.44c.2.143.394.296.582.457m0 0c.327.28.65.568.968.863a20.247 20.247 0 0 1 4.492 5.462m0 0c.058.144.11.29.158.437.06.192.108.388.143.586" />
+                                </svg>
+                            </div>
+                            Venda por Peso
+                        </h2>
+                        <button 
+                            onClick={() => setIsKiloModalOpen(true)}
+                            className="w-full bg-gradient-to-br from-emerald-500 to-teal-700 p-6 rounded-3xl shadow-xl shadow-emerald-100 flex items-center justify-between group active:scale-[0.98] transition-all"
+                        >
+                            <div className="text-left">
+                                <p className="text-white font-black text-xl">Açaí / Comida por Peso</p>
+                                <p className="text-emerald-100 text-xs font-bold uppercase tracking-widest mt-1">Clique para informar o peso e adicionar</p>
+                            </div>
+                            <div className="bg-white/20 p-3 rounded-2xl group-hover:scale-110 transition-transform">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-8 h-8 text-white">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                </svg>
+                            </div>
+                        </button>
+                    </div>
+                )}
+
                 {isLoading ? (
                     <div className="flex justify-center items-center py-12">
                         <h1 className="text-xl font-black text-gray-400 animate-pulse">Carregando cardápio...</h1>
@@ -197,11 +233,19 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                     </div>
                 )}
             </div>
+            {isKiloModalOpen && (
+                <KiloEntryModal 
+                    isOpen={isKiloModalOpen}
+                    onClose={() => setIsKiloModalOpen(false)}
+                    onAddToCart={(item) => addToCart(item, restaurant.id)}
+                    restaurant={restaurant}
+                />
+            )}
         </div>
     );
 };
 
-const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRestaurant: (r: Restaurant | null) => void; onBackToDashboard?: () => void }> = ({ selectedRestaurant, onSelectRestaurant, onBackToDashboard }) => {
+function CustomerView({ selectedRestaurant, onSelectRestaurant, onBackToDashboard }: { selectedRestaurant: Restaurant | null; onSelectRestaurant: (r: Restaurant | null) => void; onBackToDashboard?: () => void }) {
     const { currentUser } = useAuth();
     const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
     const [categories, setCategories] = useState<RestaurantCategory[]>([]);
@@ -421,7 +465,7 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
     );
 };
 
-const AppContent: React.FC = () => {
+function AppContent() {
     const [view, setView] = useState<'customer' | 'login' | 'history' | 'help' | 'admin' | 'merchant'>('customer');
     const { currentUser, loading, logout } = useAuth();
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
@@ -611,7 +655,7 @@ const AppContent: React.FC = () => {
     );
 };
 
-const App: React.FC = () => {
+function App() {
     const supabaseError = getInitializationError();
     if (supabaseError) return <div className="h-screen flex items-center justify-center p-4 text-center">Erro crítico de configuração do banco de dados.</div>;
     return (
@@ -623,6 +667,6 @@ const App: React.FC = () => {
             </AnimationProvider>
         </NotificationProvider>
     );
-};
+}
 
 export default App;

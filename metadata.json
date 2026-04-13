@@ -1,5 +1,6 @@
 {
-  "name": "GuaraFood-app",
+  "name": "Remix: GuaraFood",
   "description": "An iFood-style food delivery web application that uses the Gemini API to dynamically generate restaurant and menu data, providing a seamless and interactive user experience for browsing and ordering food.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "version": "1.0.1"
 }
