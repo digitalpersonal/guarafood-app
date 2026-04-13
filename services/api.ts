@@ -132,8 +132,11 @@ export const handleSupabaseError = ({ error, customMessage, tableName }: { error
         else if (error?.code === '42P01') {
             enhancedMessage = `Erro de Banco de Dados: A tabela '${tableName || 'desconhecida'}' não existe.\n\nSOLUÇÃO: Vá ao SQL Editor do Supabase e execute o script 'fix_orders_table_columns.sql' para criar a tabela de pedidos e suas colunas.`;
         }
-        else if (fullErrorMessageLower.includes('invalid refresh token') || fullErrorMessageLower.includes('refresh token not found')) {
-            enhancedMessage = `Sua sessão expirou. Por favor, atualize a página e faça login novamente.`;
+        else if (fullErrorMessageLower.includes('invalid refresh token') || 
+                 fullErrorMessageLower.includes('refresh token not found') ||
+                 fullErrorMessageLower.includes('refresh_token_not_found') ||
+                 fullErrorMessageLower.includes('invalid_grant')) {
+            enhancedMessage = `Sua sessão expirou ou é inválida. Por favor, faça login novamente.`;
             // Dispara um evento para deslogar o usuário automaticamente
             window.dispatchEvent(new Event('auth:session-expired'));
         }

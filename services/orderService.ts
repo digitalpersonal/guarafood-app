@@ -90,22 +90,30 @@ export const subscribeToOrders = (
 };
 
 export const fetchOrders = async (restaurantId?: number, options?: { limit?: number }): Promise<Order[]> => {
-    let query = supabase.from('orders').select('*');
-    if (restaurantId) {
-        query = query.eq('restaurant_id', restaurantId);
-    }
-    
-    // Se não houver limite definido, usamos 5000 como segurança alta, mas limitando para evitar crash.
-    const finalLimit = options?.limit || 5000;
-    query = query.limit(finalLimit);
+    try {
+        let query = supabase.from('orders').select('*');
+        if (restaurantId) {
+            query = query.eq('restaurant_id', restaurantId);
+        }
+        
+        // Se não houver limite definido, usamos 5000 como segurança alta, mas limitando para evitar crash.
+        const finalLimit = options?.limit || 5000;
+        query = query.limit(finalLimit);
 
-    const { data, error } = await query.order('timestamp', { ascending: false });
-    if (error) {
-        handleSupabaseError({ error, customMessage: 'Failed to fetch orders' });
+        const { data, error } = await query.order('timestamp', { ascending: false });
+        if (error) {
+            console.error(`[orderService] Error fetching orders for restaurant ${restaurantId}:`, error);
+            handleSupabaseError({ error, customMessage: 'Failed to fetch orders', tableName: 'orders' });
+            return [];
+        }
+        
+        const normalized = (data || []).map(normalizeOrder);
+        console.log(`[orderService] Fetched ${normalized.length} orders for restaurant ${restaurantId}`);
+        return normalized;
+    } catch (err) {
+        console.error(`[orderService] Critical error in fetchOrders:`, err);
         return [];
     }
-    
-    return (data || []).map(normalizeOrder);
 };
 
 export interface NewOrderData {

@@ -125,17 +125,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return null;
   };
 
+  const handleSessionExpired = useCallback(async () => {
+    console.warn("Session expired or invalid token. Aggressive cleanup triggered.");
+    
+    // 1. Limpa o perfil do usuário
+    localStorage.removeItem(USER_STORAGE_KEY);
+    setCurrentUser(null);
+    
+    try {
+        // 2. Tenta deslogar do Supabase (isso limpa os cookies/tokens do SDK)
+        await supabase.auth.signOut();
+    } catch (e) {
+        console.warn("Error during signOut after session expired:", e);
+    } finally {
+        // 3. Limpa TUDO que possa estar corrompido no localStorage relacionado ao Supabase
+        // As chaves do Supabase geralmente começam com 'sb-'
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('sb-')) {
+                localStorage.removeItem(key);
+            }
+        });
+        
+        console.log("Cleanup finished.");
+    }
+  }, []);
+
   useEffect(() => {
-    const handleSessionExpired = async () => {
-        console.warn("Session expired event received. Logging out.");
-        localStorage.removeItem(USER_STORAGE_KEY);
-        setCurrentUser(null);
-        try {
-            await supabase.auth.signOut();
-        } catch (e) {
-            console.warn("Error during signOut after session expired:", e);
-        }
-    };
     window.addEventListener('auth:session-expired', handleSessionExpired);
 
     setLoading(true);
@@ -143,65 +158,78 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // SAFETY TIMEOUT: Se o Supabase demorar mais de 8 segundos para responder, 
     // liberamos o carregamento para não travar o usuário na tela de splash.
     const safetyTimeout = setTimeout(() => {
-        if (loading) {
-            console.warn("Auth initialization taking too long. Releasing loading state.");
-            setLoading(false);
-        }
+      if (loading) {
+        console.warn("Auth initialization taking too long. Releasing loading state.");
+        setLoading(false);
+      }
     }, 8000);
 
-    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
-      clearTimeout(safetyTimeout);
-      if (error) {
-        console.warn("Session check error:", error.message);
-        if (error.message.includes("Refresh Token") || error.message.includes("refresh_token")) {
-            handleSessionExpired();
-        }
-      } else if (session?.user) {
-        const profile = await fetchUserProfile(session.user);
-        if (profile) {
+    // Inicialização da sessão
+    const initSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        clearTimeout(safetyTimeout);
+
+        if (error) {
+          console.warn("Session check error:", error.message);
+          const msg = error.message.toLowerCase();
+          if (msg.includes("refresh token") || msg.includes("invalid_grant") || msg.includes("not found")) {
+            await handleSessionExpired();
+          }
+        } else if (session?.user) {
+          const profile = await fetchUserProfile(session.user);
+          if (profile) {
             localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
             setCurrentUser(profile);
-        }
-      } else {
-        // SENIOR MOVE: Se não há sessão do Supabase, verifica se temos um usuário "Staff" no localStorage
-        // Isso permite que garçons/gerentes fiquem logados sem conta real no Supabase
-        const storedUser = localStorage.getItem(USER_STORAGE_KEY);
-        if (storedUser) {
+          }
+        } else {
+          // Se não há sessão do Supabase, verifica se temos um usuário "Staff" no localStorage
+          const storedUser = localStorage.getItem(USER_STORAGE_KEY);
+          if (storedUser) {
             try {
-                const user = JSON.parse(storedUser);
-                if (user.role === 'waiter' || user.role === 'manager') {
-                    // É um staff, mantemos logado
-                    setCurrentUser(user);
-                } else {
-                    // Era um merchant/admin mas a sessão expirou
-                    setCurrentUser(null);
-                }
-            } catch {
+              const user = JSON.parse(storedUser);
+              if (user.role === 'waiter' || user.role === 'manager') {
+                setCurrentUser(user);
+              } else {
                 setCurrentUser(null);
+              }
+            } catch {
+              setCurrentUser(null);
             }
+          }
         }
-      }
-      setLoading(false);
-    }).catch(async (err) => {
-        console.error("Unexpected auth error:", err);
-        localStorage.removeItem(USER_STORAGE_KEY);
-        setCurrentUser(null);
+      } catch (err: any) {
+        console.error("Unexpected auth error during init:", err);
+        const msg = err.message?.toLowerCase() || "";
+        if (msg.includes("refresh token") || msg.includes("token")) {
+          await handleSessionExpired();
+        }
         setLoading(false);
-    });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initSession();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log(`Auth event: ${event}`);
+        
         if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
-            const profile = await fetchUserProfile(session.user);
-            if (profile) {
-                localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
-                setCurrentUser(profile);
-                setAuthError(null);
-            }
+          const profile = await fetchUserProfile(session.user);
+          if (profile) {
+            localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
+            setCurrentUser(profile);
+            setAuthError(null);
+          }
         } else if (event === 'SIGNED_OUT') {
           localStorage.removeItem(USER_STORAGE_KEY);
           setCurrentUser(null);
           setAuthError(null);
+        } else if (event === 'TOKEN_REFRESHED') {
+          console.log("Token refreshed successfully");
         }
       }
     );
@@ -210,7 +238,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authListener?.subscription.unsubscribe();
       window.removeEventListener('auth:session-expired', handleSessionExpired);
     };
-  }, []);
+  }, [handleSessionExpired]);
 
   const login = useCallback(async (email: string, password: string) => {
       setAuthError(null);

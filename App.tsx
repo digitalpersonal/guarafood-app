@@ -595,7 +595,7 @@ function AppContent() {
                 <div className={`flex-grow relative print-container ${view !== 'admin' && view !== 'merchant' ? 'pt-16' : ''}`}>
                     {/* Version Indicator for Debugging */}
                     <div className="absolute top-0 right-0 p-1 text-[8px] text-gray-300 pointer-events-none z-50">
-                        v1.0.4
+                        v1.0.5
                     </div>
                     {renderContent()}
                 </div>

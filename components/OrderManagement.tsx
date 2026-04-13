@@ -43,7 +43,11 @@ interface OrderManagementProps {
 
 const OrderManagement: React.FC<OrderManagementProps> = ({ onViewStore }) => {
     const { currentUser, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'help' | 'mensalistas'>('orders');
+    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'help' | 'mensalistas'>(() => {
+        const saved = localStorage.getItem('guarafood-active-tab');
+        const validTabs = ['orders', 'tables', 'menu', 'settings', 'financial', 'customers', 'staff', 'help', 'mensalistas'];
+        return (saved && validTabs.includes(saved)) ? (saved as any) : 'orders';
+    });
     const [orders, setOrders] = useState<Order[]>([]);
     const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
     const [printJob, setPrintJob] = useState<{ 
@@ -133,7 +137,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ onViewStore }) => {
     const visibleTabs = useMemo(() => {
         const allTabs = ['orders', 'tables', 'menu', 'financial', 'customers', 'staff', 'settings', 'help', 'mensalistas'] as const;
         
-        // Se o usuário logado for garçom, ele só vê mesas
+        // Se o usuário logao for garçom, ele só vê mesas
         if (currentUser?.role === 'waiter') {
             return ['tables', 'help'];
         }
@@ -144,13 +148,16 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ onViewStore }) => {
         }
         
         // Manager ou Merchant (Dono) vê tudo
-        return restaurant?.hasMensalistas ? allTabs : allTabs.filter(t => t !== 'mensalistas');
+        const tabs = restaurant?.hasMensalistas ? allTabs : allTabs.filter(t => t !== 'mensalistas');
+        return tabs as unknown as typeof allTabs[number][];
     }, [currentUser, isLocked, restaurant]);
 
-    // Force tab if current is not allowed
+    // Force tab if current is not allowed and persist tab
     useEffect(() => {
         if ((isLocked || currentUser?.role === 'waiter') && activeTab !== 'tables') {
             setActiveTab('tables');
+        } else {
+            localStorage.setItem('guarafood-active-tab', activeTab);
         }
     }, [currentUser, isLocked, activeTab]);
 
@@ -209,15 +216,23 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ onViewStore }) => {
         lastSuccessfulSyncRef.current = Date.now();
     }, [playNotification]);
 
-    const forceSync = useCallback(async () => {
+    const forceSync = useCallback(async (retryCount: number | any = 0) => {
+        const actualRetryCount = typeof retryCount === 'number' ? retryCount : 0;
         if (!currentUser?.restaurantId) return;
         try {
+            console.log(`[Sync] Fetching orders for restaurant ${currentUser.restaurantId}...`);
             const allOrders = await fetchOrders(currentUser.restaurantId, { limit: 200 });
             processOrdersUpdate(allOrders);
             lastSuccessfulSyncRef.current = Date.now();
             setConnectionStatus('CONNECTED');
         } catch (e) {
-            console.warn("Sync failed, retrying silently...");
+            console.warn(`[Sync] Failed (attempt ${actualRetryCount + 1}):`, e);
+            if (actualRetryCount < 3) {
+                const delay = Math.pow(2, actualRetryCount) * 1000;
+                setTimeout(() => forceSync(actualRetryCount + 1), delay);
+            } else {
+                setConnectionStatus('RECONNECTING');
+            }
         }
     }, [currentUser?.restaurantId, processOrdersUpdate]);
 
@@ -376,7 +391,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ onViewStore }) => {
     const renderContent = () => {
         switch (activeTab) {
             case 'orders':
-                return <OrdersView orders={orders} printerWidth={printerWidth} onPrint={handleManualPrint} currentStaffUser={currentStaffUser} restaurant={restaurant} />;
+                return <OrdersView orders={orders} printerWidth={printerWidth} onPrint={handleManualPrint} onSync={forceSync} currentStaffUser={currentStaffUser} restaurant={restaurant} />;
             case 'tables':
                 return <TableManagement orders={orders} currentStaffUser={currentStaffUser} onPrint={handleManualPrint} restaurant={restaurant} />;
             case 'menu': return <MenuManagement />;
@@ -499,7 +514,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ onViewStore }) => {
                             return (
                                 <button 
                                     key={tab}
-                                    onClick={() => setActiveTab(tab)} 
+                                    onClick={() => setActiveTab(tab as any)} 
                                     className={`px-4 py-2 text-center text-xs font-black uppercase rounded-lg transition-all ${activeTab === tab ? 'bg-white shadow-md text-orange-600 scale-105' : 'text-gray-500'}`}
                                 >
                                     {labels[tab]}
