@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useContext, createContext, useMemo } from 'react';
+import { useState, useCallback, useContext, createContext, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import Notifications from '../components/Notifications';
 import type { ToastOptions, ConfirmOptions, PromptOptions } from '../types';
