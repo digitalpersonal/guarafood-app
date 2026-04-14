@@ -1,4 +1,4 @@
-const CACHE_NAME = 'guarafood-v1.0.4';
+const CACHE_NAME = 'guarafood-v1.0.7';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

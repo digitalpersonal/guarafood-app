@@ -56,7 +56,7 @@ export const subscribeToOrders = (
     };
 
     // Canal Estático para estabilidade
-    const channelName = restaurantId ? `orders_store_${restaurantId}` : `orders_global_admin`;
+    const channelName = restaurantId ? `orders_store_${Number(restaurantId)}` : `orders_global_admin`;
     
     // Garantir que não existam múltiplos canais pendentes
     const existingChannels = supabase.getChannels().filter(ch => (ch as any).topic === channelName || (ch as any).name === channelName);
@@ -69,7 +69,7 @@ export const subscribeToOrders = (
                 event: '*', 
                 schema: 'public', 
                 table: 'orders', 
-                filter: restaurantId ? `restaurant_id=eq.${restaurantId}` : undefined 
+                filter: restaurantId ? `restaurant_id=eq.${Number(restaurantId)}` : undefined 
             },
             () => {
                 refreshData();
@@ -93,18 +93,18 @@ export const fetchOrders = async (restaurantId?: number, options?: { limit?: num
     try {
         let query = supabase.from('orders').select('*');
         if (restaurantId) {
-            query = query.eq('restaurant_id', restaurantId);
+            query = query.eq('restaurant_id', Number(restaurantId));
         }
         
         // Se não houver limite definido, usamos 5000 como segurança alta, mas limitando para evitar crash.
         const finalLimit = options?.limit || 5000;
         query = query.limit(finalLimit);
 
-        const { data, error } = await query.order('timestamp', { ascending: false });
+        const { data, error } = await query.order('created_at', { ascending: false });
         if (error) {
             console.error(`[orderService] Error fetching orders for restaurant ${restaurantId}:`, error);
             handleSupabaseError({ error, customMessage: 'Failed to fetch orders', tableName: 'orders' });
-            return [];
+            throw error; // Throw instead of returning [] to prevent clearing state on error
         }
         
         const normalized = (data || []).map(normalizeOrder);
@@ -112,7 +112,7 @@ export const fetchOrders = async (restaurantId?: number, options?: { limit?: num
         return normalized;
     } catch (err) {
         console.error(`[orderService] Critical error in fetchOrders:`, err);
-        return [];
+        throw err; // Re-throw to let callers handle it
     }
 };
 

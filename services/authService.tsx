@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               email: authUser.email!,
               role: meta.role as Role,
               name: meta.name,
-              restaurantId: meta.restaurantId,
+              restaurantId: meta.restaurantId ? Number(meta.restaurantId) : undefined,
           };
 
           // VERIFICAÇÃO DE INTEGRIDADE: O restaurante ainda existe?
@@ -69,7 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               email: authUser.email!,
               role: data.role as Role,
               name: data.name,
-              restaurantId: data.restaurantId
+              restaurantId: data.restaurantId ? Number(data.restaurantId) : undefined
           };
 
           // Verifica se o restaurante do profile ainda existe
@@ -103,7 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                       email: authUser.email!,
                       role: member.role as Role,
                       name: member.name,
-                      restaurantId: res.id
+                      restaurantId: res.id ? Number(res.id) : undefined
                   };
                   
                   // SENIOR MOVE: Atualiza os metadados para o novo ID correto
@@ -272,10 +272,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                       const profile: User = {
                           id: member.id,
                           email: member.email,
-                          role: member.role as Role,
-                          name: member.name,
-                          restaurantId: res.id
-                      };
+                      role: member.role as Role,
+                      name: member.name,
+                      restaurantId: res.id ? Number(res.id) : undefined
+                  };
                       localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
                       setCurrentUser(profile);
                       return;

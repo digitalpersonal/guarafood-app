@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { subscribeToOrders, fetchOrders } from '../services/orderService';
 import { useAuth } from '../services/authService'; 
+import { supabase } from '../services/api';
 import { fetchRestaurantByIdSecure } from '../services/databaseService';
 import type { Order, StaffMember, CartItem, Restaurant } from '../types';
 import OrdersView from './OrdersView';
@@ -48,7 +49,19 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ onViewStore }) => {
         const validTabs = ['orders', 'tables', 'menu', 'settings', 'financial', 'customers', 'staff', 'help', 'mensalistas'];
         return (saved && validTabs.includes(saved)) ? (saved as any) : 'orders';
     });
-    const [orders, setOrders] = useState<Order[]>([]);
+    const [orders, setOrders] = useState<Order[]>(() => {
+        const saved = localStorage.getItem('guarafood-last-orders');
+        return saved ? JSON.parse(saved) : [];
+    });
+    const ordersRef = useRef<Order[]>(orders);
+    useEffect(() => { 
+        ordersRef.current = orders; 
+        // Salva apenas se houver pedidos para evitar sobrescrever com vazio por erro
+        if (orders.length > 0) {
+            localStorage.setItem('guarafood-last-orders', JSON.stringify(orders));
+        }
+    }, [orders]);
+    
     const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
     const [printJob, setPrintJob] = useState<{ 
         order: Order, 
@@ -162,6 +175,25 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ onViewStore }) => {
     }, [currentUser, isLocked, activeTab]);
 
     const processOrdersUpdate = useCallback((allOrders: Order[]) => {
+        if (!allOrders) return;
+        
+        // SEGURANÇA: Se recebermos uma lista vazia mas tínhamos muitos pedidos, 
+        // ignoramos a atualização por 2 segundos para evitar que o Kanban "suma" por glitch de rede.
+        if (allOrders.length === 0 && ordersRef.current.length > 0) {
+            console.warn(`[OrderManagement] Recebida lista vazia de pedidos (tínhamos ${ordersRef.current.length}). Ignorando para evitar desaparecimento repentino.`);
+            // Forçamos uma nova sincronização em 2 segundos
+            setTimeout(() => {
+                window.dispatchEvent(new CustomEvent('guarafood:update-orders'));
+            }, 2000);
+            return;
+        }
+
+        // Se o restaurantId do usuário sumiu, algo está muito errado com a sessão
+        if (!currentUser?.restaurantId) {
+            console.error("[OrderManagement] restaurantId ausente no currentUser durante atualização de pedidos!");
+            return;
+        }
+
         const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
         
         const currentStatusMap = new Map<string, string>();
@@ -211,30 +243,65 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ onViewStore }) => {
         }
 
         previousOrdersStatusRef.current = currentStatusMap;
-        setOrders(visibleOrders);
+        
+        // Só atualizamos o estado se houver mudança real ou se for a primeira carga
+        // Isso evita re-renders desnecessários e flickers
+        setOrders(prevOrders => {
+            if (isFirstLoadRef.current) return visibleOrders;
+            if (JSON.stringify(prevOrders) === JSON.stringify(visibleOrders)) return prevOrders;
+            return visibleOrders;
+        });
+
         isFirstLoadRef.current = false;
         lastSuccessfulSyncRef.current = Date.now();
     }, [playNotification]);
 
     const forceSync = useCallback(async (retryCount: number | any = 0) => {
         const actualRetryCount = typeof retryCount === 'number' ? retryCount : 0;
-        if (!currentUser?.restaurantId) return;
+        
+        if (!currentUser?.restaurantId) {
+            console.warn("[Sync] restaurantId ausente. Verificando sessão...");
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                console.error("[Sync] Sessão não encontrada. Redirecionando para login.");
+                window.dispatchEvent(new Event('auth:session-expired'));
+                return;
+            }
+            // Se tem sessão mas não tem restaurantId no currentUser, o profile está incompleto
+            console.warn("[Sync] Sessão ativa mas restaurantId ausente no currentUser. Forçando reload do profile...");
+            window.location.reload(); 
+            return;
+        }
+
         try {
-            console.log(`[Sync] Fetching orders for restaurant ${currentUser.restaurantId}...`);
-            const allOrders = await fetchOrders(currentUser.restaurantId, { limit: 200 });
+            console.log(`[Sync] Sincronizando pedidos para o restaurante ${currentUser.restaurantId}...`);
+            setConnectionStatus('RECONNECTING');
+            
+            const allOrders = await fetchOrders(currentUser.restaurantId, { limit: 500 });
+            
+            if (allOrders.length === 0 && ordersRef.current.length > 0) {
+                console.warn("[Sync] Fetch retornou vazio mas tínhamos pedidos. Possível erro de permissão ou rede.");
+                // Não atualizamos o estado com vazio para evitar que o Kanban suma
+                if (actualRetryCount < 3) {
+                    const delay = Math.pow(2, actualRetryCount) * 1000;
+                    setTimeout(() => forceSync(actualRetryCount + 1), delay);
+                }
+                return;
+            }
+
             processOrdersUpdate(allOrders);
             lastSuccessfulSyncRef.current = Date.now();
             setConnectionStatus('CONNECTED');
         } catch (e) {
-            console.warn(`[Sync] Failed (attempt ${actualRetryCount + 1}):`, e);
+            console.error(`[Sync] Erro na sincronização (tentativa ${actualRetryCount + 1}):`, e);
+            setConnectionStatus('RECONNECTING');
+            
             if (actualRetryCount < 3) {
                 const delay = Math.pow(2, actualRetryCount) * 1000;
                 setTimeout(() => forceSync(actualRetryCount + 1), delay);
-            } else {
-                setConnectionStatus('RECONNECTING');
             }
         }
-    }, [currentUser?.restaurantId, processOrdersUpdate]);
+    }, [currentUser, processOrdersUpdate]);
 
     useEffect(() => {
         let wakeLock: any = null;
@@ -468,6 +535,22 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ onViewStore }) => {
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`w-6 h-6 ${connectionStatus !== 'CONNECTED' ? 'animate-spin' : ''}`}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                        </svg>
+                    </button>
+                    <button 
+                        onClick={() => {
+                            if (window.confirm("Deseja reiniciar o sistema e limpar o cache? Isso resolve problemas de pedidos sumindo.")) {
+                                localStorage.clear();
+                                sessionStorage.clear();
+                                window.location.reload();
+                            }
+                        }}
+                        className="p-2 rounded-lg text-gray-400 hover:text-red-600 transition-all"
+                        title="Reiniciar Sistema (Limpar Cache)"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9.75L15.75 6m0 0L19.5 9.75M15.75 6v12.75" />
                         </svg>
                     </button>
                     {onViewStore && restaurant && (
