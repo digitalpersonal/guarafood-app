@@ -5,15 +5,51 @@
     <meta charset="UTF-8" />
     <script>
       (function() {
+        const CURRENT_VERSION = '1.1.1';
         const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('reset') === '1' || urlParams.get('forceLogout') === '1') {
-          console.log("EMERGENCY RESET TRIGGERED");
-          localStorage.clear();
-          sessionStorage.clear();
+        
+        // Emergency reset or version mismatch check
+        const lastVersion = localStorage.getItem('guarafood_version');
+        const needsReset = urlParams.get('reset') === '1' || urlParams.get('forceLogout') === '1';
+        const versionMismatch = lastVersion && lastVersion !== CURRENT_VERSION;
+
+        if (needsReset || versionMismatch) {
+          console.log("VERSION MISMATCH OR RESET TRIGGERED. Clearing caches...");
+          
+          // Clear storage
+          if (needsReset) {
+            localStorage.clear();
+            sessionStorage.clear();
+          }
+          
+          // Clear cookies
           document.cookie.split(";").forEach(function(c) { 
             document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
           });
-          window.location.href = window.location.origin;
+
+          // Clear Service Workers and Caches
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(registrations => {
+              for (let registration of registrations) registration.unregister();
+            });
+          }
+          if ('caches' in window) {
+            caches.keys().then(names => {
+              for (let name of names) caches.delete(name);
+            });
+          }
+
+          localStorage.setItem('guarafood_version', CURRENT_VERSION);
+          
+          if (needsReset) {
+            window.location.href = window.location.origin;
+          } else {
+            // If just version mismatch, we don't necessarily need to redirect, 
+            // but a reload ensures we get the new SW.
+            console.log("Version updated to " + CURRENT_VERSION);
+          }
+        } else {
+          localStorage.setItem('guarafood_version', CURRENT_VERSION);
         }
       })();
     </script>

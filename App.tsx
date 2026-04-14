@@ -432,8 +432,41 @@ function AppContent() {
     const [view, setView] = useState<'customer' | 'login' | 'history' | 'help' | 'admin' | 'merchant'>('customer');
     const { currentUser, loading, logout } = useAuth();
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
+    const APP_VERSION = '1.1.1';
     const [isUpdating, setIsUpdating] = useState(false);
     const [swRegistration, setSwRegistration] = useState<ServiceWorkerRegistration | null>(null);
+
+    // Check for version mismatch against version.json
+    useEffect(() => {
+        const checkVersion = async () => {
+            try {
+                // Fetch with cache-busting query param
+                const response = await fetch(`/version.json?t=${Date.now()}`, {
+                    cache: 'no-store'
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.version && data.version !== APP_VERSION) {
+                        console.log(`[VersionCheck] New version available: ${data.version} (Current: ${APP_VERSION})`);
+                        // If there's a mismatch, we trigger the SW update check immediately
+                        if ('serviceWorker' in navigator) {
+                            const registration = await navigator.serviceWorker.ready;
+                            await registration.update();
+                            if (registration.waiting) {
+                                setSwRegistration(registration);
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("[VersionCheck] Failed to check version:", e);
+            }
+        };
+
+        checkVersion();
+        const intervalId = setInterval(checkVersion, 60000); // Check every minute
+        return () => clearInterval(intervalId);
+    }, []);
     const [forceCustomerView, setForceCustomerView] = useState(false);
 
     // Reset mechanism
@@ -458,6 +491,7 @@ function AppContent() {
     useEffect(() => {
         console.log("AppContent mounted, selectedRestaurant:", selectedRestaurant);
         // Register Service Worker and handle updates
+        // In development (AIS Build), we want to ensure updates are detected
         serviceWorkerRegistration.register({
             onUpdate: (registration) => {
                 console.log('New version detected by Service Worker');
@@ -465,20 +499,29 @@ function AppContent() {
             }
         });
 
-        // Periodic check for updates (every 15 minutes)
+        // Periodic check for updates (every 5 minutes)
         const intervalId = setInterval(() => {
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.ready.then(registration => {
-                    registration.update();
+                    registration.update().then(() => {
+                        // Check if a worker is already waiting after update
+                        if (registration.waiting) {
+                            setSwRegistration(registration);
+                        }
+                    });
                 });
             }
-        }, 900000);
+        }, 300000);
 
         // Check for updates when the app becomes visible
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible' && 'serviceWorker' in navigator) {
                 navigator.serviceWorker.ready.then(registration => {
-                    registration.update();
+                    registration.update().then(() => {
+                        if (registration.waiting) {
+                            setSwRegistration(registration);
+                        }
+                    });
                 });
             }
         };
@@ -555,12 +598,7 @@ function AppContent() {
         if (loading) return <div className="h-screen flex items-center justify-center"><Spinner /></div>;
         if (view === 'admin') return <AdminDashboard onBack={() => setView('customer')} />;
         if (view === 'merchant') return (
-            <OrderManagement 
-                onViewStore={(r) => {
-                    setSelectedRestaurant(r);
-                    setView('customer');
-                }} 
-            />
+            <OrderManagement />
         );
         if (view === 'login') return <LoginScreen onLoginSuccess={() => setView('customer')} onBack={() => setView('customer')} />;
         if (view === 'history') return <CustomerOrders onBack={() => setView('customer')} />;
@@ -595,7 +633,7 @@ function AppContent() {
                 <div className={`flex-grow relative print-container ${view !== 'admin' && view !== 'merchant' ? 'pt-16' : ''}`}>
                     {/* Version Indicator for Debugging */}
                     <div className="absolute top-0 right-0 p-1 text-[8px] text-gray-300 pointer-events-none z-50">
-                        v1.0.7
+                        v1.1.1
                     </div>
                     {renderContent()}
                 </div>

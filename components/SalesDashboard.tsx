@@ -541,12 +541,25 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                 <button 
                     onClick={() => {
                         const style = document.createElement('style');
-                        style.innerHTML = `@media print { #thermal-report-motoboy { display: none !important; } #thermal-report-closing { display: block !important; } }`;
+                        style.innerHTML = `@media print { 
+                            body * { visibility: hidden !important; }
+                            #thermal-report-closing, #thermal-report-closing * { visibility: visible !important; }
+                            #thermal-report-closing { 
+                                display: block !important; 
+                                position: absolute !important;
+                                left: 0 !important;
+                                right: 0 !important;
+                                top: 0 !important;
+                                width: 100% !important;
+                                margin: 0 auto !important;
+                            }
+                            #thermal-report-motoboy { display: none !important; }
+                        }`;
                         document.head.appendChild(style);
                         setTimeout(() => {
                             window.print();
                             document.head.removeChild(style);
-                        }, 100);
+                        }, 150);
                     }} 
                     className="flex items-center justify-center gap-3 p-6 bg-orange-600 text-white font-black rounded-3xl hover:bg-orange-700 transition-all shadow-xl shadow-orange-200 active:scale-95"
                 >
@@ -560,12 +573,25 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                 <button 
                     onClick={() => {
                         const style = document.createElement('style');
-                        style.innerHTML = `@media print { #thermal-report-closing { display: none !important; } #thermal-report-motoboy { display: block !important; } }`;
+                        style.innerHTML = `@media print { 
+                            body * { visibility: hidden !important; }
+                            #thermal-report-motoboy, #thermal-report-motoboy * { visibility: visible !important; }
+                            #thermal-report-motoboy { 
+                                display: block !important; 
+                                position: absolute !important;
+                                left: 0 !important;
+                                right: 0 !important;
+                                top: 0 !important;
+                                width: 100% !important;
+                                margin: 0 auto !important;
+                            }
+                            #thermal-report-closing { display: none !important; }
+                        }`;
                         document.head.appendChild(style);
                         setTimeout(() => {
                             window.print();
                             document.head.removeChild(style);
-                        }, 100);
+                        }, 150);
                     }} 
                     className="flex items-center justify-center gap-3 p-6 bg-blue-600 text-white font-black rounded-3xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 active:scale-95"
                 >

@@ -70,7 +70,10 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, r
     }, [onClose]);
 
     const handlePrint = () => {
-        window.print();
+        // Pequeno delay para garantir que o React renderizou o componente PrintableOrder no DOM oculto
+        setTimeout(() => {
+            window.print();
+        }, 100);
     };
 
     const handleOrderUpdated = (updatedOrder: Order) => {

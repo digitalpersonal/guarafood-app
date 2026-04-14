@@ -39,10 +39,9 @@ const SalesDashboard = React.lazy(() => import('./SalesDashboard'));
 const CustomerList = React.lazy(() => import('./CustomerList'));
 
 interface OrderManagementProps {
-    onViewStore?: (restaurant: Restaurant) => void;
 }
 
-const OrderManagement: React.FC<OrderManagementProps> = ({ onViewStore }) => {
+const OrderManagement: React.FC<OrderManagementProps> = () => {
     const { currentUser, logout } = useAuth();
     const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'help' | 'mensalistas'>(() => {
         const saved = localStorage.getItem('guarafood-active-tab');
@@ -69,7 +68,15 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ onViewStore }) => {
         items?: CartItem[], 
         jobId?: string 
     } | null>(null);
-    const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'RECONNECTING'>('CONNECTED');
+    const connectionStatusRef = useRef<'CONNECTED' | 'RECONNECTING'>('CONNECTED');
+    const [connectionStatus, setConnectionStatusState] = useState<'CONNECTED' | 'RECONNECTING'>('CONNECTED');
+    
+    const setConnectionStatus = useCallback((status: 'CONNECTED' | 'RECONNECTING') => {
+        if (connectionStatusRef.current !== status) {
+            connectionStatusRef.current = status;
+            setConnectionStatusState(status);
+        }
+    }, []);
     const { playNotification, initAudioContext } = useSound();
     
     // Staff & Security
@@ -89,6 +96,8 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ onViewStore }) => {
     const processedJobIdsRef = useRef<Set<string>>(new Set());
     const heartbeatIntervalRef = useRef<number | null>(null);
     const reconnectGraceTimeoutRef = useRef<number | null>(null);
+    const isSyncingRef = useRef(false);
+    const syncDebounceTimeoutRef = useRef<number | null>(null);
 
     const [printerWidth, setPrinterWidth] = useState<number>(80);
 
@@ -259,32 +268,49 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ onViewStore }) => {
     const forceSync = useCallback(async (retryCount: number | any = 0) => {
         const actualRetryCount = typeof retryCount === 'number' ? retryCount : 0;
         
+        if (isSyncingRef.current && actualRetryCount === 0) return;
+        isSyncingRef.current = true;
+
         if (!currentUser?.restaurantId) {
-            console.warn("[Sync] restaurantId ausente. Verificando sessão...");
-            const { data: { session } } = await supabase.auth.getSession();
-            if (!session) {
-                console.error("[Sync] Sessão não encontrada. Redirecionando para login.");
-                window.dispatchEvent(new Event('auth:session-expired'));
-                return;
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) {
+                    window.dispatchEvent(new Event('auth:session-expired'));
+                    isSyncingRef.current = false;
+                    return;
+                }
+                window.location.reload(); 
+            } catch (e) {
+                console.error("[Sync] Erro ao verificar sessão:", e);
             }
-            // Se tem sessão mas não tem restaurantId no currentUser, o profile está incompleto
-            console.warn("[Sync] Sessão ativa mas restaurantId ausente no currentUser. Forçando reload do profile...");
-            window.location.reload(); 
+            isSyncingRef.current = false;
             return;
         }
 
+        let connectingTimeout: number | null = null;
+
         try {
             console.log(`[Sync] Sincronizando pedidos para o restaurante ${currentUser.restaurantId}...`);
-            setConnectionStatus('RECONNECTING');
+            
+            // Só mostra "Conectando..." se demorar mais de 3s para evitar flicker em conexões oscilantes
+            connectingTimeout = window.setTimeout(() => {
+                setConnectionStatus('RECONNECTING');
+            }, 3000);
             
             const allOrders = await fetchOrders(currentUser.restaurantId, { limit: 500 });
             
+            if (connectingTimeout) clearTimeout(connectingTimeout);
+
             if (allOrders.length === 0 && ordersRef.current.length > 0) {
-                console.warn("[Sync] Fetch retornou vazio mas tínhamos pedidos. Possível erro de permissão ou rede.");
-                // Não atualizamos o estado com vazio para evitar que o Kanban suma
+                console.warn("[Sync] Fetch retornou vazio mas tínhamos pedidos. Ignorando atualização de estado.");
                 if (actualRetryCount < 3) {
                     const delay = Math.pow(2, actualRetryCount) * 1000;
-                    setTimeout(() => forceSync(actualRetryCount + 1), delay);
+                    setTimeout(() => {
+                        isSyncingRef.current = false;
+                        forceSync(actualRetryCount + 1);
+                    }, delay);
+                } else {
+                    isSyncingRef.current = false;
                 }
                 return;
             }
@@ -292,16 +318,27 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ onViewStore }) => {
             processOrdersUpdate(allOrders);
             lastSuccessfulSyncRef.current = Date.now();
             setConnectionStatus('CONNECTED');
+            isSyncingRef.current = false;
         } catch (e) {
+            if (connectingTimeout) clearTimeout(connectingTimeout);
             console.error(`[Sync] Erro na sincronização (tentativa ${actualRetryCount + 1}):`, e);
-            setConnectionStatus('RECONNECTING');
+            
+            // Só marca como RECONNECTING se falhar após a primeira tentativa
+            if (actualRetryCount > 0) {
+                setConnectionStatus('RECONNECTING');
+            }
             
             if (actualRetryCount < 3) {
                 const delay = Math.pow(2, actualRetryCount) * 1000;
-                setTimeout(() => forceSync(actualRetryCount + 1), delay);
+                setTimeout(() => {
+                    isSyncingRef.current = false;
+                    forceSync(actualRetryCount + 1);
+                }, delay);
+            } else {
+                isSyncingRef.current = false;
             }
         }
-    }, [currentUser, processOrdersUpdate]);
+    }, [currentUser, processOrdersUpdate, setConnectionStatus]);
 
     useEffect(() => {
         let wakeLock: any = null;
@@ -319,30 +356,45 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ onViewStore }) => {
         };
         requestWakeLock();
 
-        const handleOnline = () => forceSync();
-        const handleFocus = () => forceSync();
-        const handleVisibilityChange = () => { if (document.visibilityState === 'visible') forceSync(); };
+        const debouncedSync = () => {
+            if (syncDebounceTimeoutRef.current) clearTimeout(syncDebounceTimeoutRef.current);
+            syncDebounceTimeoutRef.current = window.setTimeout(() => {
+                forceSync();
+            }, 500);
+        };
+
+        const handleOnline = () => debouncedSync();
+        const handleFocus = () => debouncedSync();
+        const handleVisibilityChange = () => { 
+            if (document.visibilityState === 'visible') {
+                console.log("[OrderManagement] Tab visible, triggering sync...");
+                debouncedSync();
+            }
+        };
 
         window.addEventListener('online', handleOnline);
         window.addEventListener('focus', handleFocus);
         document.addEventListener('visibilitychange', handleVisibilityChange);
-        window.addEventListener('guarafood:update-orders', forceSync);
+        window.addEventListener('guarafood:update-orders', debouncedSync);
 
         heartbeatIntervalRef.current = window.setInterval(() => {
             const idleTime = Date.now() - lastSuccessfulSyncRef.current;
-            if (idleTime > 10000) {
+            // Aumentado para 30s para ser menos agressivo e evitar loops se a rede estiver lenta
+            if (idleTime > 30000) {
+                console.log("[OrderManagement] Heartbeat sync triggered (idle for > 30s)");
                 forceSync();
             }
-        }, 8000);
+        }, 15000);
 
         return () => { 
             if (wakeLock !== null) wakeLock.release(); 
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('focus', handleFocus);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
-            window.removeEventListener('guarafood:update-orders', forceSync);
+            window.removeEventListener('guarafood:update-orders', debouncedSync);
             if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
             if (reconnectGraceTimeoutRef.current) clearTimeout(reconnectGraceTimeoutRef.current);
+            if (syncDebounceTimeoutRef.current) clearTimeout(syncDebounceTimeoutRef.current);
         };
     }, [forceSync]);
 
@@ -438,10 +490,11 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ onViewStore }) => {
                     reconnectGraceTimeoutRef.current = null;
                 }
             } else {
+                // Aumentado para 20s de tolerância antes de mostrar "Conectando" no realtime
                 if (!reconnectGraceTimeoutRef.current) {
                     reconnectGraceTimeoutRef.current = window.setTimeout(() => {
                         setConnectionStatus('RECONNECTING');
-                    }, 10000);
+                    }, 20000);
                 }
             }
         };
@@ -553,19 +606,6 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ onViewStore }) => {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9.75L15.75 6m0 0L19.5 9.75M15.75 6v12.75" />
                         </svg>
                     </button>
-                    {onViewStore && restaurant && (
-                        <button 
-                            onClick={() => onViewStore(restaurant)}
-                            className="flex items-center space-x-2 p-2 text-gray-500 hover:text-orange-600 rounded-lg transition-colors font-bold flex-shrink-0"
-                            title="Ver Loja como Cliente"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.644C3.399 8.049 7.21 5 12 5c4.79 0 8.601 3.049 9.964 6.678.117.311.117.644 0 .955C20.601 15.951 16.79 19 12 19c-4.79 0-8.601-3.049-9.964-6.678z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                            <span className="hidden sm:inline">Ver Loja</span>
-                        </button>
-                    )}
                     <button 
                         onClick={async () => {
                             console.log("Logout button clicked in OrderManagement");

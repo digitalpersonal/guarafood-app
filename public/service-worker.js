@@ -1,4 +1,4 @@
-const CACHE_NAME = 'guarafood-v1.0.7';
+const CACHE_NAME = 'guarafood-v1.1.1';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -53,27 +53,34 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Estratégia Cache First para Assets Estáticos, Network First para o resto
+  // Estratégia: Network First para HTML e assets principais, Cache First para o resto
+  // Isso garante que o usuário sempre receba a versão mais nova se estiver online
+  if (request.mode === 'navigate' || STATIC_ASSETS.includes(url.pathname)) {
+    event.respondWith(
+      fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseToCache));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Estratégia Stale-While-Revalidate para outros assets
   event.respondWith(
     caches.match(request).then((response) => {
-      if (response) {
-        // Se estiver no cache, retorna, mas tenta atualizar em background (Stale-While-Revalidate)
-        fetch(request).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, networkResponse));
-          }
-        }).catch(() => {});
-        return response;
-      }
-
-      return fetch(request).then((networkResponse) => {
-        // Salva no cache se for um asset válido
-        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseToCache));
+      const fetchPromise = fetch(request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, networkResponse));
         }
         return networkResponse;
-      });
+      }).catch(() => {});
+
+      return response || fetchPromise;
     })
   );
 });

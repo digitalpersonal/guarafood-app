@@ -74,14 +74,14 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({
                         }
                         #thermal-receipt-container {
                             width: ${paperSize} !important;
-                            margin: 0 !important;
+                            margin: 0 auto !important;
                             padding: 0 !important;
                             background: #fff !important;
                             display: block !important;
                         }
                         #thermal-content {
-                            width: 100% !important; 
-                            margin: 0 !important;
+                            width: ${contentWidth} !important; 
+                            margin: 0 auto !important;
                             padding: 2mm 0 10mm 0 !important;
                             box-sizing: border-box !important;
                             background: #fff !important;
@@ -89,6 +89,8 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({
                     }
 
                     #thermal-content {
+                        width: ${contentWidth};
+                        margin: 0 auto;
                         font-family: 'Courier New', Courier, monospace; 
                         color: #000 !important;
                         line-height: ${lineHeight};
