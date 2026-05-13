@@ -278,7 +278,7 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                         {order.items.map((item, idx) => (
                             <li key={`${order.id}-item-${idx}`} className="flex justify-between border-b border-gray-100 last:border-0 pb-0.5">
                                 <span className="truncate w-full">
-                                    <strong className="text-orange-600">{item.quantity}x</strong> {item.name}
+                                    <strong className="text-orange-600">{item.quantity}x</strong> {item.name} {item.weight && item.isKiloItem && <span className="text-gray-400 font-normal">({Number(item.weight).toFixed(3)}kg)</span>}
                                 </span>
                             </li>
                         ))}

@@ -178,7 +178,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                                 {currentOrder.items.length > 0 ? currentOrder.items.map(item => (
                                     <li key={item.id} className="flex justify-between items-start border-b border-gray-100 pb-2 last:border-0">
                                         <div className="flex-grow">
-                                            <p className="font-semibold">{item.quantity}x {item.name} {item.sizeName && `(${item.sizeName})`}</p>
+                                            <p className="font-semibold">{item.quantity}x {item.name} {item.sizeName && `(${item.sizeName})`} {item.weight && item.isKiloItem && <span className="text-gray-500 font-normal">({Number(item.weight).toFixed(3)}kg)</span>}</p>
                                             
                                             {item.selectedOptions && item.selectedOptions.length > 0 && (
                                                 <ul className="text-xs text-blue-600 mt-1 pl-2 border-l-2 border-blue-200 space-y-0.5">

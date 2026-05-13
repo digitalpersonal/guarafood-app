@@ -296,7 +296,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         <div key={index} style={{ marginBottom: '6px' }}>
                             <div className="item-row">
                                 <div style={{ flex: 1, textTransform: 'uppercase', fontSize: baseFontSize }}>
-                                    {item.quantity}X {item.name} {item.sizeName && `(${item.sizeName})`}
+                                    {item.quantity}X {item.name} {item.sizeName && `(${item.sizeName})`} {item.weight && item.isKiloItem && `(${Number(item.weight).toFixed(3)}kg)`}
                                 </div>
                                 {/* Hide price in kitchen mode if desired, or keep it. Keeping for now. */}
                                 <div className="item-price-col" style={{ fontSize: baseFontSize }}>
