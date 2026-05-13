@@ -19,7 +19,7 @@ const HelpCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             content: (
                 <div className="space-y-4">
                     <p className="text-gray-600 leading-relaxed">
-                        Bem-vindo ao GuaráFood! Este sistema é uma <strong>solução completa 360º</strong> para o seu restaurante. Ele abrange PDV (Caixa), KDS (Telas de Cozinha/Balcão), Gestão Financeira, Controle de Mesas/Comandas, Clube de Fidelidade, Autoatendimento por QR Code e Delivery Online.
+                        Bem-vindo ao GuaráFood v2.0! Este sistema é uma <strong>solução completa 360º</strong> para o seu restaurante. Ele abrange PDV (Caixa), KDS (Telas de Cozinha/Balcão), Gestão Financeira, Controle de Mesas/Comandas, Clube de Fidelidade, Autoatendimento por QR Code e Delivery Online.
                     </p>
                     <div className="bg-orange-50 p-4 rounded-2xl border border-orange-100 mt-4">
                         <h4 className="font-black text-orange-800 mb-2">Estrutura do Sistema</h4>
@@ -42,46 +42,66 @@ const HelpCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 <div className="space-y-6">
                     <section>
                         <h4 className="font-black text-gray-800 mb-2">1. Configurações Iniciais</h4>
-                        <p className="text-sm text-gray-600 mb-2">No painel Administrativo, na aba <strong>"Config"</strong>, você estrutura toda a operação do restaurante:</p>
-                        <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
-                            <li><strong>Informações Básicas:</strong> Nome, endereço e contato do WhatsApp do restaurante.</li>
-                            <li><strong>Taxa de Entrega:</strong> Valor Fixo ou por Bairros.</li>
-                            <li><strong>Horários de Funcionamento:</strong> Se um cliente tentar pedir delivery fora do horário, o painel online avisará que está fechado.</li>
-                            <li><strong>Tipos de Negócio:</strong> Ligar/Desligar Venda no Quilo, Mesas, Mensalistas, Balcão/Retirada e Anúncios.</li>
-                        </ul>
+                        <p className="text-sm text-gray-600 mb-2">No painel Administrativo (Menu Lateral &rarr; Config), você deve estruturar a base da sua operação:</p>
+                        <div className="bg-gray-50 p-4 rounded-xl space-y-3">
+                            <div>
+                                <p className="font-bold text-gray-800 text-xs uppercase mb-1">Informações Básicas</p>
+                                <p className="text-xs text-gray-500">Nome, endereço e o número de WhatsApp que receberá os alertas de novos pedidos.</p>
+                            </div>
+                            <div>
+                                <p className="font-bold text-gray-800 text-xs uppercase mb-1">Taxa de Entrega</p>
+                                <p className="text-xs text-gray-500">Valor fixo ou por bairros. Você também pode definir um valor de pedido mínimo para entrega.</p>
+                            </div>
+                            <div>
+                                <p className="font-bold text-gray-800 text-xs uppercase mb-1">Horários</p>
+                                <p className="text-xs text-gray-500">Defina o horário de abertura e fechamento. Fora desse período, o cardápio online avisa que a loja está fechada e bloqueia pedidos.</p>
+                            </div>
+                        </div>
                     </section>
                     <section>
                         <h4 className="font-black text-gray-800 mb-2">2. Impressão Térmica Automática</h4>
-                        <p className="text-sm text-gray-600">Para automatizar as comandas impressas, vá em <strong>Config</strong>, insira o <strong>nome exato</strong> da impressora configurada no Windows. Sempre que um pedido for aceito (e for do delivery) ou originar de Mesa, o sistema rodará a impressão diretamente. Lembre-se de instalar e rodar o QZ Tray.</p>
+                        <p className="text-sm text-gray-600">
+                            Para que os pedidos saiam sozinhos na impressora:
+                            <br/>- Instale o software <strong>QZ Tray</strong> no computador do caixa.
+                            <br/>- No painel lateral, vá em <strong>Config</strong> e digite o nome da impressora exatamente como aparece no Windows/Painel de Controle.
+                            <br/>- Deixe o sistema aberto. Novos pedidos e solicitações de conta de mesas imprimirão automaticamente.
+                        </p>
                     </section>
                     <section>
-                        <h4 className="font-black text-gray-800 mb-2">3. Fidelidade</h4>
-                        <p className="text-sm text-gray-600">Ative o <strong>Clube de Fidelidade</strong> nas configurações. Estipule a conversão de gastos em pontos e a recompensa (Desconto percentual, fixo ou item grátis). Ao usar o telefone no fechamento da conta, os pontos do cliente sobem sozinhos.</p>
-                    </section>
-                    <section>
-                        <h4 className="font-black text-gray-800 mb-2">4. Funcionários (Garçons e Cozinha)</h4>
-                        <p className="text-sm text-gray-600">Para separar responsabilidades, adicione <strong>Funcionários e Senhas (PINs)</strong>. Um garçom deve registrar seu PIN ao abrir mesas ou comandas. Uma Cozinha foca exclusivamente no painel "Cozinha", que você pode usar num tablet para mostrar apenas a aba "Em Preparo".</p>
+                        <h4 className="font-black text-gray-800 mb-2">3. Segurança e Acesso</h4>
+                        <p className="text-sm text-gray-600 mb-2">Crie usuários para seus funcionários (Garçom, Cozinha, Gerente) com níveis de acesso diferentes:</p>
+                        <ul className="list-disc list-inside text-xs text-gray-500 space-y-1">
+                            <li><strong>Garçom:</strong> Acesso apenas à gestão de mesas e comandas.</li>
+                            <li><strong>Cozinha:</strong> Acesso apenas à tela de preparo (KDS).</li>
+                            <li><strong>Gerente:</strong> Acesso total às configurações e financeiro.</li>
+                        </ul>
                     </section>
                 </div>
             )
         },
         {
             id: 'financeiro',
-            title: 'Financeiro, Cupons e Caixa',
+            title: 'Financeiro e Caixa',
             icon: '💰',
             content: (
                 <div className="space-y-6">
                     <section>
-                        <h4 className="font-black text-gray-800 mb-2">Cupons de Desconto e Banners promocionais</h4>
-                        <p className="text-sm text-gray-600">Crie <strong>Cupons</strong> (fixos ou %). Os clientes inserem este código no momento do pagamento online ou o caixa informa. Para chamar a atenção na tela de menu principal, adicione <strong>Banners</strong> de <i>Ofertas e Novidades</i> ou Anúncios.</p>
+                        <h4 className="font-black text-gray-800 mb-2">Fluxo de Caixa</h4>
+                        <p className="text-sm text-gray-600 mb-4">O sistema separa o faturamento por formas de pagamento (Dinheiro, Pix, Cartão), facilitando o fechamento do dia.</p>
+                        <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
+                            <h5 className="text-emerald-800 font-bold text-xs uppercase mb-2">Dica de Gestão</h5>
+                            <p className="text-xs text-emerald-700">Registre todas as saídas (compras, pagamentos) na aba <strong>Financeiro &rarr; Despesas</strong>. Isso permite que o GuaráFood calcule seu <strong>lucro líquido real</strong> ao final do mês.</p>
+                        </div>
                     </section>
                     <section>
-                        <h4 className="font-black text-gray-800 mb-2">Despesas Operacionais</h4>
-                        <p className="text-sm text-gray-600">Na aba <strong>Finanças -&gt; Nova Despesa</strong>, registre saídas como Compras de Ingredientes, Conta de Luz, Embalagens, etc. Isso garantirá um relatório limpo do <i>Lucro Líquido</i> em vez de apenas Faturamento bruto longo do mês.</p>
-                    </section>
-                    <section>
-                        <h4 className="font-black text-gray-800 mb-2">Análise e Relatórios (Visão Geral)</h4>
-                        <p className="text-sm text-gray-600">Todos os pedidos com status <strong>"Finalizado"</strong> alimentam os gráficos e faturamento mensal/diário no topo do Painel, deduzindo eventuais despesas inseridas. Pagamentos em Fiado (Mensalistas) só contam no dia em que a fatura do mensalista for paga e compensada na aba "Mensalistas".</p>
+                        <h4 className="font-black text-gray-800 mb-2">Relatórios Gratuitos</h4>
+                        <p className="text-sm text-gray-600">No Dashboard principal, você tem uma visão em tempo real de:</p>
+                        <ul className="list-disc list-inside text-xs text-gray-500 space-y-1 mt-2">
+                            <li>Total bruto do dia e do mês.</li>
+                            <li>Ranking de produtos mais vendidos.</li>
+                            <li>Quantidade de pedidos por canal (Entrega vs Local).</li>
+                            <li>Evolução de despesas vs receitas.</li>
+                        </ul>
                     </section>
                 </div>
             )
@@ -93,99 +113,96 @@ const HelpCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             content: (
                 <div className="space-y-6">
                     <section>
-                        <h4 className="font-black text-gray-800 mb-2">1. Categorias</h4>
-                        <p className="text-sm text-gray-600">Uma "Categoria" separa seu Menu. Ex: <i>Entradas, Bebidas, Pizzas</i>. Você escolhe ícones e personaliza para a melhor visualização.</p>
+                        <h4 className="font-black text-gray-800 mb-2">1. Categorias e Itens</h4>
+                        <p className="text-sm text-gray-600">Organize seu menu por categorias (Bebidas, Lanches, etc). Em cada produto, você pode definir:</p>
+                        <ul className="list-disc list-inside text-xs text-gray-500 space-y-1 mt-2">
+                            <li><strong>Fotos:</strong> Use imagens reais para aumentar as vendas.</li>
+                            <li><strong>Estoque:</strong> Desmarque "Disponível" para que o item apareça como "Esgotado" imediatamente.</li>
+                            <li><strong>Pizzas:</strong> Configure tamanhos e preços dinâmicos (P, M, G).</li>
+                        </ul>
                     </section>
                     <section>
-                        <h4 className="font-black text-gray-800 mb-2">2. Itens do Cardápio (Produtos)</h4>
-                        <p className="text-sm text-gray-600">Registre Nome, descrição clara, uma foto chamativa. Se você desmarcar a aba "Disponível", a plataforma avisa ao cliente a label <strong>"Esgotado!"</strong> bloqueando o botão de compra.</p>
-                    </section>
-                    <section>
-                        <h4 className="font-black text-gray-800 mb-2">3. Lógica Especial: Adicionais (Addons/Tamanhos)</h4>
+                        <h4 className="font-black text-gray-800 mb-2">2. Lógica de Marmitas e Açaís</h4>
                         <p className="text-sm text-gray-600">
-                            <strong>Açaí / Marmitas Personalizáveis:</strong> Na criação de Addons você pode impor <i>limites e taxas</i>. Exemplo: Deixe os 4 primeiros acompanhamentos <i>grátis</i>; do 5º em diante, cobre R$ 2,00 adicionais. <br/><br/>
-                            <strong>Pizzas (Meio a Meio):</strong> O sistema aceita a criação de categoria Pizzas com frações e gerenciará automaticamente o preço maior entre as metades e as frações dos acompanhamentos, como a adição de uma Borda Recheada.
+                            Use os <strong>Complementos (Addons)</strong> para criar menus de montagem:
+                            <br/>- Defina quantos acompanhamentos o cliente pode escolher por item.
+                            <br/>- Cobre por itens extras após um certo limite de escolhas gratuitas.
                         </p>
-                    </section>
-                    <section>
-                        <h4 className="font-black text-gray-800 mb-2">4. Combos</h4>
-                        <p className="text-sm text-gray-600">Agrupe Itens com um preço fechado. É obrigatório selecionar os produtos individuais participantes (ex. um Hambúrguer padrão e uma Coca lata em estoque) para compor o Combo. Assim o controle de esgotados funcionará e a cozinha entenderá o pedido em detalhes!</p>
                     </section>
                 </div>
             )
         },
         {
-            id: 'pedidos',
-            title: 'KDS (Cozinha) e Caixa Rápido',
+            id: 'operacao',
+            title: 'Operação (KDS e Balcão)',
             icon: '📋',
             content: (
                 <div className="space-y-6">
                     <section>
-                        <h4 className="font-black text-gray-800 mb-2">Automação de Pedidos Diários</h4>
-                        <p className="text-sm text-gray-600">
-                            A aba <strong>Pedidos</strong> é o coração da operação. Todo pedido novo (Delivery ou Mesa de Autoatendimento) entra tocando uma sineta na coluna <strong className="text-blue-800">Novo Pedido</strong>.
+                        <h4 className="font-black text-gray-800 mb-2">Painel de Pedidos (KDS)</h4>
+                        <p className="text-sm text-gray-600 mb-4">
+                            Substitua o papel pelo digital. Use um Tablet ou Computador na cozinha para ver apenas a coluna <strong>"Em Preparo"</strong>.
                         </p>
-                    </section>
-                    <section>
-                        <h4 className="font-black text-gray-800 mb-2">Transições de Colunas Kanban</h4>
-                        <ul className="list-disc list-inside text-sm text-gray-600 space-y-2 mt-2">
-                            <li><strong className="text-orange-600">Em Preparo:</strong> A Cozinha bate o olho apenas nesta coluna. Exibe na tela do Tablet da Cozinha para o Chapeiro preparar.</li>
-                            <li><strong className="text-green-600">Pronto/Embalado:</strong> Quando a cozinha clica em feito, o caixa já sabe que pode chamar o Motoboy ou o Garçom pode servir a Mesa.</li>
-                            <li><strong className="text-purple-600">Saiu para Entrega / A Caminho:</strong> Status essencial de rastreio para pedidos Delivery.</li>
-                            <li><strong className="text-gray-800">Finalizado (Caixa):</strong> Fim de linha. Pedido entregue, Motoboy voltou ou Pagamento na mesa já foi transacionado. <strong>Isso contabilizará faturamento.</strong></li>
-                        </ul>
-                    </section>
-                    <section>
-                        <h4 className="font-black text-gray-800 mb-2">Lançamento Rápido no Balcão</h4>
-                        <p className="text-sm text-gray-600">Fila na sua loja? Clique em <strong>"Novo Pedido" (ou Caixa)</strong>, adicione com agilidade os produtos na tela de Touchscreen do GuaráFood. No final, indique a taxa ou desconto, capture o nome e aplique a forma de Pagamento imediata (ex: Cartão ou Pix). Finalize ou jogue para "Em Preparo".</p>
+                        <div className="grid grid-cols-2 gap-3 text-center">
+                            <div className="p-3 bg-blue-50 rounded-xl border border-blue-100">
+                                <p className="text-[10px] font-black text-blue-800 uppercase">Recebimento</p>
+                                <p className="text-xs text-blue-600 font-bold">Aceite na aba "Pendentes".</p>
+                            </div>
+                            <div className="p-3 bg-orange-50 rounded-xl border border-orange-100">
+                                <p className="text-[10px] font-black text-orange-800 uppercase">Preparo</p>
+                                <p className="text-xs text-orange-600 font-bold">Mantenha o foco aqui.</p>
+                            </div>
+                            <div className="p-3 bg-green-50 rounded-xl border border-green-100">
+                                <p className="text-[10px] font-black text-green-800 uppercase">Finalização</p>
+                                <p className="text-xs text-green-600 font-bold">Avise que está Pronto.</p>
+                            </div>
+                            <div className="p-3 bg-purple-50 rounded-xl border border-purple-100">
+                                <p className="text-[10px] font-black text-purple-800 uppercase">Entrega</p>
+                                <p className="text-xs text-purple-600 font-bold">Rastreio em tempo real.</p>
+                            </div>
+                        </div>
                     </section>
                 </div>
             )
         },
         {
             id: 'mesas',
-            title: 'Mesas e Comandas Inteligentes',
+            title: 'Mesas e Comandas',
             icon: '🪑',
             content: (
                 <div className="space-y-6">
                     <section>
-                        <h4 className="font-black text-gray-800 mb-2">Mesas em Mapa de Cores</h4>
-                        <p className="text-sm text-gray-600">Na aba <strong>"Mesas"</strong> preenchendo as configurações, você pode definir as numerações do seu salão. Ao usar o PIN, o garçom seleciona as posições do salão marcadas em Livre/Ocupada.</p>
+                        <h4 className="font-black text-gray-800 mb-2">Comandas e Salão</h4>
+                        <p className="text-sm text-gray-600">
+                            Na aba <strong>Mesas</strong>, você gerencia o salão. Ao abrir uma mesa, você pode criar várias <strong>Comandas</strong> para o mesmo local. Isso permite que cada cliente pague apenas o que consumiu.
+                        </p>
                     </section>
                     <section>
-                        <h4 className="font-black text-gray-800 mb-2">Comandas Separadas na Mesma Mesa</h4>
-                        <p className="text-sm text-gray-600">Grupo de amigos de trabalho? <strong>Esqueça a conta demorada de "racha"!</strong> O GuaráFood permite que o Caixa abra dentro da Mesa "04" três comandas distintas, onde cada item (O chopp do João, O prato do Pedro) fica amarrado àquela pessoa. No fechamento, o sistema apresenta a fatura unificada (Aba da Mesa) ou Faturas segmentadas por pessoa.</p>
-                    </section>
-                    <section>
-                        <h4 className="font-black text-gray-800 mb-2">Autoatendimento / Auto-Pedido por QR Code</h4>
-                        <p className="text-sm text-gray-600">Gere um QR Code nas configurações da Mesa. Posicione esse acrílico na mesa. Cliente entra, aponta o celular, o cardápio abre. Ele mesmo faz o pedido. Aparece mágicamente no seu Kanban do Balcão como <strong className="text-blue-600">Pedido para preparo da Mesa X</strong>.</p>
-                    </section>
-                    <section>
-                        <h4 className="font-black text-gray-800 mb-2">Buffet Inteligente (Lançamento a Quilo)</h4>
-                        <p className="text-sm text-gray-600">Utilizando Balança e a opção configurada "Preço por KG". Você coloca no caixa o valor por KG (ex: R$ 68,00), o sistema calcula a Tara e abate. Você clica na categoria de venda por KG e o guarafood emite a cobrança decimal perfeitinha ali na Comanda do usuário.</p>
+                        <h4 className="font-black text-gray-800 mb-2">Venda por Peso (Self-Service)</h4>
+                        <p className="text-sm text-gray-600">
+                            Configure o preço por KG. No momento de lançar o item na comanda, o sistema pedirá o peso e calculará automaticamente o valor conforme sua configuração.
+                        </p>
                     </section>
                 </div>
             )
         },
         {
             id: 'mensalistas',
-            title: 'Mensalistas (Conta "Fiado")',
+            title: 'Mensalistas e Fidelidade',
             icon: '🤝',
             content: (
                 <div className="space-y-6">
                     <section>
-                        <h4 className="font-black text-gray-800 mb-2">Porquê e para que Mensalistas?</h4>
-                        <p className="text-sm text-gray-600">Substitui completamente as cadernetas e fichas de vendas penduradas por donos de comércio nos entornos de sua loja. Ex: A faxineira do escritório ao lado come marmita aí todo dia e acerta de 15 em 15 dias.</p>
+                        <h4 className="font-black text-gray-800 mb-2">Mensalistas ("Fiado" Profissional)</h4>
+                        <p className="text-sm text-gray-600">
+                            Cadastre clientes que pagam mensalmente ou periodicamente. O sistema acumula as dívidas e gera um extrato detalhado para o acerto de contas. O saldo do mensalista é atualizado a cada novo pedido finalizado como "Mensalista".
+                        </p>
                     </section>
                     <section>
-                        <h4 className="font-black text-gray-800 mb-2">Como usar as Contas Fiado?</h4>
-                        <ol className="list-decimal list-inside text-sm text-gray-600 space-y-2">
-                            <li>Acesse a aba <strong>Mensalistas</strong>.</li>
-                            <li>Cadastre o perfil de Cliente do Contrato ou Cliente Especial estipulando um "Limite de Conta".</li>
-                            <li>Nas próximas comandas do salão ou na emissão via Caixa de balcão (Delivery não aceita!), defina o método <strong className="text-blue-600">"Pagar como Mensalista"</strong>.</li>
-                            <li>O valor da venda sobe e entra nas contas a receber (Não soma no faturamento do dia para você não furar o caixa de troco nem relatórios atuais).</li>
-                            <li>No dia do Pagamento Acordado, abra o Perfil do Mensalista, olhe a Dívida e clique em <strong>Pagar Mês/Dívida (Baixa Manual)</strong>. Só assim os relatórios sumarizam o Faturamento desta Receita!</li>
-                        </ol>
+                        <h4 className="font-black text-gray-800 mb-2">Clube de Fidelidade</h4>
+                        <p className="text-sm text-gray-600">
+                            Habilite nas configurações. O cliente ganha pontos a cada compra identificada por telefone. Ao atingir o limite, o próprio sistema oferece o resgate da recompensa no Checkout.
+                        </p>
                     </section>
                 </div>
             )
@@ -207,7 +224,7 @@ const HelpCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     </button>
                     <h1 className="text-2xl font-black text-gray-800 tracking-tight">Central de Ajuda</h1>
                 </div>
-                <div className="hidden md:block text-xs font-bold text-gray-400 uppercase tracking-widest">GuaráFood v2.0</div>
+                <div className="hidden md:block text-xs font-bold text-gray-400 uppercase tracking-widest">GuaráFood v{APP_VERSION}</div>
             </div>
 
             <div className="flex-grow flex flex-col md:flex-row overflow-hidden">
@@ -247,7 +264,7 @@ const HelpCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         </div>
 
                         {/* Footer Help */}
-                        <div className="mt-16 pt-8 border-top border-gray-100 flex flex-col md:flex-row items-center justify-between gap-6">
+                        <div className="mt-16 pt-8 border-t border-gray-100 flex flex-col md:flex-row items-center justify-between gap-6">
                             <div className="flex items-center gap-4">
                                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-600">
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
@@ -274,5 +291,8 @@ const HelpCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         </div>
     );
 };
+
+// Precisamos importar APP_VERSION para exibir no topo
+import { APP_VERSION } from './VersionChecker';
 
 export default HelpCenter;

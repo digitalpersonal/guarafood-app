@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '../services/authService';
+import { APP_VERSION } from './VersionChecker';
 import { useNotification } from '../hooks/useNotification';
 import RestaurantManagement from './RestaurantManagement';
 import CategoryManagement from './CategoryManagement';
@@ -156,6 +157,7 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
                         </button>
                         <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Administração GuaraFood</h1>
+                        <span className="text-[10px] bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full font-bold">v{APP_VERSION}</span>
                     </div>
                      <button onClick={logout} className="flex items-center space-x-2 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition-colors font-semibold" title="Sair">
                         <LogoutIcon className="w-6 h-6" />

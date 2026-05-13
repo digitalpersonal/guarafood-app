@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { subscribeToOrders, fetchOrders } from '../services/orderService';
 import { useAuth } from '../services/authService'; 
+import { APP_VERSION } from './VersionChecker';
 import { fetchRestaurantByIdSecure } from '../services/databaseService';
 import type { Order, StaffMember, CartItem, Restaurant } from '../types';
 import OrdersView from './OrdersView';
@@ -406,9 +407,12 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         <h1 className="text-xl sm:text-2xl font-black text-gray-800 truncate">
                             {currentUser?.name || 'Painel Lojista'}
                         </h1>
-                        <span className="text-xs text-orange-600 font-bold uppercase">
-                            {currentUser?.role === 'waiter' ? 'Garçom' : currentUser?.role === 'manager' ? 'Gerente' : 'Administrador'}
-                        </span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-orange-600 font-bold uppercase">
+                                {currentUser?.role === 'waiter' ? 'Garçom' : currentUser?.role === 'manager' ? 'Gerente' : 'Administrador'}
+                            </span>
+                            <span className="text-[9px] bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded font-bold">v{APP_VERSION}</span>
+                        </div>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">

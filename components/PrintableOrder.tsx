@@ -15,8 +15,8 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
     
     // Filter items for kitchen/admin printing (only new items)
     const itemsToPrint = (printMode === 'kitchen' || printMode === 'admin')
-        ? order.items.filter(item => !printedItems.includes(item.id))
-        : order.items;
+        ? (order.items || []).filter(item => !printedItems.includes(item.id))
+        : (order.items || []);
 
     // If kitchen/admin mode and no new items, don't render anything
     if ((printMode === 'kitchen' || printMode === 'admin') && itemsToPrint.length === 0) {
@@ -48,171 +48,185 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
         ? `${String(order.order_number).padStart(3, '0')}`
         : `${order.id.substring(order.id.length - 4).toUpperCase()}`;
 
+    const displaySubtotal = Number(order.subtotal) > 0 
+        ? Number(order.subtotal) 
+        : (order.items || []).reduce((acc, item) => acc + (Number(item.price || 0) * (item.quantity || 1)), 0);
+    
+    const displayTotal = Number(order.totalPrice) > 0 
+        ? Number(order.totalPrice) 
+        : (displaySubtotal + Number(order.deliveryFee || 0) - Number(order.discountAmount || 0));
+
     const content = (
         <div id="thermal-receipt-container">
-            <style>
-                {`
-                    @media screen {
-                        #thermal-receipt-container {
-                            display: none !important;
-                        }
+            <style dangerouslySetInnerHTML={{ __html: `
+                @media screen {
+                    #thermal-receipt-container {
+                        display: none !important;
+                    }
+                }
+
+                @media print {
+                    @page {
+                        margin: 0 !important;
+                        size: ${paperSize} auto;
+                    }
+                    
+                    /* Aggressive reset for printing */
+                    html, body {
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        width: ${paperSize} !important;
+                        height: auto !important;
+                        min-height: 0 !important;
+                        overflow: visible !important;
                     }
 
-                    @media print {
-                        @page {
-                            margin: 0 !important;
-                            size: ${paperSize} auto;
-                        }
-                        
-                        /* Aggressive reset for printing */
-                        html, body {
-                            margin: 0 !important;
-                            padding: 0 !important;
-                            width: ${paperSize} !important;
-                            height: auto !important;
-                            min-height: 0 !important;
-                            overflow: visible !important;
-                        }
+                    /* Hide everything on the page */
+                    body * {
+                        display: none !important;
+                    }
 
-                        /* Hide everything on the page */
-                        body * {
-                            display: none !important;
-                        }
+                    /* Show ONLY the thermal container and its children */
+                    #thermal-receipt-container, 
+                    #thermal-receipt-container *,
+                    body > #thermal-receipt-container,
+                    body > #thermal-receipt-container * {
+                        display: block !important;
+                        visibility: visible !important;
+                    }
 
-                        /* Show ONLY the thermal container and its children */
-                        #thermal-receipt-container, 
-                        #thermal-receipt-container *,
-                        body > #thermal-receipt-container,
-                        body > #thermal-receipt-container * {
-                            display: block !important;
-                            visibility: visible !important;
-                        }
+                    /* CRITICAL: Explicitly hide the style tag itself from the print output */
+                    #thermal-receipt-container style {
+                        display: none !important;
+                    }
 
-                        #thermal-receipt-container {
-                            position: static !important;
-                            width: ${paperSize} !important;
-                            margin: 0 !important;
-                            padding: 0 !important;
-                            background: white !important;
-                        }
-
-                        #thermal-content {
-                            width: 100% !important;
-                            margin: 0 !important;
-                            padding: 2mm ${sidePadding} 8mm ${sidePadding} !important;
-                            box-sizing: border-box !important;
-                        }
-
-                        .section-divider {
-                            border-top: 1px dashed black !important;
-                            margin: 4px 0 !important;
-                            width: 100% !important;
-                            height: 1px !important;
-                            display: block !important;
-                        }
-
-                        /* Prevent items from being split across page breaks if they occur */
-                        .item-row, .receipt-header, .payment-box, .condiments-box {
-                            break-inside: avoid !important;
-                            page-break-inside: avoid !important;
-                        }
-
-                        /* Fix for some browsers that add headers/footers */
-                        header, footer, nav {
-                            display: none !important;
-                        }
+                    #thermal-receipt-container {
+                        position: absolute !important;
+                        left: 0 !important;
+                        top: 0 !important;
+                        width: ${paperSize} !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        background: white !important;
+                        z-index: 999999 !important;
                     }
 
                     #thermal-content {
-                        font-family: 'Courier New', Courier, monospace; 
-                        color: #000 !important;
-                        line-height: ${lineHeight};
-                        background: #fff !important;
-                        width: 100%;
-                        padding: 10px ${sidePadding} 40px ${sidePadding}; /* Tail for screen view too */
-                        box-sizing: border-box;
-                    }
-
-                    #thermal-content * {
-                        color: #000 !important;
-                        background: #fff !important;
-                        word-wrap: break-word !important;
-                        overflow-wrap: break-word !important;
-                        white-space: normal !important;
-                        font-weight: 700 !important;
-                    }
-
-                    .receipt-header {
-                        text-align: center;
-                        margin-bottom: 6px;
-                    }
-
-                    .order-number-box {
-                        font-size: ${titleFontSize};
-                        border: 3px solid #000;
-                        display: inline-block;
-                        padding: 6px 16px;
-                        margin: 6px 0;
-                        line-height: 1;
-                        text-transform: uppercase;
-                    }
-
-                    .mode-indicator {
-                        font-size: ${headerFontSize};
-                        text-align: center;
-                        padding: 6px 0;
-                        margin: 4px 0;
-                        text-transform: uppercase;
-                        border-top: 1.5px solid #000;
-                        border-bottom: 1.5px solid #000;
-                        display: block;
-                        width: 100%;
+                        width: 100% !important;
+                        margin: 0 !important;
+                        padding: 2mm ${sidePadding} 8mm ${sidePadding} !important;
+                        box-sizing: border-box !important;
                     }
 
                     .section-divider {
-                        border-top: 1.5px solid #000;
-                        margin: 4px 0;
+                        border-top: 1px dashed black !important;
+                        margin: 4px 0 !important;
+                        width: 100% !important;
+                        height: 1px !important;
+                        display: block !important;
                     }
 
-                    .label-center {
-                        text-align: center;
-                        font-size: ${smallFontSize};
-                        letter-spacing: 1px;
-                        margin: 2px 0;
+                    /* Prevent items from being split across page breaks if they occur */
+                    .item-row, .receipt-header, .payment-box, .condiments-box {
+                        break-inside: avoid !important;
+                        page-break-inside: avoid !important;
                     }
 
-                    .item-row {
-                        display: flex;
-                        justify-content: space-between;
-                        align-items: flex-start;
-                        width: 100%;
-                        margin-bottom: 4px;
+                    /* Fix for some browsers that add headers/footers */
+                    header, footer, nav {
+                        display: none !important;
                     }
+                }
 
-                    .item-price-col {
-                        text-align: right;
-                        min-width: ${printerWidth === 58 ? '60px' : '75px'};
-                        margin-left: 2mm;
-                    }
+                #thermal-content {
+                    font-family: 'Courier New', Courier, monospace; 
+                    color: #000 !important;
+                    line-height: ${lineHeight};
+                    background: #fff !important;
+                    width: 100%;
+                    padding: 10px ${sidePadding} 40px ${sidePadding}; /* Tail for screen view too */
+                    box-sizing: border-box;
+                }
 
-                    .payment-box {
-                        border: 2px solid #000;
-                        padding: 6px;
-                        text-align: center;
-                        margin-top: 8px;
-                        font-size: ${baseFontSize};
-                        text-transform: uppercase;
-                    }
+                #thermal-content * {
+                    color: #000 !important;
+                    background: #fff !important;
+                    word-wrap: break-word !important;
+                    overflow-wrap: break-word !important;
+                    white-space: normal !important;
+                    font-weight: 700 !important;
+                }
 
-                    .condiments-box {
-                        border: 1px solid #000;
-                        padding: 4px;
-                        text-align: center;
-                        margin: 4px 0;
-                        font-size: ${smallFontSize};
-                    }
-                `}
-            </style>
+                .receipt-header {
+                    text-align: center;
+                    margin-bottom: 6px;
+                }
+
+                .order-number-box {
+                    font-size: ${titleFontSize};
+                    border: 3px solid #000;
+                    display: inline-block;
+                    padding: 6px 16px;
+                    margin: 6px 0;
+                    line-height: 1;
+                    text-transform: uppercase;
+                }
+
+                .mode-indicator {
+                    font-size: ${headerFontSize};
+                    text-align: center;
+                    padding: 6px 0;
+                    margin: 4px 0;
+                    text-transform: uppercase;
+                    border-top: 1.5px solid #000;
+                    border-bottom: 1.5px solid #000;
+                    display: block;
+                    width: 100%;
+                }
+
+                .section-divider {
+                    border-top: 1.5px solid #000;
+                    margin: 4px 0;
+                }
+
+                .label-center {
+                    text-align: center;
+                    font-size: ${smallFontSize};
+                    letter-spacing: 1px;
+                    margin: 2px 0;
+                }
+
+                .item-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-start;
+                    width: 100%;
+                    margin-bottom: 4px;
+                }
+
+                .item-price-col {
+                    text-align: right;
+                    min-width: ${printerWidth === 58 ? '60px' : '75px'};
+                    margin-left: 2mm;
+                }
+
+                .payment-box {
+                    border: 2px solid #000;
+                    padding: 6px;
+                    text-align: center;
+                    margin-top: 8px;
+                    font-size: ${baseFontSize};
+                    text-transform: uppercase;
+                }
+
+                .condiments-box {
+                    border: 1px solid #000;
+                    padding: 4px;
+                    text-align: center;
+                    margin: 4px 0;
+                    font-size: ${smallFontSize};
+                }
+            ` }} />
 
             <div id="thermal-content">
                 {/* CABEÇALHO */}
@@ -313,7 +327,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         <div style={{ fontSize: baseFontSize }}>
                             <div className="item-row">
                                 <span>SUBTOTAL:</span>
-                                <span className="item-price-col">R$ {Number(order.subtotal || 0).toFixed(2)}</span>
+                                <span className="item-price-col">R$ {displaySubtotal.toFixed(2)}</span>
                             </div>
                             {!isPickup && (
                                 <div className="item-row">
@@ -329,7 +343,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                             )}
                             <div className="item-row" style={{ fontSize: titleFontSize, marginTop: '4px', borderTop: '1px solid #000', paddingTop: '4px' }}>
                                 <span>TOTAL:</span>
-                                <span className="item-price-col">R$ {Number(order.totalPrice).toFixed(2)}</span>
+                                <span className="item-price-col">R$ {displayTotal.toFixed(2)}</span>
                             </div>
                         </div>
 
@@ -342,9 +356,9 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                                         ? `TROCO PARA: R$ ${order.changeFor.toFixed(2)}`
                                         : (order.paymentMethod.match(/\(([^)]+)\)/)?.[1].toUpperCase() || order.paymentMethod.toUpperCase())
                                     }
-                                    {order.changeFor && order.changeFor > order.totalPrice && (
+                                    {order.changeFor && order.changeFor > displayTotal && (
                                         <div style={{ fontSize: smallFontSize, marginTop: '2px' }}>
-                                            TROCO: R$ {(order.changeFor - order.totalPrice).toFixed(2)}
+                                            TROCO: R$ {(order.changeFor - displayTotal).toFixed(2)}
                                         </div>
                                     )}
                                 </div>
