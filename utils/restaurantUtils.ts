@@ -110,16 +110,3 @@ export const isRestaurantOpen = (restaurant: Restaurant): boolean => {
         return true;
     }
 };
-
-/**
- * Shuffles an array of restaurants using the Fisher-Yates algorithm.
- * Used to display restaurants in a random order on the home screen.
- */
-export const shuffleRestaurants = (restaurants: Restaurant[]): Restaurant[] => {
-    const shuffled = [...restaurants];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    return shuffled;
-};

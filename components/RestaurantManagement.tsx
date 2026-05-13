@@ -219,10 +219,7 @@ COMMIT;
                                         <button onClick={() => onEditSettings(restaurant)} className="p-2 text-gray-500 hover:text-orange-600" title="Configurações do Restaurante">
                                             <CogIcon className="w-5 h-5"/>
                                         </button>
-                                        <button onClick={() => handleOpenEditor(restaurant)} className="flex items-center gap-1 p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors font-bold text-xs" title="Editar Restaurante">
-                                            <EditIcon className="w-4 h-4"/>
-                                            <span className="hidden sm:inline">Editar</span>
-                                        </button>
+                                        <button onClick={() => handleOpenEditor(restaurant)} className="p-2 text-gray-500 hover:text-blue-600" title="Editar Restaurante"><EditIcon className="w-5 h-5"/></button>
                                         <button onClick={() => handleDeleteRestaurant(restaurant)} className="p-2 text-gray-500 hover:text-red-600" title="Excluir Restaurante"><TrashIcon className="w-5 h-5"/></button>
                                     </div>
                                 </td>

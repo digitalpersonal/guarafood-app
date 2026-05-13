@@ -7,7 +7,6 @@ import type { RestaurantCategory } from '../types';
 import Spinner from './Spinner';
 import { getErrorMessage, supabase } from '../services/api';
 import CategoryEditorModal from './CategoryEditorModal';
-import { categoryIcons } from '../constants';
 
 const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -86,13 +85,7 @@ const CategoryManagement: React.FC = () => {
                 {categories.map(cat => (
                     <div key={cat.id} className="flex items-center justify-between p-4 bg-gray-50 border rounded-lg hover:bg-gray-100 transition-colors">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full flex items-center justify-center bg-white border shadow-sm overflow-hidden text-xl">
-                                {cat.iconUrl ? (
-                                    <img src={cat.iconUrl} alt={cat.name} className="w-full h-full object-cover" />
-                                ) : (
-                                    categoryIcons[cat.name] || '🍽️'
-                                )}
-                            </div>
+                            {cat.iconUrl && <img src={cat.iconUrl} alt={cat.name} className="w-8 h-8 object-cover rounded-full" />}
                             <span className="font-semibold text-gray-700">{cat.name}</span>
                         </div>
                         <div className="flex gap-2">

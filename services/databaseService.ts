@@ -2,16 +2,6 @@
 import { supabase, supabaseAnon, handleSupabaseError } from './api';
 import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory, Expense, Order, OperatingHours } from '../types';
 
-// Helper to prevent queries from hanging indefinitely
-const withTimeout = <T>(promise: PromiseLike<T>, timeoutMs: number = 30000): Promise<T> => {
-    return Promise.race([
-        Promise.resolve(promise),
-        new Promise<T>((_, reject) => 
-            setTimeout(() => reject(new Error("Database query timed out")), timeoutMs)
-        )
-    ]);
-};
-
 // ==============================================================================
 // 🔄 NORMALIZADORES (Banco de Dados -> App)
 // ==============================================================================
@@ -97,7 +87,6 @@ const normalizeRestaurant = (data: any): Restaurant => {
         openingHours: data.opening_hours,
         closingHours: data.closing_hours,
         deliveryFee: data.delivery_fee,
-        deliveryZones: data.delivery_zones || [],
         operatingHours: ensureOperatingHours(data.operating_hours),
         mercado_pago_credentials: { accessToken: hasMpToken ? "PROTECTED" : "" },
         manualPixKey: data.manual_pix_key,
@@ -108,10 +97,10 @@ const normalizeRestaurant = (data: any): Restaurant => {
         marmitaStartTime: data.marmita_start_time,
         marmitaEndTime: data.marmita_end_time,
         hasMensalistas: data.has_mensalistas,
-        hasCleanupButton: data.has_cleanup_button,
         hasKiloService: data.has_kilo_service,
         pricePerKilo: data.price_per_kilo,
-        staff: data.staff || [] // NEW
+        staff: data.staff || [], // NEW
+        loyaltyProgram: data.loyalty_program || undefined
     };
 };
 
@@ -143,7 +132,6 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         openingHours: data.opening_hours,
         closingHours: data.closing_hours,
         deliveryFee: data.delivery_fee,
-        deliveryZones: data.delivery_zones || [],
         operatingHours: ensureOperatingHours(data.operating_hours),
         mercado_pago_credentials: mpCreds,
         manualPixKey: data.manual_pix_key,
@@ -154,10 +142,10 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         marmitaStartTime: data.marmita_start_time,
         marmitaEndTime: data.marmita_end_time,
         hasMensalistas: data.has_mensalistas,
-        hasCleanupButton: data.has_cleanup_button,
         hasKiloService: data.has_kilo_service,
         pricePerKilo: data.price_per_kilo,
-        staff: data.staff || [] // NEW
+        staff: data.staff || [], // NEW
+        loyaltyProgram: data.loyalty_program || undefined
     };
 };
 
@@ -179,13 +167,12 @@ const normalizeItem = (data: any): MenuItem => ({
     isMarmita: data.is_marmita,
     marmitaOptions: data.marmita_options,
     freeAddonCount: data.free_addon_count,
-    availableAddonIds: data.available_addon_ids || [],
+    availableAddonIds: data.available_addon_ids,
     isDailySpecial: data.is_daily_special,
     isWeeklySpecial: data.is_weekly_special,
     availableDays: data.available_days,
     displayOrder: data.display_order,
-    available: data.available !== false, // Assume true if null
-    maxAddons: data.max_addons !== null && data.max_addons !== undefined ? Number(data.max_addons) : null
+    available: data.available !== false // Assume true if null
 });
 
 const normalizeCombo = (data: any): Combo => ({
@@ -206,8 +193,9 @@ const normalizePromotion = (data: any): Promotion => ({
     ...data,
     discountType: data.discount_type,
     discountValue: data.discount_value,
-    targetType: data.target_type,
-    targetIds: data.target_ids,
+    itemIds: data.item_ids || [],
+    comboIds: data.combo_ids || [],
+    categoryIds: data.category_ids || [],
     startDate: data.start_date,
     endDate: data.end_date,
     restaurantId: data.restaurant_id
@@ -243,20 +231,13 @@ const normalizeRestaurantCategory = (data: any): RestaurantCategory => data;
 // ==============================================================================
 
 export const fetchRestaurants = async (): Promise<Restaurant[]> => {
-    try {
-        console.log("DB: Fetching restaurants from anon client...");
-        const { data, error } = await withTimeout(supabaseAnon.from('restaurants').select('*'));
-        console.log("DB: Fetch result:", { count: data?.length, error: error?.message });
-        handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants' });
-        return (data || []).map(normalizeRestaurant);
-    } catch (err) {
-        console.error("DB: fetchRestaurants error:", err);
-        throw err;
-    }
+    const { data, error } = await supabaseAnon.from('restaurants').select('*');
+    handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants' });
+    return (data || []).map(normalizeRestaurant);
 };
 
 export const fetchRestaurantsSecure = async (): Promise<Restaurant[]> => {
-    const { data, error } = await withTimeout(supabase.from('restaurants').select('*'));
+    const { data, error } = await supabase.from('restaurants').select('*');
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants (secure)' });
     return (data || []).map(normalizeRestaurantSecure);
 };
@@ -283,7 +264,6 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     if (updates.openingHours !== undefined) dbUpdates.opening_hours = updates.openingHours;
     if (updates.closingHours !== undefined) dbUpdates.closing_hours = updates.closingHours;
     if (updates.deliveryFee !== undefined) dbUpdates.delivery_fee = updates.deliveryFee;
-    if (updates.deliveryZones !== undefined) dbUpdates.delivery_zones = updates.deliveryZones;
     if (updates.operatingHours !== undefined) {
         dbUpdates.operating_hours = updates.operatingHours;
         
@@ -303,16 +283,17 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     if (updates.printerWidth !== undefined) dbUpdates.printer_width = updates.printerWidth;
     if (updates.bannerImageUrl !== undefined) dbUpdates.banner_image_url = updates.bannerImageUrl;
     if (updates.hasMensalistas !== undefined) dbUpdates.has_mensalistas = updates.hasMensalistas;
-    if (updates.hasCleanupButton !== undefined) dbUpdates.has_cleanup_button = updates.hasCleanupButton;
     if (updates.hasKiloService !== undefined) dbUpdates.has_kilo_service = updates.hasKiloService;
     if (updates.pricePerKilo !== undefined) dbUpdates.price_per_kilo = updates.pricePerKilo;
     if (updates.staff !== undefined) dbUpdates.staff = updates.staff;
+    if (updates.loyaltyProgram !== undefined) dbUpdates.loyalty_program = updates.loyaltyProgram;
 
     // Clean up all camelCase keys to prevent Supabase "column does not exist" errors
     const keysToRemove = [
         'deliveryTime', 'imageUrl', 'paymentGateways', 'openingHours', 
-        'closingHours', 'deliveryFee', 'deliveryZones', 'operatingHours', 'manualPixKey', 
-        'hasPixConfigured', 'printerWidth', 'bannerImageUrl', 'marmitaStartTime', 'marmitaEndTime'
+        'closingHours', 'deliveryFee', 'operatingHours', 'manualPixKey', 
+        'hasPixConfigured', 'printerWidth', 'bannerImageUrl', 'marmitaStartTime', 'marmitaEndTime',
+        'hasMensalistas', 'hasKiloService', 'pricePerKilo', 'loyaltyProgram'
     ];
     keysToRemove.forEach(key => delete dbUpdates[key]);
 
@@ -422,8 +403,7 @@ export const createBanner = async (banner: Omit<Banner, 'id'>): Promise<Banner> 
         cta_text: banner.ctaText,
         target_type: banner.targetType,
         target_value: banner.targetValue,
-        active: banner.active,
-        type: banner.type || 'top'
+        active: banner.active
     };
     const { data, error } = await supabase.from('banners').insert(payload).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to create banner' });
@@ -436,8 +416,7 @@ export const updateBanner = async (id: number, banner: Partial<Banner>): Promise
     if (banner.ctaText) payload.cta_text = banner.ctaText;
     if (banner.targetType) payload.target_type = banner.targetType;
     if (banner.targetValue) payload.target_value = banner.targetValue;
-    if (banner.type) payload.type = banner.type;
-    delete payload.imageUrl; delete payload.ctaText; delete payload.targetType; delete payload.targetValue; delete payload.type;
+    delete payload.imageUrl; delete payload.ctaText; delete payload.targetType; delete payload.targetValue;
 
     const { data, error } = await supabase.from('banners').update(payload).eq('id', id).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to update banner' });
@@ -454,15 +433,15 @@ export const deleteBanner = async (id: number): Promise<void> => {
 // ==============================================================================
 
 export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilter = false): Promise<MenuCategory[]> => {
-    const { data: categoriesData, error: catError } = await withTimeout(supabaseAnon
-        .from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true }));
+    const { data: categoriesData, error: catError } = await supabaseAnon
+        .from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true });
     handleSupabaseError({ error: catError, customMessage: 'Failed to fetch menu categories' });
 
-    const { data: itemsData, error: itemError } = await withTimeout(supabaseAnon
-        .from('menu_items').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true }));
+    const { data: itemsData, error: itemError } = await supabaseAnon
+        .from('menu_items').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true });
     handleSupabaseError({ error: itemError, customMessage: 'Failed to fetch menu items' });
 
-    const { data: combosData, error: comboError } = await withTimeout(supabaseAnon.from('combos').select('*').eq('restaurant_id', restaurantId));
+    const { data: combosData, error: comboError } = await supabaseAnon.from('combos').select('*').eq('restaurant_id', restaurantId);
     handleSupabaseError({ error: comboError, customMessage: 'Failed to fetch combos' });
 
     const today = new Date().toISOString();
@@ -475,30 +454,17 @@ export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilt
     const categories: MenuCategory[] = (categoriesData || []).map(normalizeCategory).map(category => {
         let items = (itemsData || []).map(normalizeItem).filter(item => item.categoryId === category.id);
         
-        // SMART SORT: Prioritize numerical prefix in names (e.g., "01- X-Tudo", "2- Grill")
-        items.sort((a, b) => {
-            const getNum = (name: string) => {
-                const match = name.match(/^(\d+)/);
-                return match ? parseInt(match[1], 10) : null;
-            };
-            const numA = getNum(a.name);
-            const numB = getNum(b.name);
-            
-            if (numA !== null && numB !== null) {
-                return numA - numB;
-            }
-            if (numA !== null) return -1; // Items with numbers first
-            if (numB !== null) return 1;
-            
-            // Fallback to display_order
-            return (a.displayOrder || 0) - (b.displayOrder || 0);
-        });
+        // Sort by manual display_order primarily
+        items.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
 
         if (!ignoreDayFilter) {
             items = items.filter(item => !item.availableDays || item.availableDays.length === 0 || item.availableDays.includes(todayIndex));
         }
         items = items.map(item => {
-            const activePromo = promotions.find(p => p.targetType === 'ITEM' && p.targetIds.includes(item.id));
+            const activePromo = promotions.find(p => 
+                (p.itemIds && p.itemIds.includes(item.id)) || 
+                (p.categoryIds && p.categoryIds.includes(item.categoryId!))
+            );
             if (activePromo) {
                 let newPrice = activePromo.discountType === 'PERCENTAGE' ? item.price * (1 - activePromo.discountValue / 100) : Math.max(0, item.price - activePromo.discountValue);
                 return { ...item, price: newPrice, originalPrice: item.price, activePromotion: activePromo };
@@ -508,7 +474,10 @@ export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilt
 
         let categoryCombos = (combosData || []).map(normalizeCombo).filter(combo => combo.categoryId === category.id);
         categoryCombos = categoryCombos.map(combo => {
-             const activePromo = promotions.find(p => p.targetType === 'COMBO' && p.targetIds.includes(combo.id));
+             const activePromo = promotions.find(p => 
+                (p.comboIds && p.comboIds.includes(combo.id)) ||
+                (p.categoryIds && p.categoryIds.includes(combo.categoryId!))
+             );
              if (activePromo) {
                 let newPrice = activePromo.discountType === 'PERCENTAGE' ? combo.price * (1 - activePromo.discountValue / 100) : Math.max(0, combo.price - activePromo.discountValue);
                 return { ...combo, price: newPrice, originalPrice: combo.price, activePromotion: activePromo };
@@ -537,7 +506,7 @@ export const deleteCategory = async (restaurantId: number, name: string): Promis
 
 export const updateCategoryOrder = async (restaurantId: number, categories: MenuCategory[]): Promise<void> => {
     const updates = categories.map((cat, index) => ({ id: cat.id, name: cat.name, restaurant_id: restaurantId, display_order: index }));
-    const { error } = await supabase.from('menu_categories').upsert(updates);
+    const { error } = await supabase.from('menu_categories').upsert(updates, { onConflict: 'id' });
     handleSupabaseError({ error, customMessage: 'Failed to update category order' });
 };
 
@@ -549,7 +518,7 @@ export const createMenuItem = async (restaurantId: number, item: any): Promise<v
         original_price: item.originalPrice, image_url: item.imageUrl, is_pizza: item.isPizza, is_acai: item.isAcai,
         is_marmita: item.isMarmita, marmita_options: item.marmitaOptions, available_addon_ids: item.availableAddonIds,
         sizes: item.sizes, is_daily_special: item.isDailySpecial, is_weekly_special: item.isWeeklySpecial, available_days: item.availableDays,
-        available: item.available !== false, max_addons: item.maxAddons
+        available: item.available !== false
     };
     const { error } = await supabase.from('menu_items').insert(payload);
     handleSupabaseError({ error, customMessage: 'Failed to create item' });
@@ -563,7 +532,7 @@ export const updateMenuItem = async (restaurantId: number, id: number, item: any
         image_url: item.imageUrl, is_pizza: item.isPizza, is_acai: item.isAcai, is_marmita: item.isMarmita,
         marmita_options: item.marmitaOptions, available_addon_ids: item.availableAddonIds, sizes: item.sizes,
         is_daily_special: item.isDailySpecial, is_weekly_special: item.isWeeklySpecial, available_days: item.availableDays,
-        available: item.available !== false, max_addons: item.maxAddons
+        available: item.available !== false
     };
     const { error } = await supabase.from('menu_items').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
     handleSupabaseError({ error, customMessage: 'Failed to update item' });
@@ -628,13 +597,34 @@ export const fetchPromotionsForRestaurant = async (restaurantId: number): Promis
 };
 
 export const createPromotion = async (restaurantId: number, promo: any): Promise<void> => {
-    const payload = { restaurant_id: restaurantId, name: promo.name, description: promo.description, discount_type: promo.discountType, discount_value: promo.discountValue, target_type: promo.targetType, target_ids: promo.targetIds, start_date: promo.startDate, end_date: promo.endDate };
+    const payload = { 
+        restaurant_id: restaurantId, 
+        name: promo.name, 
+        description: promo.description, 
+        discount_type: promo.discountType, 
+        discount_value: promo.discountValue, 
+        item_ids: promo.itemIds, 
+        combo_ids: promo.comboIds, 
+        category_ids: promo.categoryIds, 
+        start_date: promo.startDate, 
+        end_date: promo.endDate 
+    };
     const { error } = await supabase.from('promotions').insert(payload);
     handleSupabaseError({ error, customMessage: 'Failed to create promotion' });
 };
 
 export const updatePromotion = async (restaurantId: number, id: number, promo: any): Promise<void> => {
-    const payload = { name: promo.name, description: promo.description, discount_type: promo.discountType, discount_value: promo.discountValue, target_type: promo.targetType, target_ids: promo.targetIds, start_date: promo.startDate, end_date: promo.endDate };
+    const payload = { 
+        name: promo.name, 
+        description: promo.description, 
+        discount_type: promo.discountType, 
+        discount_value: promo.discountValue, 
+        item_ids: promo.itemIds, 
+        combo_ids: promo.comboIds, 
+        category_ids: promo.categoryIds, 
+        start_date: promo.startDate, 
+        end_date: promo.endDate 
+    };
     const { error = null } = await supabase.from('promotions').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
     handleSupabaseError({ error, customMessage: 'Failed to update promotion' });
 };
@@ -675,6 +665,25 @@ export const deleteCoupon = async (restaurantId: number, id: number): Promise<vo
 };
 
 // --- EXPENSES ---
+export const fetchCustomerLoyalty = async (restaurantId: number, phone: string): Promise<any | null> => {
+    try {
+        const { data, error } = await supabase
+            .from('customer_loyalty')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('customer_phone', phone)
+            .single();
+            
+        if (error && error.code !== 'PGRST116') {
+            handleSupabaseError({ error, customMessage: 'Failed to fetch customer loyalty', tableName: 'customer_loyalty' });
+        }
+        return data || null;
+    } catch (e) {
+        console.error("Error fetching customer loyalty:", e);
+        return null;
+    }
+};
+
 export const fetchExpenses = async (restaurantId: number): Promise<Expense[]> => {
     const { data, error } = await supabase.from('expenses').select('*').eq('restaurant_id', restaurantId).order('date', { ascending: false });
     handleSupabaseError({ error, customMessage: 'Failed to fetch expenses' });
@@ -691,4 +700,39 @@ export const createExpense = async (restaurantId: number, expense: Omit<Expense,
 export const deleteExpense = async (restaurantId: number, id: number): Promise<void> => {
     const { error } = await supabase.from('expenses').delete().eq('id', id).eq('restaurant_id', restaurantId);
     handleSupabaseError({ error, customMessage: 'Failed to delete expense' });
+};
+
+// --- ADS ---
+export const fetchAds = async (onlyActive: boolean = false): Promise<any[]> => {
+    let query = supabase
+        .from('ads')
+        .select('*')
+        .order('display_order', { ascending: true });
+    
+    if (onlyActive) {
+        query = query.eq('is_active', true);
+    }
+    
+    const { data, error } = await query;
+    
+    if (error) {
+        console.error("Error fetching ads:", error);
+        return [];
+    }
+    return data || [];
+};
+
+export const createAd = async (ad: any): Promise<void> => {
+    const { error } = await supabase.from('ads').insert([ad]);
+    handleSupabaseError({ error, customMessage: 'Failed to create ad' });
+};
+
+export const updateAd = async (id: string, ad: any): Promise<void> => {
+    const { error } = await supabase.from('ads').update(ad).eq('id', id);
+    handleSupabaseError({ error, customMessage: 'Failed to update ad' });
+};
+
+export const deleteAd = async (id: string): Promise<void> => {
+    const { error } = await supabase.from('ads').delete().eq('id', id);
+    handleSupabaseError({ error, customMessage: 'Failed to delete ad' });
 };

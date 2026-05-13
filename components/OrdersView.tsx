@@ -2,11 +2,12 @@
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
-import type { Order, OrderStatus, CartItem, StaffMember } from '../types';
+import type { Order, OrderStatus, CartItem, StaffMember, Restaurant } from '../types';
 import OrderDetailsModal from './OrderDetailsModal';
 import OrderEditorModal from './OrderEditorModal';
 import { updateOrderStatus, createOrder } from '../services/orderService';
-import { getMensalistaByPhone } from '../services/mensalistaService';
+import { getMensalistaByPhone, searchMensalistas } from '../services/mensalistaService';
+import type { Mensalista } from '../types';
 
 
 const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -295,13 +296,12 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
 interface OrdersViewProps {
     orders: Order[];
     printerWidth?: number;
-    onPrint: (order: Order, mode?: "kitchen" | "full") => void;
-    onSync?: () => void;
+    onPrint: (order: Order) => void;
     currentStaffUser?: StaffMember | null;
-    restaurant?: any; // or import Restaurant and use it
+    restaurant: Restaurant | null;
 }
 
-const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPrint, onSync, currentStaffUser, restaurant }) => {
+const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPrint, currentStaffUser, restaurant }) => {
     const { currentUser } = useAuth();
     const { addToast, prompt } = useNotification();
     const [searchTerm, setSearchTerm] = useState('');
@@ -313,6 +313,32 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
     const [manualCustomerName, setManualCustomerName] = useState('');
     const [manualCustomerPhone, setManualCustomerPhone] = useState('');
     const [manualPaymentMethod, setManualPaymentMethod] = useState('Dinheiro');
+    const [mensalistaSuggestions, setMensalistaSuggestions] = useState<Mensalista[]>([]);
+    const [isSearchingMensalista, setIsSearchingMensalista] = useState(false);
+
+    const handleSearchMensalista = async (query: string) => {
+        setManualCustomerName(query);
+        if (query.length < 3 || !currentUser?.restaurantId) {
+            setMensalistaSuggestions([]);
+            return;
+        }
+        setIsSearchingMensalista(true);
+        try {
+            const results = await searchMensalistas(query, currentUser.restaurantId);
+            setMensalistaSuggestions(results);
+        } catch (e) {
+            console.error("Error searching mensalistas:", e);
+        } finally {
+            setIsSearchingMensalista(false);
+        }
+    };
+
+    const selectMensalista = (m: Mensalista) => {
+        setManualCustomerName(m.name);
+        setManualCustomerPhone(m.phone);
+        setManualPaymentMethod('Mensalista');
+        setMensalistaSuggestions([]);
+    };
 
     const handleCreateManualOrder = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
@@ -354,8 +380,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                 restaurantPhone: '',
                 paymentMethod: finalPaymentMethod,
                 status: 'Novo Pedido',
-                mensalistaId: mensalistaId,
-                waiterName: currentUser.name
+                mensalistaId: mensalistaId
             });
             
             addToast({ message: 'Pedido criado! Adicione os itens agora.', type: 'success' });
@@ -505,18 +530,94 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                         />
                         <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" aria-hidden="true" />
                     </div>
-                    {(!currentStaffUser || currentStaffUser.role === 'manager') && (
-                        <button
-                            onClick={() => setIsManualModalOpen(true)}
-                            disabled={isCreatingOrder}
-                            className="bg-orange-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-1 shadow flex-shrink-0 disabled:opacity-50"
-                            title="Criar pedido manual para retirada"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                            </svg>
-                            <span className="hidden sm:inline">Novo Pedido</span>
-                        </button>
+                    {(!currentStaffUser || currentStaffUser.role === 'admin' || currentStaffUser.role === 'manager') && (
+                        <div className="flex gap-2">
+                            {restaurant?.hasKiloService && (
+                                <button
+                                    onClick={async () => {
+                                        if (!currentUser?.restaurantId || !restaurant?.pricePerKilo) return;
+                                        
+                                        const name = await prompt({
+                                            title: 'Novo Prato por Peso (Balcão)',
+                                            message: 'Nome do Cliente (opcional)',
+                                            placeholder: 'João...',
+                                            submitText: 'Continuar',
+                                            cancelText: 'Cancelar'
+                                        }) || 'Cliente Balcão';
+
+                                        const weightStr = await prompt({
+                                            title: 'Pesar Prato',
+                                            message: `Valor do Kg: R$ ${restaurant.pricePerKilo.toFixed(2)}\nDigite o peso em KG (ex: 0.450):`,
+                                            placeholder: '0.000',
+                                            submitText: 'Criar Pedido',
+                                            cancelText: 'Cancelar'
+                                        });
+
+                                        if (!weightStr) return;
+                                        const weight = parseFloat(weightStr.replace(',', '.'));
+                                        if (isNaN(weight) || weight <= 0) {
+                                            addToast({ message: 'Peso inválido.', type: 'error' });
+                                            return;
+                                        }
+
+                                        const itemPrice = weight * restaurant.pricePerKilo;
+                                        
+                                        setIsCreatingOrder(true);
+                                        try {
+                                            const newOrder = await createOrder({
+                                                customerName: name,
+                                                customerPhone: '0000000000',
+                                                customerAddress: { zipCode: '00000-000', street: 'Retirada no Local', number: 'Balcão', neighborhood: 'Balcão', complement: '' },
+                                                items: [{
+                                                    id: `kilo-${Date.now()}`,
+                                                    name: 'Prato por Kilo',
+                                                    price: itemPrice,
+                                                    basePrice: itemPrice,
+                                                    imageUrl: '',
+                                                    quantity: 1,
+                                                    description: `Peso: ${weight.toFixed(3)}kg (R$ ${restaurant.pricePerKilo.toFixed(2)}/kg)`,
+                                                    weight: weight,
+                                                    isKiloItem: true,
+                                                    served: true
+                                                }],
+                                                totalPrice: itemPrice,
+                                                restaurantId: currentUser.restaurantId,
+                                                restaurantName: currentUser.name,
+                                                restaurantAddress: '',
+                                                restaurantPhone: '',
+                                                paymentMethod: 'Dinheiro',
+                                                status: 'Novo Pedido'
+                                            });
+                                            addToast({ message: 'Pedido por Kilo criado!', type: 'success' });
+                                            setOrderToEdit(newOrder);
+                                        } catch (e: any) {
+                                            addToast({ message: `Erro: ${e.message}`, type: 'error' });
+                                        } finally {
+                                            setIsCreatingOrder(false);
+                                        }
+                                    }}
+                                    disabled={isCreatingOrder}
+                                    className="bg-emerald-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-1 shadow flex-shrink-0 disabled:opacity-50"
+                                    title="Pesar prato e criar pedido balcão"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                    </svg>
+                                    <span className="hidden sm:inline">Pesar Prato</span>
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setIsManualModalOpen(true)}
+                                disabled={isCreatingOrder}
+                                className="bg-orange-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-1 shadow flex-shrink-0 disabled:opacity-50"
+                                title="Criar pedido manual para retirada"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                </svg>
+                                <span className="hidden sm:inline">Novo Pedido</span>
+                            </button>
+                        </div>
                     )}
                     <div className="flex bg-gray-200 rounded-lg p-1 flex-shrink-0">
                         <button 
@@ -532,17 +633,6 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                             Histórico
                         </button>
                     </div>
-                    {onSync && (
-                        <button
-                            onClick={onSync}
-                            className="p-2 text-gray-500 hover:text-orange-600 transition-colors"
-                            title="Sincronizar pedidos"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                            </svg>
-                        </button>
-                    )}
                 </div>
             </div>
 
@@ -598,7 +688,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                     </div>
                 )}
             </main>
-            {selectedOrder && <OrderDetailsModal order={selectedOrder} restaurant={restaurant} onClose={() => setSelectedOrder(null)} printerWidth={printerWidth} />}
+            {selectedOrder && <OrderDetailsModal order={selectedOrder} onClose={() => setSelectedOrder(null)} printerWidth={printerWidth} />}
             {orderToEdit && currentUser && (
                 <OrderEditorModal
                     isOpen={!!orderToEdit}
@@ -610,7 +700,6 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                     }}
                     restaurantId={currentUser.restaurantId!}
                     restaurantName={currentUser.name}
-                    hasServiceCharge={restaurant?.hasServiceCharge}
                 />
             )}
 
@@ -619,15 +708,30 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
                         <h3 className="text-xl font-bold text-gray-800 mb-4">Novo Pedido (Balcão / Mensalista)</h3>
                         <form onSubmit={handleCreateManualOrder} className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-black text-gray-500 uppercase mb-1">Nome do Cliente</label>
+                            <div className="relative">
+                                <label className="block text-xs font-black text-gray-500 uppercase mb-1">Nome do Cliente / Busca Mensalista</label>
                                 <input 
                                     type="text" 
                                     value={manualCustomerName} 
-                                    onChange={e => setManualCustomerName(e.target.value)} 
+                                    onChange={e => handleSearchMensalista(e.target.value)} 
                                     className="w-full p-3 border-2 rounded-xl bg-gray-50 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all font-bold text-gray-800"
                                     placeholder="Ex: João Silva (Opcional)"
                                 />
+                                {mensalistaSuggestions.length > 0 && (
+                                    <div className="absolute z-[110] left-0 right-0 mt-1 bg-white border-2 border-orange-100 rounded-xl shadow-xl max-h-48 overflow-y-auto">
+                                        {mensalistaSuggestions.map(m => (
+                                            <button
+                                                key={m.id}
+                                                type="button"
+                                                onClick={() => selectMensalista(m)}
+                                                className="w-full p-3 text-left hover:bg-orange-50 border-b last:border-0 flex flex-col"
+                                            >
+                                                <span className="font-bold text-gray-800">{m.name}</span>
+                                                <span className="text-xs text-gray-500">{m.phone}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                             <div>
                                 <label className="block text-xs font-black text-gray-500 uppercase mb-1">WhatsApp (Opcional)</label>
@@ -643,7 +747,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                             <div>
                                 <label className="block text-xs font-black text-gray-500 uppercase mb-1">Forma de Pagamento</label>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Mensalista'].map(m => (
+                                    {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Mensalista'].filter(m => m !== 'Mensalista' || restaurant?.hasMensalistas).map(m => (
                                         <button 
                                             key={m}
                                             type="button"

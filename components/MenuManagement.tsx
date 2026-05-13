@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
-import type { MenuItem, Combo, MenuCategory, Promotion, Addon } from '../types';
+import type { MenuItem, Combo, MenuCategory, Promotion, Coupon, Addon } from '../types';
 import {
     fetchMenuForRestaurant,
     createCombo,
@@ -20,18 +20,23 @@ import {
     createPromotion,
     updatePromotion,
     deletePromotion,
+    fetchCouponsForRestaurant,
+    createCoupon,
+    updateCoupon,
+    deleteCoupon,
     fetchAddonsForRestaurant,
     createAddon,
     updateAddon,
     deleteAddon,
 } from '../services/databaseService';
-
 import Spinner from './Spinner';
 import ComboEditorModal from './ComboEditorModal';
 import MenuItemEditorModal from './MenuItemEditorModal';
 import PromotionEditorModal from './PromotionEditorModal';
+import CouponEditorModal from './CouponEditorModal';
 import AddonEditorModal from './AddonEditorModal';
 import { getErrorMessage, supabase } from '../services/api';
+import { seedRestaurantMenu, TOKA_DO_PASTEL_MENU, PASTELARIA_RENOVACAO_MENU } from '../utils/menuSeeds';
 
 const EditIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
@@ -59,6 +64,11 @@ const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
   </svg>
 );
+const DuplicateIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
+    </svg>
+);
 const DragHandleIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
@@ -71,6 +81,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
     const { addToast, confirm, prompt } = useNotification();
     const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([]);
     const [promotions, setPromotions] = useState<Promotion[]>([]);
+    const [coupons, setCoupons] = useState<Coupon[]>([]);
     const [addons, setAddons] = useState<Addon[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -82,16 +93,21 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
     const [editingItem, setEditingItem] = useState<{ item: MenuItem; categoryName: string } | null>(null);
     const [isPromoModalOpen, setIsPromoModalOpen] = useState(false);
     const [editingPromo, setEditingPromo] = useState<Promotion | null>(null);
+    const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
+    const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
     const [isAddonModalOpen, setIsAddonModalOpen] = useState(false);
     const [editingAddon, setEditingAddon] = useState<Addon | null>(null);
 
     // Drag and Drop State
     const [draggedCategoryIndex, setDraggedCategoryIndex] = useState<number | null>(null);
-    const [draggedItem, setDraggedItem] = useState<{ categoryId: number; index: number } | null>(null);
+    const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
+    const [isReorderingMode, setIsReorderingMode] = useState(false);
+    const [reorderingItemsCategoryId, setReorderingItemsCategoryId] = useState<number | null>(null);
 
     // Category editing state
     const [editingCategory, setEditingCategory] = useState<{ id: number; oldName: string; newName: string; newIconUrl: string | null } | null>(null);
     const [restaurantName, setRestaurantName] = useState<string | null>(null);
+    const [isSeeding, setIsSeeding] = useState(false);
 
     const restaurantId = propRestaurantId || currentUser?.restaurantId;
 
@@ -110,13 +126,15 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             const { data: restData } = await supabase.from('restaurants').select('name').eq('id', restaurantId).single();
             if (restData) setRestaurantName(restData.name);
 
-            const [menuData, promoData, addonData] = await Promise.all([
+            const [menuData, promoData, couponData, addonData] = await Promise.all([
                 fetchMenuForRestaurant(restaurantId, true), // Pass true to ignore day filter
                 fetchPromotionsForRestaurant(restaurantId),
+                fetchCouponsForRestaurant(restaurantId),
                 fetchAddonsForRestaurant(restaurantId)
             ]);
             setMenuCategories(menuData);
             setPromotions(promoData);
+            setCoupons(couponData);
             setAddons(addonData);
             setError(null);
         } catch (err) {
@@ -179,6 +197,45 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
         }
     };
 
+    // --- Coupon Handlers ---
+    const handleOpenCouponModal = (coupon: Coupon | null = null) => {
+        setEditingCoupon(coupon);
+        setIsCouponModalOpen(true);
+    };
+
+    const handleSaveCoupon = async (couponData: Omit<Coupon, 'id' | 'restaurantId'>) => {
+        if (!restaurantId) return;
+        try {
+            if (editingCoupon) {
+                await updateCoupon(restaurantId, editingCoupon.id, couponData);
+                addToast({ message: 'Cupom atualizado!', type: 'success' });
+            } else {
+                await createCoupon(restaurantId, couponData);
+                addToast({ message: 'Cupom criado!', type: 'success' });
+            }
+            setIsCouponModalOpen(false);
+            await loadData();
+        } catch (error) {
+            console.error("Failed to save coupon:", error);
+            addToast({ message: `Erro ao salvar cupom: ${getErrorMessage(error)}`, type: 'error' });
+        }
+    };
+
+    const handleDeleteCoupon = async (couponId: number) => {
+        if (!restaurantId) return;
+        const confirmed = await confirm({ title: 'Excluir Cupom', message: 'Tem certeza?', confirmText: 'Excluir', isDestructive: true });
+        if (!confirmed) return;
+
+        try {
+            await deleteCoupon(restaurantId, couponId);
+            addToast({ message: 'Cupom excluído.', type: 'info' });
+            await loadData();
+        } catch (error) {
+            console.error("Failed to delete coupon:", error);
+            addToast({ message: `Erro ao excluir cupom: ${getErrorMessage(error)}`, type: 'error' });
+        }
+    };
+    
     const handleCopyCode = (code: string) => {
         navigator.clipboard.writeText(code)
             .then(() => addToast({ message: `Código "${code}" copiado!`, type: 'success' }))
@@ -303,6 +360,35 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
         }
     };
 
+    const handleDuplicateItem = async (item: MenuItem, categoryName: string) => {
+        if (!restaurantId) return;
+
+        const confirmed = await confirm({
+            title: 'Duplicar Item',
+            message: `Deseja criar uma cópia de "${item.name}"?`,
+            confirmText: 'Duplicar',
+        });
+
+        if (!confirmed) return;
+
+        try {
+            // Prepare data for the new item (removing ID and adjusting details if needed)
+            const { id: _, ...itemData } = item;
+            const duplicatedItem = {
+                ...itemData,
+                name: `${item.name} (Cópia)`,
+                category: categoryName,
+            };
+
+            await createMenuItem(restaurantId, duplicatedItem);
+            addToast({ message: 'Item duplicado com sucesso!', type: 'success' });
+            await loadData();
+        } catch (error) {
+            console.error("Failed to duplicate menu item:", error);
+            addToast({ message: `Erro ao duplicar item: ${getErrorMessage(error)}`, type: 'error' });
+        }
+    };
+
     const handleReorderItem = async (categoryId: number, itemIndex: number, direction: 'up' | 'down') => {
         const categoryIndex = menuCategories.findIndex(c => c.id === categoryId);
         if (categoryIndex === -1) return;
@@ -330,24 +416,31 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
         }
     };
 
-    const handleSortItemsAlphabetically = async (categoryId: number) => {
+    const handleItemDrop = async (categoryId: number, targetIndex: number) => {
+        if (draggedItemIndex === null || draggedItemIndex === targetIndex) return;
+
         const categoryIndex = menuCategories.findIndex(c => c.id === categoryId);
         if (categoryIndex === -1) return;
 
         const category = menuCategories[categoryIndex];
-        const sortedItems = [...category.items].sort((a, b) => a.name.localeCompare(b.name));
+        const newItems = [...category.items];
+        const [movedItem] = newItems.splice(draggedItemIndex, 1);
+        newItems.splice(targetIndex, 0, movedItem);
 
+        // Update local state primarily
         const newCategories = [...menuCategories];
-        newCategories[categoryIndex] = { ...category, items: sortedItems };
+        newCategories[categoryIndex] = { ...category, items: newItems };
         setMenuCategories(newCategories);
+        setDraggedItemIndex(null);
 
         try {
             if (!restaurantId) return;
-            await updateMenuItemOrder(restaurantId, sortedItems);
-            addToast({ message: `Itens de "${category.name}" ordenados de A-Z`, type: 'success' });
+            await updateMenuItemOrder(restaurantId, newItems);
+            addToast({ message: 'Ordem dos itens salva!', type: 'success' });
         } catch (error) {
-            addToast({ message: `Erro ao ordenar itens: ${getErrorMessage(error)}`, type: 'error' });
-            loadData();
+            console.error("Failed to update item order:", error);
+            addToast({ message: `Erro ao salvar ordem: ${getErrorMessage(error)}`, type: 'error' });
+            loadData(); // Revert
         }
     };
 
@@ -469,32 +562,6 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
         }
     };
 
-    const handleSortCategoriesAlphabetically = async () => {
-        const sortedCategories = [...menuCategories].sort((a, b) => a.name.localeCompare(b.name));
-        setMenuCategories(sortedCategories);
-        try {
-            if (!restaurantId) return;
-            await updateCategoryOrder(restaurantId, sortedCategories);
-            addToast({ message: 'Categorias ordenadas de A-Z', type: 'success' });
-        } catch (error) {
-            addToast({ message: `Erro ao ordenar categorias: ${getErrorMessage(error)}`, type: 'error' });
-            loadData();
-        }
-    };
-
-    const handleSortCategoriesByItemCount = async () => {
-        const sortedCategories = [...menuCategories].sort((a, b) => b.items.length - a.items.length);
-        setMenuCategories(sortedCategories);
-        try {
-            if (!restaurantId) return;
-            await updateCategoryOrder(restaurantId, sortedCategories);
-            addToast({ message: 'Categorias ordenadas por quantidade de itens', type: 'success' });
-        } catch (error) {
-            addToast({ message: `Erro ao ordenar categorias: ${getErrorMessage(error)}`, type: 'error' });
-            loadData();
-        }
-    };
-
     // DRAG HANDLERS
     const handleDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
         // UX: Only allow drag if the specific handle area is targeted
@@ -542,54 +609,37 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
         }
     };
 
-    // ITEM DRAG HANDLERS
-    const handleItemDragStart = (e: React.DragEvent<HTMLTableRowElement>, categoryId: number, index: number) => {
-        const target = e.target as HTMLElement;
-        if (!target.closest('.item-drag-handle')) {
-            e.preventDefault();
-            return;
+
+    const handleSeedMenu = async () => {
+        if (!restaurantId || !restaurantName) return;
+        
+        let seedData = null;
+        if (restaurantName.toLowerCase().includes('toka')) {
+            seedData = TOKA_DO_PASTEL_MENU;
+        } else if (restaurantName.toLowerCase().includes('renovação')) {
+            seedData = PASTELARIA_RENOVACAO_MENU;
         }
-        setDraggedItem({ categoryId, index });
-        e.dataTransfer.effectAllowed = 'move';
-    };
 
-    const handleItemDragOver = (e: React.DragEvent<HTMLTableRowElement>) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-    };
-
-    const handleItemDrop = async (e: React.DragEvent<HTMLTableRowElement>, categoryId: number, targetIndex: number) => {
-        e.preventDefault();
-        if (!draggedItem || draggedItem.categoryId !== categoryId || draggedItem.index === targetIndex) {
-            setDraggedItem(null);
+        if (!seedData) {
+            addToast({ message: 'Nenhum backup encontrado para este restaurante.', type: 'error' });
             return;
         }
 
-        const categoryIndex = menuCategories.findIndex(c => c.id === categoryId);
-        if (categoryIndex === -1) return;
+        if (!window.confirm(`Deseja restaurar o cardápio original de "${restaurantName}"? Isso adicionará as categorias e itens padrão.`)) {
+            return;
+        }
 
-        const category = menuCategories[categoryIndex];
-        const newItems = [...category.items];
-        const [movedItem] = newItems.splice(draggedItem.index, 1);
-        newItems.splice(targetIndex, 0, movedItem);
+        setIsSeeding(true);
+        const result = await seedRestaurantMenu(restaurantId, seedData);
+        setIsSeeding(false);
 
-        const newCategories = [...menuCategories];
-        newCategories[categoryIndex] = { ...category, items: newItems };
-        setMenuCategories(newCategories);
-        setDraggedItem(null);
-
-        if (restaurantId) {
-            try {
-                await updateMenuItemOrder(restaurantId, newItems);
-            } catch (error) {
-                console.error(error);
-                addToast({ message: "Erro ao reordenar itens.", type: 'error' });
-                loadData();
-            }
+        if (result.success) {
+            addToast({ message: 'Cardápio restaurado com sucesso!', type: 'success' });
+            loadData();
+        } else {
+            addToast({ message: 'Erro ao restaurar cardápio.', type: 'error' });
         }
     };
-
-
 
     if (isLoading) return <Spinner message="Carregando cardápio..." />;
     if (error) return <div className="p-4 text-red-500 text-center">{error}</div>;
@@ -603,6 +653,13 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
         endDate.setHours(23,59,59,999);
         return now >= startDate && now <= endDate;
     }
+
+    const isCouponActive = (coupon: Coupon) => {
+        const now = new Date();
+        const expirationDate = new Date(coupon.expirationDate);
+        expirationDate.setHours(23, 59, 59, 999);
+        return coupon.isActive && now <= expirationDate;
+    };
 
     return (
         <main className="p-4 space-y-8">
@@ -620,6 +677,15 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
                     <div className="flex items-center gap-3">
                         <h2 className="text-2xl font-bold text-gray-800">Promoções de Itens</h2>
+                        {menuCategories.length === 0 && (restaurantName?.toLowerCase().includes('toka') || restaurantName?.toLowerCase().includes('renovação')) && (
+                            <button
+                                onClick={handleSeedMenu}
+                                disabled={isSeeding}
+                                className="flex items-center gap-2 px-3 py-1 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-all font-bold text-xs"
+                            >
+                                {isSeeding ? 'Restaurando...' : 'Restaurar Cardápio Original'}
+                            </button>
+                        )}
                     </div>
                     <button onClick={() => handleOpenPromoModal()} className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 w-full sm:w-auto">
                         Criar Promoção
@@ -648,6 +714,47 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                     </div>
                  ) : (
                      <div className="text-center py-10 bg-gray-100 rounded-lg"><p className="text-gray-500">Nenhuma promoção de item cadastrada.</p></div>
+                 )}
+            </div>
+
+            {/* --- COUPONS --- */}
+            <div className="bg-white rounded-lg shadow-md p-6">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+                    <h2 className="text-2xl font-bold text-gray-800">Cupons de Desconto</h2>
+                    <button onClick={() => handleOpenCouponModal()} className="bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-700 w-full sm:w-auto">
+                        Criar Cupom
+                    </button>
+                </div>
+                 {coupons.length > 0 ? (
+                    <div className="space-y-3">
+                        {coupons.map(coupon => (
+                            <div key={coupon.id} className="bg-gray-50 p-4 rounded-lg border flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                                <div className="flex-grow">
+                                    <div className="flex items-center gap-3 mb-1">
+                                        <span className={`text-xs font-bold text-white px-2 py-0.5 rounded-full ${isCouponActive(coupon) ? 'bg-green-500' : 'bg-gray-500'}`}>{isCouponActive(coupon) ? 'ATIVO' : 'INATIVO'}</span>
+                                        <div className="flex items-center gap-2">
+                                            <h4 className="text-lg font-bold text-gray-900 font-mono tracking-wider">{coupon.code}</h4>
+                                            <button onClick={() => handleCopyCode(coupon.code)} className="p-1 text-gray-400 hover:text-blue-600" title="Copiar código">
+                                                <ClipboardIcon className="w-4 h-4"/>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <p className="text-sm text-gray-600">{coupon.description}</p>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        {coupon.discountType === 'PERCENTAGE' ? `${coupon.discountValue}% OFF` : `R$ ${coupon.discountValue.toFixed(2)} OFF`}
+                                        {coupon.minOrderValue && ` | Pedido Mínimo: R$ ${coupon.minOrderValue.toFixed(2)}`}
+                                        | Expira em: {new Date(coupon.expirationDate).toLocaleDateString()}
+                                    </p>
+                                </div>
+                                <div className="flex space-x-2 flex-shrink-0 self-end sm:self-center">
+                                    <button onClick={() => handleOpenCouponModal(coupon)} className="p-2 text-gray-500 hover:text-blue-600" title="Editar Cupom"><EditIcon className="w-5 h-5"/></button>
+                                    <button onClick={() => handleDeleteCoupon(coupon.id)} className="p-2 text-gray-500 hover:text-red-600" title="Excluir Cupom"><TrashIcon className="w-5 h-5"/></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                 ) : (
+                     <div className="text-center py-10 bg-gray-100 rounded-lg"><p className="text-gray-500">Nenhum cupom cadastrado.</p></div>
                  )}
             </div>
 
@@ -731,25 +838,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             {/* --- MENU ITEMS & CATEGORIES --- */}
             <div>
                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
-                    <div className="flex flex-col">
-                        <h2 className="text-2xl font-bold text-gray-800">Itens do Cardápio</h2>
-                        <div className="flex gap-2 mt-2">
-                            <button 
-                                onClick={handleSortCategoriesAlphabetically}
-                                className="text-[10px] bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded border font-bold text-gray-600 flex items-center gap-1"
-                                title="Ordenar categorias de A-Z"
-                            >
-                                <span>A-Z</span>
-                            </button>
-                            <button 
-                                onClick={handleSortCategoriesByItemCount}
-                                className="text-[10px] bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded border font-bold text-gray-600 flex items-center gap-1"
-                                title="Ordenar por quantidade de itens"
-                            >
-                                <span>Qtd Itens</span>
-                            </button>
-                        </div>
-                    </div>
+                    <h2 className="text-2xl font-bold text-gray-800">Itens do Cardápio</h2>
                     <div className="flex flex-col sm:flex-row gap-2">
                         <button onClick={() => handleOpenItemModal(null)} disabled={menuCategories.length === 0} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 w-full sm:w-auto disabled:bg-blue-400 disabled:cursor-not-allowed">
                             Criar Item
@@ -760,9 +849,51 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                         <button onClick={handleCreateCategory} className="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 w-full sm:w-auto">
                             Criar Categoria
                         </button>
-
+                        <button 
+                            onClick={() => setIsReorderingMode(!isReorderingMode)} 
+                            className={`${isReorderingMode ? 'bg-orange-600' : 'bg-gray-700'} text-white font-bold py-2 px-4 rounded-lg hover:opacity-90 w-full sm:w-auto flex items-center justify-center gap-2`}
+                        >
+                            <DragHandleIcon className="w-5 h-5" />
+                            {isReorderingMode ? 'Sair da Reordenação' : 'Reordenar Categorias'}
+                        </button>
                     </div>
                 </div>
+
+                {isReorderingMode && (
+                    <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-4 mb-6 animate-fadeIn">
+                        <div className="flex justify-between items-center mb-4">
+                            <div>
+                                <h3 className="font-black text-orange-800 uppercase tracking-tight">Modo de Reordenação</h3>
+                                <p className="text-xs text-orange-600 font-bold">Arraste as categorias ou use as setas para definir a ordem de exibição.</p>
+                            </div>
+                            <button onClick={() => setIsReorderingMode(false)} className="bg-white text-orange-600 px-3 py-1 rounded-full font-black text-xs shadow-sm hover:bg-orange-100 uppercase">Pronto</button>
+                        </div>
+                        <div className="space-y-2">
+                            {menuCategories.map((category, index) => (
+                                <div 
+                                    key={`reorder-${category.id}`}
+                                    className="bg-white p-3 rounded-lg border-2 border-transparent hover:border-orange-300 shadow-sm flex items-center justify-between group cursor-move"
+                                    draggable
+                                    onDragStart={(e) => {
+                                        setDraggedCategoryIndex(index);
+                                        e.dataTransfer.effectAllowed = 'move';
+                                    }}
+                                    onDragOver={(e) => handleDragOver(e, index)}
+                                    onDrop={(e) => handleDrop(e, index)}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <DragHandleIcon className="w-5 h-5 text-gray-400 group-hover:text-orange-500" />
+                                        <span className="font-bold text-gray-700">{category.name}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <button onClick={() => handleReorderCategory(index, 'up')} disabled={index === 0} className="p-1.5 rounded-full hover:bg-gray-100 disabled:opacity-20 text-gray-500"><ChevronUpIcon className="w-5 h-5"/></button>
+                                        <button onClick={() => handleReorderCategory(index, 'down')} disabled={index === menuCategories.length - 1} className="p-1.5 rounded-full hover:bg-gray-100 disabled:opacity-20 text-gray-500"><ChevronDownIcon className="w-5 h-5"/></button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {menuCategories.length === 0 ? (
                     <div className="bg-white rounded-lg shadow-md p-10 text-center border-2 border-dashed border-gray-300">
@@ -833,13 +964,6 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                                         )}
                                     </div>
                                     <div className="flex items-center gap-1">
-                                        <button 
-                                            onClick={() => handleSortItemsAlphabetically(category.id)}
-                                            className="text-[10px] bg-white hover:bg-gray-100 px-2 py-1 rounded border font-bold text-gray-600 mr-2"
-                                            title="Ordenar itens de A-Z"
-                                        >
-                                            A-Z Itens
-                                        </button>
                                         {editingCategory?.id === category.id ? (
                                             <>
                                                 <button onClick={handleSaveCategoryChanges} className="p-2 text-green-600 hover:text-green-800"><CheckIcon className="w-5 h-5"/></button>
@@ -847,12 +971,49 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                                             </>
                                         ) : (
                                             <>
+                                                <button 
+                                                    onClick={() => setReorderingItemsCategoryId(reorderingItemsCategoryId === category.id ? null : category.id)}
+                                                    className={`p-2 rounded-lg transition-colors ${reorderingItemsCategoryId === category.id ? 'bg-orange-100 text-orange-600' : 'text-gray-500 hover:text-orange-600'}`}
+                                                    title="Reordenar itens desta categoria"
+                                                >
+                                                    <DragHandleIcon className="w-5 h-5" />
+                                                </button>
                                                 <button onClick={() => handleEditCategory(category)} className="p-2 text-gray-500 hover:text-blue-600"><EditIcon className="w-5 h-5"/></button>
                                                 <button onClick={() => handleDeleteCategory(category.name)} disabled={category.items.length > 0 || (category.combos || []).length > 0} className="p-2 text-gray-500 hover:text-red-600 disabled:opacity-20 disabled:cursor-not-allowed" title={category.items.length > 0 ? "Esvazie a categoria para excluí-la" : "Excluir categoria"}><TrashIcon className="w-5 h-5"/></button>
                                             </>
                                         )}
                                     </div>
                                 </div>
+                                {reorderingItemsCategoryId === category.id && (
+                                    <div className="p-4 bg-orange-50 border-b-2 border-orange-100 animate-fadeIn">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <p className="text-xs font-black text-orange-800 uppercase tracking-widest">Arraste para reordenar os itens de {category.name}</p>
+                                            <button onClick={() => setReorderingItemsCategoryId(null)} className="text-[10px] font-black text-orange-600 uppercase">Fechar</button>
+                                        </div>
+                                        <div className="space-y-2">
+                                            {category.items.map((item, idx) => (
+                                                <div 
+                                                    key={`reorder-item-${item.id}`}
+                                                    className="bg-white p-3 rounded-xl border-2 border-transparent hover:border-orange-300 shadow-sm flex items-center justify-between cursor-move group"
+                                                    draggable
+                                                    onDragStart={() => setDraggedItemIndex(idx)}
+                                                    onDragOver={(e) => e.preventDefault()}
+                                                    onDrop={() => handleItemDrop(category.id, idx)}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <DragHandleIcon className="w-4 h-4 text-gray-300 group-hover:text-orange-500" />
+                                                        <span className="font-bold text-gray-700 text-sm">{item.name}</span>
+                                                    </div>
+                                                    <div className="flex gap-1">
+                                                        <button onClick={() => handleReorderItem(category.id, idx, 'up')} disabled={idx === 0} className="p-1 text-gray-400 hover:text-orange-600 disabled:opacity-20"><ChevronUpIcon className="w-4 h-4"/></button>
+                                                        <button onClick={() => handleReorderItem(category.id, idx, 'down')} disabled={idx === category.items.length - 1} className="p-1 text-gray-400 hover:text-orange-600 disabled:opacity-20"><ChevronDownIcon className="w-4 h-4"/></button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                
                                 <div className="overflow-x-auto">
                                     {category.items.length > 0 ? (
                                         <table className="w-full text-sm text-left text-gray-600">
@@ -867,35 +1028,23 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                                             </thead>
                                             <tbody>
                                                 {category.items.map((item, itemIndex) => (
-                                                    <tr 
-                                                        key={item.id} 
-                                                        className={`border-b hover:bg-gray-50 transition-all ${item.available === false ? 'bg-gray-50 opacity-60' : ''} ${draggedItem?.categoryId === category.id && draggedItem.index === itemIndex ? 'opacity-20 bg-blue-50' : ''}`}
-                                                        draggable
-                                                        onDragStart={(e) => handleItemDragStart(e, category.id, itemIndex)}
-                                                        onDragOver={handleItemDragOver}
-                                                        onDrop={(e) => handleItemDrop(e, category.id, itemIndex)}
-                                                    >
+                                                    <tr key={item.id} className={`border-b hover:bg-gray-50 ${item.available === false ? 'bg-gray-50 opacity-60' : ''}`}>
                                                         <td className="p-2 text-center">
                                                             <div className="flex flex-col items-center">
-                                                                <div className="flex items-center gap-1 item-drag-handle cursor-grab active:cursor-grabbing text-gray-300 hover:text-orange-500 p-1">
-                                                                    <DragHandleIcon className="w-4 h-4" />
-                                                                </div>
-                                                                <div className="flex">
-                                                                    <button 
-                                                                        onClick={() => handleReorderItem(category.id, itemIndex, 'up')} 
-                                                                        disabled={itemIndex === 0} 
-                                                                        className="text-gray-400 hover:text-black disabled:opacity-20 p-0.5"
-                                                                    >
-                                                                        <ChevronUpIcon className="w-3 h-3"/>
-                                                                    </button>
-                                                                    <button 
-                                                                        onClick={() => handleReorderItem(category.id, itemIndex, 'down')} 
-                                                                        disabled={itemIndex === category.items.length - 1} 
-                                                                        className="text-gray-400 hover:text-black disabled:opacity-20 p-0.5"
-                                                                    >
-                                                                        <ChevronDownIcon className="w-3 h-3"/>
-                                                                    </button>
-                                                                </div>
+                                                                <button 
+                                                                    onClick={() => handleReorderItem(category.id, itemIndex, 'up')} 
+                                                                    disabled={itemIndex === 0} 
+                                                                    className="text-gray-400 hover:text-black disabled:opacity-20 p-0.5"
+                                                                >
+                                                                    <ChevronUpIcon className="w-4 h-4"/>
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => handleReorderItem(category.id, itemIndex, 'down')} 
+                                                                    disabled={itemIndex === category.items.length - 1} 
+                                                                    className="text-gray-400 hover:text-black disabled:opacity-20 p-0.5"
+                                                                >
+                                                                    <ChevronDownIcon className="w-4 h-4"/>
+                                                                </button>
                                                             </div>
                                                         </td>
                                                         <td className="p-4">
@@ -910,6 +1059,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                                                         <td className="p-4 font-semibold text-right whitespace-nowrap">R$ {item.price.toFixed(2)}</td>
                                                         <td className="p-4">
                                                             <div className="flex justify-end space-x-2">
+                                                                <button onClick={() => handleDuplicateItem(item, category.name)} className="p-2 text-gray-500 hover:text-emerald-600" title="Duplicar produto"><DuplicateIcon className="w-5 h-5"/></button>
                                                                 <button onClick={() => handleOpenItemModal(item, category.name)} className="p-2 text-gray-500 hover:text-blue-600"><EditIcon className="w-5 h-5"/></button>
                                                                 <button onClick={() => handleDeleteItem(item.id)} className="p-2 text-gray-500 hover:text-red-600"><TrashIcon className="w-5 h-5"/></button>
                                                             </div>
@@ -933,10 +1083,10 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                 )}
             </div>
 
-            {isComboModalOpen && <ComboEditorModal isOpen={isComboModalOpen} onClose={() => setIsComboModalOpen(false)} onSave={handleSaveCombo} existingCombo={editingCombo} menuItems={allMenuItems} restaurantId={restaurantId!} />}
+            {isComboModalOpen && <ComboEditorModal isOpen={isComboModalOpen} onClose={() => setIsComboModalOpen(false)} onSave={handleSaveCombo} existingCombo={editingCombo} menuItems={allMenuItems} />}
             {isItemModalOpen && restaurantId && <MenuItemEditorModal isOpen={isItemModalOpen} onClose={() => setIsItemModalOpen(false)} onSave={handleSaveItem} existingItem={editingItem?.item} initialCategory={editingItem?.categoryName} restaurantCategories={menuCategories.map(c => c.name)} allAddons={addons} restaurantId={restaurantId} />}
-            {isPromoModalOpen && <PromotionEditorModal isOpen={isPromoModalOpen} onClose={() => setIsPromoModalOpen(false)} onSave={handleSavePromo} existingPromotion={editingPromo} menuItems={allMenuItems} combos={allCombos} categories={menuCategories.map(c => c.name)}/>}
-
+            {isPromoModalOpen && <PromotionEditorModal isOpen={isPromoModalOpen} onClose={() => setIsPromoModalOpen(false)} onSave={handleSavePromo} existingPromotion={editingPromo} menuItems={allMenuItems} combos={allCombos} categories={menuCategories}/>}
+            {isCouponModalOpen && <CouponEditorModal isOpen={isCouponModalOpen} onClose={() => setIsCouponModalOpen(false)} onSave={handleSaveCoupon} existingCoupon={editingCoupon} />}
             {isAddonModalOpen && <AddonEditorModal isOpen={isAddonModalOpen} onClose={() => setIsAddonModalOpen(false)} onSave={handleSaveAddon} existingAddon={editingAddon} />}
         </main>
     );

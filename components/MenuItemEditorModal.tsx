@@ -1,8 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import type { MenuItem, SizeOption, Addon } from '../types';
+import type { MenuItem, SizeOption, Addon, OptionGroup, CustomizationOption } from '../types';
 import { supabase } from '../services/api';
-import ImageUploadField from './ImageUploadField';
 
 // Icon for the Combobox dropdown
 const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -12,6 +11,14 @@ const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+);
+const PlusIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+    </svg>
+);
+const XIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
 );
 
 const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -119,16 +126,69 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
     const [isMarmita, setIsMarmita] = useState(false);
     const [marmitaOptions, setMarmitaOptions] = useState<string[]>(['']);
     const [sizes, setSizes] = useState<SizeOption[]>([]);
+    const [optionGroups, setOptionGroups] = useState<OptionGroup[]>([]);
     const [availableDays, setAvailableDays] = useState<number[]>([]);
     const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
     const [addonSearchTerm, setAddonSearchTerm] = useState('');
-    const [maxAddons, setMaxAddons] = useState<number | undefined>(undefined);
+    const [isCopyingGroups, setIsCopyingGroups] = useState(false);
+    const [copySearchTerm, setCopySearchTerm] = useState('');
+    const [allItemsForCopy, setAllItemsForCopy] = useState<MenuItem[]>([]);
     const [error, setError] = useState('');
     const [available, setAvailable] = useState(true);
 
-    const [imageUrl, setImageUrl] = useState<string | null>(null);
+    const [imageFile, setImageFile] = useState<File | null>(null);
+    const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
 
+
+    useEffect(() => {
+        const fetchAllItems = async () => {
+            if (!restaurantId || !isOpen) return;
+            try {
+                const { data, error } = await supabase
+                    .from('menu_items')
+                    .select('*')
+                    .eq('restaurant_id', restaurantId);
+                
+                if (error) throw error;
+                if (data) {
+                    setAllItemsForCopy(data.map(item => ({
+                        ...item,
+                        restaurantId: item.restaurant_id,
+                        marmitaOptions: item.marmita_options,
+                        availableAddonIds: item.available_addon_ids,
+                        isMarmita: item.is_marmita,
+                        isDailySpecial: item.is_daily_special,
+                        isWeeklySpecial: item.is_weekly_special,
+                        availableDays: item.available_days,
+                        optionGroups: item.option_groups
+                    } as MenuItem)));
+                }
+            } catch (err) {
+                console.error("Erro ao buscar itens para cópia:", err);
+            }
+        };
+
+        fetchAllItems();
+    }, [restaurantId, isOpen]);
+
+    const handleCopyGroupsFromItem = (sourceItem: MenuItem) => {
+        if (!sourceItem.optionGroups || sourceItem.optionGroups.length === 0) {
+            alert('Este produto não possui grupos de opções para copiar.');
+            return;
+        }
+
+        if (confirm(`Deseja copiar os ${sourceItem.optionGroups.length} grupos de opções de "${sourceItem.name}"? Isso substituirá os grupos atuais.`)) {
+            const copiedGroups: OptionGroup[] = sourceItem.optionGroups.map(group => ({
+                ...group,
+                id: crypto.randomUUID(),
+                options: group.options.map(opt => ({ ...opt }))
+            }));
+            setOptionGroups(copiedGroups);
+            setIsCopyingGroups(false);
+            setCopySearchTerm('');
+        }
+    };
 
     useEffect(() => {
         if (existingItem) {
@@ -136,7 +196,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             setDescription(existingItem.description);
             setPrice(String(existingItem.price));
             setOriginalPrice(String(existingItem.originalPrice || ''));
-            setImageUrl(existingItem.imageUrl || null);
+            setImagePreview(existingItem.imageUrl || null);
             setCategory(initialCategory);
             setIsAcai(existingItem.isAcai || false);
             setIsPizza(existingItem.isPizza || false);
@@ -145,17 +205,17 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             setIsMarmita(existingItem.isMarmita || false);
             setMarmitaOptions(existingItem.marmitaOptions && existingItem.marmitaOptions.length > 0 ? existingItem.marmitaOptions : ['']);
             setSizes(existingItem.sizes || []);
+            setOptionGroups(existingItem.optionGroups || []);
             setAvailableDays(existingItem.availableDays || []);
             setSelectedAddonIds(new Set(existingItem.availableAddonIds || []));
             setAvailable(existingItem.available !== false);
-            setMaxAddons(existingItem.maxAddons);
         } else {
             // Reset form for new item
             setName('');
             setDescription('');
             setPrice('');
             setOriginalPrice('');
-            setImageUrl(null);
+            setImagePreview(null);
             setCategory(initialCategory);
             setIsAcai(false);
             setIsPizza(false);
@@ -164,15 +224,101 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             setIsMarmita(false);
             setMarmitaOptions(['']);
             setSizes([]);
+            setOptionGroups([]);
             setAvailableDays([]);
             setSelectedAddonIds(new Set());
             setAvailable(true);
-            setMaxAddons(undefined);
         }
         setAddonSearchTerm('');
+        setImageFile(null);
         setError('');
         setIsSaving(false);
     }, [existingItem, initialCategory, isOpen]);
+
+    // Cleanup for image preview object URL
+    useEffect(() => {
+        return () => {
+            if (imagePreview && imagePreview.startsWith('blob:')) {
+                URL.revokeObjectURL(imagePreview);
+            }
+        };
+    }, [imagePreview]);
+
+    // --- COMPRESSÃO DE IMAGEM ULTRA LEVE ---
+    const compressImage = async (file: File): Promise<File> => {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.src = URL.createObjectURL(file);
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    URL.revokeObjectURL(img.src);
+                    reject(new Error("Não foi possível processar a imagem."));
+                    return;
+                }
+
+                // Configurações de otimização AGRESSIVA (Foco em mobile)
+                const MAX_WIDTH = 600; 
+                const MAX_HEIGHT = 600;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > MAX_WIDTH) {
+                        height *= MAX_WIDTH / width;
+                        width = MAX_WIDTH;
+                    }
+                } else {
+                    if (height > MAX_HEIGHT) {
+                        width *= MAX_HEIGHT / height;
+                        height = MAX_HEIGHT;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // JPEG 50% de qualidade - Extremamente leve para listas de comida
+                canvas.toBlob((blob) => {
+                    URL.revokeObjectURL(img.src);
+                    if (blob) {
+                        const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
+                            type: 'image/jpeg',
+                            lastModified: Date.now(),
+                        });
+                        resolve(compressedFile);
+                    } else {
+                        reject(new Error("Falha na compressão."));
+                    }
+                }, 'image/jpeg', 0.5); 
+            };
+            img.onerror = (err) => {
+                URL.revokeObjectURL(img.src);
+                reject(err);
+            };
+        });
+    };
+
+
+    const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const originalFile = e.target.files[0];
+            try {
+                const compressedFile = await compressImage(originalFile);
+                setImageFile(compressedFile);
+                
+                if (imagePreview && imagePreview.startsWith('blob:')) {
+                    URL.revokeObjectURL(imagePreview);
+                }
+                setImagePreview(URL.createObjectURL(compressedFile));
+            } catch (err) {
+                console.error("Erro ao otimizar imagem:", err);
+                setError("Erro ao processar imagem. Tente outra.");
+            }
+        }
+    };
 
     const handlePriceChange = (value: string, setter: React.Dispatch<React.SetStateAction<string>>) => {
         setter((value || '').replace(',', '.'));
@@ -198,6 +344,54 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
 
     const removeSize = (index: number) => {
         setSizes(sizes.filter((_, i) => i !== index));
+    };
+
+    const addOptionGroup = () => {
+        const newGroup: OptionGroup = {
+            id: crypto.randomUUID(),
+            title: '',
+            minSelections: 0,
+            maxSelections: 1,
+            options: [{ name: '', price: 0 }]
+        };
+        setOptionGroups([...optionGroups, newGroup]);
+    };
+
+    const removeOptionGroup = (groupId: string) => {
+        setOptionGroups(optionGroups.filter(g => g.id !== groupId));
+    };
+
+    const updateOptionGroup = (groupId: string, field: keyof OptionGroup, value: any) => {
+        setOptionGroups(optionGroups.map(g => g.id === groupId ? { ...g, [field]: value } : g));
+    };
+
+    const addOptionToGroup = (groupId: string) => {
+        setOptionGroups(optionGroups.map(g => {
+            if (g.id === groupId) {
+                return { ...g, options: [...g.options, { name: '', price: 0 }] };
+            }
+            return g;
+        }));
+    };
+
+    const removeOptionFromGroup = (groupId: string, optionIndex: number) => {
+        setOptionGroups(optionGroups.map(g => {
+            if (g.id === groupId) {
+                return { ...g, options: g.options.filter((_, i) => i !== optionIndex) };
+            }
+            return g;
+        }));
+    };
+
+    const updateOptionInGroup = (groupId: string, optionIndex: number, field: keyof CustomizationOption, value: any) => {
+        setOptionGroups(optionGroups.map(g => {
+            if (g.id === groupId) {
+                const newOptions = [...g.options];
+                newOptions[optionIndex] = { ...newOptions[optionIndex], [field]: value };
+                return { ...g, options: newOptions };
+            }
+            return g;
+        }));
     };
 
     const handleDayToggle = (dayIndex: number) => {
@@ -256,8 +450,37 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
         }
 
         setIsSaving(true);
+        let finalImageUrl = existingItem?.imageUrl || '';
 
         try {
+            if (imageFile) {
+                try {
+                    const fileExt = 'jpg'; 
+                    const fileName = `${crypto.randomUUID()}.${fileExt}`;
+                    const filePath = `${restaurantId}/${fileName}`;
+
+                    const { error: uploadError } = await supabase.storage
+                        .from('product-images')
+                        .upload(filePath, imageFile, {
+                            contentType: 'image/jpeg',
+                            cacheControl: '3600',
+                            upsert: false
+                        });
+
+                    if (uploadError) throw uploadError;
+
+                    const { data } = supabase.storage
+                        .from('product-images')
+                        .getPublicUrl(filePath);
+
+                    finalImageUrl = data.publicUrl;
+                } catch (uploadError: any) {
+                    setError(`Erro no upload: ${uploadError.message}`);
+                    return; 
+                }
+            }
+
+
             const numericOriginalPrice = parseFloat(originalPrice);
 
             await onSave({
@@ -265,7 +488,7 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                 description,
                 price: basePrice,
                 originalPrice: numericOriginalPrice > 0 ? numericOriginalPrice : undefined,
-                imageUrl: imageUrl || '',
+                imageUrl: finalImageUrl,
                 isAcai,
                 isPizza,
                 isDailySpecial,
@@ -274,9 +497,9 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                 marmitaOptions: isMarmita ? marmitaOptions.filter(opt => opt.trim() !== '') : undefined,
                 availableDays,
                 sizes: hasSizes ? sizes : undefined,
+                optionGroups: optionGroups.length > 0 ? optionGroups : undefined,
                 availableAddonIds: Array.from(selectedAddonIds),
-                available: available,
-                maxAddons: maxAddons
+                available: available
             }, category);
         } catch (err: any) {
             console.error("Failed to save:", err);
@@ -312,32 +535,68 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                         </label>
                     </div>
 
-                    <ImageUploadField 
-                        restaurantId={restaurantId}
-                        currentImageUrl={imageUrl}
-                        onImageUploaded={setImageUrl}
-                        label="Foto do Produto"
-                    />
+                    <div className="flex flex-col md:flex-row items-start gap-4">
+                         <div className="flex-shrink-0">
+                            {imagePreview ? (
+                                <img src={imagePreview} alt="Preview" className="w-24 h-24 rounded-md object-cover" loading="lazy" />
+                            ) : (
+                                <div className="w-24 h-24 rounded-md bg-gray-100 flex items-center justify-center text-gray-400 text-sm text-center p-2">
+                                    Sem Imagem
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex-grow">
+                             <label htmlFor="imageUpload" className="block text-sm font-medium text-gray-700 mb-1">
+                                Foto do Produto
+                            </label>
+                            <input
+                                id="imageUpload"
+                                type="file"
+                                accept="image/*"
+                                onChange={handleImageChange}
+                                className="block w-full text-sm text-gray-500
+                                    file:mr-4 file:py-2 file:px-4
+                                    file:rounded-full file:border-0
+                                    file:text-sm file:font-semibold
+                                    file:bg-orange-50 file:text-orange-700
+                                    hover:file:bg-orange-100"
+                            />
+                            <p className="text-[10px] text-orange-600 font-bold mt-1 uppercase tracking-tighter">O App reduzirá o peso da foto automaticamente para economizar espaço.</p>
+                        </div>
+                    </div>
 
-                    <input type="text" placeholder="Nome do Item (ex: X-Bacon)" value={name} onChange={(e) => setName(e.target.value)} className="w-full p-3 border rounded-lg bg-gray-50"/>
-                    <textarea placeholder="Descrição do Item" value={description} onChange={(e) => setDescription(e.target.value)} className="w-full p-3 border rounded-lg bg-gray-50" rows={3}/>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Item</label>
+                        <input type="text" placeholder="ex: X-Bacon" value={name} onChange={(e) => setName(e.target.value)} className="w-full p-3 border rounded-lg bg-gray-50"/>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Descrição do Item</label>
+                        <textarea placeholder="Descreva os ingredientes ou detalhes do produto" value={description} onChange={(e) => setDescription(e.target.value)} className="w-full p-3 border rounded-lg bg-gray-50" rows={3}/>
+                    </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <input
-                            type="text"
-                            placeholder="Preço Original (Opcional)"
-                            value={originalPrice}
-                            onChange={(e) => handlePriceChange(e.target.value, setOriginalPrice)}
-                            className="w-full p-3 border rounded-lg bg-gray-50"
-                        />
-                        <input
-                            type="text"
-                            placeholder={hasSizes ? "Preço base nos tamanhos" : "Preço de Venda"}
-                            value={price}
-                            onChange={(e) => handlePriceChange(e.target.value, setPrice)}
-                            className="w-full p-3 border rounded-lg bg-gray-50 disabled:bg-gray-200"
-                            disabled={hasSizes}
-                        />
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Preço Original (Racionado / Riscado)</label>
+                            <input
+                                type="text"
+                                placeholder="0,00"
+                                value={originalPrice}
+                                onChange={(e) => handlePriceChange(e.target.value, setOriginalPrice)}
+                                className="w-full p-3 border rounded-lg bg-gray-50"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">{hasSizes ? "Defina o preço nos tamanhos" : "Preço de Venda"}</label>
+                            <input
+                                type="text"
+                                placeholder="0,00"
+                                value={price}
+                                onChange={(e) => handlePriceChange(e.target.value, setPrice)}
+                                className="w-full p-3 border rounded-lg bg-gray-50 disabled:bg-gray-200"
+                                disabled={hasSizes}
+                            />
+                        </div>
                     </div>
                     
                     {/* --- SIZES MANAGEMENT --- */}
@@ -368,24 +627,165 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                         </button>
                     </div>
 
+                    {/* --- OPTION GROUPS MANAGEMENT (GENERIC CUSTOMIZATION) --- */}
+                    <div className="p-3 bg-white rounded-lg border-2 border-dashed border-gray-200">
+                        <div className="flex justify-between items-center mb-3">
+                            <h3 className="font-bold text-gray-700 uppercase text-xs tracking-wider">Grupos de Escolha (Personalização)</h3>
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={() => setIsCopyingGroups(!isCopyingGroups)} 
+                                    className="text-xs font-black bg-emerald-600 text-white px-2 py-1 rounded hover:bg-emerald-700 uppercase flex items-center gap-1"
+                                    type="button"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3 h-3"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" /></svg>
+                                    Copiar de Outro
+                                </button>
+                                <button onClick={addOptionGroup} className="text-xs font-black bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 uppercase" type="button">
+                                    + Novo Grupo
+                                </button>
+                            </div>
+                        </div>
+
+                        {isCopyingGroups && (
+                            <div className="mb-4 p-4 bg-emerald-50 rounded-xl border border-emerald-100 animate-fadeIn">
+                                <div className="flex justify-between items-center mb-2">
+                                    <h4 className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Selecionar Produto Origem</h4>
+                                    <button onClick={() => setIsCopyingGroups(false)} className="text-emerald-500 hover:text-emerald-700">
+                                        <XIcon className="w-4 h-4" />
+                                    </button>
+                                </div>
+                                <input 
+                                    type="text" 
+                                    placeholder="Pesquisar produto..." 
+                                    value={copySearchTerm}
+                                    onChange={(e) => setCopySearchTerm(e.target.value)}
+                                    className="w-full p-2 text-sm border-2 border-emerald-100 rounded-lg bg-white mb-2 focus:border-emerald-400 outline-none"
+                                />
+                                <div className="max-h-40 overflow-y-auto space-y-1">
+                                    {allItemsForCopy
+                                        .filter(item => 
+                                            item.id !== existingItem?.id && 
+                                            item.name.toLowerCase().includes(copySearchTerm.toLowerCase()) &&
+                                            item.optionGroups && item.optionGroups.length > 0
+                                        )
+                                        .map(item => (
+                                            <button 
+                                                key={item.id}
+                                                onClick={() => handleCopyGroupsFromItem(item)}
+                                                className="w-full text-left p-2 hover:bg-emerald-100 rounded-lg flex justify-between items-center transition-colors border border-transparent hover:border-emerald-200"
+                                                type="button"
+                                            >
+                                                <span className="text-sm font-bold text-emerald-900">{item.name}</span>
+                                                <span className="text-[10px] font-black bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-full uppercase">
+                                                    {item.optionGroups?.length} Grupos
+                                                </span>
+                                            </button>
+                                        ))
+                                    }
+                                    {allItemsForCopy.filter(item => 
+                                        item.id !== existingItem?.id && 
+                                        item.name.toLowerCase().includes(copySearchTerm.toLowerCase()) &&
+                                        item.optionGroups && item.optionGroups.length > 0
+                                    ).length === 0 && (
+                                        <p className="text-[10px] text-emerald-600 font-bold italic py-2 text-center">Nenhum produto com grupos encontrado.</p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {optionGroups.length === 0 && (
+                            <p className="text-[10px] text-gray-400 font-bold uppercase text-center py-4">Nenhum grupo de personalização definido.</p>
+                        )}
+
+                        <div className="space-y-4">
+                            {optionGroups.map((group, gIdx) => (
+                                <div key={group.id} className="p-4 bg-gray-50 border rounded-xl relative group/card">
+                                    <button 
+                                        onClick={() => removeOptionGroup(group.id)}
+                                        className="absolute -top-2 -right-2 bg-red-100 text-red-600 p-1.5 rounded-full hover:bg-red-200 shadow-sm opacity-0 group-hover/card:opacity-100 transition-opacity"
+                                    >
+                                        <TrashIcon className="w-4 h-4" />
+                                    </button>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                                        <div>
+                                            <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Título do Grupo</label>
+                                            <input 
+                                                type="text" 
+                                                placeholder="Ex: Escolha o Sabor" 
+                                                value={group.title} 
+                                                onChange={(e) => updateOptionGroup(group.id, 'title', e.target.value)}
+                                                className="w-full p-2 text-sm border rounded-lg bg-white font-bold"
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Mínimo</label>
+                                                <input 
+                                                    type="number" 
+                                                    value={group.minSelections} 
+                                                    onChange={(e) => updateOptionGroup(group.id, 'minSelections', parseInt(e.target.value))}
+                                                    className="w-full p-2 text-sm border rounded-lg bg-white"
+                                                    min="0"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Máximo</label>
+                                                <input 
+                                                    type="number" 
+                                                    value={group.maxSelections} 
+                                                    onChange={(e) => updateOptionGroup(group.id, 'maxSelections', parseInt(e.target.value))}
+                                                    className="w-full p-2 text-sm border rounded-lg bg-white"
+                                                    min="1"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Opções do Grupo</label>
+                                        {group.options.map((opt, oIdx) => (
+                                            <div key={oIdx} className="grid grid-cols-12 gap-2 items-center">
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="Nome da Opção" 
+                                                    value={opt.name} 
+                                                    onChange={(e) => updateOptionInGroup(group.id, oIdx, 'name', e.target.value)}
+                                                    className="col-span-7 p-2 text-sm border rounded-lg bg-white"
+                                                />
+                                                <input 
+                                                    type="number" 
+                                                    placeholder="Preço" 
+                                                    value={opt.price} 
+                                                    onChange={(e) => updateOptionInGroup(group.id, oIdx, 'price', parseFloat(e.target.value))}
+                                                    className="col-span-4 p-2 text-sm border rounded-lg bg-white"
+                                                    step="0.01"
+                                                />
+                                                <button 
+                                                    onClick={() => removeOptionFromGroup(group.id, oIdx)}
+                                                    className="col-span-1 p-1 text-red-400 hover:text-red-600"
+                                                >
+                                                    <TrashIcon className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                        <button 
+                                            onClick={() => addOptionToGroup(group.id)}
+                                            className="text-xs font-bold text-blue-600 hover:underline"
+                                        >
+                                            + Adicionar Opção
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <p className="text-[10px] text-gray-500 mt-2 font-medium italic">O cliente poderá escolher entre o mínimo e o máximo de opções configuradas acima.</p>
+                    </div>
+
                     {/* --- ADDONS MANAGEMENT --- */}
                     {allAddons.length > 0 && (
                         <div className="p-3 bg-gray-50 rounded-lg border">
-                            <div className="flex justify-between items-center mb-2">
-                                <h3 className="font-bold text-gray-700">Adicionais Disponíveis</h3>
-                                <div className="flex items-center gap-2">
-                                    <label className="text-xs font-bold text-gray-500 uppercase">Limite de Escolha:</label>
-                                    <input 
-                                        type="number" 
-                                        min="0"
-                                        placeholder="Ilimitado"
-                                        value={maxAddons ?? ''} 
-                                        onChange={(e) => setMaxAddons(e.target.value ? parseInt(e.target.value) : undefined)}
-                                        className="w-16 p-1 text-sm border rounded bg-white text-center font-bold text-orange-600"
-                                        title="Limite máximo de adicionais que o cliente pode escolher"
-                                    />
-                                </div>
-                            </div>
+                            <h3 className="font-bold text-gray-700 mb-2">Adicionais Disponíveis</h3>
                             <input
                                 type="text"
                                 placeholder="Buscar adicional..."

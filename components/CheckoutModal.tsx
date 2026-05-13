@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import type { Restaurant, Order, CartItem } from '../types';
+import type { Restaurant, Coupon, Order, CartItem } from '../types';
 import { useCart } from '../hooks/useCart';
 import { useNotification } from '../hooks/useNotification';
+import { checkIfMensalista, getMensalistaByPhone, getMensalistaById, updateMensalista } from '../services/mensalistaService';
 import { createOrder, type NewOrderData } from '../services/orderService';
-import { verifyMensalistaByPhone } from '../services/mensalistaService';
+import { validateCouponByCode, fetchCouponsForRestaurant, fetchCustomerLoyalty } from '../services/databaseService';
 import { supabase } from '../services/api';
 import { isRestaurantOpen } from '../utils/restaurantUtils';
 import Spinner from './Spinner';
@@ -49,6 +50,11 @@ const LeafIcon: React.FC<{ className?: string }> = ({ className }) => (
         <path fillRule="evenodd" d="M12.963 2.286a.75.75 0 00-1.071-.136 9.742 9.742 0 00-3.539 6.177 7.547 7.547 0 01-1.705-1.715.75.75 0 00-1.152-.082A9 9 0 1015.68 4.534a7.46 7.46 0 01-2.717-2.248zM15.75 14.25a3.75 3.75 0 11-7.313-1.172c.628.465 1.35.81 2.133 1a5.99 5.99 0 011.925-3.545 3.75 3.75 0 013.255 3.717z" clipRule="evenodd" />
     </svg>
 );
+const WhatsAppIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} xmlns="http://www.w3.org/2000/svg">
+        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+    </svg>
+);
 
 interface CheckoutModalProps {
     isOpen: boolean;
@@ -73,11 +79,10 @@ const normalizeOrder = (data: any): Order => {
         customerName: data.customer_name, customerPhone: data.customer_phone, customerAddress: data.customer_address,
         wantsSachets: wantsSachets, items: data.items, totalPrice: data.total_price, restaurantId: data.restaurant_id,
         restaurantName: data.restaurant_name, restaurantAddress: data.restaurant_address, restaurantPhone: data.restaurant_phone,
-        paymentMethod: data.payment_method,
+        paymentMethod: data.payment_method, couponCode: data.coupon_code, discountAmount: data.discount_amount,
         subtotal: data.subtotal, deliveryFee: data.delivery_fee, payment_id: data.payment_id,
         payment_details: data.payment_details,
-        paymentStatus: data.payment_status || 'paid',
-        mensalistaId: data.mensalista_id || data.payment_details?.mensalistaId
+        paymentStatus: data.payment_status || 'paid'
     };
 };
 
@@ -106,6 +111,9 @@ const formatOrderDetailsForWhatsApp = (order: Order): string => {
     if (order.deliveryFee && Number(order.deliveryFee) > 0) {
         detailsMessage += `Entrega: R$ ${Number(order.deliveryFee).toFixed(2)}\n`;
     }
+    if (order.discountAmount && Number(order.discountAmount) > 0) {
+        detailsMessage += `Desconto (${order.couponCode || 'Cupom'}): - R$ ${Number(order.discountAmount).toFixed(2)}\n`;
+    }
     detailsMessage += `*TOTAL: R$ ${order.totalPrice.toFixed(2)}*\n\n`;
     detailsMessage += `*Pagamento:* ${order.paymentMethod}\n`;
     if (order.wantsSachets === false) {
@@ -123,7 +131,7 @@ const formatOrderDetailsForWhatsApp = (order: Order): string => {
 };
 
 const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaurant }) => {
-    const { cartItems, clearRestaurantCart } = useCart();
+    const { cartItems, totalPrice, clearCart } = useCart();
     const { addToast } = useNotification();
     const [currentStep, setCurrentStep] = useState<CheckoutStep>('SUMMARY');
     const [customerName, setCustomerName] = useState('');
@@ -133,15 +141,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('DELIVERY');
     const [wantsSachets, setWantsSachets] = useState(false);
-    
-    const restaurantCartItems = useMemo(() => {
-        return cartItems.filter(item => Number(item.restaurantId) === Number(restaurant.id));
-    }, [cartItems, restaurant.id]);
-
-    const totalPrice = useMemo(() => {
-        return restaurantCartItems.reduce((acc, item) => acc + (Number(item.price) * item.quantity), 0);
-    }, [restaurantCartItems]);
-
     const [address, setAddress] = useState({
         zipCode: '37810-000', 
         street: '',
@@ -155,7 +154,18 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [countdown, setCountdown] = useState(300);
     const countdownIntervalRef = useRef<number | null>(null);
     const pixChannelRef = useRef<any>(null);
+    const [couponCodeInput, setCouponCodeInput] = useState('');
+    const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
     const [formError, setFormError] = useState<string | null>(null);
+    const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
+    const [hasAvailableCoupons, setHasAvailableCoupons] = useState(false);
+
+    const [isMensalista, setIsMensalista] = useState(false);
+    const [mensalistaId, setMensalistaId] = useState<string | undefined>(undefined);
+    
+    const [customerLoyalty, setCustomerLoyalty] = useState<any | null>(null);
+    const [loyaltyRedeemed, setLoyaltyRedeemed] = useState(false);
+    
     const [knownCustomers, setKnownCustomers] = useState<Record<string, { phone: string, address: any }>>({});
     const [highlightFields, setHighlightFields] = useState(false);
     const [stepTransitionLock, setStepTransitionLock] = useState(false);
@@ -226,12 +236,20 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const isOpenNow = isRestaurantOpen(restaurant);
 
     const paymentOptions = useMemo(() => {
-        const options = restaurant.paymentGateways && restaurant.paymentGateways.length > 0 
+        let options = restaurant.paymentGateways && restaurant.paymentGateways.length > 0 
             ? [...restaurant.paymentGateways] 
             : ["Pix", "Cartão de Crédito", "Cartão de Débito", "Dinheiro"];
             
-        if (restaurant.hasMensalistas && !options.includes("Mensalista")) {
-            options.push("Mensalista");
+        // Remove "Fiado / Conta" if it exists
+        options = options.filter(opt => opt !== "Fiado / Conta");
+
+        // Ensure "Mensalista" is included only if enabled
+        if (restaurant.hasMensalistas) {
+            if (!options.includes("Mensalista")) {
+                options.push("Mensalista");
+            }
+        } else {
+            options = options.filter(opt => opt !== "Mensalista");
         }
         return options;
     }, [restaurant]);
@@ -241,6 +259,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setPaymentMethod(''); // FIX: Inicia vazio para forçar escolha do cliente
         setChangeFor('');
         setIsSubmitting(false);
+        setCouponCodeInput('');
+        setAppliedCoupon(null);
         setFormError(null);
         setPixData(null);
         setPixError(null);
@@ -250,6 +270,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setDeliveryMethod('DELIVERY');
         setStepTransitionLock(false);
         setSuccessfulOrder(null);
+        setMensalistaId(undefined);
+        setCustomerLoyalty(null);
+        setLoyaltyRedeemed(false);
         if (countdownIntervalRef.current) {
             clearInterval(countdownIntervalRef.current);
             countdownIntervalRef.current = null;
@@ -261,30 +284,105 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     };
 
     useEffect(() => {
+        const check = async () => {
+            if (customerPhone.length >= 8) {
+                const mensalista = await getMensalistaByPhone(customerPhone, restaurant.id);
+                const isM = !!mensalista;
+                setIsMensalista(isM);
+                setMensalistaId(mensalista?.id);
+                if (isM) {
+                    setPaymentMethod('Mensalista');
+                } else if (paymentMethod === 'Mensalista') {
+                    setPaymentMethod('');
+                }
+                
+                if (restaurant.loyaltyProgram?.active) {
+                    const loyalty = await fetchCustomerLoyalty(restaurant.id, customerPhone);
+                    setCustomerLoyalty(loyalty);
+                    if (!loyalty || loyalty.points < restaurant.loyaltyProgram.rewardThreshold) {
+                         setLoyaltyRedeemed(false);
+                    }
+                } else {
+                    setCustomerLoyalty(null);
+                    setLoyaltyRedeemed(false);
+                }
+            } else {
+                setIsMensalista(false);
+                setMensalistaId(undefined);
+                setCustomerLoyalty(null);
+                setLoyaltyRedeemed(false);
+                if (paymentMethod === 'Mensalista') {
+                    setPaymentMethod('');
+                }
+            }
+        };
+        check();
+    }, [customerPhone, restaurant.id]);
+
+    useEffect(() => {
         if (isOpen) {
             resetState();
+            const checkCoupons = async () => {
+                try {
+                    const coupons = await fetchCouponsForRestaurant(restaurant.id);
+                    const hasActive = coupons.some(c => {
+                        const now = new Date();
+                        const expirationDate = new Date(c.expirationDate);
+                        expirationDate.setHours(23, 59, 59, 999);
+                        return c.isActive && now <= expirationDate;
+                    });
+                    setHasAvailableCoupons(hasActive);
+                } catch (e) { console.error("Failed to check coupons", e); }
+            };
+            checkCoupons();
         }
     }, [isOpen, restaurant.id]);
 
-    const { finalPrice } = useMemo(() => {
+    const { finalPrice, discountAmount } = useMemo(() => {
         const totalNum = Number(totalPrice || 0);
-        return { finalPrice: totalNum };
-    }, [totalPrice]);
-
-    const effectiveDeliveryFee = useMemo(() => {
-        if (deliveryMethod === 'PICKUP') return 0;
-        if (restaurant.deliveryZones && restaurant.deliveryZones.length > 0) {
-            const zone = restaurant.deliveryZones.find(z => z.name === address.neighborhood);
-            if (zone) return Number(zone.fee);
+        let discount = 0;
+        
+        if (appliedCoupon) {
+            discount += appliedCoupon.discountType === 'PERCENTAGE' ? totalNum * (Number(appliedCoupon.discountValue) / 100) : Number(appliedCoupon.discountValue);
         }
-        return Number(restaurant.deliveryFee || 0);
-    }, [deliveryMethod, restaurant.deliveryFee, restaurant.deliveryZones, address.neighborhood]);
+        
+        if (loyaltyRedeemed && restaurant.loyaltyProgram) {
+            if (restaurant.loyaltyProgram.rewardType === 'FIXED_DISCOUNT') {
+                discount += Number(restaurant.loyaltyProgram.rewardValue);
+            } else if (restaurant.loyaltyProgram.rewardType === 'PERCENTAGE_DISCOUNT') {
+                discount += totalNum * (Number(restaurant.loyaltyProgram.rewardValue) / 100);
+            }
+        }
+        
+        return { finalPrice: Math.max(0, totalNum - discount), discountAmount: discount };
+    }, [totalPrice, appliedCoupon, loyaltyRedeemed, restaurant.loyaltyProgram]);
 
+    const effectiveDeliveryFee = deliveryMethod === 'PICKUP' ? 0 : Number(restaurant.deliveryFee || 0);
     const finalPriceWithFee = Number(finalPrice) + Number(effectiveDeliveryFee);
     
-    const handleAddressChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const handleAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setAddress(prev => ({ ...prev, [name]: value }));
+    };
+    
+    const handleApplyCoupon = async () => {
+        if (!couponCodeInput.trim()) { setFormError("Por favor, insira um código."); return; }
+        setIsApplyingCoupon(true);
+        setFormError(null);
+        setAppliedCoupon(null);
+        try {
+            const coupon = await validateCouponByCode(couponCodeInput, restaurant.id);
+            if (!coupon || !coupon.isActive || new Date(coupon.expirationDate) < new Date()) throw new Error("Cupom inválido ou expirado.");
+            if (coupon.minOrderValue && Number(totalPrice) < Number(coupon.minOrderValue)) throw new Error(`Pedido mínimo de R$ ${Number(coupon.minOrderValue).toFixed(2)}.`);
+            setAppliedCoupon(coupon);
+            addToast({ message: 'Cupom aplicado!', type: 'success' });
+        } catch (err: any) { setFormError(err.message); } finally { setIsApplyingCoupon(false); }
+    };
+
+    const handleRemoveCoupon = () => {
+        setAppliedCoupon(null);
+        setCouponCodeInput('');
+        setFormError(null);
     };
 
     const persistOrderIdGlobally = (orderId: string) => {
@@ -343,7 +441,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
                         setSuccessfulOrder(normalizeOrder(updatedOrder));
                         setCurrentStep('SUCCESS');
-                        clearRestaurantCart(restaurant.id);
+                        clearCart();
                     }
                 }
             ).subscribe();
@@ -367,11 +465,20 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         saveCustomerDataLocally(customerName, customerPhone, address);
 
         try {
+            if (orderData.paymentMethod === 'Mensalista' && orderData.mensalistaId) {
+                const mensalista = await getMensalistaById(orderData.mensalistaId);
+                if (mensalista) {
+                    await updateMensalista(mensalista.id, {
+                        ...mensalista,
+                        balance: mensalista.balance + orderData.totalPrice
+                    });
+                }
+            }
             const order = await createOrder(orderData);
             setSuccessfulOrder(order);
             persistOrderIdGlobally(order.id);
             addToast({ message: 'Pedido enviado!', type: 'success' });
-            clearRestaurantCart(restaurant.id);
+            clearCart();
             setCurrentStep('SUCCESS');
         } catch (err: any) {
             console.error('Failed to create order:', err);
@@ -382,17 +489,48 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         }
     };
 
-    const handleConfirmManualPix = async () => {
+    const buildOrderData = (paymentMethodOverride?: string, finalPaymentMethodCalculated?: string): NewOrderData => {
         const customerAddress = deliveryMethod === 'PICKUP' 
             ? { zipCode: '00000-000', street: 'Retirada no Local', number: 'S/N', neighborhood: restaurant.name, complement: 'Cliente irá buscar' }
             : { zipCode: address.zipCode, street: address.street, number: address.number, neighborhood: address.neighborhood, complement: address.complement };
 
-        const orderData: NewOrderData = {
-            customerName, customerPhone, items: restaurantCartItems, totalPrice: Number(finalPriceWithFee), subtotal: Number(totalPrice),
-            deliveryFee: Number(effectiveDeliveryFee), restaurantId: restaurant.id,
+        let finalCartItems = [...cartItems];
+        let pointsRedeemed = 0;
+        let finalCouponCode = appliedCoupon?.code;
+        
+        if (loyaltyRedeemed && restaurant.loyaltyProgram) {
+             pointsRedeemed = restaurant.loyaltyProgram.rewardThreshold;
+             if (restaurant.loyaltyProgram.rewardType === 'FREE_ITEM') {
+                  finalCartItems.push({
+                      id: 'loyalty-reward',
+                      name: `🎁 ${restaurant.loyaltyProgram.rewardItemName || 'Item Grátis'} (Fidelidade)`,
+                      price: 0,
+                      basePrice: 0,
+                      imageUrl: '',
+                      quantity: 1,
+                      description: 'Recompensa de Fidelidade'
+                  });
+             } else {
+                  finalCouponCode = finalCouponCode ? `${finalCouponCode} + Fidelidade` : 'Fidelidade Recompensa';
+             }
+        }
+
+        const changeValue = parseFloat(changeFor.replace(',', '.').trim());
+        const pm = finalPaymentMethodCalculated || paymentMethodOverride || paymentMethod;
+
+        return {
+            customerName, customerPhone, items: finalCartItems, totalPrice: Number(finalPriceWithFee), subtotal: Number(totalPrice),
+            discountAmount: Number(discountAmount), couponCode: finalCouponCode, deliveryFee: Number(effectiveDeliveryFee), restaurantId: restaurant.id,
             restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
-            paymentMethod: "Pix (Comprovante via WhatsApp)", customerAddress, wantsSachets
+            paymentMethod: pm, customerAddress, wantsSachets, 
+            changeFor: (!isNaN(changeValue) && changeValue > 0) ? changeValue : undefined, 
+            mensalistaId, pointsRedeemed,
+            status: pm === 'Pix' ? 'Aguardando Pagamento' : 'Novo Pedido',
         };
+    };
+
+    const handleConfirmManualPix = async () => {
+        const orderData = buildOrderData("Pix (Comprovante via WhatsApp)");
         await handlePayOnDelivery(orderData);
     };
 
@@ -404,6 +542,10 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         if (!customerName || !customerPhone || !paymentMethod) { 
             setFormError('Por favor, preencha seu nome, telefone e selecione uma forma de pagamento.'); 
             return; 
+        }
+        if (paymentMethod === 'Mensalista' && !mensalistaId) {
+            setFormError('Por favor, insira um telefone válido de mensalista.');
+            return;
         }
         if (deliveryMethod === 'DELIVERY' && (!address.street || !address.number || !address.neighborhood)) { setFormError('Endereço incompleto.'); return; }
         
@@ -417,31 +559,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             }
         }
 
-        const customerAddress = deliveryMethod === 'PICKUP' 
-            ? { zipCode: '00000-000', street: 'Retirada no Local', number: 'S/N', neighborhood: restaurant.name, complement: 'Cliente irá buscar' }
-            : { zipCode: address.zipCode, street: address.street, number: address.number, neighborhood: address.neighborhood, complement: address.complement };
-
-        const changeValue = parseFloat(changeFor.replace(',', '.').trim());
-        const orderData: NewOrderData = {
-            customerName, customerPhone, items: restaurantCartItems, totalPrice: Number(finalPriceWithFee), subtotal: Number(totalPrice),
-            deliveryFee: Number(effectiveDeliveryFee), restaurantId: restaurant.id,
-            restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
-            paymentMethod: finalPaymentMethod, customerAddress, wantsSachets,
-            changeFor: !isNaN(changeValue) && changeValue > 0 ? changeValue : undefined,
-            status: paymentMethod === 'Pix' ? 'Aguardando Pagamento' : 'Novo Pedido'
-        };
-
-        if (paymentMethod === 'Mensalista') {
-            setIsSubmitting(true);
-            const mensalista = await verifyMensalistaByPhone(restaurant.id, customerPhone);
-            if (!mensalista) {
-                setFormError('Número de WhatsApp não encontrado no cadastro de mensalistas. Por favor, verifique o número ou escolha outra forma de pagamento.');
-                setIsSubmitting(false);
-                return;
-            }
-            orderData.mensalistaId = mensalista.id;
-            setIsSubmitting(false);
-        }
+        const orderData = buildOrderData(undefined, finalPaymentMethod);
 
         if (paymentMethod === 'Pix') await handlePixPayment(orderData);
         else await handlePayOnDelivery(orderData);
@@ -512,7 +630,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                     <div className="flex justify-between items-center px-4 py-3 bg-gray-50 border-b">
                         {steps.map((step, index) => {
                             if (step.id === 'PIX_PAYMENT' && paymentMethod !== 'Pix' && index > currentStepIndex) return null;
-                            if (step.id === 'SUCCESS' && index > currentStepIndex) return null;
+                            if (step.id === 'SUCCESS' && currentStep !== 'SUCCESS' && index > currentStepIndex) return null;
                             const isCurrent = index === currentStepIndex;
                             const isCompleted = index < currentStepIndex;
                             const textColor = isCompleted ? 'text-orange-600' : isCurrent ? 'text-orange-500' : 'text-gray-400';
@@ -543,7 +661,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                     <div className="overflow-y-auto p-4 space-y-4">
                         <h3 className="text-xl font-bold text-gray-800">Seu Pedido</h3>
                         <div className="space-y-3">
-                        {restaurantCartItems.map(item => (
+                            {cartItems.map(item => (
                                 <div key={item.id} className="flex items-start space-x-3 border-b pb-3 last:border-b-0">
                                     <OptimizedImage src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-md object-cover flex-shrink-0" />
                                     <div className="flex-grow">
@@ -555,7 +673,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         </div>
                         <div className="border-t pt-4 space-y-2 text-sm">
                             <div className="flex justify-between text-gray-600"><span>Subtotal</span><span>R$ {Number(totalPrice).toFixed(2)}</span></div>
-                            <div className="flex justify-between text-gray-600"><span>Entrega</span><span>{deliveryMethod === 'PICKUP' ? 'Grátis' : `R$ ${Number(effectiveDeliveryFee).toFixed(2)}`}</span></div>
+                            {appliedCoupon && <div className="flex justify-between text-green-600 font-semibold"><span>Desconto</span><span>- R$ {Number(discountAmount).toFixed(2)}</span></div>}
+                            <div className="flex justify-between text-gray-600"><span>Entrega</span><span>{deliveryMethod === 'PICKUP' ? 'Grátis' : `R$ ${Number(restaurant.deliveryFee || 0).toFixed(2)}`}</span></div>
                             <div className="flex justify-between font-bold text-lg text-gray-800 border-t pt-2"><span>Total</span><span>R$ {Number(finalPriceWithFee).toFixed(2)}</span></div>
                         </div>
                     </div>
@@ -617,16 +736,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                     <input name="number" placeholder="Nº" type="text" value={address.number} onChange={handleAddressChange} required className={`p-3 border-2 rounded-xl bg-gray-50 text-sm font-bold text-center transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} />
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {restaurant.deliveryZones && restaurant.deliveryZones.length > 0 ? (
-                                        <select name="neighborhood" value={address.neighborhood} onChange={handleAddressChange} required className={`p-3 border-2 rounded-xl bg-gray-50 text-sm font-semibold transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`}>
-                                            <option value="" disabled>Selecione o Bairro</option>
-                                            {restaurant.deliveryZones.map(zone => (
-                                                <option key={zone.id} value={zone.name}>{zone.name} (+ R$ {Number(zone.fee).toFixed(2)})</option>
-                                            ))}
-                                        </select>
-                                    ) : (
-                                        <input name="neighborhood" placeholder="Bairro" type="text" value={address.neighborhood} onChange={handleAddressChange} required className={`p-3 border-2 rounded-xl bg-gray-50 text-sm font-semibold transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} />
-                                    )}
+                                    <input name="neighborhood" placeholder="Bairro" type="text" value={address.neighborhood} onChange={handleAddressChange} required className={`p-3 border-2 rounded-xl bg-gray-50 text-sm font-semibold transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} />
                                     <input name="complement" placeholder="Apto / Bloco / Referência" type="text" value={address.complement} onChange={handleAddressChange} className={`p-3 border-2 rounded-xl bg-gray-50 text-sm transition-all ${highlightFields ? 'border-blue-300 ring-1 ring-blue-50' : 'border-gray-100'}`} />
                                 </div>
                             </div>
@@ -649,67 +759,176 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
                         <div className="border-t pt-4">
                             <span className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-3">Forma de Pagamento</span>
-                            <div className="space-y-3">
-                                {paymentOptions.map(gateway => {
-                                    const isSelected = paymentMethod === gateway;
-                                    const isCash = gateway.toLowerCase().includes('dinheiro');
-                                    return (
-                                        <div key={gateway} className={`border-2 rounded-xl transition-all ${isSelected ? 'border-orange-500 bg-orange-50/30' : 'border-gray-100 hover:border-orange-200'}`}>
-                                            <label className="flex items-center p-3 cursor-pointer">
-                                                <input type="radio" name="payment" value={gateway} checked={isSelected} onChange={e => { setPaymentMethod(e.target.value); setFormError(null); }} className="h-5 w-5 text-orange-600" />
-                                                <div className="ml-3 flex flex-col">
-                                                    <span className="text-sm font-bold text-gray-700">{gateway}</span>
-                                                    {gateway.toLowerCase().includes('cartão') && <span className="text-[10px] text-blue-600">ⓘ Maquininha na entrega.</span>}
-                                                </div>
-                                            </label>
-                                            {isSelected && isCash && (
-                                                <div className="p-3 border-t border-orange-200 bg-white/50 animate-fadeIn">
-                                                    <label htmlFor="changeFor" className="block text-[10px] font-black text-orange-800 uppercase mb-1 tracking-wider">Precisa de troco para quanto?</label>
-                                                    <div className="flex items-center bg-white border-2 border-orange-100 rounded-lg px-3 py-2 focus-within:border-orange-400 transition-colors">
-                                                        <span className="text-orange-400 mr-1 font-black">R$</span>
-                                                        <input id="changeFor" type="number" step="0.01" placeholder="Ex: 50.00" value={changeFor} onChange={(e) => setChangeFor(e.target.value)} className="w-full bg-transparent outline-none font-black text-gray-800 placeholder-gray-300"/>
+                            {isMensalista ? (
+                                <div className="bg-emerald-100 p-4 rounded-xl border-2 border-emerald-500 text-emerald-900 font-bold text-sm">
+                                    ✅ Cliente Mensalista identificado! O pagamento será processado conforme o plano mensal.
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {paymentOptions.map(gateway => {
+                                        const isSelected = paymentMethod === gateway;
+                                        const isCash = gateway.toLowerCase().includes('dinheiro');
+                                        return (
+                                            <div key={gateway} className={`border-2 rounded-xl transition-all ${isSelected ? 'border-orange-500 bg-orange-50/30' : 'border-gray-100 hover:border-orange-200'}`}>
+                                                <label className="flex items-center p-3 cursor-pointer">
+                                                    <input type="radio" name="payment" value={gateway} checked={isSelected} onChange={e => { setPaymentMethod(e.target.value); setFormError(null); }} className="h-5 w-5 text-orange-600" />
+                                                    <div className="ml-3 flex flex-col">
+                                                        <span className="text-sm font-bold text-gray-700">{gateway}</span>
+                                                        {gateway.toLowerCase().includes('cartão') && <span className="text-[10px] text-blue-600">ⓘ Maquininha na entrega.</span>}
                                                     </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                                                </label>
+                                                {isSelected && isCash && (
+                                                    <div className="p-3 border-t border-orange-200 bg-white/50 animate-fadeIn">
+                                                        <label htmlFor="changeFor" className="block text-[10px] font-black text-orange-800 uppercase mb-1 tracking-wider">Precisa de troco para quanto?</label>
+                                                        <div className="flex items-center bg-white border-2 border-orange-100 rounded-lg px-3 py-2 focus-within:border-orange-400 transition-colors">
+                                                            <span className="text-orange-400 mr-1 font-black">R$</span>
+                                                            <input id="changeFor" type="number" step="0.01" placeholder="Ex: 50.00" value={changeFor} onChange={(e) => setChangeFor(e.target.value)} className="w-full bg-transparent outline-none font-black text-gray-800 placeholder-gray-300"/>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
+                        {hasAvailableCoupons && (
+                            <div className="pt-2">
+                                <label className="block text-xs font-black text-gray-500 uppercase tracking-widest mb-1">Cupom</label>
+                                {appliedCoupon ? (
+                                    <div className="flex justify-between items-center p-3 border rounded-xl bg-green-50 border-green-300 animate-fadeIn">
+                                        <p className="text-green-800 text-xs font-bold">Cupom "{appliedCoupon.code}" ativo!</p>
+                                        <button type="button" onClick={handleRemoveCoupon} className="text-red-600 font-bold p-2 active:scale-90">&times;</button>
+                                    </div>
+                                ) : (
+                                    <div className="flex gap-2">
+                                        <input type="text" value={couponCodeInput} onChange={e => setCouponCodeInput(e.target.value.toUpperCase())} placeholder="CÓDIGO" className="flex-grow p-3 border-2 border-gray-100 rounded-xl bg-gray-50 uppercase text-sm font-black" />
+                                        <button type="button" onClick={handleApplyCoupon} disabled={isApplyingCoupon} className="bg-gray-800 text-white font-black px-6 rounded-xl disabled:opacity-50 text-xs active:scale-95 transition-transform uppercase">{isApplyingCoupon ? '...' : 'Aplicar'}</button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        
+                        {customerLoyalty && restaurant.loyaltyProgram?.active && (
+                            <div className="pt-4 border-t border-gray-100 mt-2">
+                                <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2 flex items-center gap-1">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" /></svg>
+                                    Clube de Fidelidade
+                                </label>
+                                <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-100 p-4 rounded-2xl flex items-center justify-between shadow-sm">
+                                    <div>
+                                        <p className="text-xs font-bold text-indigo-900">Seus Pontos: <span className="text-indigo-600 tabular-nums text-sm">{customerLoyalty.points}</span></p>
+                                        <p className="text-[10px] text-indigo-600 font-medium">{customerLoyalty.points >= restaurant.loyaltyProgram.rewardThreshold ? (restaurant.loyaltyProgram.rewardType === 'FREE_ITEM' ? `Recompensa disponível: ${restaurant.loyaltyProgram.rewardItemName}` : `Recompensa disponível!`) : `Faltam ${Math.max(0, restaurant.loyaltyProgram.rewardThreshold - customerLoyalty.points)} pontos para a recompensa!`}</p>
+                                    </div>
+                                    {customerLoyalty.points >= restaurant.loyaltyProgram.rewardThreshold && (
+                                        <button type="button" onClick={() => setLoyaltyRedeemed(!loyaltyRedeemed)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider backdrop-blur-sm transition-colors shadow-sm ${loyaltyRedeemed ? 'bg-indigo-600 text-white shadow-inner' : 'bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50'}`}>
+                                            {loyaltyRedeemed ? '✓ Resgatado' : 'Resgatar!'}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        
                         {formError && <p className="text-red-500 text-xs mt-2 font-bold animate-shake">{formError}</p>}
                     </form>
                 )}
 
                 {currentStep === 'PIX_PAYMENT' && (
-                    <div className="text-center flex flex-col items-center p-6 animate-fadeIn">
-                        <h3 className="text-xl font-bold text-gray-800 mb-2">{isManualPix ? 'Pix Manual' : 'Pedido Criado com Sucesso!'}</h3>
+                    <div className="flex-1 overflow-y-auto w-full p-4 sm:p-6 flex flex-col items-center animate-fadeIn font-sans bg-white pb-32">
+                        <h3 className="text-xl font-black text-gray-900 uppercase tracking-tight mb-4">
+                            {isManualPix ? 'Pagamento Pix' : 'Pedido Registrado!'}
+                        </h3>
                         
                         {!isManualPix && (
-                            <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-lg w-full mb-4">
-                                <p className="text-xs text-emerald-800 font-bold">
-                                    Seu pedido já foi registrado. Realize o pagamento do Pix abaixo para confirmar.
+                            <div className="bg-emerald-50 border-2 border-emerald-100 p-3 rounded-2xl w-full max-w-sm mb-4 text-center">
+                                <p className="text-[11px] text-emerald-800 font-bold leading-relaxed">
+                                    Realize o pagamento do Pix abaixo para que o restaurante possa confirmar seu pedido.
                                 </p>
                             </div>
                         )}
 
                         {isManualPix ? (
-                            <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg w-full mb-4">
-                                <p className="text-[10px] text-orange-700 font-bold uppercase mb-1">Chave Pix</p>
-                                <div className="flex items-center justify-between gap-2 bg-white p-2 rounded border border-orange-100">
-                                    <span className="text-lg font-mono font-bold text-gray-800 break-all select-all">{restaurant.manualPixKey}</span>
-                                    <button type="button" onClick={() => { navigator.clipboard.writeText(restaurant.manualPixKey || ''); addToast({ message: 'Chave copiada!', type: 'success' }); }} className="bg-orange-600 text-white p-2 rounded shadow-md active:scale-90 transition-transform"><ClipboardIcon className="w-5 h-5"/></button>
+                            <div className="w-full max-w-sm bg-orange-50 p-5 rounded-3xl border-2 border-orange-100 flex flex-col items-center text-center">
+                                <div className="w-14 h-14 bg-orange-600 text-white rounded-2xl flex items-center justify-center mb-3 shadow-lg">
+                                    <WhatsAppIcon className="w-8 h-8" />
                                 </div>
-                                <button type="button" onClick={handleConfirmManualPix} className="mt-6 bg-green-600 text-white font-bold py-4 px-6 rounded-xl w-full shadow-lg active:scale-95 transition-transform" disabled={isSubmitting}>JÁ FIZ O PAGAMENTO</button>
+                                <h4 className="font-bold text-orange-900 mb-1">Pix Manual</h4>
+                                <p className="text-[10px] text-orange-800 mb-4 px-4">Copie a chave, pague no seu banco e envie o comprovante no WhatsApp.</p>
+                                
+                                <div className="w-full text-left">
+                                    <p className="text-[10px] text-orange-700 font-black uppercase mb-1 ml-1">Chave Pix</p>
+                                    <div className="flex items-center justify-between gap-3 bg-white p-3 rounded-2xl border-2 border-orange-100 shadow-sm overflow-hidden">
+                                        <span className="text-xs font-mono font-bold text-gray-800 break-all select-all flex-1">{restaurant.manualPixKey}</span>
+                                        <button 
+                                            type="button" 
+                                            onClick={() => { 
+                                                if (navigator.clipboard) {
+                                                    navigator.clipboard.writeText(restaurant.manualPixKey || ''); 
+                                                    addToast({ message: 'Chave copiada!', type: 'success' }); 
+                                                }
+                                            }} 
+                                            className="bg-orange-600 text-white p-2 rounded-xl shadow-md active:scale-90 transition-transform flex-shrink-0"
+                                        >
+                                            <ClipboardIcon className="w-5 h-5"/>
+                                        </button>
+                                    </div>
+                                </div>
+                                <button type="button" onClick={handleConfirmManualPix} className="mt-6 bg-green-600 text-white font-black py-4 px-8 rounded-2xl w-full shadow-lg active:scale-95 transition-transform" disabled={isSubmitting}>JÁ FIZ O PAGAMENTO</button>
                             </div>
                         ) : (
                             pixData ? (
-                                <>
-                                    <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="PIX" className="w-48 h-48 mx-auto my-2 border-4 border-gray-700 p-1 rounded-lg" />
-                                    <button type="button" onClick={() => { navigator.clipboard.writeText(pixData.qrCode); addToast({ message: 'Código copiado!', type: 'success' }); }} className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg my-2 w-full max-xs shadow-lg flex justify-center items-center gap-2 active:scale-95 transition-all"><ClipboardIcon className="w-5 h-5"/>Copiar Código</button>
-                                    <p className="text-2xl font-bold text-orange-600 mt-2">R$ {Number(finalPriceWithFee).toFixed(2)}</p>
-                                    <div className="mt-4 text-[10px] font-bold text-gray-500">Tempo restante: {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}</div>
-                                </>
-                            ) : <Spinner message="Gerando Pix..." />
+                                <div className="flex flex-col items-center w-full max-w-sm">
+                                    <div className="bg-white p-2 rounded-2xl border-2 border-gray-100 shadow-md mb-4 flex items-center justify-center">
+                                        <img 
+                                            src={`data:image/png;base64,${pixData.qrCodeBase64}`} 
+                                            alt="PIX" 
+                                            className="w-32 h-32 sm:w-48 sm:h-48 object-contain" 
+                                        />
+                                    </div>
+
+                                    <button 
+                                        type="button" 
+                                        onClick={() => { 
+                                            if (navigator.clipboard) {
+                                                navigator.clipboard.writeText(pixData.qrCode); 
+                                                addToast({ message: 'Código copiado!', type: 'success' }); 
+                                            }
+                                        }} 
+                                        className="bg-blue-600 text-white font-black py-3.5 px-8 rounded-2xl w-full shadow-xl shadow-blue-100 flex justify-center items-center gap-3 active:scale-95 transition-all hover:bg-blue-700 mb-4 h-14"
+                                    >
+                                        <ClipboardIcon className="w-6 h-6"/>
+                                        <span className="text-sm">COPIAR CÓDIGO</span>
+                                    </button>
+
+                                    <div className="flex flex-col items-center gap-1">
+                                        <p className="text-xl font-black text-gray-900 uppercase">R$ {Number(finalPriceWithFee).toFixed(2).replace('.', ',')}</p>
+                                        <div className="bg-gray-100 px-3 py-1 rounded-full">
+                                            <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
+                                                Expira em: {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                pixError ? (
+                                    <div className="p-8 bg-red-50 rounded-3xl border-2 border-red-100 flex flex-col items-center text-center w-full max-w-sm">
+                                        <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-4">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-10 h-10">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+                                            </svg>
+                                        </div>
+                                        <p className="font-black text-red-900 uppercase tracking-tight mb-2">Erro no Pix</p>
+                                        <p className="text-sm font-medium text-red-700 mb-6">{pixError}</p>
+                                        <button 
+                                            type="button" 
+                                            onClick={handleBackFromPix}
+                                            className="text-blue-600 font-black hover:underline"
+                                        >
+                                            Voltar e trocar pagamento
+                                        </button>
+                                    </div>
+                                ) : <Spinner message="Gerando Pix..." />
+                            )
                         )}
                     </div>
                 )}
@@ -720,19 +939,48 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                             <div className="absolute inset-0 bg-emerald-200 rounded-full animate-ping scale-75 opacity-20"></div>
                             <CheckCircleIcon className="w-24 h-24 text-emerald-600 relative z-10" />
                         </div>
-                        <h3 className="text-3xl font-black text-emerald-900 uppercase tracking-tighter">Pedido Confirmado!</h3>
-                        <div className="mt-6 bg-white p-6 rounded-3xl border-2 border-emerald-100 shadow-xl max-w-sm w-full relative">
-                            <h4 className="font-extrabold text-blue-800 text-base mb-2">Acompanhe seu Pedido!</h4>
-                            <p className="text-sm text-gray-700 leading-relaxed mb-4">
-                                Você não precisa mais de WhatsApp para saber o status. O acompanhamento do seu pedido
-                                é *automático e em tempo real* pelo painel laranja no canto inferior da tela.
-                            </p>
-                            <p className="text-xs text-blue-700 leading-snug">
-                                Para uma experiência ainda melhor e atualizações instantâneas,
-                                recomendamos *instalar o GuaraFood na sua tela inicial do celular!*
-                            </p>
+                        <h2 className="text-3xl font-black text-emerald-900 uppercase tracking-tighter">Pedido Criado!</h2>
+                        
+                        <div className="mt-4 bg-orange-100 border-2 border-orange-200 p-5 rounded-2xl w-full max-w-sm mb-8 relative overflow-hidden group">
+                           <div className="absolute top-0 left-0 w-1.5 h-full bg-orange-600"></div>
+                           <p className="text-[10px] font-black text-orange-800 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                             <span className="w-2 h-2 bg-orange-600 rounded-full animate-pulse"></span>
+                             Passo Obrigatório
+                           </p>
+                           <p className="text-sm font-extrabold text-orange-950 leading-tight">
+                             Clique no botão abaixo para que o restaurante receba o seu alerta no WhatsApp!
+                           </p>
                         </div>
-                        <button type="button" onClick={handleSuccessAction} className="mt-10 bg-emerald-600 text-white font-black py-5 px-16 rounded-full shadow-xl shadow-emerald-200 active:scale-90 transition-all text-xl uppercase tracking-widest hover:bg-emerald-700 hover:-translate-y-1">Entendi</button>
+
+                        <button 
+                            type="button" 
+                            onClick={handleSuccessAction} 
+                            className="w-full max-w-sm bg-green-600 text-white font-black py-5 px-8 rounded-2xl shadow-xl shadow-green-200 active:scale-95 transition-all text-lg uppercase tracking-tight flex items-center justify-center gap-3 hover:bg-green-700 animate-pulse transition-duration-1000"
+                            style={{ animation: 'pulse-grow 2s infinite' }}
+                        >
+                            <WhatsAppIcon className="w-8 h-8" />
+                            <span>CONFIRMAR NO WHATSAPP</span>
+                        </button>
+
+                        <button 
+                            type="button" 
+                            onClick={() => {
+                                window.dispatchEvent(new Event('guarafood:update-orders'));
+                                window.dispatchEvent(new Event('guarafood:open-tracker')); 
+                                onClose();
+                            }}
+                            className="mt-6 text-gray-400 text-xs font-black uppercase tracking-widest hover:text-gray-600 transition-colors py-2 px-4 rounded-lg"
+                        >
+                            Pular e Acompanhar Pedido
+                        </button>
+
+                        <style>{`
+                            @keyframes pulse-grow {
+                                0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.4); }
+                                50% { transform: scale(1.03); box-shadow: 0 0 0 20px rgba(22, 163, 74, 0); }
+                                100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+                            }
+                        `}</style>
                     </div>
                 )}
                 
@@ -747,7 +995,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                 <button 
                                     onClick={handleNextStep} 
                                     type="button"
-                                    disabled={isSubmitting || restaurantCartItems.length === 0 || !isOpenNow} 
+                                    disabled={isSubmitting || cartItems.length === 0 || !isOpenNow} 
                                     className="mt-1 bg-orange-600 text-white font-bold py-2.5 px-8 rounded-lg shadow-lg disabled:opacity-50 text-sm active:scale-95 transition-all"
                                 >
                                     {isSubmitting ? '...' : 'Continuar'}

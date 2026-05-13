@@ -21,6 +21,6 @@ export const Logo: React.FC<{ className?: string }> = ({ className = '' }) => (
       <path d="M12 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>
       <path d="M12 2c-4.963 0-9 4.037-9 9 0 4.148 3.037 7.6 7 8.722V21h4v-1.278c3.963-1.122 7-4.574 7-8.722 0-4.963-4.037-9-9-9zm0 16a7 7 0 1 1 0-14 7 7 0 0 1 0 14z"/>
     </svg>
-    <span className="text-3xl text-white font-bold ml-2">GuaraFood</span>
+    <span className="text-2xl sm:text-3xl text-white font-bold ml-2">GuaraFood</span>
   </div>
 );

@@ -1,6 +1,5 @@
 
-import { useState, useCallback, useContext, createContext, useMemo } from 'react';
-import type { ReactNode } from 'react';
+import React, { useState, useCallback, useContext, createContext, ReactNode, useMemo } from 'react';
 import Notifications from '../components/Notifications';
 import type { ToastOptions, ConfirmOptions, PromptOptions } from '../types';
 
@@ -12,7 +11,7 @@ interface NotificationContextType {
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
-export function NotificationProvider({ children }: { children: ReactNode }) {
+export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [toasts, setToasts] = useState<ToastOptions[]>([]);
     const [confirmOptions, setConfirmOptions] = useState<ConfirmOptions | null>(null);
     const [promptOptions, setPromptOptions] = useState<PromptOptions | null>(null);

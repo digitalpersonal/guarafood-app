@@ -73,7 +73,7 @@ const ComboCard: React.FC<ComboCardProps> = ({ combo, menuItems, isOpen = true }
       }
       const rect = event.currentTarget.getBoundingClientRect();
       addFlyingItem(combo.imageUrl, rect);
-      addToCart(combo, combo.restaurantId);
+      addToCart(combo);
   };
   
   const tagText = combo.activePromotion ? 'PROMO' : 'COMBO';

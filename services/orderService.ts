@@ -23,17 +23,17 @@ const normalizeOrder = (data: any): Order => {
         restaurantPhone: data.restaurant_phone,
         paymentMethod: data.payment_method,
         changeFor: data.change_for || data.payment_details?.changeFor,
+        couponCode: data.coupon_code,
+        discountAmount: data.discount_amount,
         subtotal: data.subtotal,
         deliveryFee: data.delivery_fee,
         payment_id: data.payment_id,
         payment_details: data.payment_details,
         paymentStatus: data.payment_status || 'paid',
         tableNumber: data.table_number || data.customer_address?.tableNumber,
-        comandaNumber: data.comanda_number || data.customer_address?.comandaNumber || data.payment_details?.comandaNumber,
+        comandaNumber: data.comanda_number || data.customer_address?.comandaNumber,
         paymentHistory: data.payment_history || data.payment_details?.history || [],
-        mensalistaId: data.mensalista_id || data.payment_details?.mensalistaId,
-        waiterName: data.waiter_name || data.payment_details?.waiterName,
-        serviceCharge: data.service_charge || data.payment_details?.serviceCharge,
+        mensalistaId: data.mensalista_id
     };
 };
 
@@ -56,7 +56,7 @@ export const subscribeToOrders = (
     };
 
     // Canal Estático para estabilidade
-    const channelName = restaurantId ? `orders_store_${Number(restaurantId)}` : `orders_global_admin`;
+    const channelName = restaurantId ? `orders_store_${restaurantId}` : `orders_global_admin`;
     
     // Garantir que não existam múltiplos canais pendentes
     const existingChannels = supabase.getChannels().filter(ch => (ch as any).topic === channelName || (ch as any).name === channelName);
@@ -69,7 +69,7 @@ export const subscribeToOrders = (
                 event: '*', 
                 schema: 'public', 
                 table: 'orders', 
-                filter: restaurantId ? `restaurant_id=eq.${Number(restaurantId)}` : undefined 
+                filter: restaurantId ? `restaurant_id=eq.${restaurantId}` : undefined 
             },
             () => {
                 refreshData();
@@ -90,30 +90,37 @@ export const subscribeToOrders = (
 };
 
 export const fetchOrders = async (restaurantId?: number, options?: { limit?: number }): Promise<Order[]> => {
-    try {
-        let query = supabase.from('orders').select('*');
-        if (restaurantId) {
-            query = query.eq('restaurant_id', Number(restaurantId));
-        }
-        
-        // Se não houver limite definido, usamos 5000 como segurança alta, mas limitando para evitar crash.
-        const finalLimit = options?.limit || 5000;
-        query = query.limit(finalLimit);
-
-        const { data, error } = await query.order('created_at', { ascending: false });
-        if (error) {
-            console.error(`[orderService] Error fetching orders for restaurant ${restaurantId}:`, error);
-            handleSupabaseError({ error, customMessage: 'Failed to fetch orders', tableName: 'orders' });
-            throw error; // Throw instead of returning [] to prevent clearing state on error
-        }
-        
-        const normalized = (data || []).map(normalizeOrder);
-        console.log(`[orderService] Fetched ${normalized.length} orders for restaurant ${restaurantId}`);
-        return normalized;
-    } catch (err) {
-        console.error(`[orderService] Critical error in fetchOrders:`, err);
-        throw err; // Re-throw to let callers handle it
+    let query = supabase.from('orders').select('*');
+    if (restaurantId) {
+        query = query.eq('restaurant_id', restaurantId);
     }
+    
+    // Se não houver limite definido, usamos 5000 como segurança alta, mas limitando para evitar crash.
+    const finalLimit = options?.limit || 5000;
+    query = query.limit(finalLimit);
+
+    const { data, error } = await query.order('timestamp', { ascending: false });
+    if (error) {
+        handleSupabaseError({ error, customMessage: 'Failed to fetch orders' });
+        return [];
+    }
+    
+    return (data || []).map(normalizeOrder);
+};
+
+export const fetchOrdersByMensalistaId = async (mensalistaId: string): Promise<Order[]> => {
+    const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('mensalista_id', mensalistaId)
+        .order('timestamp', { ascending: false });
+    
+    if (error) {
+        handleSupabaseError({ error, customMessage: 'Failed to fetch orders for mensalista' });
+        return [];
+    }
+    
+    return (data || []).map(normalizeOrder);
 };
 
 export interface NewOrderData {
@@ -134,15 +141,16 @@ export interface NewOrderData {
     restaurantAddress: string;
     restaurantPhone: string;
     paymentMethod: string;
+    couponCode?: string;
+    discountAmount?: number;
     subtotal?: number;
     deliveryFee?: number;
     changeFor?: number;
     tableNumber?: string;
     comandaNumber?: string;
     status?: OrderStatus;
-    mensalistaId?: string;
-    waiterName?: string;
-    serviceCharge?: number;
+    mensalistaId?: string; // NEW: Para pedidos de mensalistas
+    pointsRedeemed?: number; // NEW: Pontos de fidelidade resgatados
 }
 
 export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
@@ -165,24 +173,46 @@ export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
         restaurant_name: orderData.restaurantName,
         restaurant_address: orderData.restaurantAddress,
         restaurant_phone: orderData.restaurantPhone,
-        payment_method: orderData.paymentMethod,
+        payment_method: orderData.mensalistaId ? 'Mensalista' : orderData.paymentMethod,
+        coupon_code: orderData.couponCode,
+        discount_amount: orderData.discountAmount,
         subtotal: orderData.subtotal,
         delivery_fee: orderData.deliveryFee,
         change_for: orderData.changeFor,
         table_number: orderData.tableNumber,
+        comanda_number: orderData.comandaNumber,
         status: orderData.status || 'Novo Pedido', 
         payment_status: isTable ? 'pending' : 'paid',
         timestamp: new Date().toISOString(),
-        payment_details: {
-            waiterName: orderData.waiterName,
-            serviceCharge: orderData.serviceCharge,
-            mensalistaId: orderData.mensalistaId,
-            comandaNumber: orderData.comandaNumber
-        }
+        mensalista_id: orderData.mensalistaId, // NEW
     };
 
     const { data, error } = await supabase.from('orders').insert(newOrderPayload).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to create order', tableName: 'orders' });
+    
+    // Atualizar saldo do mensalista se aplicável
+    if (orderData.mensalistaId) {
+        const { data: mensalista } = await supabase.from('mensalistas').select('balance').eq('id', orderData.mensalistaId).single();
+        if (mensalista) {
+            await supabase.from('mensalistas').update({ balance: Number(mensalista.balance || 0) + orderData.totalPrice }).eq('id', orderData.mensalistaId);
+        }
+    }
+
+    if (orderData.pointsRedeemed && orderData.pointsRedeemed > 0) {
+        // Reduz os pontos do cliente (temos que buscar primeiro e atualizar, ou fazer RPC, aqui faremos read/write simples para facilitar)
+        const { data: loyaltyCard } = await supabase.from('customer_loyalty')
+            .select('points, redeemed_points')
+            .eq('restaurant_id', orderData.restaurantId)
+            .eq('customer_phone', orderData.customerPhone)
+            .single();
+            
+        if (loyaltyCard) {
+            await supabase.from('customer_loyalty').update({
+                points: Math.max(0, loyaltyCard.points - orderData.pointsRedeemed),
+                redeemed_points: (loyaltyCard.redeemed_points || 0) + orderData.pointsRedeemed
+            }).eq('restaurant_id', orderData.restaurantId).eq('customer_phone', orderData.customerPhone);
+        }
+    }
     
     window.dispatchEvent(new Event('guarafood:update-orders'));
     
@@ -207,27 +237,37 @@ export const updateOrderPaymentStatus = async (orderId: string, paymentStatus: '
     window.dispatchEvent(new Event('guarafood:update-orders'));
 };
 
-export const recordOrderPayment = async (orderId: string, payment: PaymentEntry, newTotalPaid: number, originalTotal: number, mensalistaId?: string | null): Promise<Order> => {
+export const recordOrderPayment = async (orderId: string, payment: PaymentEntry, newTotalPaid: number, originalTotal: number, mensalistaId?: string): Promise<Order> => {
     // Busca o histórico atual
-    const { data: currentOrder } = await supabase.from('orders').select('payment_details').eq('id', orderId).single();
+    const { data: currentOrder } = await supabase.from('orders').select('payment_history, payment_details').eq('id', orderId).single();
     
-    const history = currentOrder?.payment_details?.history || [];
+    const history = currentOrder?.payment_history || currentOrder?.payment_details?.history || [];
     const newHistory = [...history, payment];
     
     const isFullyPaid = newTotalPaid >= originalTotal - 0.01; // Tolerance for float precision
     const paymentStatus = isFullyPaid ? 'paid' : 'partial';
 
     const updateData: any = { 
+        payment_history: newHistory,
         payment_status: paymentStatus
     };
 
-    updateData.payment_details = {
-        ...(currentOrder?.payment_details || {}),
-        history: newHistory
-    };
+    // Also update payment_details for backward compatibility if needed
+    if (currentOrder?.payment_details) {
+        updateData.payment_details = {
+            ...currentOrder.payment_details,
+            history: newHistory
+        };
+    }
 
     if (mensalistaId) {
-        updateData.payment_details.mensalistaId = mensalistaId;
+        updateData.mensalista_id = mensalistaId;
+        
+        // Adjust mensalista balance
+        const { data: mensalista } = await supabase.from('mensalistas').select('balance').eq('id', mensalistaId).single();
+        if (mensalista) {
+            await supabase.from('mensalistas').update({ balance: Number(mensalista.balance || 0) + payment.amount }).eq('id', mensalistaId);
+        }
     }
 
     const { data, error } = await supabase.from('orders')
@@ -240,83 +280,33 @@ export const recordOrderPayment = async (orderId: string, payment: PaymentEntry,
     return normalizeOrder(data);
 };
 
-export const deleteOrderPayment = async (orderId: string, paymentIndex: number): Promise<Order> => {
-    // Busca o histórico atual
-    const { data: currentOrder } = await supabase.from('orders').select('payment_details, total_price').eq('id', orderId).single();
-    
-    const history = currentOrder?.payment_details?.history || [];
-    const paymentToDelete = history[paymentIndex];
-    
-    if (!paymentToDelete) throw new Error('Pagamento não encontrado.');
-
-    const newHistory = history.filter((_: any, i: number) => i !== paymentIndex);
-    
-    const newTotalPaid = newHistory.reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
-    const originalTotal = currentOrder.total_price;
-    
-    const isFullyPaid = newTotalPaid >= originalTotal - 0.01;
-    const paymentStatus = newTotalPaid <= 0 ? 'pending' : (isFullyPaid ? 'paid' : 'partial');
-
-    const updateData: any = { 
-        payment_status: paymentStatus
-    };
-
-    updateData.payment_details = {
-        ...(currentOrder?.payment_details || {}),
-        history: newHistory
-    };
-
-    const { data, error } = await supabase.from('orders')
-        .update(updateData)
-        .eq('id', orderId)
-        .select()
-        .single();
-
-    handleSupabaseError({ error, customMessage: 'Failed to delete payment' });
-    return normalizeOrder(data);
-};
-
 export const updateOrderDetails = async (
     orderId: string,
     updatedDetails: {
         items: CartItem[];
         totalPrice: number;
         subtotal: number;
+        discountAmount?: number;
         paymentMethod?: string; 
         customerName?: string;
         customerPhone?: string;
-        discountAmount?: number;
         mensalistaId?: string | null;
-        waiterName?: string;
-        serviceCharge?: number;
     }
 ): Promise<Order> => {
-    // Fetch current order to get old total price
-    const { data: currentOrder } = await supabase.from('orders').select('total_price').eq('id', orderId).single();
+    // Fetch current order to get old total price and mensalista_id
+    const { data: currentOrder } = await supabase.from('orders').select('total_price, mensalista_id').eq('id', orderId).single();
 
     const payload: any = {
         items: updatedDetails.items,
         total_price: updatedDetails.totalPrice,
         subtotal: updatedDetails.subtotal,
+        discount_amount: updatedDetails.discountAmount,
         payment_method: updatedDetails.paymentMethod,
     };
 
-    if (updatedDetails.customerName !== undefined) payload.customer_name = updatedDetails.customerName;
-    if (updatedDetails.customerPhone !== undefined) payload.customer_phone = updatedDetails.customerPhone;
-    if (updatedDetails.discountAmount !== undefined) payload.discount_amount = updatedDetails.discountAmount;
-    
-    // Update payment_details for fields that don't have dedicated columns
-    if (updatedDetails.mensalistaId !== undefined || updatedDetails.waiterName !== undefined || updatedDetails.serviceCharge !== undefined) {
-        const { data: currentOrderData } = await supabase.from('orders').select('payment_details').eq('id', orderId).single();
-        const currentPaymentDetails = currentOrderData?.payment_details || {};
-        
-        payload.payment_details = {
-            ...currentPaymentDetails,
-            ...(updatedDetails.mensalistaId !== undefined && { mensalistaId: updatedDetails.mensalistaId }),
-            ...(updatedDetails.waiterName !== undefined && { waiterName: updatedDetails.waiterName }),
-            ...(updatedDetails.serviceCharge !== undefined && { serviceCharge: updatedDetails.serviceCharge }),
-        };
-    }
+    if (updatedDetails.customerName) payload.customer_name = updatedDetails.customerName;
+    if (updatedDetails.customerPhone) payload.customer_phone = updatedDetails.customerPhone;
+    if (updatedDetails.mensalistaId !== undefined) payload.mensalista_id = updatedDetails.mensalistaId;
 
     const { data, error } = await supabase.from('orders').update(payload).eq('id', orderId).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to update order details' });
@@ -330,6 +320,38 @@ export const updateOrderDetails = async (
     if (data.payment_status !== paymentStatus) {
         await supabase.from('orders').update({ payment_status: paymentStatus }).eq('id', orderId);
         data.payment_status = paymentStatus;
+    }
+
+    // Adjust mensalista balance if applicable
+    // Case 1: Mensalista ID changed (from one to another, or added/removed)
+    const oldMensalistaId = currentOrder?.mensalista_id;
+    const newMensalistaId = updatedDetails.mensalistaId;
+
+    if (currentOrder && newMensalistaId !== undefined && oldMensalistaId !== newMensalistaId) {
+        // Remove from old mensalista balance
+        if (oldMensalistaId) {
+            const { data: oldMensalista } = await supabase.from('mensalistas').select('balance').eq('id', oldMensalistaId).single();
+            if (oldMensalista) {
+                await supabase.from('mensalistas').update({ balance: Number(oldMensalista.balance || 0) - Number(currentOrder.total_price) }).eq('id', oldMensalistaId);
+            }
+        }
+        // Add to new mensalista balance
+        if (newMensalistaId) {
+            const { data: newMensalista } = await supabase.from('mensalistas').select('balance').eq('id', newMensalistaId).single();
+            if (newMensalista) {
+                await supabase.from('mensalistas').update({ balance: Number(newMensalista.balance || 0) + updatedDetails.totalPrice }).eq('id', newMensalistaId);
+            }
+        }
+    } 
+    // Case 2: Same mensalista, but price changed
+    else if (currentOrder && oldMensalistaId && updatedDetails.totalPrice !== undefined) {
+        const priceDifference = updatedDetails.totalPrice - Number(currentOrder.total_price);
+        if (priceDifference !== 0) {
+            const { data: mensalista } = await supabase.from('mensalistas').select('balance').eq('id', oldMensalistaId).single();
+            if (mensalista) {
+                await supabase.from('mensalistas').update({ balance: Number(mensalista.balance || 0) + priceDifference }).eq('id', oldMensalistaId);
+            }
+        }
     }
 
     return normalizeOrder(data);
@@ -414,28 +436,10 @@ export const clearTodayTableOrders = async (restaurantId: number): Promise<void>
 };
 
 export const requestKitchenPrint = async (orderId: string, itemsToPrint: CartItem[]): Promise<void> => {
-    if (!itemsToPrint || itemsToPrint.length === 0) {
-        console.warn('Attempted to print empty kitchen order.');
-        return;
-    }
-    // 1. Fetch current order to update items
-    const { data: currentOrder } = await supabase.from('orders').select('payment_details, items').eq('id', orderId).single();
-    if (!currentOrder) throw new Error('Pedido não encontrado.');
-
-    const currentDetails = currentOrder.payment_details || {};
+    const { data: currentOrder } = await supabase.from('orders').select('payment_details').eq('id', orderId).single();
+    const currentDetails = currentOrder?.payment_details || {};
     const currentQueue = currentDetails.print_queue || [];
-    const currentItems = currentOrder.items || [];
     
-    // 2. Mark items as printed in the order's items list
-    // We identify items by their unique ID (CartItem.id)
-    const itemsToPrintIds = new Set(itemsToPrint.map(i => i.id));
-    const updatedItems = currentItems.map((item: CartItem) => {
-        if (itemsToPrintIds.has(item.id)) {
-            return { ...item, kitchenPrinted: true };
-        }
-        return item;
-    });
-
     const newRequest = {
         id: crypto.randomUUID(),
         timestamp: new Date().toISOString(),
@@ -449,15 +453,8 @@ export const requestKitchenPrint = async (orderId: string, itemsToPrint: CartIte
         print_queue: [...currentQueue, newRequest]
     };
     
-    const { error } = await supabase.from('orders').update({ 
-        payment_details: newDetails,
-        items: updatedItems
-    }).eq('id', orderId);
-    
+    const { error } = await supabase.from('orders').update({ payment_details: newDetails }).eq('id', orderId);
     handleSupabaseError({ error, customMessage: 'Failed to request kitchen print' });
-    
-    // Trigger manual sync for all listeners
-    window.dispatchEvent(new Event('guarafood:update-orders'));
 };
 
 export const requestAdminPrint = async (orderId: string, itemsToPrint: CartItem[]): Promise<void> => {

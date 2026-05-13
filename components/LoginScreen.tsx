@@ -152,7 +152,7 @@ const LoginScreen: React.FC<{ onLoginSuccess: () => void; onBack: () => void; }>
                         <button 
                             type="submit" 
                             disabled={isSubmitting} 
-                            className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-lg text-sm font-bold text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition-all transform active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
+                            className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-lg text-sm font-bold text-white bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition-all transform active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
                         >
                             {isSubmitting ? <Spinner message="Autenticando..." /> : 'Acessar Painel'}
                         </button>

@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { subscribeToOrders, fetchOrders } from '../services/orderService';
 import { useAuth } from '../services/authService'; 
-import { supabase } from '../services/api';
 import { fetchRestaurantByIdSecure } from '../services/databaseService';
 import type { Order, StaffMember, CartItem, Restaurant } from '../types';
 import OrdersView from './OrdersView';
@@ -12,7 +11,6 @@ import PrintableOrder from './PrintableOrder';
 import TableManagement from './TableManagement';
 import StaffManagement from './StaffManagement';
 import MensalistasManager from './MensalistasManager';
-import Spinner from './Spinner';
 import PinPadModal from './PinPadModal';
 import HelpCenter from './HelpCenter';
 import { useSound } from '../hooks/useSound';
@@ -38,29 +36,10 @@ const LockClosedIcon: React.FC<{ className?: string }> = ({ className }) => (
 const SalesDashboard = React.lazy(() => import('./SalesDashboard'));
 const CustomerList = React.lazy(() => import('./CustomerList'));
 
-interface OrderManagementProps {
-}
-
-const OrderManagement: React.FC<OrderManagementProps> = () => {
+const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { currentUser, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'help' | 'mensalistas'>(() => {
-        const saved = localStorage.getItem('guarafood-active-tab');
-        const validTabs = ['orders', 'tables', 'menu', 'settings', 'financial', 'customers', 'staff', 'help', 'mensalistas'];
-        return (saved && validTabs.includes(saved)) ? (saved as any) : 'orders';
-    });
-    const [orders, setOrders] = useState<Order[]>(() => {
-        const saved = localStorage.getItem('guarafood-last-orders');
-        return saved ? JSON.parse(saved) : [];
-    });
-    const ordersRef = useRef<Order[]>(orders);
-    useEffect(() => { 
-        ordersRef.current = orders; 
-        // Salva apenas se houver pedidos para evitar sobrescrever com vazio por erro
-        if (orders.length > 0) {
-            localStorage.setItem('guarafood-last-orders', JSON.stringify(orders));
-        }
-    }, [orders]);
-    
+    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'help' | 'mensalistas'>('orders');
+    const [orders, setOrders] = useState<Order[]>([]);
     const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
     const [printJob, setPrintJob] = useState<{ 
         order: Order, 
@@ -68,26 +47,14 @@ const OrderManagement: React.FC<OrderManagementProps> = () => {
         items?: CartItem[], 
         jobId?: string 
     } | null>(null);
-    const connectionStatusRef = useRef<'CONNECTED' | 'RECONNECTING'>('CONNECTED');
-    const [connectionStatus, setConnectionStatusState] = useState<'CONNECTED' | 'RECONNECTING'>('CONNECTED');
-    
-    const setConnectionStatus = useCallback((status: 'CONNECTED' | 'RECONNECTING') => {
-        if (connectionStatusRef.current !== status) {
-            connectionStatusRef.current = status;
-            setConnectionStatusState(status);
-        }
-    }, []);
+    const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'RECONNECTING'>('CONNECTED');
     const { playNotification, initAudioContext } = useSound();
     
     // Staff & Security
     const [staffList, setStaffList] = useState<StaffMember[]>([]);
     const [currentStaffUser, setCurrentStaffUser] = useState<StaffMember | null>(null);
     const [isPinPadOpen, setIsPinPadOpen] = useState(false);
-    const [isLocked, setIsLocked] = useState(false);
-
-    useEffect(() => {
-        localStorage.setItem('guarafood-panel-locked', 'false');
-    }, []);
+    const [isLocked, setIsLocked] = useState(localStorage.getItem('guarafood-panel-locked') === 'true');
 
     const lastSuccessfulSyncRef = useRef<number>(Date.now());
     const previousOrdersStatusRef = useRef<Map<string, string>>(new Map());
@@ -96,8 +63,6 @@ const OrderManagement: React.FC<OrderManagementProps> = () => {
     const processedJobIdsRef = useRef<Set<string>>(new Set());
     const heartbeatIntervalRef = useRef<number | null>(null);
     const reconnectGraceTimeoutRef = useRef<number | null>(null);
-    const isSyncingRef = useRef(false);
-    const syncDebounceTimeoutRef = useRef<number | null>(null);
 
     const [printerWidth, setPrinterWidth] = useState<number>(80);
 
@@ -159,7 +124,7 @@ const OrderManagement: React.FC<OrderManagementProps> = () => {
     const visibleTabs = useMemo(() => {
         const allTabs = ['orders', 'tables', 'menu', 'financial', 'customers', 'staff', 'settings', 'help', 'mensalistas'] as const;
         
-        // Se o usuário logao for garçom, ele só vê mesas
+        // Se o usuário logado for garçom, ele só vê mesas
         if (currentUser?.role === 'waiter') {
             return ['tables', 'help'];
         }
@@ -170,39 +135,17 @@ const OrderManagement: React.FC<OrderManagementProps> = () => {
         }
         
         // Manager ou Merchant (Dono) vê tudo
-        const tabs = restaurant?.hasMensalistas ? allTabs : allTabs.filter(t => t !== 'mensalistas');
-        return tabs as unknown as typeof allTabs[number][];
+        return restaurant?.hasMensalistas ? allTabs : allTabs.filter(t => t !== 'mensalistas');
     }, [currentUser, isLocked, restaurant]);
 
-    // Force tab if current is not allowed and persist tab
+    // Force tab if current is not allowed
     useEffect(() => {
         if ((isLocked || currentUser?.role === 'waiter') && activeTab !== 'tables') {
             setActiveTab('tables');
-        } else {
-            localStorage.setItem('guarafood-active-tab', activeTab);
         }
     }, [currentUser, isLocked, activeTab]);
 
     const processOrdersUpdate = useCallback((allOrders: Order[]) => {
-        if (!allOrders) return;
-        
-        // SEGURANÇA: Se recebermos uma lista vazia mas tínhamos muitos pedidos, 
-        // ignoramos a atualização por 2 segundos para evitar que o Kanban "suma" por glitch de rede.
-        if (allOrders.length === 0 && ordersRef.current.length > 0) {
-            console.warn(`[OrderManagement] Recebida lista vazia de pedidos (tínhamos ${ordersRef.current.length}). Ignorando para evitar desaparecimento repentino.`);
-            // Forçamos uma nova sincronização em 2 segundos
-            setTimeout(() => {
-                window.dispatchEvent(new CustomEvent('guarafood:update-orders'));
-            }, 2000);
-            return;
-        }
-
-        // Se o restaurantId do usuário sumiu, algo está muito errado com a sessão
-        if (!currentUser?.restaurantId) {
-            console.error("[OrderManagement] restaurantId ausente no currentUser durante atualização de pedidos!");
-            return;
-        }
-
         const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
         
         const currentStatusMap = new Map<string, string>();
@@ -215,7 +158,7 @@ const OrderManagement: React.FC<OrderManagementProps> = () => {
         if (!isFirstLoadRef.current) {
             const ordersToAlert = visibleOrders.filter(order => {
                 const prevStatus = previousOrdersStatusRef.current.get(order.id);
-                const isNewDelivery = (order.status === 'Novo Pedido' || order.status === 'Aguardando Pagamento') && prevStatus !== order.status;
+                const isNewDelivery = order.status === 'Novo Pedido' && prevStatus !== 'Novo Pedido';
                 const isNewTable = order.tableNumber && !previousOrdersStatusRef.current.has(order.id);
                 return isNewDelivery || isNewTable;
             });
@@ -236,109 +179,30 @@ const OrderManagement: React.FC<OrderManagementProps> = () => {
                     }
                     playNotification(); 
                 }
-                
-                // AUTO-PRINT: Only for 'Novo Pedido' (Confirmed/Paid) to avoid double printing Pix orders
-                // or printing unpaid attempts.
-                if (newestOrder.status === 'Novo Pedido' && newestOrder.items && newestOrder.items.length > 0) {
-                    if (!newestOrder.tableNumber) {
-                        // Delivery/Takeout: Print full receipt
-                        setPrintJob({ order: newestOrder, mode: 'full' });
-                    } else {
-                        // Table Order: Print kitchen slip automatically
-                        setPrintJob({ order: newestOrder, mode: 'kitchen' });
-                    }
+                // Only auto-print delivery orders, not empty table openings
+                if (!newestOrder.tableNumber) {
+                    setPrintJob({ order: newestOrder, mode: 'full' });
                 }
             }
         }
 
         previousOrdersStatusRef.current = currentStatusMap;
-        
-        // Só atualizamos o estado se houver mudança real ou se for a primeira carga
-        // Isso evita re-renders desnecessários e flickers
-        setOrders(prevOrders => {
-            if (isFirstLoadRef.current) return visibleOrders;
-            if (JSON.stringify(prevOrders) === JSON.stringify(visibleOrders)) return prevOrders;
-            return visibleOrders;
-        });
-
+        setOrders(visibleOrders);
         isFirstLoadRef.current = false;
         lastSuccessfulSyncRef.current = Date.now();
     }, [playNotification]);
 
-    const forceSync = useCallback(async (retryCount: number | any = 0) => {
-        const actualRetryCount = typeof retryCount === 'number' ? retryCount : 0;
-        
-        if (isSyncingRef.current && actualRetryCount === 0) return;
-        isSyncingRef.current = true;
-
-        if (!currentUser?.restaurantId) {
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
-                if (!session) {
-                    window.dispatchEvent(new Event('auth:session-expired'));
-                    isSyncingRef.current = false;
-                    return;
-                }
-                window.location.reload(); 
-            } catch (e) {
-                console.error("[Sync] Erro ao verificar sessão:", e);
-            }
-            isSyncingRef.current = false;
-            return;
-        }
-
-        let connectingTimeout: number | null = null;
-
+    const forceSync = useCallback(async () => {
+        if (!currentUser?.restaurantId) return;
         try {
-            console.log(`[Sync] Sincronizando pedidos para o restaurante ${currentUser.restaurantId}...`);
-            
-            // Só mostra "Conectando..." se demorar mais de 3s para evitar flicker em conexões oscilantes
-            connectingTimeout = window.setTimeout(() => {
-                setConnectionStatus('RECONNECTING');
-            }, 3000);
-            
-            const allOrders = await fetchOrders(currentUser.restaurantId, { limit: 500 });
-            
-            if (connectingTimeout) clearTimeout(connectingTimeout);
-
-            if (allOrders.length === 0 && ordersRef.current.length > 0) {
-                console.warn("[Sync] Fetch retornou vazio mas tínhamos pedidos. Ignorando atualização de estado.");
-                if (actualRetryCount < 3) {
-                    const delay = Math.pow(2, actualRetryCount) * 1000;
-                    setTimeout(() => {
-                        isSyncingRef.current = false;
-                        forceSync(actualRetryCount + 1);
-                    }, delay);
-                } else {
-                    isSyncingRef.current = false;
-                }
-                return;
-            }
-
+            const allOrders = await fetchOrders(currentUser.restaurantId, { limit: 200 });
             processOrdersUpdate(allOrders);
             lastSuccessfulSyncRef.current = Date.now();
             setConnectionStatus('CONNECTED');
-            isSyncingRef.current = false;
         } catch (e) {
-            if (connectingTimeout) clearTimeout(connectingTimeout);
-            console.error(`[Sync] Erro na sincronização (tentativa ${actualRetryCount + 1}):`, e);
-            
-            // Só marca como RECONNECTING se falhar após a primeira tentativa
-            if (actualRetryCount > 0) {
-                setConnectionStatus('RECONNECTING');
-            }
-            
-            if (actualRetryCount < 3) {
-                const delay = Math.pow(2, actualRetryCount) * 1000;
-                setTimeout(() => {
-                    isSyncingRef.current = false;
-                    forceSync(actualRetryCount + 1);
-                }, delay);
-            } else {
-                isSyncingRef.current = false;
-            }
+            console.warn("Sync failed, retrying silently...");
         }
-    }, [currentUser, processOrdersUpdate, setConnectionStatus]);
+    }, [currentUser?.restaurantId, processOrdersUpdate]);
 
     useEffect(() => {
         let wakeLock: any = null;
@@ -356,45 +220,30 @@ const OrderManagement: React.FC<OrderManagementProps> = () => {
         };
         requestWakeLock();
 
-        const debouncedSync = () => {
-            if (syncDebounceTimeoutRef.current) clearTimeout(syncDebounceTimeoutRef.current);
-            syncDebounceTimeoutRef.current = window.setTimeout(() => {
-                forceSync();
-            }, 500);
-        };
-
-        const handleOnline = () => debouncedSync();
-        const handleFocus = () => debouncedSync();
-        const handleVisibilityChange = () => { 
-            if (document.visibilityState === 'visible') {
-                console.log("[OrderManagement] Tab visible, triggering sync...");
-                debouncedSync();
-            }
-        };
+        const handleOnline = () => forceSync();
+        const handleFocus = () => forceSync();
+        const handleVisibilityChange = () => { if (document.visibilityState === 'visible') forceSync(); };
 
         window.addEventListener('online', handleOnline);
         window.addEventListener('focus', handleFocus);
         document.addEventListener('visibilitychange', handleVisibilityChange);
-        window.addEventListener('guarafood:update-orders', debouncedSync);
+        window.addEventListener('guarafood:update-orders', forceSync);
 
         heartbeatIntervalRef.current = window.setInterval(() => {
             const idleTime = Date.now() - lastSuccessfulSyncRef.current;
-            // Aumentado para 30s para ser menos agressivo e evitar loops se a rede estiver lenta
-            if (idleTime > 30000) {
-                console.log("[OrderManagement] Heartbeat sync triggered (idle for > 30s)");
+            if (idleTime > 10000) {
                 forceSync();
             }
-        }, 15000);
+        }, 8000);
 
         return () => { 
             if (wakeLock !== null) wakeLock.release(); 
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('focus', handleFocus);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
-            window.removeEventListener('guarafood:update-orders', debouncedSync);
+            window.removeEventListener('guarafood:update-orders', forceSync);
             if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
             if (reconnectGraceTimeoutRef.current) clearTimeout(reconnectGraceTimeoutRef.current);
-            if (syncDebounceTimeoutRef.current) clearTimeout(syncDebounceTimeoutRef.current);
         };
     }, [forceSync]);
 
@@ -411,18 +260,11 @@ const OrderManagement: React.FC<OrderManagementProps> = () => {
             const printTimer = setTimeout(async () => {
                 window.focus();
                 
-                // Verificação de segurança: não imprimir se não houver conteúdo (evita bobina infinita)
-                const printableEl = document.getElementById('printable-order');
-                const hasContent = printableEl && printableEl.textContent && printableEl.textContent.trim().length > 0;
-                
-                if (hasContent) {
-                    if (printJob.mode === 'full' && !printJob.jobId) {
-                        printedOrderIdsRef.current.add(printJob.order.id);
-                    }
-                    window.print();
-                } else {
-                    console.warn("Impressão abortada: Nenhum item novo para imprimir.");
+                if (printJob.mode === 'full' && !printJob.jobId) {
+                    printedOrderIdsRef.current.add(printJob.order.id);
                 }
+                
+                window.print();
 
                 // Se era um trabalho da fila remota (jobId), marcamos como feito no banco
                 if (printJob.jobId) {
@@ -474,6 +316,17 @@ const OrderManagement: React.FC<OrderManagementProps> = () => {
     }, [orders, printJob, playNotification]);
 
     const handleManualPrint = (order: Order, mode: 'full' | 'kitchen' = 'full') => {
+        // Se for modo cozinha, verificamos se há itens novos para evitar impressão em branco
+        if (mode === 'kitchen') {
+            const hasNewItems = order.items.some(item => {
+                // Se o item já foi marcado como 'printed' no front ou via banco
+                // Nota: o app não guarda 'printed' no banco por item individualmente de forma nativa ainda, 
+                // mas podemos checar se o modo é específico.
+                return true; // Por enquanto permitimos manual, o auto já filtra
+            });
+            if (!hasNewItems && mode === 'kitchen') return;
+        }
+
         printedOrderIdsRef.current.delete(order.id);
         setPrintJob(null);
         setTimeout(() => setPrintJob({ order, mode }), 50);
@@ -490,11 +343,10 @@ const OrderManagement: React.FC<OrderManagementProps> = () => {
                     reconnectGraceTimeoutRef.current = null;
                 }
             } else {
-                // Aumentado para 20s de tolerância antes de mostrar "Conectando" no realtime
                 if (!reconnectGraceTimeoutRef.current) {
                     reconnectGraceTimeoutRef.current = window.setTimeout(() => {
                         setConnectionStatus('RECONNECTING');
-                    }, 20000);
+                    }, 10000);
                 }
             }
         };
@@ -511,7 +363,7 @@ const OrderManagement: React.FC<OrderManagementProps> = () => {
     const renderContent = () => {
         switch (activeTab) {
             case 'orders':
-                return <OrdersView orders={orders} printerWidth={printerWidth} onPrint={handleManualPrint} onSync={forceSync} currentStaffUser={currentStaffUser} restaurant={restaurant} />;
+                return <OrdersView orders={orders} printerWidth={printerWidth} onPrint={handleManualPrint} currentStaffUser={currentStaffUser} restaurant={restaurant} />;
             case 'tables':
                 return <TableManagement orders={orders} currentStaffUser={currentStaffUser} onPrint={handleManualPrint} restaurant={restaurant} />;
             case 'menu': return <MenuManagement />;
@@ -528,7 +380,7 @@ const OrderManagement: React.FC<OrderManagementProps> = () => {
                     </React.Suspense>
                 );
             case 'staff': return <StaffManagement />;
-            case 'mensalistas': return restaurant ? <MensalistasManager restaurant={restaurant} /> : <Spinner message="Carregando restaurante..." />;
+            case 'mensalistas': return <MensalistasManager />;
             case 'settings': return <RestaurantSettings />;
             case 'help': return <HelpCenter onBack={() => setActiveTab('orders')} />;
             default: return null;
@@ -538,15 +390,18 @@ const OrderManagement: React.FC<OrderManagementProps> = () => {
     return (
         <div className="w-full min-h-screen bg-gray-50" onClick={enableAudio} onTouchStart={enableAudio}>
             <div 
-                className={`text-white text-center text-[10px] uppercase tracking-widest font-black p-1.5 cursor-pointer flex items-center justify-center gap-2 transition-all duration-500 print:hidden ${connectionStatus === 'CONNECTED' ? 'bg-green-600' : 'bg-red-600 animate-pulse'}`} 
+                className={`text-white text-center text-[10px] uppercase tracking-widest font-black p-1.5 cursor-pointer flex items-center justify-center gap-2 transition-all duration-500 ${connectionStatus === 'CONNECTED' ? 'bg-green-600' : 'bg-red-600 animate-pulse'}`} 
                 onClick={forceSync}
             >
                 <div className={`w-2.5 h-2.5 rounded-full bg-white ${connectionStatus === 'CONNECTED' ? 'opacity-100' : 'animate-ping'}`}></div>
                 {connectionStatus === 'CONNECTED' ? <span>Painel Conectado</span> : <span>Conectando...</span>}
             </div>
 
-            <header className="p-4 sticky top-0 bg-gray-50 z-20 border-b flex justify-between items-center gap-4 print:hidden">
+            <header className="p-4 sticky top-0 bg-gray-50 z-20 border-b flex justify-between items-center gap-4">
                 <div className="flex items-center space-x-4 flex-grow min-w-0">
+                    <button onClick={onBack} className="bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition-colors flex-shrink-0">
+                        <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
+                    </button>
                     <div className="flex flex-col">
                         <h1 className="text-xl sm:text-2xl font-black text-gray-800 truncate">
                             {currentUser?.name || 'Painel Lojista'}
@@ -590,43 +445,15 @@ const OrderManagement: React.FC<OrderManagementProps> = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
                         </svg>
                     </button>
-                    <button 
-                        onClick={() => {
-                            if (window.confirm("Deseja reiniciar o sistema e limpar o cache? Isso resolve problemas de pedidos sumindo.")) {
-                                localStorage.clear();
-                                sessionStorage.clear();
-                                window.location.reload();
-                            }
-                        }}
-                        className="p-2 rounded-lg text-gray-400 hover:text-red-600 transition-all"
-                        title="Reiniciar Sistema (Limpar Cache)"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9.75L15.75 6m0 0L19.5 9.75M15.75 6v12.75" />
-                        </svg>
-                    </button>
-                    <button 
-                        onClick={async () => {
-                            console.log("Logout button clicked in OrderManagement");
-                            try {
-                                await logout();
-                            } catch (e) {
-                                console.error("Logout error:", e);
-                                localStorage.clear();
-                            }
-                        }} 
-                        className="flex items-center space-x-2 px-3 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-all font-black text-[10px] uppercase tracking-wider shadow-sm flex-shrink-0"
-                        title="Sair do Painel"
-                    >
-                        <LogoutIcon className="w-5 h-5" />
-                        <span>Sair</span>
+                    <button onClick={logout} className="flex items-center space-x-2 p-2 text-gray-500 hover:text-red-600 rounded-lg transition-colors font-bold flex-shrink-0">
+                        <LogoutIcon className="w-6 h-6" />
+                        <span className="hidden sm:inline">Sair</span>
                     </button>
                 </div>
             </header>
 
              {visibleTabs.length > 1 && (
-                <nav className="p-4 border-b sticky top-[95px] bg-gray-50 z-10 overflow-x-auto no-scrollbar print:hidden">
+                <nav className="p-4 border-b sticky top-[95px] bg-gray-50 z-10 overflow-x-auto no-scrollbar">
                     <div className="flex space-x-2 rounded-xl bg-gray-200 p-1 min-w-max">
                         {visibleTabs.map((tab) => {
                             const labels: Record<string, string> = { 
@@ -637,7 +464,7 @@ const OrderManagement: React.FC<OrderManagementProps> = () => {
                             return (
                                 <button 
                                     key={tab}
-                                    onClick={() => setActiveTab(tab as any)} 
+                                    onClick={() => setActiveTab(tab)} 
                                     className={`px-4 py-2 text-center text-xs font-black uppercase rounded-lg transition-all ${activeTab === tab ? 'bg-white shadow-md text-orange-600 scale-105' : 'text-gray-500'}`}
                                 >
                                     {labels[tab]}
@@ -648,14 +475,13 @@ const OrderManagement: React.FC<OrderManagementProps> = () => {
                 </nav>
             )}
 
-            <main className="flex-grow print:hidden">{renderContent()}</main>
+            <main className="flex-grow">{renderContent()}</main>
 
             <div className="hidden print:block">
                 <div id="printable-order">
                     {printJob && (
                         <PrintableOrder 
                             order={printJob.items ? { ...printJob.order, items: printJob.items } : printJob.order} 
-                            restaurant={restaurant}
                             printerWidth={printerWidth} 
                             printMode={printJob.mode}
                         />

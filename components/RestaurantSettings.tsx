@@ -4,29 +4,13 @@ import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
 import { useSound } from '../hooks/useSound';
 import { supabase } from '../services/api';
-import { fetchRestaurantByIdSecure, updateRestaurant, fetchRestaurantCategories } from '../services/databaseService';
+import { fetchRestaurantByIdSecure, updateRestaurant } from '../services/databaseService';
 import { clearTodayTableOrders } from '../services/orderService';
-import { forceSystemUpdate } from '../utils/systemUpdate';
-import type { Restaurant, OperatingHours, Order, RestaurantCategory } from '../types';
+import type { Restaurant, OperatingHours, Order } from '../types';
 import Spinner from './Spinner';
 import PrintableOrder from './PrintableOrder';
 import MensalistasManager from './MensalistasManager';
 import { getErrorMessage } from '../services/api';
-import { SUPABASE_URL } from '../config';
-import ImageUploadField from './ImageUploadField';
-
-const PREDEFINED_PAYMENT_METHODS = [
-    "Pix",
-    "Cartão de Crédito",
-    "Cartão de Débito",
-    "Dinheiro"
-];
-
-const ClipboardIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v3.043c0 .317-.135.619-.372.83h-9.312a1.125 1.125 0 01-1.125-1.125v-3.043c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
-    </svg>
-);
 
 const NotificationSettings: React.FC = () => {
     const { addToast } = useNotification();
@@ -237,51 +221,118 @@ const getDefaultOperatingHours = (): OperatingHours[] =>
         isOpen: false,
     }));
 
-interface RestaurantSettingsProps {
-    restaurantIdOverride?: number | null;
-    onBack?: () => void;
-}
+const LoyaltyProgramSettings: React.FC<{
+    loyaltyProgram: Restaurant['loyaltyProgram'];
+    onChange: (loyaltyProgram: Restaurant['loyaltyProgram']) => void;
+}> = ({ loyaltyProgram, onChange }) => {
+    const config = loyaltyProgram || {
+        active: false,
+        pointsPerReal: 1,
+        rewardThreshold: 100,
+        rewardType: 'FIXED_DISCOUNT',
+        rewardValue: 10
+    };
 
-const RestaurantSettings: React.FC<RestaurantSettingsProps> = ({ restaurantIdOverride, onBack }) => {
+    return (
+        <div className="border-t pt-8">
+            <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest text-indigo-600 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                </svg>
+                Clube de Fidelidade
+            </h3>
+            
+            <div className="space-y-4">
+                <label className="flex items-center gap-3 p-4 bg-indigo-50 border border-indigo-100 rounded-xl cursor-pointer hover:bg-indigo-100 transition-colors">
+                    <div className="relative">
+                        <input type="checkbox" className="sr-only peer" checked={config.active} onChange={e => onChange({ ...config, active: e.target.checked })} />
+                        <div className="w-11 h-6 bg-indigo-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                    </div>
+                    <div>
+                        <span className="font-bold text-indigo-900 block">Ativar Clube de Pontos</span>
+                        <span className="text-xs text-indigo-700">Recompense clientes que compram frequentemente com você.</span>
+                    </div>
+                </label>
+
+                {config.active && (
+                    <div className="p-4 bg-white border border-indigo-100 rounded-xl space-y-4 animate-in fade-in slide-in-from-top-2">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 ml-1">Pontos por cada 1 Real</label>
+                                <input type="number" value={config.pointsPerReal} onChange={e => onChange({ ...config, pointsPerReal: parseFloat(e.target.value) || 0 })} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50 focus:ring-2 focus:ring-indigo-500" />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 ml-1">Pontos para Recompensa</label>
+                                <input type="number" value={config.rewardThreshold} onChange={e => onChange({ ...config, rewardThreshold: parseInt(e.target.value) || 0 })} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50 focus:ring-2 focus:ring-indigo-500" />
+                            </div>
+                        </div>
+
+                        <div className="border-t border-indigo-50 pt-4">
+                            <label className="block text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 ml-1">Tipo de Recompensa</label>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                <label className={`p-3 border rounded-xl cursor-pointer text-sm font-bold text-center transition-colors ${config.rewardType === 'FIXED_DISCOUNT' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
+                                    <input type="radio" className="hidden" checked={config.rewardType === 'FIXED_DISCOUNT'} onChange={() => onChange({ ...config, rewardType: 'FIXED_DISCOUNT' })} />
+                                    Desconto Fixo (R$)
+                                </label>
+                                <label className={`p-3 border rounded-xl cursor-pointer text-sm font-bold text-center transition-colors ${config.rewardType === 'PERCENTAGE_DISCOUNT' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
+                                    <input type="radio" className="hidden" checked={config.rewardType === 'PERCENTAGE_DISCOUNT'} onChange={() => onChange({ ...config, rewardType: 'PERCENTAGE_DISCOUNT' })} />
+                                    % de Desconto
+                                </label>
+                                <label className={`p-3 border rounded-xl cursor-pointer text-sm font-bold text-center transition-colors ${config.rewardType === 'FREE_ITEM' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
+                                    <input type="radio" className="hidden" checked={config.rewardType === 'FREE_ITEM'} onChange={() => onChange({ ...config, rewardType: 'FREE_ITEM' })} />
+                                    Prêmio Físico
+                                </label>
+                            </div>
+                        </div>
+
+                        {config.rewardType !== 'FREE_ITEM' ? (
+                            <div>
+                                <label className="block text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 ml-1">Valor do Desconto</label>
+                                <div className="relative">
+                                    {config.rewardType === 'FIXED_DISCOUNT' && <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-400">R$</span>}
+                                    <input type="number" step="0.01" value={config.rewardValue} onChange={e => onChange({ ...config, rewardValue: parseFloat(e.target.value) || 0 })} className={`w-full p-3 ${config.rewardType === 'FIXED_DISCOUNT' ? 'pl-12' : ''} border rounded-xl font-mono text-sm bg-gray-50 focus:ring-2 focus:ring-indigo-500`} />
+                                    {config.rewardType === 'PERCENTAGE_DISCOUNT' && <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-gray-400">%</span>}
+                                </div>
+                            </div>
+                        ) : (
+                            <div>
+                                <label className="block text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 ml-1">Item de Recompensa</label>
+                                <input type="text" placeholder="Ex: 1 Refrigerante 2L / 1 X-Tudo" value={config.rewardItemName || ''} onChange={e => onChange({ ...config, rewardItemName: e.target.value })} className="w-full p-3 border rounded-xl text-sm bg-gray-50 focus:ring-2 focus:ring-indigo-500" />
+                            </div>
+                        )}
+                        
+                        <div className="bg-indigo-50 rounded-lg p-3 text-xs text-indigo-800">
+                            <strong>Resumo:</strong> A cada R$ 1,00 gasto o cliente ganha {config.pointsPerReal} ponto(s). Ao acumular {config.rewardThreshold} pontos, ele recebe {
+                                config.rewardType === 'FIXED_DISCOUNT' ? `R$ ${config.rewardValue.toFixed(2)} de desconto` :
+                                config.rewardType === 'PERCENTAGE_DISCOUNT' ? `${config.rewardValue}% de desconto` :
+                                `o item "${config.rewardItemName || 'a definir'}" gratuitamente`
+                            } na próxima compra.
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () => void }> = ({ restaurantIdOverride, onBack }) => {
     const { currentUser } = useAuth();
     const { addToast, confirm } = useNotification();
     const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
-    const restaurantId = restaurantIdOverride || currentUser?.restaurantId;
     const [mercadoPagoToken, setMercadoPagoToken] = useState('');
     const [manualPixKey, setManualPixKey] = useState('');
     const [bannerImageUrl, setBannerImageUrl] = useState('');
     const [hasMensalistas, setHasMensalistas] = useState(false);
-    const [hasCleanupButton, setHasCleanupButton] = useState(false);
     const [hasKiloService, setHasKiloService] = useState(false);
     const [pricePerKilo, setPricePerKilo] = useState(0);
-    const [deliveryZones, setDeliveryZones] = useState<{ id: string; name: string; fee: number }[]>([]);
     const [printerWidth, setPrinterWidth] = useState(80);
     const [isPrintServer, setIsPrintServer] = useState(false);
     const [operatingHours, setOperatingHours] = useState<OperatingHours[]>(getDefaultOperatingHours());
-    const [phone, setPhone] = useState('');
-    const [deliveryFee, setDeliveryFee] = useState(0);
-    const [name, setName] = useState('');
-    const [address, setAddress] = useState('');
-    const [category, setCategory] = useState('');
-    const [paymentGateways, setPaymentGateways] = useState<string[]>([]);
-    const [imageUrl, setImageUrl] = useState('');
-    const [availableCategories, setAvailableCategories] = useState<RestaurantCategory[]>([]);
-    const [merchantEmail, setMerchantEmail] = useState('');
-    const [merchantPassword, setMerchantPassword] = useState('');
-    const [changeCredentials, setChangeCredentials] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [testOrder, setTestOrder] = useState<Order | null>(null);
 
-    useEffect(() => {
-        const loadCategories = async () => {
-            try {
-                const data = await fetchRestaurantCategories();
-                setAvailableCategories(data);
-            } catch (e) { console.error(e); }
-        };
-        loadCategories();
-    }, []);
+    const restaurantId = restaurantIdOverride || currentUser?.restaurantId;
 
     const loadData = useCallback(async () => {
         if (!restaurantId) {
@@ -298,18 +349,9 @@ const RestaurantSettings: React.FC<RestaurantSettingsProps> = ({ restaurantIdOve
                 setManualPixKey(data.manualPixKey || '');
                 setBannerImageUrl(data.bannerImageUrl || '');
                 setHasMensalistas(data.hasMensalistas || false);
-                setHasCleanupButton(data.hasCleanupButton || false);
                 setHasKiloService(data.hasKiloService || false);
                 setPricePerKilo(data.pricePerKilo || 0);
-                setDeliveryZones(data.deliveryZones || []);
                 setOperatingHours(data.operatingHours || getDefaultOperatingHours());
-                setPhone(data.phone || '');
-                setDeliveryFee(data.deliveryFee || 0);
-                setName(data.name || '');
-                setAddress(data.address || '');
-                setCategory(typeof data.category === 'string' ? data.category : '');
-                setPaymentGateways(Array.isArray(data.paymentGateways) ? data.paymentGateways : []);
-                setImageUrl(data.imageUrl || '');
                 
                 // Força o estado da impressora a partir do banco e sincroniza LocalStorage
                 const savedWidth = data.printerWidth || 80;
@@ -341,7 +383,7 @@ const RestaurantSettings: React.FC<RestaurantSettingsProps> = ({ restaurantIdOve
         if (!restaurantId || !restaurant) return;
         setIsSaving(true);
         try {
-            const dbPayload = {
+            await updateRestaurant(restaurantId, {
                 mercado_pago_credentials: { accessToken: mercadoPagoToken },
                 operatingHours: operatingHours,
                 marmitaStartTime: restaurant.marmitaStartTime,
@@ -350,38 +392,9 @@ const RestaurantSettings: React.FC<RestaurantSettingsProps> = ({ restaurantIdOve
                 printerWidth: printerWidth,
                 bannerImageUrl: bannerImageUrl,
                 hasMensalistas: hasMensalistas,
-                hasCleanupButton: hasCleanupButton,
                 hasKiloService: hasKiloService,
-                pricePerKilo: pricePerKilo,
-                deliveryZones: deliveryZones,
-                phone: phone,
-                deliveryFee: deliveryFee,
-                name: name,
-                address: address,
-                category: category,
-                paymentGateways: paymentGateways,
-                imageUrl: imageUrl
-            };
-
-            if (changeCredentials && merchantPassword) {
-                if (currentUser?.role === 'admin' && merchantEmail) {
-                    // Admin changing merchant's credentials
-                    const { error: fErr } = await supabase.functions.invoke('create-restaurant-with-user', {
-                        body: { restaurantData: { ...dbPayload, name: name || restaurant.name }, userData: { email: merchantEmail, password: merchantPassword } }
-                    });
-                    if (fErr) throw fErr;
-                } else if (currentUser?.role === 'merchant') {
-                    // Merchant changing their own password
-                    const { error: authErr } = await supabase.auth.updateUser({ password: merchantPassword });
-                    if (authErr) throw authErr;
-                    await updateRestaurant(restaurantId, dbPayload);
-                } else {
-                    await updateRestaurant(restaurantId, dbPayload);
-                }
-            } else {
-                await updateRestaurant(restaurantId, dbPayload);
-            }
-
+                pricePerKilo: pricePerKilo
+            });
             localStorage.setItem('guarafood-printer-width', printerWidth.toString());
             localStorage.setItem('guarafood-is-print-server', isPrintServer.toString());
             addToast({ message: 'Configurações salvas e sincronizadas!', type: 'success' });
@@ -391,18 +404,6 @@ const RestaurantSettings: React.FC<RestaurantSettingsProps> = ({ restaurantIdOve
         } finally { setIsSaving(false); }
     };
     
-    const handleAddDeliveryZone = () => {
-        setDeliveryZones([...deliveryZones, { id: Date.now().toString(), name: '', fee: 0 }]);
-    };
-
-    const handleUpdateDeliveryZone = (id: string, field: 'name' | 'fee', value: string | number) => {
-        setDeliveryZones(zones => zones.map(z => z.id === id ? { ...z, [field]: value } : z));
-    };
-
-    const handleRemoveDeliveryZone = (id: string) => {
-        setDeliveryZones(zones => zones.filter(z => z.id !== id));
-    };
-
     const handleCleanupTableOrders = async () => {
         if (!restaurantId) return;
         
@@ -432,7 +433,7 @@ const RestaurantSettings: React.FC<RestaurantSettingsProps> = ({ restaurantIdOve
         const dummyOrder: Order = {
             id: 'TESTE-01', timestamp: new Date().toISOString(), status: 'Novo Pedido',
             customerName: 'Teste Layout Jerê/Renovação', customerPhone: '(35) 99999-9999',
-            items: [{ id: '1', name: 'Pastel de Carne com Queijo', price: 15.00, basePrice: 15.00, quantity: 2, imageUrl: '', description: '', restaurantId: restaurant.id }],
+            items: [{ id: '1', name: 'Pastel de Carne com Queijo', price: 15.00, basePrice: 15.00, quantity: 2, imageUrl: '', description: '' }],
             totalPrice: 35.00, subtotal: 30.00, deliveryFee: 5.00,
             restaurantId: restaurant.id, restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
             paymentMethod: 'Dinheiro',
@@ -446,17 +447,15 @@ const RestaurantSettings: React.FC<RestaurantSettingsProps> = ({ restaurantIdOve
 
     return (
         <main className="p-4 max-w-2xl mx-auto space-y-6 pb-32">
+            {onBack && (
+                <button onClick={onBack} className="mb-4 flex items-center text-gray-500 hover:text-gray-800 font-bold text-sm bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-xl transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 mr-2"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>
+                    Voltar para Administração
+                </button>
+            )}
+            
             <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
-                <div className="flex items-center gap-4 border-b pb-4 mb-6">
-                    {onBack && (
-                        <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 text-gray-600">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-                            </svg>
-                        </button>
-                    )}
-                    <h2 className="text-xl font-black text-gray-800 uppercase tracking-widest">Painel de Configuração</h2>
-                </div>
+                <h2 className="text-xl font-black text-gray-800 border-b pb-4 mb-6 uppercase tracking-widest">Painel de Configuração</h2>
                 
                 <NotificationSettings />
 
@@ -467,118 +466,6 @@ const RestaurantSettings: React.FC<RestaurantSettingsProps> = ({ restaurantIdOve
                         onUpdate={setBannerImageUrl} 
                     />
                 )}
-
-                {/* --- INFORMAÇÕES BÁSICAS --- */}
-                <div className="mb-10 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-                    <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Informações Básicas</h3>
-                    
-                    <div className="mb-6">
-                        <ImageUploadField 
-                            restaurantId={restaurantId}
-                            currentImageUrl={imageUrl}
-                            onImageUploaded={(url) => setImageUrl(url)}
-                            label="Logo do Restaurante"
-                        />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <div>
-                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Nome do Restaurante</label>
-                            <input 
-                                type="text" 
-                                value={name} 
-                                onChange={e => setName(e.target.value)} 
-                                className="w-full p-3 border rounded-xl text-sm bg-gray-50" 
-                                placeholder="Nome" 
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Endereço</label>
-                            <input 
-                                type="text" 
-                                value={address} 
-                                onChange={e => setAddress(e.target.value)} 
-                                className="w-full p-3 border rounded-xl text-sm bg-gray-50" 
-                                placeholder="Endereço completo" 
-                            />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                        <div>
-                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Telefone / WhatsApp</label>
-                            <input 
-                                type="text" 
-                                value={phone} 
-                                onChange={e => setPhone(e.target.value)} 
-                                className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50" 
-                                placeholder="(00) 00000-0000" 
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Taxa de Entrega Padrão (R$)</label>
-                            <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-sm">R$</span>
-                                <input 
-                                    type="number" 
-                                    step="0.01"
-                                    value={deliveryFee} 
-                                    onChange={e => setDeliveryFee(parseFloat(e.target.value) || 0)} 
-                                    className="w-full p-3 pl-9 border rounded-xl font-bold text-sm bg-gray-50" 
-                                    placeholder="0,00" 
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="border-t pt-4 mb-6">
-                        <h3 className="font-bold text-sm mb-2 text-gray-700">Categorias do Restaurante</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
-                            {availableCategories.map(cat => (
-                                <label key={cat.id} className="flex items-center gap-2 text-gray-700 p-2 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                                    {cat.iconUrl && <img src={cat.iconUrl} alt={cat.name} className="w-5 h-5 object-cover rounded-full" />}
-                                    <input
-                                        type="checkbox"
-                                        checked={(category || '').split(',').map(c => c.trim()).includes(cat.name)}
-                                        onChange={(e) => {
-                                            const currentCategories = (category || '').split(',').map(c => c.trim()).filter(c => c !== '');
-                                            if (e.target.checked) {
-                                                setCategory([...currentCategories, cat.name].join(', '));
-                                            } else {
-                                                setCategory(currentCategories.filter(c => c !== cat.name).join(', '));
-                                            }
-                                        }}
-                                        className="rounded text-orange-600 focus:ring-orange-500"
-                                    />
-                                    {cat.name}
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="border-t pt-4">
-                        <h3 className="font-bold text-sm mb-2 text-gray-700">Formas de Pagamento Aceitas</h3>
-                        <div className="grid grid-cols-2 gap-2 text-sm">
-                            {PREDEFINED_PAYMENT_METHODS.map(method => (
-                                <label key={method} className="flex items-center gap-2 p-2 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={(paymentGateways || []).includes(method)}
-                                        onChange={(e) => {
-                                            if (e.target.checked) {
-                                                setPaymentGateways([...paymentGateways, method]);
-                                            } else {
-                                                setPaymentGateways(paymentGateways.filter(m => m !== method));
-                                            }
-                                        }}
-                                        className="rounded text-orange-600 focus:ring-orange-500"
-                                    />
-                                    {method}
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-                </div>
 
                 {/* --- SELETOR DE IMPRESSORA - DESTAQUE NO TOPO --- */}
                 <div className="mb-10 bg-orange-50 p-6 rounded-2xl border-2 border-orange-100 shadow-sm">
@@ -611,23 +498,6 @@ const RestaurantSettings: React.FC<RestaurantSettingsProps> = ({ restaurantIdOve
                     </button>
                     
                     <div className="mt-6 pt-6 border-t border-orange-200">
-                        <label className="flex items-center justify-between cursor-pointer mb-4">
-                            <div>
-                                <span className="font-bold text-orange-900 block">Taxa de Serviço (10%)</span>
-                                <span className="text-xs text-orange-700">Adicionar automaticamente 10% em pedidos de mesa.</span>
-                            </div>
-                            <div className="relative">
-                                <input type="checkbox" className="sr-only peer" checked={restaurant?.hasServiceCharge || false} onChange={async (e) => {
-                                    if (!restaurant) return;
-                                    const updated = { ...restaurant, hasServiceCharge: e.target.checked };
-                                    setRestaurant(updated);
-                                    await updateRestaurant(restaurant.id, { hasServiceCharge: e.target.checked });
-                                    addToast({ message: 'Taxa de serviço atualizada!', type: 'success' });
-                                }} />
-                                <div className="w-11 h-6 bg-orange-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
-                            </div>
-                        </label>
-
                         <label className="flex items-center justify-between cursor-pointer">
                             <div>
                                 <span className="font-bold text-orange-900 block">Modo Servidor de Impressão</span>
@@ -692,7 +562,7 @@ const RestaurantSettings: React.FC<RestaurantSettingsProps> = ({ restaurantIdOve
                                 </div>
                             </label>
                         </div>
-                        <MensalistasManager restaurant={restaurant} />
+                        <MensalistasManager />
                     </div>
 
                     {/* --- CONFIGURAÇÃO DE COMIDA POR KILO --- */}
@@ -732,6 +602,11 @@ const RestaurantSettings: React.FC<RestaurantSettingsProps> = ({ restaurantIdOve
                         </div>
                     </div>
 
+                    <LoyaltyProgramSettings 
+                        loyaltyProgram={restaurant.loyaltyProgram} 
+                        onChange={(loyaltyProgram) => setRestaurant({ ...restaurant, loyaltyProgram })} 
+                    />
+
                     <div className="border-t pt-8">
                         <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Configuração de Marmitas</h3>
                         <div className="grid grid-cols-2 gap-4">
@@ -747,70 +622,16 @@ const RestaurantSettings: React.FC<RestaurantSettingsProps> = ({ restaurantIdOve
                     </div>
 
                     <div className="border-t pt-8">
-                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Taxas de Entrega por Bairro</h3>
-                        <p className="text-sm text-gray-500 mb-4">Se você configurar bairros aqui, o cliente terá que escolher um deles e a taxa será aplicada. Se deixar vazio, será usada a taxa padrão do restaurante.</p>
-                        <div className="space-y-3">
-                            {deliveryZones.map(zone => (
-                                <div key={zone.id} className="flex gap-2 items-center">
-                                    <input 
-                                        type="text" 
-                                        value={zone.name} 
-                                        onChange={e => handleUpdateDeliveryZone(zone.id, 'name', e.target.value)} 
-                                        placeholder="Nome do Bairro/Empresa" 
-                                        className="flex-1 p-3 border rounded-xl font-semibold text-sm bg-gray-50" 
-                                    />
-                                    <div className="relative w-32">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-sm">R$</span>
-                                        <input 
-                                            type="number" 
-                                            value={zone.fee} 
-                                            onChange={e => handleUpdateDeliveryZone(zone.id, 'fee', parseFloat(e.target.value) || 0)} 
-                                            className="w-full p-3 pl-9 border rounded-xl font-bold text-sm bg-gray-50" 
-                                        />
-                                    </div>
-                                    <button 
-                                        onClick={() => handleRemoveDeliveryZone(zone.id)}
-                                        className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
-                                    >
-                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                    </button>
-                                </div>
-                            ))}
-                            <button 
-                                onClick={handleAddDeliveryZone}
-                                className="w-full py-3 border-2 border-dashed border-gray-300 text-gray-500 font-bold rounded-xl text-sm uppercase hover:bg-gray-50 transition-colors"
-                            >
-                                + Adicionar Bairro
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="border-t pt-8">
                         <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Manutenção de Dados</h3>
-                        <div className="space-y-4">
-                            <label className="flex items-center justify-between cursor-pointer p-4 bg-gray-50 rounded-xl border border-gray-200">
-                                <div>
-                                    <span className="font-bold text-gray-800 block">Ativar Botão de Limpeza</span>
-                                    <span className="text-xs text-gray-500">Exibe o botão para limpar todos os pedidos de mesa de hoje.</span>
-                                </div>
-                                <div className="relative">
-                                    <input type="checkbox" className="sr-only peer" checked={hasCleanupButton} onChange={e => setHasCleanupButton(e.target.checked)} />
-                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
-                                </div>
-                            </label>
-
-                            {hasCleanupButton && (
-                                <div className="bg-red-50 border border-red-100 rounded-xl p-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                                    <h4 className="font-bold text-red-800 mb-2 text-sm">Zona de Perigo</h4>
-                                    <p className="text-xs text-red-600 mb-4">Ações irreversíveis para correção de dados.</p>
-                                    <button 
-                                        onClick={handleCleanupTableOrders}
-                                        className="w-full py-3 bg-white border border-red-200 text-red-600 font-bold rounded-lg text-xs uppercase hover:bg-red-600 hover:text-white transition-colors shadow-sm"
-                                    >
-                                        Limpar Pedidos de Mesa (Hoje)
-                                    </button>
-                                </div>
-                            )}
+                        <div className="bg-red-50 border border-red-100 rounded-xl p-4">
+                            <h4 className="font-bold text-red-800 mb-2 text-sm">Zona de Perigo</h4>
+                            <p className="text-xs text-red-600 mb-4">Ações irreversíveis para correção de dados.</p>
+                            <button 
+                                onClick={handleCleanupTableOrders}
+                                className="w-full py-3 bg-white border border-red-200 text-red-600 font-bold rounded-lg text-xs uppercase hover:bg-red-600 hover:text-white transition-colors shadow-sm"
+                            >
+                                Limpar Pedidos de Mesa (Hoje)
+                            </button>
                         </div>
                     </div>
 
@@ -821,44 +642,10 @@ const RestaurantSettings: React.FC<RestaurantSettingsProps> = ({ restaurantIdOve
                                 <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Chave Pix para Visualização</label>
                                 <input type="text" value={manualPixKey} onChange={e => setManualPixKey(e.target.value)} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50" placeholder="Ex: CNPJ ou E-mail" />
                             </div>
-                            <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 space-y-4">
-                                <h4 className="text-sm font-black text-blue-900 uppercase">Integração Mercado Pago</h4>
-                                <div>
-                                    <label className="block text-[10px] font-black text-blue-700 uppercase tracking-widest mb-1 ml-1">Access Token (Produção)</label>
-                                    <input type="password" value={mercadoPagoToken} onChange={e => setMercadoPagoToken(e.target.value)} className="w-full p-3 border border-blue-200 rounded-xl font-mono text-sm bg-white" placeholder="APP_USR-..." />
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-black text-blue-700 uppercase tracking-widest mb-1 ml-1">Webhook URL (Para o Mercado Pago)</label>
-                                    <div className="flex gap-2">
-                                        <input readOnly value={`${SUPABASE_URL}/functions/v1/payment-webhook?restaurantId=${restaurant.id}`} className="flex-grow p-3 border border-blue-200 rounded-xl font-mono text-xs bg-white text-gray-500 truncate" />
-                                        <button onClick={() => { navigator.clipboard.writeText(`${SUPABASE_URL}/functions/v1/payment-webhook?restaurantId=${restaurant.id}`); addToast({message: 'Copiado!', type:'success'}); }} className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-bold text-sm">Copiar</button>
-                                    </div>
-                                </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Token Mercado Pago (Opcional)</label>
+                                <input type="password" value={mercadoPagoToken} onChange={e => setMercadoPagoToken(e.target.value)} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50" placeholder="APP_USR-..." />
                             </div>
-                        </div>
-                    </div>
-                    <div className="border-t pt-8">
-                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Segurança / Acesso</h3>
-                        <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-                            <h4 className="font-bold text-sm mb-2 text-gray-700">Acesso do Lojista</h4>
-                            {changeCredentials ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {currentUser?.role === 'admin' && (
-                                        <div>
-                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">E-mail de Login</label>
-                                            <input type="email" placeholder="Email" value={merchantEmail} onChange={e => setMerchantEmail(e.target.value)} className="w-full p-3 border rounded-xl text-sm bg-white" />
-                                        </div>
-                                    )}
-                                    <div>
-                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Nova Senha</label>
-                                        <input type="password" placeholder="Senha" value={merchantPassword} onChange={e => setMerchantPassword(e.target.value)} className="w-full p-3 border rounded-xl text-sm bg-white" />
-                                    </div>
-                                </div>
-                            ) : (
-                                <button onClick={() => setChangeCredentials(true)} className="text-sm text-blue-600 font-bold underline hover:text-blue-800 transition-colors">
-                                    Alterar Login/Senha
-                                </button>
-                            )}
                         </div>
                     </div>
                 </div>
@@ -871,27 +658,12 @@ const RestaurantSettings: React.FC<RestaurantSettingsProps> = ({ restaurantIdOve
                     >
                         {isSaving ? 'Salvando...' : 'Sincronizar Lojas'}
                     </button>
-                    
-                    <div className="mt-8 p-4 border border-red-200 rounded-xl bg-red-50">
-                        <h4 className="text-red-800 font-bold mb-1">Manutenção do Sistema</h4>
-                        <p className="text-[10px] text-red-600 mb-4">Se o sistema parecer desatualizado, clique abaixo para limpar o cache e recarregar.</p>
-                        <button 
-                            onClick={async () => {
-                                if (window.confirm('Tem certeza que deseja atualizar o sistema? Isso irá recarregar a página.')) {
-                                    await forceSystemUpdate();
-                                }
-                            }}
-                            className="w-full bg-red-600 text-white font-black py-3 rounded-xl hover:bg-red-700 transition-all text-sm uppercase tracking-widest"
-                        >
-                            Atualizar Sistema Agora
-                        </button>
-                    </div>
                 </div>
             </div>
 
             <div className="hidden print:block">
                 <div id="printable-order">
-                    {testOrder && <PrintableOrder order={testOrder} restaurant={restaurant} printerWidth={printerWidth} />}
+                    {testOrder && <PrintableOrder order={testOrder} printerWidth={printerWidth} />}
                 </div>
             </div>
         </main>

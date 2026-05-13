@@ -10,6 +10,11 @@ const ChevronUpIcon: React.FC<{ className?: string }> = ({ className }) => (
 const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
 );
+const ShoppingBagIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.658-.463 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+    </svg>
+);
 const MotorcycleIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 110-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253.962.584 1.892.985 2.783.247.55.06 1.21-.463 1.511l-.657.38c-.551.318-1.26.117-1.527-.461a20.845 20.845 0 01-1.44-4.282m3.102.069a18.03 18.03 0 01-.59-4.59c0-1.586.205-3.124.59-4.59m0 9.18a23.848 23.848 0 018.835 2.535M10.34 6.66a23.847 23.847 0 008.835-2.535m0 0A23.74 23.74 0 0018.795 3m.38 1.125a23.91 23.91 0 011.014 5.395m-1.014 8.855c-.118.38-.245.754-.38 1.125m.38-1.125a23.91 23.91 0 001.014-5.395m0-3.46c.495.413.811 1.035.811 1.73 0 .695-.316 1.317-.811 1.73m0-3.46a24.42 24.42 0 010 3.46" />
@@ -119,7 +124,6 @@ const OrderTracker: React.FC = () => {
     useEffect(() => {
         loadOrders();
         
-        const handleUpdateOrders = () => { loadOrders(); };
         const handleHandshake = () => {
             loadOrders(); 
             setIsExpanded(true); 
@@ -132,7 +136,7 @@ const OrderTracker: React.FC = () => {
             loadOrders();
         };
 
-        window.addEventListener('guarafood:update-orders', handleUpdateOrders);
+        window.addEventListener('guarafood:update-orders', () => loadOrders());
         window.addEventListener('guarafood:open-tracker', handleHandshake);
         window.addEventListener('focus', handleFocus);
         
@@ -153,7 +157,7 @@ const OrderTracker: React.FC = () => {
             .subscribe();
 
         return () => {
-            window.removeEventListener('guarafood:update-orders', handleUpdateOrders);
+            window.removeEventListener('guarafood:update-orders', loadOrders);
             window.removeEventListener('guarafood:open-tracker', handleHandshake);
             window.removeEventListener('focus', handleFocus);
             if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
@@ -190,25 +194,25 @@ const OrderTracker: React.FC = () => {
     if (activeOrders.length === 0) return null;
 
     const mainOrder = activeOrders[0];
-    const isPickup = !mainOrder.customer_address || mainOrder.customer_address.street === 'Retirada no Local';
+    const isPickup = mainOrder.customer_address?.street === 'Retirada no Local';
     
     const currentStep = statusSteps[mainOrder.status] ?? 1;
     const progress = currentStep === 0 ? 8 : (currentStep / 4) * 100;
     const isPending = mainOrder.status === 'Aguardando Pagamento';
 
+    const getStatusLabel = (status: string) => {
+        if (status === 'A Caminho') {
+            return isPickup ? 'Pronto para Retirada' : 'Saiu para Entrega';
+        }
+        return statusLabels[status] || status;
+    };
+
     const displayOrderNum = mainOrder.order_number 
         ? `#${String(mainOrder.order_number).padStart(3, '0')}`
         : `#${mainOrder.id.substring(mainOrder.id.length - 4).toUpperCase()}`;
 
-    const statusLabel = mainOrder.status === 'A Caminho' 
-        ? (isPickup ? 'Pode vir retirar' : 'Saiu para Entrega')
-        : (statusLabels[mainOrder.status] || mainOrder.status);
-
     return (
-        <div 
-            className="fixed left-0 right-0 z-[100] px-4 pb-4 pb-safe pointer-events-none transition-all duration-300"
-            style={{ bottom: 'var(--bottom-banner-height, 0px)' }}
-        >
+        <div className="fixed bottom-0 left-0 right-0 z-[100] px-4 pb-4 pb-safe pointer-events-none">
             <div 
                 className="relative max-w-md mx-auto pointer-events-auto"
                 onClick={initAudioContext}
@@ -227,12 +231,20 @@ const OrderTracker: React.FC = () => {
                     >
                         <div className="flex items-center gap-4">
                             <div className={`p-3 rounded-2xl ${isPending ? 'bg-yellow-200 text-yellow-700' : 'bg-orange-100 text-orange-600'} shadow-inner border border-white`}>
-                                {isPending ? <ClockIcon className="w-6 h-6 animate-pulse" /> : <MotorcycleIcon className="w-6 h-6 animate-pulse" />}
+                                {isPending ? (
+                                    <ClockIcon className="w-6 h-6 animate-pulse" />
+                                ) : (
+                                    isPickup && mainOrder.status === 'A Caminho' ? (
+                                        <ShoppingBagIcon className="w-6 h-6 animate-bounce" />
+                                    ) : (
+                                        <MotorcycleIcon className="w-6 h-6 animate-pulse" />
+                                    )
+                                )}
                             </div>
                             <div>
                                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1.5">Rastreamento Ativo</p>
                                 <p className={`text-sm font-black uppercase tracking-tight ${isPending ? 'text-yellow-700' : 'text-orange-600'}`}>
-                                    {statusLabel}
+                                    {getStatusLabel(mainOrder.status)}
                                 </p>
                             </div>
                         </div>
@@ -302,7 +314,7 @@ const OrderTracker: React.FC = () => {
                                 <div className="flex justify-between text-[9px] text-gray-400 font-black mt-4 uppercase tracking-widest">
                                     <span className={currentStep >= 1 ? 'text-orange-600' : ''}>Recebido</span>
                                     <span className={currentStep >= 2 ? 'text-orange-600' : ''}>Preparo</span>
-                                    <span className={currentStep >= 3 ? 'text-orange-600' : ''}>{isPickup ? 'Retirada' : 'Entrega'}</span>
+                                    <span className={currentStep >= 3 ? 'text-orange-600' : ''}>{isPickup ? 'Pronto' : 'Entrega'}</span>
                                     <span className={currentStep >= 4 ? 'text-orange-600' : ''}>Fim</span>
                                 </div>
                             </div>

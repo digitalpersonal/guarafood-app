@@ -3,8 +3,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Order, CartItem, MenuItem, Combo, Addon } from '../types';
 import { useNotification } from '../hooks/useNotification';
 import { updateOrderDetails } from '../services/orderService';
-import { verifyMensalistaByPhone } from '../services/mensalistaService';
-import { fetchMenuForRestaurant, fetchAddonsForRestaurant } from '../services/databaseService';
+import { getMensalistaByPhone } from '../services/mensalistaService';
+import { fetchMenuForRestaurant, fetchAddonsForRestaurant, fetchRestaurantByIdSecure } from '../services/databaseService';
 import Spinner from './Spinner';
 import OptimizedImage from './OptimizedImage';
 import AddItemToOrderModal from './AddItemToOrderModal';
@@ -19,7 +19,6 @@ interface OrderEditorModalProps {
     onSave: (updatedOrder: Order) => void;
     restaurantId: number;
     restaurantName: string;
-    hasServiceCharge?: boolean;
     playNotification?: () => void;
 }
 
@@ -31,25 +30,19 @@ const XIcon: React.FC<{ className?: string }> = ({ className }) => (
 const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
 );
-const EditIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" />
-    </svg>
-);
 const PlusIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
     </svg>
 );
 
-const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, order, onSave, restaurantId, restaurantName, hasServiceCharge, playNotification }) => {
-    const { addToast } = useNotification();
+const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, order, onSave, restaurantId, restaurantName, playNotification }) => {
+    const { addToast, prompt } = useNotification();
     const [editedItems, setEditedItems] = useState<CartItem[]>([]);
     const [editedPaymentMethod, setEditedPaymentMethod] = useState(order.paymentMethod);
     const [editedCustomerName, setEditedCustomerName] = useState(order.customerName);
     const [editedCustomerPhone, setEditedCustomerPhone] = useState(order.customerPhone);
     const [isSaving, setIsSaving] = useState(false);
-    const [isLoadingMenu, setIsLoadingMenu] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     // States for adding new items
@@ -63,8 +56,25 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
     const [isAcaiModalOpen, setIsAcaiModalOpen] = useState(false);
     const [isGenericModalOpen, setIsGenericModalOpen] = useState(false);
     const [itemToCustomize, setItemToCustomize] = useState<MenuItem | null>(null);
-    const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
-    const [initialCartItemForEdit, setInitialCartItemForEdit] = useState<CartItem | undefined>(undefined);
+    const [hasMensalistas, setHasMensalistas] = useState(false);
+    const [hasKiloService, setHasKiloService] = useState(false);
+    const [pricePerKilo, setPricePerKilo] = useState(0);
+
+    useEffect(() => {
+        const fetchRestaurant = async () => {
+            try {
+                const rest = await fetchRestaurantByIdSecure(restaurantId);
+                if (rest) {
+                    setHasMensalistas(rest.hasMensalistas || false);
+                    setHasKiloService(rest.hasKiloService || false);
+                    setPricePerKilo(rest.pricePerKilo || 0);
+                }
+            } catch (error) {
+                console.error("Error fetching restaurant:", error);
+            }
+        };
+        fetchRestaurant();
+    }, [restaurantId]);
 
     useEffect(() => {
         if (isOpen) {
@@ -82,7 +92,6 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
         if (!restaurantId || !isOpen) return;
 
         const loadRestaurantData = async () => {
-            setIsLoadingMenu(true);
             try {
                 // Pass true to ignore day filter, so admin can add ANY item to the order manually
                 const [menuData, addonsData] = await Promise.all([
@@ -95,8 +104,6 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
             } catch (err) {
                 console.error("Failed to load restaurant menu/addons:", err);
                 addToast({ message: "Erro ao carregar cardápio do restaurante para edição.", type: "error" });
-            } finally {
-                setIsLoadingMenu(false);
             }
         };
         loadRestaurantData();
@@ -104,21 +111,6 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
 
     const handleQuantityChange = useCallback((itemId: string, newQuantity: number) => {
         setEditedItems(prevItems => {
-            const itemToUpdate = prevItems.find(i => i.id === itemId);
-            if (!itemToUpdate) return prevItems;
-
-            // If increasing quantity of an already printed item, split it to track the new items
-            if (itemToUpdate.kitchenPrinted && newQuantity > itemToUpdate.quantity) {
-                const diff = newQuantity - itemToUpdate.quantity;
-                const newItem = { 
-                    ...itemToUpdate, 
-                    id: `${itemToUpdate.id.split('-')[0]}-${Date.now()}`, 
-                    quantity: diff, 
-                    kitchenPrinted: false 
-                };
-                return [...prevItems, newItem];
-            }
-
             const updated = prevItems.map(item =>
                 item.id === itemId ? { ...item, quantity: Math.max(0, newQuantity) } : item
             );
@@ -131,51 +123,27 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
     }, []);
 
     const handleAddItemToOrder = useCallback((newItem: CartItem) => {
-        // Safety check: Ensure item belongs to the same restaurant as the order
-        if (Number(newItem.restaurantId) !== Number(order.restaurantId)) {
-            addToast({ message: "Erro: Este item pertence a outro restaurante.", type: "error" });
-            return;
-        }
-
         setEditedItems(prevItems => {
-            if (editingItemIndex !== null) {
-                // Replacement mode (editing existing item)
-                const updated = [...prevItems];
-                updated[editingItemIndex] = { ...newItem, quantity: prevItems[editingItemIndex].quantity };
-                return updated;
-            }
-
-            // Check if it's the exact same custom item (same ID) AND it hasn't been printed yet
-            // We check if the item ID matches exactly or starts with the ID followed by a timestamp
-            const existingItemIndex = prevItems.findIndex(item => 
-                (item.id === newItem.id || item.id.startsWith(`${newItem.id}-`)) && 
-                !item.kitchenPrinted
-            );
+            // Check if it's the exact same custom item (same ID)
+            const existingItemIndex = prevItems.findIndex(item => item.id === newItem.id);
 
             if (existingItemIndex > -1) {
-                // If it exists and not printed, just increment quantity
-                const updated = [...prevItems];
-                updated[existingItemIndex] = { 
-                    ...updated[existingItemIndex], 
-                    quantity: updated[existingItemIndex].quantity + newItem.quantity 
-                };
-                return updated;
+                // If it exists, just increment quantity
+                return prevItems.map((item, index) =>
+                    index === existingItemIndex ? { ...item, quantity: item.quantity + newItem.quantity } : item
+                );
             } else {
-                // Otherwise, add as a new item (even if another item with same ID exists but was already printed)
-                // We need a unique ID for the new entry to avoid React key conflicts and merging issues
-                const uniqueNewItem = { ...newItem, id: `${newItem.id}-${Date.now()}`, kitchenPrinted: false };
-                return [...prevItems, uniqueNewItem];
+                // Otherwise, add as a new item
+                return [...prevItems, { ...newItem }];
             }
         });
-        addToast({ message: editingItemIndex !== null ? `${newItem.name} atualizado!` : `${newItem.name} adicionado!`, type: "success" });
+        addToast({ message: `${newItem.name} adicionado!`, type: "success" });
         setIsAddItemModalOpen(false); // Close item selection modal
         setIsPizzaModalOpen(false); // Close customization modals
         setIsAcaiModalOpen(false);
         setIsGenericModalOpen(false);
         setItemToCustomize(null);
-        setEditingItemIndex(null);
-        setInitialCartItemForEdit(undefined);
-    }, [addToast, editingItemIndex, order.restaurantId]);
+    }, [addToast]);
 
     const { subtotal, totalItems } = useMemo(() => {
         const currentSubtotal = editedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -187,22 +155,13 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
     const discountAmount = order.discountAmount || 0;
 
     const finalTotalPrice = useMemo(() => {
-        const baseTotal = (subtotal - discountAmount) + deliveryFee;
-        const serviceCharge = (order.tableNumber && hasServiceCharge) ? (subtotal * 0.1) : 0;
-        return Math.max(0, baseTotal + serviceCharge);
-    }, [subtotal, discountAmount, deliveryFee, order.tableNumber, hasServiceCharge]);
+        return Math.max(0, (subtotal - discountAmount) + deliveryFee);
+    }, [subtotal, discountAmount, deliveryFee]);
 
     const handleSave = async () => {
         setError(null);
         if (editedItems.length === 0) {
             setError('O pedido não pode ficar sem itens. Se desejar cancelar, use a opção de cancelar pedido.');
-            return;
-        }
-
-        // Final validation: Ensure all items belong to the correct restaurant
-        const invalidItems = editedItems.filter(item => Number(item.restaurantId) !== Number(order.restaurantId));
-        if (invalidItems.length > 0) {
-            setError(`Erro: Foram encontrados ${invalidItems.length} itens de outro restaurante. Remova-os antes de salvar.`);
             return;
         }
 
@@ -217,7 +176,7 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                     setIsSaving(false);
                     return;
                 }
-                const mensalista = await verifyMensalistaByPhone(restaurantId, editedCustomerPhone.replace(/\D/g, ''));
+                const mensalista = await getMensalistaByPhone(editedCustomerPhone.replace(/\D/g, ''), restaurantId);
                 if (mensalista) {
                     mensalistaIdToUpdate = mensalista.id;
                     finalPaymentMethod = `Mensalista (${mensalista.name})`;
@@ -226,12 +185,10 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                     setIsSaving(false);
                     return;
                 }
-            } else if (order.mensalistaId) {
+            } else if (order.mensalista_id) {
                 // Se era mensalista e mudou para outra forma, removemos o ID do mensalista
                 mensalistaIdToUpdate = null;
             }
-
-            const serviceCharge = (order.tableNumber && hasServiceCharge) ? (subtotal * 0.1) : 0;
 
             const updatedOrder = await updateOrderDetails(order.id, {
                 items: editedItems,
@@ -242,8 +199,6 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                 customerName: editedCustomerName,
                 customerPhone: editedCustomerPhone,
                 mensalistaId: mensalistaIdToUpdate,
-                waiterName: restaurantName,
-                serviceCharge: serviceCharge,
             });
             
             // Play notification if it's a table order
@@ -262,49 +217,8 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
         }
     };
 
-    const handleSelectMenuItemForCustomization = useCallback((item: MenuItem, indexForEdit: number | null = null) => {
-        const hasSizes = item.sizes && item.sizes.length > 0;
-        const hasAddons = item.availableAddonIds && item.availableAddonIds.length > 0;
-
-        console.log("Customizing item:", item.name, { hasSizes, hasAddons, isPizza: item.isPizza, isAcai: item.isAcai, indexForEdit });
-
-        const isEditing = indexForEdit !== null;
-
-        if (!hasSizes && !hasAddons && !item.isPizza && !item.isAcai && !isEditing) {
-            // Se não tem customização e NÃO estamos editando, adiciona direto
-            setEditedItems(prev => {
-                const cartItem: CartItem = {
-                    id: indexForEdit !== null ? prev[indexForEdit].id : `item-${Date.now()}`,
-                    restaurantId: restaurantId,
-                    name: item.name,
-                    price: item.price,
-                    basePrice: item.price,
-                    imageUrl: item.imageUrl,
-                    description: item.description,
-                    quantity: indexForEdit !== null ? prev[indexForEdit].quantity : 1,
-                    available: true,
-                    menuItemId: item.id,
-                    selectedAddons: [],
-                    notes: indexForEdit !== null ? prev[indexForEdit].notes : '',
-                    kitchenPrinted: indexForEdit !== null ? prev[indexForEdit].kitchenPrinted : false
-                };
-
-                const newItems = [...prev];
-                if (indexForEdit !== null) {
-                    newItems[indexForEdit] = cartItem;
-                } else {
-                    newItems.push(cartItem);
-                }
-                return newItems;
-            });
-            setIsAddItemModalOpen(false);
-            setEditingItemIndex(null);
-            setInitialCartItemForEdit(undefined);
-            return;
-        }
-
+    const handleSelectMenuItemForCustomization = useCallback((item: MenuItem) => {
         setItemToCustomize(item);
-        setIsAddItemModalOpen(false); // Fecha o modal de seleção antes de abrir o de customização
         if (item.isPizza) {
             setIsPizzaModalOpen(true);
         } else if (item.isAcai) {
@@ -312,58 +226,59 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
         } else {
             setIsGenericModalOpen(true);
         }
-    }, []);
-
-    const handleEditItem = useCallback((index: number) => {
-        const item = editedItems[index];
-        const menuItemId = item.menuItemId;
-        
-        console.log("Editing item at index:", index, item);
-
-        if (!menuItemId) {
-            addToast({ message: "Este item não pode ser editado.", type: "warning" });
-            return;
-        }
-
-        const menuItem = allRestaurantMenuItems.find(m => m.id === menuItemId);
-        if (!menuItem) {
-            addToast({ message: "Item original não encontrado no cardápio.", type: "error" });
-            return;
-        }
-
-        setEditingItemIndex(index);
-        setInitialCartItemForEdit(item);
-        handleSelectMenuItemForCustomization(menuItem, index);
-    }, [editedItems, allRestaurantMenuItems, handleSelectMenuItemForCustomization, addToast]);
+    }, [handleAddItemToOrder]);
     
     const handleAddComboToOrder = useCallback((combo: Combo) => {
         const comboCartItem: CartItem = {
             id: `combo-${combo.id}-${Date.now()}`, // Unique ID
-            restaurantId: restaurantId,
             name: combo.name,
             price: combo.price,
             basePrice: combo.price,
             imageUrl: combo.imageUrl,
             quantity: 1,
             description: combo.description,
-            menuItemId: undefined, // Combos don't have a single menu item ID
         };
         handleAddItemToOrder(comboCartItem);
-    }, [handleAddItemToOrder, restaurantId]);
+    }, [handleAddItemToOrder]);
+
+    const handleAddKiloItem = async () => {
+        if (!hasKiloService || !pricePerKilo) return;
+
+        const weightStr = await prompt({
+            title: 'Adicionar Peso',
+            message: `Valor do Kg: R$ ${pricePerKilo.toFixed(2)}\nDigite o peso em KG (ex: 0.450):`,
+            placeholder: '0.000',
+            submitText: 'Adicionar ao Pedido',
+            cancelText: 'Cancelar'
+        });
+
+        if (!weightStr) return;
+        const weight = parseFloat(weightStr.replace(',', '.'));
+        if (isNaN(weight) || weight <= 0) {
+            addToast({ message: 'Peso inválido.', type: 'error' });
+            return;
+        }
+
+        const itemPrice = weight * pricePerKilo;
+
+        const kiloItem: CartItem = {
+            id: `kilo-${Date.now()}`,
+            name: 'Prato por Kilo',
+            price: itemPrice,
+            basePrice: itemPrice,
+            imageUrl: '',
+            quantity: 1,
+            description: `Peso: ${weight.toFixed(3)}kg (R$ ${pricePerKilo.toFixed(2)}/kg)`,
+            weight: weight,
+            isKiloItem: true,
+            served: true
+        };
+
+        handleAddItemToOrder(kiloItem);
+    };
 
 
     if (!isOpen) return null;
-    
-    if (isLoadingMenu) {
-        return (
-            <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-                <div className="bg-white p-8 rounded-2xl shadow-xl flex flex-col items-center">
-                    <Spinner className="w-10 h-10 text-orange-600 mb-4" />
-                    <p className="text-gray-500 font-bold">Carregando cardápio...</p>
-                </div>
-            </div>
-        );
-    }
 
     return (
         <>
@@ -406,11 +321,14 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                             </div>
                         ) : (
                             <div className="space-y-3">
-                                {editedItems.map((item, index) => (
+                                {editedItems.map(item => (
                                     <div key={item.id} className="flex items-start space-x-3 p-2 bg-gray-50 rounded-lg border border-gray-100">
                                         <OptimizedImage src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-md object-cover flex-shrink-0" />
                                         <div className="flex-grow">
                                             <p className="font-semibold text-gray-800">
+                                                {item.isKiloItem && item.weight ? (
+                                                    <span className="text-emerald-600 mr-2">{item.weight.toFixed(3)}kg</span>
+                                                ) : null}
                                                 {item.name} {item.sizeName && `(${item.sizeName})`}
                                             </p>
                                             
@@ -445,20 +363,19 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                                             <p className="text-sm text-orange-600 font-bold mt-1">R$ {(item.price * item.quantity).toFixed(2)}</p>
                                         </div>
                                         <div className="flex flex-col items-end space-y-2">
-                                            <div className="flex items-center space-x-1">
-                                                {item.menuItemId && (
-                                                    <button onClick={() => handleEditItem(index)} className="text-gray-400 hover:text-blue-500 p-1" title="Editar adicionais">
-                                                        <EditIcon className="w-4 h-4"/>
-                                                    </button>
-                                                )}
-                                                <button onClick={() => handleRemoveItem(item.id)} className="text-gray-400 hover:text-red-500 p-1">
-                                                    <TrashIcon className="w-5 h-5"/>
-                                                </button>
-                                            </div>
+                                            <button onClick={() => handleRemoveItem(item.id)} className="text-gray-400 hover:text-red-500 p-1">
+                                                <TrashIcon className="w-5 h-5"/>
+                                            </button>
                                             <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
-                                                <button onClick={() => handleQuantityChange(item.id, item.quantity - 1)} className="w-6 h-6 flex items-center justify-center font-bold text-gray-600 hover:bg-white rounded">-</button>
-                                                <span className="font-bold w-4 text-center text-sm">{item.quantity}</span>
-                                                <button onClick={() => handleQuantityChange(item.id, item.quantity + 1)} className="w-6 h-6 flex items-center justify-center font-bold text-gray-600 hover:bg-white rounded">+</button>
+                                                {!item.isKiloItem ? (
+                                                    <>
+                                                        <button onClick={() => handleQuantityChange(item.id, item.quantity - 1)} className="w-6 h-6 flex items-center justify-center font-bold text-gray-600 hover:bg-white rounded">-</button>
+                                                        <span className="font-bold w-4 text-center text-sm">{item.quantity}</span>
+                                                        <button onClick={() => handleQuantityChange(item.id, item.quantity + 1)} className="w-6 h-6 flex items-center justify-center font-bold text-gray-600 hover:bg-white rounded">+</button>
+                                                    </>
+                                                ) : (
+                                                    <span className="px-2 text-[10px] font-black text-emerald-600 uppercase">PESO</span>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -466,18 +383,29 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                             </div>
                         )}
 
-                        <button
-                            onClick={() => setIsAddItemModalOpen(true)}
-                            className="w-full py-3 mt-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 font-semibold hover:bg-gray-50 flex items-center justify-center gap-2"
-                        >
-                            <PlusIcon className="w-5 h-5" />
-                            Adicionar Novo Item
-                        </button>
+                        <div className="flex gap-2">
+                            {hasKiloService && (
+                                <button
+                                    onClick={handleAddKiloItem}
+                                    className="flex-1 py-3 mt-2 border-2 border-dashed border-emerald-300 rounded-lg text-emerald-600 font-semibold hover:bg-emerald-50 flex items-center justify-center gap-2"
+                                >
+                                    <PlusIcon className="w-5 h-5" />
+                                    Pesar Prato
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setIsAddItemModalOpen(true)}
+                                className="flex-1 py-3 mt-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 font-semibold hover:bg-gray-50 flex items-center justify-center gap-2"
+                            >
+                                <PlusIcon className="w-5 h-5" />
+                                Adicionar Novo Item
+                            </button>
+                        </div>
 
                         <div className="space-y-2">
                             <label className="block text-xs font-black text-gray-500 uppercase">Forma de Pagamento</label>
                             <div className="grid grid-cols-2 gap-2">
-                                {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Mensalista'].map(m => (
+                                {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Mensalista'].filter(m => m !== 'Mensalista' || hasMensalistas).map(m => (
                                     <button 
                                         key={m}
                                         type="button"
@@ -544,47 +472,29 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
             {isPizzaModalOpen && itemToCustomize && (
                 <PizzaCustomizationModal
                     isOpen={isPizzaModalOpen}
-                    onClose={() => {
-                        setIsPizzaModalOpen(false);
-                        setEditingItemIndex(null);
-                        setInitialCartItemForEdit(undefined);
-                    }}
+                    onClose={() => setIsPizzaModalOpen(false)}
                     onAddToCart={handleAddItemToOrder}
                     initialPizza={itemToCustomize}
                     allPizzas={allRestaurantMenuItems.filter(i => i.isPizza)}
                     allAddons={allRestaurantAddons}
-                    restaurantId={restaurantId}
-                    initialCartItem={initialCartItemForEdit}
                 />
             )}
             {isAcaiModalOpen && itemToCustomize && (
                 <AcaiCustomizationModal
                     isOpen={isAcaiModalOpen}
-                    onClose={() => {
-                        setIsAcaiModalOpen(false);
-                        setEditingItemIndex(null);
-                        setInitialCartItemForEdit(undefined);
-                    }}
+                    onClose={() => setIsAcaiModalOpen(false)}
                     onAddToCart={handleAddItemToOrder}
                     initialItem={itemToCustomize}
                     allAddons={allRestaurantAddons}
-                    restaurantId={restaurantId}
-                    initialCartItem={initialCartItemForEdit}
                 />
             )}
             {isGenericModalOpen && itemToCustomize && (
                 <GenericCustomizationModal
                     isOpen={isGenericModalOpen}
-                    onClose={() => {
-                        setIsGenericModalOpen(false);
-                        setEditingItemIndex(null);
-                        setInitialCartItemForEdit(undefined);
-                    }}
+                    onClose={() => setIsGenericModalOpen(false)}
                     onAddToCart={handleAddItemToOrder}
                     initialItem={itemToCustomize}
                     allAddons={allRestaurantAddons}
-                    restaurantId={restaurantId}
-                    initialCartItem={initialCartItemForEdit}
                 />
             )}
         </>

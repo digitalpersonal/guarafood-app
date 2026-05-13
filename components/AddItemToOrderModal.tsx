@@ -81,14 +81,7 @@ const AddItemToOrderModal: React.FC<AddItemToOrderModalProps> = ({
                 </div>
 
                 <div className="overflow-y-auto flex-grow space-y-4 pr-1">
-                    {allMenuItems.length === 0 && allCombos.length === 0 ? (
-                        <div className="text-center py-10 text-gray-500 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
-                            <p className="font-bold">Nenhum item encontrado no cardápio.</p>
-                            <p className="text-xs mt-1">Verifique se o restaurante possui itens cadastrados.</p>
-                        </div>
-                    ) : (
-                        <>
-                            {filteredCombos.length > 0 && (
+                    {filteredCombos.length > 0 && (
                         <div className="space-y-3 mb-6">
                             <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-2">Combos</h3>
                             {filteredCombos.map(combo => (
@@ -143,8 +136,6 @@ const AddItemToOrderModal: React.FC<AddItemToOrderModalProps> = ({
 
                     {filteredItems.length === 0 && filteredCombos.length === 0 && (
                         <p className="text-center text-gray-400 py-10 italic">Nenhum item encontrado.</p>
-                    )}
-                        </>
                     )}
                 </div>
 

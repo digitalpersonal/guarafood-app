@@ -11,6 +11,8 @@ import OptimizedImage from './OptimizedImage';
 
 // Mapa de imagens genéricas por categoria
 const genericImages: Record<string, string> = {
+  'Pastel': 'https://images.pexels.com/photos/1230931/pexels-photo-1230931.jpeg?auto=compress&cs=tinysrgb&w=400',
+  'Pastelaria': 'https://images.pexels.com/photos/1230931/pexels-photo-1230931.jpeg?auto=compress&cs=tinysrgb&w=400',
   'Lanches': 'https://images.pexels.com/photos/1633578/pexels-photo-1633578.jpeg?auto=compress&cs=tinysrgb&w=400',
   'Sanduíche': 'https://images.pexels.com/photos/1633578/pexels-photo-1633578.jpeg?auto=compress&cs=tinysrgb&w=400',
   'Pizza': 'https://images.pexels.com/photos/1146760/pexels-photo-1146760.jpeg?auto=compress&cs=tinysrgb&w=400',
@@ -87,10 +89,12 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
       setIsPizzaModalOpen(true);
     } else if (item.isAcai) {
       setIsAcaiModalOpen(true);
+    } else if (item.optionGroups && item.optionGroups.length > 0) {
+        setIsGenericModalOpen(true);
     } else if (item.availableAddonIds && item.availableAddonIds.length > 0) {
       setIsGenericModalOpen(true);
     } else if (item.sizes && item.sizes.length > 0) {
-        setIsGenericModalOpen(true); // Also open for items that just have sizes
+      setIsGenericModalOpen(true);
     }
     else {
       setIsAdding(true);
@@ -98,7 +102,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
       
       const rect = event.currentTarget.getBoundingClientRect();
       addFlyingItem(finalImageUrl, rect);
-      addToCart(item, item.restaurantId);
+      addToCart(item);
     }
   };
 
@@ -106,7 +110,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
     setIsAdding(true);
     setTimeout(() => setIsAdding(false), 500);
     
-    addToCart(customizedItem, customizedItem.restaurantId);
+    addToCart(customizedItem);
     setIsPizzaModalOpen(false);
     setIsAcaiModalOpen(false);
     setIsGenericModalOpen(false);
@@ -122,8 +126,8 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
           
           {/* Badge: Esgotado */}
           {!isAvailable && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/40 pointer-events-none">
-                <span className="bg-gray-800 text-white text-xs font-black px-4 py-2 rounded-full shadow-xl uppercase tracking-widest border-2 border-white">Esgotado</span>
+            <div className="absolute inset-0 z-20 flex items-start justify-start p-2 md:items-center md:justify-center pointer-events-none">
+                <span className="bg-gray-200 text-gray-600 text-[10px] font-bold px-2 py-1 rounded shadow-sm uppercase tracking-wider md:bg-gray-800 md:text-white md:text-xs md:px-4 md:py-2 md:rounded-full md:shadow-xl md:tracking-widest md:border-2 md:border-white">Esgotado</span>
             </div>
           )}
 
@@ -210,7 +214,6 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
           initialPizza={item}
           allPizzas={allPizzas}
           allAddons={allAddons}
-          restaurantId={item.restaurantId}
         />
       )}
        {isAcaiModalOpen && (
@@ -220,7 +223,6 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
           onAddToCart={handleCustomizedItemAddToCart}
           initialItem={item}
           allAddons={allAddons}
-          restaurantId={item.restaurantId}
         />
       )}
        {isGenericModalOpen && (
@@ -230,7 +232,6 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
           onAddToCart={handleCustomizedItemAddToCart}
           initialItem={item}
           allAddons={allAddons}
-          restaurantId={item.restaurantId}
         />
       )}
     </>

@@ -16,7 +16,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const USER_STORAGE_KEY = 'guara-food-user-profile-v3';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  console.log("AuthProvider rendered - VERSION 1.0.3");
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
       try {
           const storedUser = localStorage.getItem(USER_STORAGE_KEY);
@@ -139,18 +138,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     window.addEventListener('auth:session-expired', handleSessionExpired);
 
     setLoading(true);
-    
-    // SAFETY TIMEOUT: Se o Supabase demorar mais de 8 segundos para responder, 
-    // liberamos o carregamento para não travar o usuário na tela de splash.
-    const safetyTimeout = setTimeout(() => {
-        if (loading) {
-            console.warn("Auth initialization taking too long. Releasing loading state.");
-            setLoading(false);
-        }
-    }, 8000);
-
     supabase.auth.getSession().then(async ({ data: { session }, error }) => {
-      clearTimeout(safetyTimeout);
       if (error) {
         console.warn("Session check error:", error.message);
         if (error.message.includes("Refresh Token") || error.message.includes("refresh_token")) {
@@ -212,15 +200,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
+    const login = useCallback(async (email: string, password: string) => {
       setAuthError(null);
       
       const cleanEmail = email.toLowerCase().trim();
+      const cleanPassword = password.trim();
 
       // 1. Tenta login real no Supabase primeiro
       const { data, error } = await supabase.auth.signInWithPassword({ 
           email: cleanEmail, 
-          password 
+          password: cleanPassword 
       });
 
       if (error) {
@@ -236,7 +225,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   const staffList = res.staff as any[];
                   const member = staffList.find(s => 
                       s.email?.toLowerCase() === cleanEmail && 
-                      s.password === password && 
+                      (s.password === cleanPassword || s.password === password) && 
                       s.active
                   );
                   
@@ -260,21 +249,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const logout = useCallback(async () => {
-      console.log("Logout function called - Aggressive mode");
-      try {
-          // Tenta deslogar do Supabase
-          await supabase.auth.signOut();
-          console.log("Supabase signOut completed");
-      } catch (e) {
-          console.warn("Error during signOut:", e);
-      } finally {
-          // Limpa TUDO do localStorage para garantir que nada persista
-          localStorage.clear();
-          console.log("LocalStorage cleared completely");
-          
-          // Limpa o estado local
-          setCurrentUser(null);
-      }
+      await supabase.auth.signOut();
+      localStorage.removeItem(USER_STORAGE_KEY);
+      setCurrentUser(null);
   }, []);
 
   const value = useMemo(() => ({

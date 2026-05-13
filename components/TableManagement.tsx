@@ -1,18 +1,14 @@
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { createOrder, recordOrderPayment, deleteOrderPayment, updateOrderStatus, fetchOpenTableOrder, fetchOpenTableOrders, requestKitchenPrint, requestBillPrint, markPrintJobAsDone, updateOrderDetails } from '../services/orderService';
-import { fetchRestaurantByIdSecure, fetchMenuForRestaurant, fetchAddonsForRestaurant } from '../services/databaseService';
-import { verifyMensalistaByPhone } from '../services/mensalistaService';
+import React, { useState, useMemo, useEffect } from 'react';
+import { createOrder, recordOrderPayment, updateOrderStatus, fetchOpenTableOrder, fetchOpenTableOrders, requestKitchenPrint, requestBillPrint, markPrintJobAsDone, updateOrderDetails } from '../services/orderService';
+import { getMensalistaByPhone, searchMensalistas } from '../services/mensalistaService';
+import { fetchRestaurantByIdSecure } from '../services/databaseService';
 import { supabase } from '../services/api';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
 import Spinner from './Spinner';
 import OrderEditorModal from './OrderEditorModal';
-import AddItemToOrderModal from './AddItemToOrderModal';
-import GenericCustomizationModal from './GenericCustomizationModal';
-import PizzaCustomizationModal from './PizzaCustomizationModal';
-import AcaiCustomizationModal from './AcaiCustomizationModal';
-import type { Order, CartItem, PaymentEntry, StaffMember, Restaurant, MenuItem, Combo, Addon } from '../types';
+import type { Order, CartItem, PaymentEntry, StaffMember, Restaurant, Mensalista } from '../types';
 
 const StoreIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -36,54 +32,43 @@ const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
 );
 
+const XIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+);
+
 
 interface TableManagementProps {
     orders: Order[];
     currentStaffUser?: StaffMember | null;
     onPrint?: (order: Order, mode: 'full' | 'kitchen', items?: CartItem[]) => void;
-    restaurant?: Restaurant | null;
 }
 
-const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffUser, onPrint, restaurant: propRestaurant }) => {
+const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffUser, onPrint }) => {
     const { currentUser } = useAuth();
     const { addToast, confirm, prompt } = useNotification();
     const [selectedTable, setSelectedTable] = useState<string | null>(null);
     const [tableOrders, setTableOrders] = useState<Order[]>([]);
-    const [restaurant, setRestaurant] = useState<Restaurant | null>(propRestaurant || null);
+    const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
     const [selectedTableOrder, setSelectedTableOrder] = useState<Order | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-    const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
-    const [allRestaurantMenuItems, setAllRestaurantMenuItems] = useState<MenuItem[]>([]);
-    const [allRestaurantCombos, setAllRestaurantCombos] = useState<Combo[]>([]);
-    const [allRestaurantAddons, setAllRestaurantAddons] = useState<Addon[]>([]);
-    const [isPizzaModalOpen, setIsPizzaModalOpen] = useState(false);
-    const [isAcaiModalOpen, setIsAcaiModalOpen] = useState(false);
-    const [isGenericModalOpen, setIsGenericModalOpen] = useState(false);
-    const [itemToCustomize, setItemToCustomize] = useState<MenuItem | null>(null);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-    const [isConfirmationModalOpen, setIsConfirmationModalOpen] = useState(false);
-
-    const handleSelectMenuItemForCustomization = useCallback((item: MenuItem) => {
-        setItemToCustomize(item);
-        if (item.isPizza) {
-            setIsPizzaModalOpen(true);
-        } else if (item.isAcai) {
-            setIsAcaiModalOpen(true);
-        } else {
-            setIsGenericModalOpen(true);
-        }
-    }, []);
-
-    const handleAddComboToOrder = useCallback((combo: Combo) => {
-        addToast({ message: "Combos ainda não implementados para pedidos de mesa.", type: "info" });
-    }, [addToast]);
-    const [pendingPayment, setPendingPayment] = useState<{ amount: number; method: string } | null>(null);
+    const [isCreateComandaModalOpen, setIsCreateComandaModalOpen] = useState(false);
+    const [newComandaName, setNewComandaName] = useState('');
+    const [newComandaNum, setNewComandaNum] = useState('');
+    const [newComandaPhone, setNewComandaPhone] = useState('');
     const [paymentAmount, setPaymentAmount] = useState('');
     const [changeFor, setChangeFor] = useState('');
     const [paymentMethod, setPaymentMethod] = useState('Dinheiro');
-    const [customerPhone, setCustomerPhone] = useState('');
-    const [mensalistaId, setMensalistaId] = useState<string | null>(null);
     
+    // Mensalista Search States
+    const [mensalistaSearch, setMensalistaSearch] = useState('');
+    const [mensalistaSuggestions, setMensalistaSuggestions] = useState<Mensalista[]>([]);
+    const [isSearchingMensalista, setIsSearchingMensalista] = useState(false);
+    const [selectedMensalista, setSelectedMensalista] = useState<Mensalista | null>(null);
+
+    // Printing States
+    const [printedItems, setPrintedItems] = useState<Set<string>>(new Set());
+
     const tableNumbers = Array.from({ length: 30 }, (_, i) => (i + 1).toString());
 
     useEffect(() => {
@@ -95,26 +80,6 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
         };
         loadRestaurant();
     }, [currentUser?.restaurantId]);
-
-    // Load full menu and addons for the restaurant
-    useEffect(() => {
-        if (!restaurant?.id || !isEditModalOpen) return;
-
-        const loadRestaurantData = async () => {
-            try {
-                const [menuData, addonsData] = await Promise.all([
-                    fetchMenuForRestaurant(restaurant.id, true), 
-                    fetchAddonsForRestaurant(restaurant.id),
-                ]);
-                setAllRestaurantMenuItems(menuData.flatMap(c => c.items));
-                setAllRestaurantCombos(menuData.flatMap(c => c.combos || []));
-                setAllRestaurantAddons(addonsData);
-            } catch (err) {
-                console.error("Failed to load restaurant menu/addons:", err);
-            }
-        };
-        loadRestaurantData();
-    }, [restaurant?.id, isEditModalOpen]);
 
     const activeTables = useMemo(() => {
         // Filtramos pedidos de mesa abertos
@@ -157,35 +122,22 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
 
     const handleCreateComanda = async () => {
         if (!selectedTable || !currentUser?.restaurantId) return;
+        setIsCreateComandaModalOpen(true);
+    };
 
-        const comandaName = await prompt({
-            title: 'Nova Comanda',
-            message: 'Nome do Cliente:',
-            placeholder: 'Ex: João Silva',
-            submitText: 'Continuar',
-            cancelText: 'Cancelar'
-        });
-
-        if (!comandaName) return;
-
-        const comandaNum = await prompt({
-            title: 'Número da Comanda',
-            message: 'Número ou Identificador (Opcional):',
-            placeholder: 'Ex: 01',
-            submitText: 'Abrir Comanda',
-            cancelText: 'Pular'
-        });
+    const confirmCreateComanda = async () => {
+        if (!selectedTable || !currentUser?.restaurantId || !newComandaName) return;
 
         try {
             const newOrder = await createOrder({
-                customerName: comandaName,
-                customerPhone: '0000000000',
+                customerName: newComandaName,
+                customerPhone: newComandaPhone || '0000000000',
                 customerAddress: { 
                     zipCode: '00000-000', 
                     street: 'Consumo Local', 
                     number: 'Mesa ' + selectedTable, 
                     neighborhood: 'Salão', 
-                    complement: comandaNum ? `Comanda ${comandaNum}` : '' 
+                    complement: newComandaNum ? `Comanda ${newComandaNum}` : '' 
                 },
                 items: [],
                 totalPrice: 0,
@@ -193,16 +145,22 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                 restaurantName: currentUser.name,
                 restaurantAddress: '',
                 restaurantPhone: '',
-                paymentMethod: 'Dinheiro',
+                paymentMethod: selectedMensalista ? 'Mensalista' : 'Dinheiro',
                 tableNumber: selectedTable,
-                comandaNumber: comandaNum || undefined,
+                comandaNumber: newComandaNum || undefined,
                 status: 'Aguardando Pagamento',
-                waiterName: currentUser.name
+                mensalistaId: selectedMensalista?.id
             });
             
-            addToast({ message: `Comanda para ${comandaName} aberta na Mesa ${selectedTable}!`, type: 'success' });
+            addToast({ message: `Comanda para ${newComandaName} aberta na Mesa ${selectedTable}!`, type: 'success' });
             setTableOrders(prev => [...prev, newOrder]);
             setSelectedTableOrder(newOrder);
+            setIsCreateComandaModalOpen(false);
+            setNewComandaName('');
+            setNewComandaNum('');
+            setNewComandaPhone('');
+            setSelectedMensalista(null);
+            setMensalistaSearch('');
         } catch (e: any) {
             console.error("Erro ao abrir comanda:", e);
             addToast({ message: `Erro ao abrir comanda: ${e.message}`, type: 'error' });
@@ -258,8 +216,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                 description: `Peso: ${weight.toFixed(3)}kg (R$ ${restaurant.pricePerKilo.toFixed(2)}/kg)`,
                 weight: weight,
                 isKiloItem: true,
-                served: true,
-                restaurantId: currentUser.restaurantId
+                served: true
             };
 
             const newOrder = await createOrder({
@@ -281,8 +238,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                 paymentMethod: 'Dinheiro',
                 tableNumber: selectedTable,
                 comandaNumber: comandaNum || undefined,
-                status: 'Aguardando Pagamento',
-                waiterName: currentUser.name
+                status: 'Aguardando Pagamento'
             });
             
             addToast({ message: `Comanda de peso para ${comandaName} aberta!`, type: 'success' });
@@ -296,21 +252,6 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
 
     const handleAddKiloItem = async () => {
         if (!selectedTableOrder || !restaurant?.pricePerKilo) return;
-
-    const handleSelectMenuItemForCustomization = useCallback((item: MenuItem) => {
-        setItemToCustomize(item);
-        if (item.isPizza) {
-            setIsPizzaModalOpen(true);
-        } else if (item.isAcai) {
-            setIsAcaiModalOpen(true);
-        } else {
-            setIsGenericModalOpen(true);
-        }
-    }, []);
-
-    const handleAddComboToOrder = useCallback((combo: Combo) => {
-        addToast({ message: "Combos ainda não implementados para pedidos de mesa.", type: "info" });
-    }, [addToast]);
 
         const weightStr = await prompt({
             title: 'Adicionar Peso',
@@ -340,21 +281,18 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                 description: `Peso: ${weight.toFixed(3)}kg (R$ ${restaurant.pricePerKilo.toFixed(2)}/kg)`,
                 weight: weight,
                 isKiloItem: true,
-                served: true,
-                restaurantId: currentUser.restaurantId
+                served: true
             };
 
             const updatedItems = [...selectedTableOrder.items, kiloItem];
             const updatedSubtotal = updatedItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-            const serviceCharge = restaurant?.hasServiceCharge ? (updatedSubtotal * 0.1) : 0;
-            const updatedTotal = updatedSubtotal + serviceCharge;
+            const updatedTotal = updatedSubtotal - (selectedTableOrder.discountAmount || 0);
 
             const updatedOrder = await updateOrderDetails(selectedTableOrder.id, {
                 items: updatedItems,
                 totalPrice: updatedTotal,
                 subtotal: updatedSubtotal,
-                waiterName: currentUser.name,
-                serviceCharge: serviceCharge
+                discountAmount: selectedTableOrder.discountAmount
             });
 
             setSelectedTableOrder(updatedOrder);
@@ -375,7 +313,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
 
     const triggerKitchenPrint = async (order: Order) => {
         // Filter only items not yet printed for kitchen
-        const unprintedItems = order.items.filter(item => !item.kitchenPrinted);
+        const unprintedItems = order.items.filter(item => !printedItems.has(`${order.id}-${item.name}-${item.price}`));
         if (unprintedItems.length === 0) {
             addToast({ message: 'Todos os itens já foram enviados para a cozinha.', type: 'info' });
             return;
@@ -383,9 +321,10 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
         try {
             await requestKitchenPrint(order.id, unprintedItems);
             addToast({ message: 'Pedido enviado para a impressora da cozinha.', type: 'success' });
-            
-            // The order will be updated via the guarafood:update-orders event
-            // which will refresh the orders and update the UI
+            // Mark as printed locally
+            const newPrinted = new Set(printedItems);
+            unprintedItems.forEach(item => newPrinted.add(`${order.id}-${item.name}-${item.price}`));
+            setPrintedItems(newPrinted);
         } catch (e: any) {
             addToast({ message: `Erro ao enviar para cozinha: ${e.message}`, type: 'error' });
         }
@@ -400,54 +339,89 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
         }
     };
 
+    useEffect(() => {
+        if (paymentMethod === 'Mensalista' && mensalistaSearch.length >= 3) {
+            const delayDebounceFn = setTimeout(async () => {
+                if (!currentUser?.restaurantId) return;
+                setIsSearchingMensalista(true);
+                try {
+                    const results = await searchMensalistas(mensalistaSearch, currentUser.restaurantId);
+                    setMensalistaSuggestions(results);
+                } catch (e) {
+                    console.error("Erro ao buscar mensalistas:", e);
+                } finally {
+                    setIsSearchingMensalista(false);
+                }
+            }, 500);
+
+            return () => clearTimeout(delayDebounceFn);
+        } else {
+            setMensalistaSuggestions([]);
+        }
+    }, [mensalistaSearch, paymentMethod, currentUser?.restaurantId]);
+
     const handleProcessPayment = async () => {
         if (!selectedTableOrder || !paymentAmount) return;
         const amount = parseFloat(paymentAmount);
         if (isNaN(amount) || amount <= 0) return;
 
-        let finalMethod = paymentMethod;
-        if (paymentMethod === 'Dinheiro' && changeFor) {
-            const changeVal = parseFloat(changeFor.replace(',', '.').trim());
-            if (!isNaN(changeVal) && changeVal > amount) {
-                finalMethod = `Dinheiro (Troco para R$ ${changeVal.toFixed(2)})`;
+        try {
+            // Fetch fresh order data to ensure we have the latest total price and history
+            const { data: latestOrderRaw, error: fetchError } = await supabase.from('orders').select('*').eq('id', selectedTableOrder.id).single();
+            
+            if (fetchError || !latestOrderRaw) {
+                throw new Error('Falha ao buscar dados atualizados do pedido.');
             }
-        }
 
-        if (paymentMethod === 'Mensalista') {
-            if (!customerPhone || customerPhone.length < 10) {
-                addToast({ message: 'Informe um número de WhatsApp válido.', type: 'error' });
-                return;
-            }
-            try {
-                const mensalista = await verifyMensalistaByPhone(restaurant?.id || 0, customerPhone);
-                if (!mensalista) {
-                    addToast({ message: 'Mensalista não encontrado para este número.', type: 'error' });
+            const dbTotalPrice = latestOrderRaw.total_price;
+            const dbHistory = latestOrderRaw.payment_history || latestOrderRaw.payment_details?.history || [];
+            
+            const currentPaid = dbHistory.reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
+            const newTotalPaid = currentPaid + amount;
+
+            let finalMethod = paymentMethod;
+            let mensalistaId: string | undefined = undefined;
+            if (paymentMethod === 'Dinheiro' && changeFor) {
+                const changeVal = parseFloat(changeFor.replace(',', '.').trim());
+                if (!isNaN(changeVal) && changeVal > amount) {
+                    finalMethod = `Dinheiro (Troco para R$ ${changeVal.toFixed(2)})`;
+                }
+            } else if (paymentMethod === 'Mensalista') {
+                if (!selectedMensalista) {
+                    addToast({ message: 'Por favor, selecione um mensalista da lista.', type: 'error' });
                     return;
                 }
-                setMensalistaId(mensalista.id);
-            } catch (error: any) {
-                addToast({ message: error.message || 'Erro ao verificar mensalista.', type: 'error' });
-                return;
+                finalMethod = `Mensalista (${selectedMensalista.name})`;
+                mensalistaId = selectedMensalista.id;
             }
-        }
 
-        setPendingPayment({ amount, method: finalMethod });
-        setIsConfirmationModalOpen(true);
-        setIsPaymentModalOpen(false);
+            const entry: PaymentEntry = {
+                amount,
+                method: finalMethod,
+                timestamp: new Date().toISOString()
+            };
+            
+            const updated = await recordOrderPayment(selectedTableOrder.id, entry, newTotalPaid, dbTotalPrice, mensalistaId);
+            
+            setSelectedTableOrder(updated);
+            setPaymentAmount('');
+            setChangeFor('');
+            setIsPaymentModalOpen(false);
+            addToast({ message: 'Pagamento registrado!', type: 'success', duration: 3000 });
+
+            if (updated.paymentStatus === 'paid' || newTotalPaid >= dbTotalPrice - 0.01) {
+                addToast({ message: 'Conta quitada! O botão para encerrar a mesa foi liberado.', type: 'success' });
+            }
+        } catch (e: any) {
+            console.error("Payment error:", e);
+            addToast({ message: `Erro ao processar pagamento: ${e.message || 'Erro desconhecido'}`, type: 'error' });
+        }
     };
 
     const handleQuickPayment = async (method: string) => {
         if (!selectedTableOrder || balance <= 0) return;
         
         const amount = balance;
-        setPendingPayment({ amount, method });
-        setIsConfirmationModalOpen(true);
-    };
-
-    const confirmPayment = async () => {
-        if (!selectedTableOrder || !pendingPayment) return;
-        
-        const { amount, method } = pendingPayment;
         const entry: PaymentEntry = {
             amount,
             method,
@@ -455,47 +429,42 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
         };
 
         try {
-            const { data: latestOrderRaw } = await supabase.from('orders').select('total_price, payment_details').eq('id', selectedTableOrder.id).single();
+            const { data: latestOrderRaw } = await supabase.from('orders').select('total_price, payment_history, payment_details').eq('id', selectedTableOrder.id).single();
             if (!latestOrderRaw) throw new Error('Pedido não encontrado.');
 
             const dbTotalPrice = latestOrderRaw.total_price;
-            const history = latestOrderRaw.payment_details?.history || [];
+            const history = latestOrderRaw.payment_history || latestOrderRaw.payment_details?.history || [];
             const currentPaid = history.reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
             const newTotalPaid = currentPaid + amount;
 
-            const updated = await recordOrderPayment(selectedTableOrder.id, entry, newTotalPaid, dbTotalPrice, mensalistaId);
+            const updated = await recordOrderPayment(selectedTableOrder.id, entry, newTotalPaid, dbTotalPrice);
             setSelectedTableOrder(updated);
             addToast({ message: `Pagamento de R$ ${amount.toFixed(2)} (${method}) registrado!`, type: 'success' });
             
             if (newTotalPaid >= dbTotalPrice - 0.01) {
                 addToast({ message: 'Conta quitada!', type: 'success' });
             }
-            setIsConfirmationModalOpen(false);
-            setPendingPayment(null);
         } catch (e: any) {
             addToast({ message: `Erro: ${e.message}`, type: 'error' });
         }
     };
 
-    const handleDeletePayment = async (index: number) => {
+    const handleCloseTable = async () => {
         if (!selectedTableOrder) return;
         
-        const confirmed = await confirm({
-            title: 'Excluir Pagamento',
-            message: 'Tem certeza que deseja excluir este pagamento?',
-            confirmText: 'Sim, Excluir',
-            cancelText: 'Cancelar',
-            isDestructive: true
-        });
+        const totalPaid = (selectedTableOrder.paymentHistory || []).reduce((acc, p) => acc + p.amount, 0);
+        const balance = selectedTableOrder.totalPrice - totalPaid;
 
-        if (confirmed) {
-            try {
-                const updated = await deleteOrderPayment(selectedTableOrder.id, index);
-                setSelectedTableOrder(updated);
-                addToast({ message: 'Pagamento excluído!', type: 'success' });
-            } catch (e: any) {
-                addToast({ message: `Erro ao excluir pagamento: ${e.message}`, type: 'error' });
-            }
+        if (selectedTableOrder.items.length > 0 && balance > 0.01) {
+            addToast({ message: 'Não é possível encerrar a mesa com saldo pendente. Por favor, registre o pagamento.', type: 'warning' });
+            return;
+        }
+        try {
+             await updateOrderStatus(selectedTableOrder.id, 'Entregue');
+             addToast({ message: 'Comanda encerrada com sucesso!', type: 'success' });
+             setSelectedTableOrder(null);
+        } catch (e: any) {
+             addToast({ message: `Erro ao encerrar mesa: ${e.message}`, type: 'error' });
         }
     };
 
@@ -551,12 +520,13 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                 newItems.splice(index, 1);
                 
                 const newSubtotal = newItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-                const newTotal = newSubtotal;
+                const newTotal = newSubtotal - (selectedTableOrder.discountAmount || 0);
                 
                 const updated = await updateOrderDetails(selectedTableOrder.id, {
                     items: newItems,
                     totalPrice: newTotal,
-                    subtotal: newSubtotal
+                    subtotal: newSubtotal,
+                    discountAmount: selectedTableOrder.discountAmount
                 });
                 
                 setSelectedTableOrder(updated);
@@ -577,7 +547,8 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
             const updated = await updateOrderDetails(selectedTableOrder.id, {
                 items: newItems,
                 totalPrice: selectedTableOrder.totalPrice,
-                subtotal: selectedTableOrder.subtotal || selectedTableOrder.totalPrice
+                subtotal: selectedTableOrder.subtotal || selectedTableOrder.totalPrice,
+                discountAmount: selectedTableOrder.discountAmount
             });
             
             setSelectedTableOrder(updated);
@@ -848,12 +819,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                                     <span className="font-black text-emerald-800 text-xs">{p.method}</span>
                                                     <span className="text-[9px] text-emerald-600/70">{new Date(p.timestamp).toLocaleTimeString()}</span>
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-black text-emerald-700">R$ {p.amount.toFixed(2)}</span>
-                                                    <button onClick={() => handleDeletePayment(i)} className="text-red-500 hover:text-red-700">
-                                                        <TrashIcon className="w-4 h-4" />
-                                                    </button>
-                                                </div>
+                                                <span className="font-black text-emerald-700">R$ {p.amount.toFixed(2)}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -931,7 +897,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                     </button>
                                 ) : (
                                     <button 
-                                        onClick={handleCloseTableList}
+                                        onClick={handleCloseTable}
                                         className="bg-green-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-green-100 hover:bg-green-700 active:scale-95 transition-all text-sm uppercase tracking-widest animate-pulse"
                                     >
                                         Encerrar Comanda
@@ -963,7 +929,122 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                 </div>
             )}
 
-            {/* Modal de Recebimento Parcial */}
+            {isCreateComandaModalOpen && (
+                <div className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
+                    <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl space-y-6">
+                        <div className="text-center">
+                            <h4 className="text-xl font-black text-gray-800 uppercase">Nova Comanda</h4>
+                            <p className="text-sm text-gray-400">Identifique o cliente na Mesa {selectedTable}</p>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Buscar Mensalista (Opcional)</label>
+                                <div className="relative">
+                                    <input 
+                                        type="text"
+                                        value={mensalistaSearch}
+                                        onChange={e => {
+                                            setMensalistaSearch(e.target.value);
+                                            setNewComandaName(e.target.value);
+                                        }}
+                                        placeholder="Nome ou WhatsApp..."
+                                        className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-sm font-bold focus:border-orange-500 outline-none transition-all"
+                                    />
+                                    {isSearchingMensalista && <div className="absolute right-4 top-1/2 -translate-y-1/2"><Spinner size="small" /></div>}
+                                </div>
+                                
+                                {mensalistaSuggestions.length > 0 && (
+                                    <div className="bg-white border border-gray-100 rounded-2xl shadow-xl max-h-40 overflow-y-auto">
+                                        {mensalistaSuggestions.map(m => (
+                                            <button
+                                                key={m.id}
+                                                onClick={() => {
+                                                    setSelectedMensalista(m);
+                                                    setNewComandaName(m.name || '');
+                                                    setNewComandaPhone(m.phone || '');
+                                                    setMensalistaSearch(m.name || '');
+                                                    setMensalistaSuggestions([]);
+                                                }}
+                                                className="w-full text-left p-3 hover:bg-orange-50 border-b border-gray-50 last:border-0"
+                                            >
+                                                <p className="font-black text-xs text-gray-800">{m.name}</p>
+                                                <p className="text-[10px] text-gray-500">{m.phone}</p>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                
+                                {selectedMensalista && (
+                                    <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center justify-between">
+                                        <div>
+                                            <p className="text-[10px] font-black text-emerald-800 uppercase">Mensalista Vinculado</p>
+                                            <p className="text-sm font-bold text-emerald-900">{selectedMensalista.name}</p>
+                                        </div>
+                                        <button onClick={() => {
+                                            setSelectedMensalista(null);
+                                            setMensalistaSearch('');
+                                            setNewComandaName('');
+                                            setNewComandaPhone('');
+                                        }} className="text-emerald-500">
+                                            <XIcon className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {!selectedMensalista && (
+                                <div className="space-y-4 animate-fadeIn">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Nome do Cliente</label>
+                                        <input 
+                                            type="text"
+                                            value={newComandaName}
+                                            onChange={e => setNewComandaName(e.target.value)}
+                                            placeholder="Ex: João Silva"
+                                            className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-sm font-bold focus:border-orange-500 outline-none transition-all"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Nº Comanda / Identificador</label>
+                                <input 
+                                    type="text"
+                                    value={newComandaNum}
+                                    onChange={e => setNewComandaNum(e.target.value)}
+                                    placeholder="Ex: 01 ou 'Balcão'"
+                                    className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-sm font-bold focus:border-orange-500 outline-none transition-all"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2 pt-4">
+                            <button 
+                                onClick={confirmCreateComanda}
+                                disabled={!newComandaName}
+                                className="w-full bg-orange-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-orange-100 uppercase tracking-widest hover:bg-orange-700 active:scale-95 transition-all disabled:bg-gray-200"
+                            >
+                                Abrir Comanda
+                            </button>
+                            <button 
+                                onClick={() => {
+                                    setIsCreateComandaModalOpen(false);
+                                    setNewComandaName('');
+                                    setNewComandaNum('');
+                                    setNewComandaPhone('');
+                                    setSelectedMensalista(null);
+                                    setMensalistaSearch('');
+                                }}
+                                className="w-full py-3 text-gray-400 font-bold uppercase text-[10px] hover:text-gray-800 transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {isPaymentModalOpen && (
                 <div className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
                     <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl space-y-6">
@@ -1026,13 +1107,16 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                             <div>
                                 <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Forma de Pagamento</label>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {(restaurant?.paymentGateways && restaurant.paymentGateways.length > 0 ? 
-                                        (restaurant.hasMensalistas && !restaurant.paymentGateways.includes("Mensalista") ? [...restaurant.paymentGateways, "Mensalista"] : restaurant.paymentGateways) : 
-                                        ['Dinheiro', 'Pix', 'Cartão de Débito', 'Cartão de Crédito', ...(restaurant?.hasMensalistas ? ['Mensalista'] : [])]
-                                    ).map(m => (
+                                    {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Mensalista'].map(m => (
                                         <button 
                                             key={m}
-                                            onClick={() => setPaymentMethod(m)}
+                                            onClick={() => {
+                                                setPaymentMethod(m);
+                                                if (m !== 'Mensalista') {
+                                                    setSelectedMensalista(null);
+                                                    setMensalistaSearch('');
+                                                }
+                                            }}
                                             className={`py-3 rounded-xl text-[10px] font-black uppercase border-2 transition-all ${
                                                 paymentMethod === m 
                                                 ? 'bg-orange-600 border-orange-600 text-white' 
@@ -1044,18 +1128,51 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                     ))}
                                 </div>
                             </div>
-
+                            
                             {paymentMethod === 'Mensalista' && (
-                                <div className="animate-fadeIn">
-                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">WhatsApp do Mensalista</label>
-                                    <input 
-                                        type="tel" 
-                                        value={customerPhone}
-                                        onChange={e => setCustomerPhone(e.target.value.replace(/\D/g, ''))}
-                                        placeholder="Ex: 11999999999"
-                                        className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-orange-500 outline-none transition-all font-bold"
-                                    />
-                                    <p className="text-[10px] text-gray-400 mt-1 ml-1">Apenas números, com DDD.</p>
+                                <div className="animate-fadeIn space-y-2">
+                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Buscar Mensalista</label>
+                                    <div className="relative">
+                                        <input 
+                                            type="text"
+                                            value={mensalistaSearch}
+                                            onChange={e => setMensalistaSearch(e.target.value)}
+                                            placeholder="Nome ou WhatsApp..."
+                                            className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-sm font-bold focus:border-orange-500 outline-none transition-all"
+                                        />
+                                        {isSearchingMensalista && <div className="absolute right-4 top-1/2 -translate-y-1/2"><Spinner size="small" /></div>}
+                                    </div>
+                                    
+                                    {mensalistaSuggestions.length > 0 && (
+                                        <div className="bg-white border border-gray-100 rounded-2xl shadow-xl max-h-40 overflow-y-auto">
+                                            {mensalistaSuggestions.map(m => (
+                                                <button
+                                                    key={m.id}
+                                                    onClick={() => {
+                                                        setSelectedMensalista(m);
+                                                        setMensalistaSearch(m.name);
+                                                        setMensalistaSuggestions([]);
+                                                    }}
+                                                    className="w-full text-left p-3 hover:bg-orange-50 border-b border-gray-50 last:border-0"
+                                                >
+                                                    <p className="font-black text-xs text-gray-800">{m.name}</p>
+                                                    <p className="text-[10px] text-gray-500">{m.phone}</p>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                    
+                                    {selectedMensalista && (
+                                        <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center justify-between">
+                                            <div>
+                                                <p className="text-[10px] font-black text-emerald-800 uppercase">Selecionado</p>
+                                                <p className="text-sm font-bold text-emerald-900">{selectedMensalista.name}</p>
+                                            </div>
+                                            <button onClick={() => setSelectedMensalista(null)} className="text-emerald-500">
+                                                <XIcon className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -1089,53 +1206,6 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                     onSave={(updated) => setSelectedTableOrder(updated)}
                     restaurantId={currentUser.restaurantId!}
                     restaurantName={currentUser.name}
-                    hasServiceCharge={restaurant?.hasServiceCharge}
-                />
-            )}
-
-            {isAddItemModalOpen && (
-                <AddItemToOrderModal
-                    isOpen={isAddItemModalOpen}
-                    onClose={() => setIsAddItemModalOpen(false)}
-                    restaurantName={restaurant?.name || ''}
-                    allMenuItems={allRestaurantMenuItems}
-                    allCombos={allRestaurantCombos}
-                    onSelectMenuItem={handleSelectMenuItemForCustomization}
-                    onSelectCombo={handleAddComboToOrder}
-                />
-            )}
-
-            {isPizzaModalOpen && itemToCustomize && (
-                <PizzaCustomizationModal
-                    isOpen={isPizzaModalOpen}
-                    onClose={() => setIsPizzaModalOpen(false)}
-                    onAddToCart={(item) => { /* Implementar lógica de adicionar pizza */ }}
-                    initialPizza={itemToCustomize}
-                    allPizzas={allRestaurantMenuItems.filter(item => item.isPizza)}
-                    allAddons={allRestaurantAddons}
-                    restaurantId={restaurant?.id || 0}
-                />
-            )}
-
-            {isAcaiModalOpen && itemToCustomize && (
-                <AcaiCustomizationModal
-                    isOpen={isAcaiModalOpen}
-                    onClose={() => setIsAcaiModalOpen(false)}
-                    onAddToCart={(item) => { /* Implementar lógica de adicionar açaí */ }}
-                    initialItem={itemToCustomize}
-                    allAddons={allRestaurantAddons}
-                    restaurantId={restaurant?.id || 0}
-                />
-            )}
-
-            {isGenericModalOpen && itemToCustomize && (
-                <GenericCustomizationModal
-                    isOpen={isGenericModalOpen}
-                    onClose={() => setIsGenericModalOpen(false)}
-                    onAddToCart={(item) => { /* Implementar lógica de adicionar item genérico */ }}
-                    initialItem={itemToCustomize}
-                    allAddons={allRestaurantAddons}
-                    restaurantId={restaurant?.id || 0}
                 />
             )}
             

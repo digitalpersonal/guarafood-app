@@ -3,7 +3,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../services/authService';
 import { fetchOrders } from '../services/orderService';
 import { fetchExpenses, createExpense, fetchRestaurantByIdSecure } from '../services/databaseService';
-import type { Order, Expense, Restaurant, OperatingHours, StaffMember } from '../types';
+import { fetchMensalistas } from '../services/mensalistaService';
+import type { Order, Expense, Restaurant, OperatingHours, StaffMember, Mensalista } from '../types';
 import Spinner from './Spinner';
 import { useNotification } from '../hooks/useNotification';
 import { timeToMinutes } from '../utils/restaurantUtils';
@@ -40,6 +41,7 @@ interface DashboardCalculatedData {
     deliveryBreakdown: SalesBreakdown;
     pickupBreakdown: SalesBreakdown;
     tableBreakdown: SalesBreakdown;
+    mensalistaBreakdown: SalesBreakdown;
 }
 
 interface SalesDashboardProps {
@@ -52,6 +54,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
     const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
     const [orders, setOrders] = useState<Order[]>([]);
     const [expenses, setExpenses] = useState<Expense[]>([]);
+    const [mensalistas, setMensalistas] = useState<Mensalista[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [activePeriod, setActivePeriod] = useState<PeriodType>('day');
     const [referenceDate, setReferenceDate] = useState(new Date());
@@ -72,14 +75,16 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
             if (!currentUser?.restaurantId) return;
             setIsLoading(true);
             try {
-                const [ordersData, expensesData, restData] = await Promise.all([
+                const [ordersData, expensesData, restData, mensalistasData] = await Promise.all([
                     fetchOrders(currentUser.restaurantId, { limit: 10000 }),
                     fetchExpenses(currentUser.restaurantId),
-                    fetchRestaurantByIdSecure(currentUser.restaurantId)
+                    fetchRestaurantByIdSecure(currentUser.restaurantId),
+                    fetchMensalistas(currentUser.restaurantId)
                 ]);
                 setOrders(ordersData);
                 setExpenses(expensesData);
                 setRestaurant(restData);
+                setMensalistas(mensalistasData);
             } catch (error) { console.error(error); } finally { setIsLoading(false); }
         };
         loadData();
@@ -161,9 +166,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
         const totalDeliveryFees = deliveryOrders.reduce((acc, o) => acc + (Number(o.deliveryFee) || 0), 0);
         
         const unitFee = Number(restaurant?.deliveryFee) || 0;
-        const totalToPay = (restaurant?.deliveryZones && restaurant.deliveryZones.length > 0) 
-            ? totalDeliveryFees 
-            : deliveryCount * unitFee;
+        const totalToPay = deliveryCount * unitFee;
 
         const itemRanking: Record<string, number> = {};
         validOrders.forEach(o => o.items.forEach(i => itemRanking[i.name] = (itemRanking[i.name] || 0) + i.quantity));
@@ -266,9 +269,10 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
             return { total, count: orderList.length, payments, bestSellers };
         };
 
-        const deliveryOrdersList = validOrders.filter(o => !o.tableNumber && (Number(o.deliveryFee) || 0) > 0);
-        const pickupOrdersList = validOrders.filter(o => !o.tableNumber && (Number(o.deliveryFee) || 0) === 0);
-        const tableOrdersList = validOrders.filter(o => !!o.tableNumber);
+        const deliveryOrdersList = validOrders.filter(o => !o.tableNumber && (Number(o.deliveryFee) || 0) > 0 && o.paymentMethod !== 'Mensalista');
+        const pickupOrdersList = validOrders.filter(o => !o.tableNumber && (Number(o.deliveryFee) || 0) === 0 && o.paymentMethod !== 'Mensalista');
+        const tableOrdersList = validOrders.filter(o => !!o.tableNumber && o.paymentMethod !== 'Mensalista');
+        const mensalistaOrdersList = validOrders.filter(o => o.paymentMethod === 'Mensalista');
 
         return {
             currentOrders, currentExpenses, 
@@ -280,7 +284,8 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
             periodLabel,
             deliveryBreakdown: calculateBreakdown(deliveryOrdersList),
             pickupBreakdown: calculateBreakdown(pickupOrdersList),
-            tableBreakdown: calculateBreakdown(tableOrdersList)
+            tableBreakdown: calculateBreakdown(tableOrdersList),
+            mensalistaBreakdown: calculateBreakdown(mensalistaOrdersList)
         };
     }, [orders, expenses, referenceDate, activePeriod, startDateInput, endDateInput, restaurant]);
 
@@ -477,7 +482,39 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                     </div>
                 </div>
 
-
+                {/* MENSALISTAS BREAKDOWN */}
+                {restaurant?.hasMensalistas && (
+                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                        <h4 className="text-md font-black text-gray-800 mb-6 flex items-center justify-between uppercase tracking-tight">
+                            <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-5 bg-blue-600 rounded-full"></span>
+                                Vendas Mensalistas
+                            </div>
+                            <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">R$ {dashboardData.mensalistaBreakdown.total.toFixed(2)}</span>
+                        </h4>
+                        
+                        <div className="grid grid-cols-1 gap-6">
+                            <div className="space-y-3">
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Por Pagamento</p>
+                                {Object.entries(dashboardData.mensalistaBreakdown.payments).map(([method, val]) => (
+                                    <div key={method} className="flex justify-between text-xs font-bold">
+                                        <span className="text-gray-500">{method}</span>
+                                        <span className="text-gray-900">R$ {Number(val).toFixed(2)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="space-y-2">
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Top Produtos</p>
+                                {dashboardData.mensalistaBreakdown.bestSellers.map((item, i) => (
+                                    <div key={i} className="flex justify-between text-[10px] font-bold bg-gray-50 p-1.5 rounded-lg">
+                                        <span className="truncate max-w-[100px]">{item.name}</span>
+                                        <span className="text-blue-600">{item.qty} un</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                     <h4 className="text-md font-black text-gray-800 mb-6 flex items-center gap-2 uppercase tracking-tight">
@@ -541,25 +578,12 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                 <button 
                     onClick={() => {
                         const style = document.createElement('style');
-                        style.innerHTML = `@media print { 
-                            body * { visibility: hidden !important; }
-                            #thermal-report-closing, #thermal-report-closing * { visibility: visible !important; }
-                            #thermal-report-closing { 
-                                display: block !important; 
-                                position: absolute !important;
-                                left: 0 !important;
-                                right: 0 !important;
-                                top: 0 !important;
-                                width: 100% !important;
-                                margin: 0 auto !important;
-                            }
-                            #thermal-report-motoboy { display: none !important; }
-                        }`;
+                        style.innerHTML = `@media print { #thermal-report-motoboy { display: none !important; } #thermal-report-closing { display: block !important; } }`;
                         document.head.appendChild(style);
                         setTimeout(() => {
                             window.print();
                             document.head.removeChild(style);
-                        }, 150);
+                        }, 100);
                     }} 
                     className="flex items-center justify-center gap-3 p-6 bg-orange-600 text-white font-black rounded-3xl hover:bg-orange-700 transition-all shadow-xl shadow-orange-200 active:scale-95"
                 >
@@ -573,25 +597,12 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                 <button 
                     onClick={() => {
                         const style = document.createElement('style');
-                        style.innerHTML = `@media print { 
-                            body * { visibility: hidden !important; }
-                            #thermal-report-motoboy, #thermal-report-motoboy * { visibility: visible !important; }
-                            #thermal-report-motoboy { 
-                                display: block !important; 
-                                position: absolute !important;
-                                left: 0 !important;
-                                right: 0 !important;
-                                top: 0 !important;
-                                width: 100% !important;
-                                margin: 0 auto !important;
-                            }
-                            #thermal-report-closing { display: none !important; }
-                        }`;
+                        style.innerHTML = `@media print { #thermal-report-closing { display: none !important; } #thermal-report-motoboy { display: block !important; } }`;
                         document.head.appendChild(style);
                         setTimeout(() => {
                             window.print();
                             document.head.removeChild(style);
-                        }, 150);
+                        }, 100);
                     }} 
                     className="flex items-center justify-center gap-3 p-6 bg-blue-600 text-white font-black rounded-3xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 active:scale-95"
                 >
@@ -607,11 +618,11 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                 <style>{`
                     @media print {
                         @page { margin: 0 !important; size: ${printerWidth}mm auto; }
+                        body { margin: 0 !important; padding: 0 !important; width: ${printerWidth}mm !important; background: #fff !important; }
                         #thermal-report-closing, #thermal-report-motoboy { 
-                            width: 100% !important; 
-                            height: auto !important;
-                            margin: 0 !important; 
-                            padding: 0 !important; 
+                            width: ${printableWidth} !important; 
+                            margin: 0 auto !important; 
+                            padding: 5mm 0 !important; 
                             font-size: 11px; 
                             line-height: 1.2; 
                             display: none; 

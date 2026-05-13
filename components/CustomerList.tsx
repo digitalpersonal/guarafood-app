@@ -38,9 +38,9 @@ const CustomerList: React.FC<CustomerListProps> = ({ orders }) => {
 
             let phone = (order.customerPhone || '').replace(/\D/g, ''); // Normalize phone as ID
             
-            // For manual/balcão orders without phone, use name as ID instead
+            // For mensalistas/balcão, phone is usually '0000000000', use name as ID instead
             if (!phone || phone === '0000000000') {
-                phone = `manual_${order.customerName.toLowerCase().replace(/\s+/g, '_')}`;
+                phone = `mensalista_${order.customerName.toLowerCase().replace(/\s+/g, '_')}`;
             }
 
             if (!acc[phone]) {

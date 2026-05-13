@@ -1,15 +1,15 @@
 
 export interface Mensalista {
   id: string;
-  restaurant_id: number;
+  restaurantId: number;
   name: string;
   phone: string;
-  start_date: string;
-  next_payment_date: string;
-  status: string;
-  monthly_fee: number;
+  startDate: string;
+  nextPaymentDate: string;
+  status: 'active' | 'inactive' | 'pending';
+  monthlyFee: number;
+  balance: number; // NEW: Saldo devedor
   notes?: string;
-  created_at: string;
 }
 
 export interface Banner {
@@ -21,7 +21,15 @@ export interface Banner {
   targetType: 'restaurant' | 'category';
   targetValue: string; // Restaurant name or Category name
   active?: boolean; // Added active state
-  type?: 'top' | 'bottom'; // NEW: Placement type
+}
+
+export interface Ad {
+  id: string;
+  image_url: string;
+  link_url?: string;
+  alt_text: string;
+  is_active: boolean;
+  display_order: number;
 }
 
 export interface RestaurantCategory {
@@ -31,6 +39,15 @@ export interface RestaurantCategory {
 }
 
 // New interface for detailed operating hours
+export interface LoyaltyProgram {
+  active: boolean;
+  pointsPerReal: number;
+  rewardThreshold: number;
+  rewardType: 'FIXED_DISCOUNT' | 'PERCENTAGE_DISCOUNT' | 'FREE_ITEM';
+  rewardValue: number;
+  rewardItemName?: string;
+}
+
 export interface OperatingHours {
   dayOfWeek: number; // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
   opens: string;     // "HH:MM"
@@ -64,7 +81,6 @@ export interface Restaurant {
   openingHours: string; // Can be a summary like "18:00 - 23:00"
   closingHours: string; // Kept for simple cases/backwards compatibility
   deliveryFee: number;
-  deliveryZones?: { id: string; name: string; fee: number }[]; // NEW: Delivery zones
   mercado_pago_credentials?: { accessToken: string };
   operatingHours?: OperatingHours[]; // The new detailed structure
   marmitaStartTime?: string; // "HH:MM"
@@ -74,12 +90,11 @@ export interface Restaurant {
   printerWidth?: number; // 80 or 58 (mm) - AGORA NO BANCO
   bannerImageUrl?: string; // NEW: Custom background for the menu header
   active?: boolean; // NEW: Field to suspend restaurant
+  hasMensalistas?: boolean; // NEW: Field to enable/disable mensalistas
   hasKiloService?: boolean; // NEW: Field to enable/disable kilo service
   pricePerKilo?: number; // NEW: Price per kilogram
   staff?: StaffMember[]; // NEW: List of staff members
-  hasMensalistas?: boolean;
-  hasCleanupButton?: boolean;
-  hasServiceCharge?: boolean;
+  loyaltyProgram?: LoyaltyProgram; // NEW: Fidelity Program
 }
 
 export interface Addon {
@@ -94,6 +109,20 @@ export interface SizeOption {
   name: string;
   price: number;
   freeAddonCount?: number;
+}
+
+export interface CustomizationOption {
+  name: string;
+  price: number;
+  default?: boolean;
+}
+
+export interface OptionGroup {
+  id: string;
+  title: string;
+  minSelections: number;
+  maxSelections: number;
+  options: CustomizationOption[];
 }
 
 export interface MenuItem {
@@ -113,12 +142,12 @@ export interface MenuItem {
   freeAddonCount?: number; // Kept for simple items, but sizes will override
   availableAddonIds?: number[];
   sizes?: SizeOption[]; // Array for different sizes
+  optionGroups?: OptionGroup[]; // NEW: Generic customization groups
   isDailySpecial?: boolean; // For "Destaque do Dia"
   isWeeklySpecial?: boolean; // For supermarket "Promoções da Semana"
   availableDays?: number[]; // For "Prato do Dia". 0=Sun, 1=Mon, etc.
   displayOrder?: number; // Added for item reordering
   available?: boolean; // NEW: Field to mark item as out of stock
-  maxAddons?: number; // NEW: Limit of selectable addons
 }
 
 export interface Combo {
@@ -145,31 +174,29 @@ export interface MenuCategory {
 }
 
 // New Promotion interface
-export interface Coupon {
-  id: number;
-  code: string;
-  discountType: 'PERCENTAGE' | 'FIXED';
-  discountValue: number;
-  minOrderValue?: number;
-  maxDiscount?: number;
-  startDate: string;
-  endDate: string;
-  usageLimit?: number;
-  usedCount: number;
-  restaurantId: number;
-  active: boolean;
-}
-
 export interface Promotion {
   id: number;
   name: string;
   description: string;
   discountType: 'PERCENTAGE' | 'FIXED';
   discountValue: number;
-  targetType: 'ITEM' | 'COMBO' | 'CATEGORY';
-  targetIds: (number | string)[]; // Can be item IDs, combo IDs, or category names
+  itemIds?: number[];
+  comboIds?: number[];
+  categoryIds?: number[]; // Changed to number[] for category IDs
   startDate: string; // ISO 8601 format
   endDate: string; // ISO 8601 format
+  restaurantId: number;
+}
+
+export interface Coupon {
+  id: number;
+  code: string;
+  description: string;
+  discountType: 'PERCENTAGE' | 'FIXED';
+  discountValue: number;
+  minOrderValue?: number; // Optional minimum order value
+  expirationDate: string; // ISO 8601 format
+  isActive: boolean;
   restaurantId: number;
 }
 
@@ -200,14 +227,7 @@ export interface CartItem {
   weight?: number; // NEW: Weight in kg for "comida por kilo"
   isKiloItem?: boolean; // NEW: Flag for "comida por kilo" items
   notes?: string; // User observations (e.g., "Sem cebola")
-  kitchenPrinted?: boolean; // NEW: Flag to indicate if the item has been printed for the kitchen
   selectedOptions?: { groupTitle: string; optionName: string; price: number }[]; // Generic customization options
-  status?: 'pending' | 'preparing' | 'ready'; // NEW: Status for kitchen tracking
-  restaurantId?: number; // NEW: ID of the restaurant for this item
-  menuItemId?: number; // NEW: ID of the original menu item for editing
-  isCombo?: boolean; // NEW: Flag for combos
-  comboId?: number; // NEW: ID of the original combo
-  available?: boolean; // NEW: Availability flag
 }
 
 export type OrderStatus = 'Aguardando Pagamento' | 'Novo Pedido' | 'Preparando' | 'A Caminho' | 'Entregue' | 'Cancelado' | 'Mesa Aberta';
@@ -237,10 +257,11 @@ export interface Order {
   totalPrice: number;
   restaurantId: number;
   restaurantName: string;
-  restaurantLogo?: string; // NEW: Logo for printing
   restaurantAddress: string;
   restaurantPhone: string;
   paymentMethod: string;
+  couponCode?: string;
+  discountAmount?: number;
   subtotal?: number;
   deliveryFee?: number;
   payment_id?: string;
@@ -250,11 +271,7 @@ export interface Order {
   tableNumber?: string; // NEW: Para atendimento local
   comandaNumber?: string; // NEW: Para múltiplas comandas por mesa
   paymentHistory?: PaymentEntry[]; // NEW: Para pagamentos fracionados
-  mensalistaId?: string;
-  discountAmount?: number;
-  couponCode?: string;
-  waiterName?: string;
-  serviceCharge?: number;
+  mensalistaId?: string; // NEW: Para pedidos de mensalistas
 }
 
 export type Role = 'admin' | 'merchant' | 'waiter' | 'manager';
@@ -265,6 +282,15 @@ export interface User {
   role: Role;
   name: string;
   restaurantId?: number;
+}
+
+export interface CustomerLoyalty {
+  id: string;
+  restaurantId: number;
+  customerPhone: string;
+  customerName: string;
+  points: number;
+  redeemedPoints: number;
 }
 
 // Notification Types

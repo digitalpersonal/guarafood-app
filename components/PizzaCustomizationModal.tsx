@@ -10,8 +10,6 @@ interface PizzaCustomizationModalProps {
     initialPizza: MenuItem;
     allPizzas: MenuItem[];
     allAddons: Addon[];
-    restaurantId: number;
-    initialCartItem?: CartItem; // NEW: For editing
 }
 
 const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
@@ -21,66 +19,32 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
     initialPizza,
     allPizzas,
     allAddons,
-    restaurantId,
-    initialCartItem,
 }) => {
     const [selectedSize, setSelectedSize] = useState<SizeOption | null>(null);
     const [firstHalf, setFirstHalf] = useState<MenuItem>(initialPizza);
     const [secondHalf, setSecondHalf] = useState<MenuItem | null>(null);
-    const [selectedAddonIds, setSelectedAddonIds] = useState<Set<string>>(new Set());
+    const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
     const [showSecondHalfSelector, setShowSecondHalfSelector] = useState(false);
     const [notes, setNotes] = useState('');
 
     const [isAdding, setIsAdding] = useState(false);
 
     useEffect(() => {
-        if (initialCartItem) {
-            // Editing mode
-            // Find first half (the item itself usually, but could be different if it was a half-pizza)
-            // For now, let's assume initialPizza is the first half if it's a single flavor,
-            // or we might need to find the MenuItem by name from allPizzas.
-            if (initialCartItem.halves && initialCartItem.halves.length > 0) {
-                const h1 = allPizzas.find(p => p.name === initialCartItem.halves![0].name) || initialPizza;
-                setFirstHalf(h1);
-                if (initialCartItem.halves.length > 1) {
-                    const h2 = allPizzas.find(p => p.name === initialCartItem.halves![1].name) || null;
-                    setSecondHalf(h2);
-                } else {
-                    setSecondHalf(null);
-                }
-            } else {
-                setFirstHalf(initialPizza);
-                setSecondHalf(null);
-            }
-
-            if (initialPizza.sizes && initialPizza.sizes.length > 0) {
-                const size = initialPizza.sizes.find(s => s.name === initialCartItem.sizeName) || initialPizza.sizes[0];
-                setSelectedSize(size);
-            } else {
-                setSelectedSize({ name: 'Único', price: initialPizza.price });
-            }
-            setSelectedAddonIds(new Set(initialCartItem.selectedAddons?.map(a => String(a.id)) || []));
-            setNotes(initialCartItem.notes || '');
+        setFirstHalf(initialPizza);
+        if (initialPizza.sizes && initialPizza.sizes.length > 0) {
+            setSelectedSize(initialPizza.sizes[0]);
         } else {
-            // New item mode
-            setFirstHalf(initialPizza);
-            if (initialPizza.sizes && initialPizza.sizes.length > 0) {
-                setSelectedSize(initialPizza.sizes[0]);
-            } else {
-                setSelectedSize({ name: 'Único', price: initialPizza.price });
-            }
-            setSecondHalf(null);
-            setSelectedAddonIds(new Set());
-            setNotes('');
+            setSelectedSize({ name: 'Único', price: initialPizza.price });
         }
+        setSecondHalf(null);
+        setSelectedAddonIds(new Set());
         setShowSecondHalfSelector(false);
+        setNotes('');
         setIsAdding(false);
-    }, [initialPizza, isOpen, initialCartItem, allPizzas]);
+    }, [initialPizza, isOpen]);
 
     const availableAddons = useMemo(() => {
-        if (!firstHalf.availableAddonIds) return [];
-        const addonIds = firstHalf.availableAddonIds.map(id => String(id));
-        return allAddons.filter(addon => addonIds.includes(String(addon.id)));
+        return allAddons.filter(addon => firstHalf.availableAddonIds?.includes(addon.id));
     }, [allAddons, firstHalf]);
 
     const { totalPrice, basePrice } = useMemo(() => {
@@ -97,7 +61,7 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
         const pizzaPrice = secondHalf ? Math.max(firstHalfPrice, secondHalfPrice) : firstHalfPrice;
         
         const addonsPrice = allAddons
-            .filter(addon => selectedAddonIds.has(String(addon.id)))
+            .filter(addon => selectedAddonIds.has(addon.id))
             .reduce((total, addon) => total + Number(addon.price || 0), 0);
 
         return { 
@@ -106,21 +70,13 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
         };
     }, [firstHalf, secondHalf, selectedAddonIds, allAddons, selectedSize]);
     
-    const handleAddonToggle = (addonId: number | string) => {
-        const idStr = String(addonId);
+    const handleAddonToggle = (addonId: number) => {
         setSelectedAddonIds(prev => {
             const newSet = new Set(prev);
-            if (newSet.has(idStr)) {
-                newSet.delete(idStr);
+            if (newSet.has(addonId)) {
+                newSet.delete(addonId);
             } else {
-                // Check limit
-                if (initialPizza.maxAddons !== undefined && initialPizza.maxAddons !== null && initialPizza.maxAddons > 0 && newSet.size >= initialPizza.maxAddons) {
-                    return prev;
-                }
-                if (initialPizza.maxAddons === 0) {
-                    return prev;
-                }
-                newSet.add(idStr);
+                newSet.add(addonId);
             }
             return newSet;
         });
@@ -141,7 +97,7 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
             { name: secondHalf.name, price: secondHalf.price }
         ] : [{ name: firstHalf.name, price: firstHalf.price }];
 
-        const selectedAddons = allAddons.filter(a => selectedAddonIds.has(String(a.id)));
+        const selectedAddons = allAddons.filter(a => selectedAddonIds.has(a.id));
         
         const name = secondHalf
             ? `Pizza Meia ${firstHalf.name} / Meia ${secondHalf.name}`
@@ -152,19 +108,17 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
         const cartId = `pizza-${sortedHalfIds.join('-')}_size-${selectedSize.name}_addons-${sortedAddonIds.join('-')}`;
         
         const customizedPizza: CartItem = {
-            id: initialCartItem?.id || cartId,
-            restaurantId: restaurantId,
+            id: cartId,
             name,
             price: totalPrice,
             basePrice,
             imageUrl: firstHalf.imageUrl,
-            quantity: initialCartItem?.quantity || 1,
+            quantity: 1,
             description: secondHalf ? 'Pizza com dois sabores' : firstHalf.description,
             halves,
             selectedAddons,
             sizeName: selectedSize.name,
             notes: notes.trim() || undefined,
-            menuItemId: initialPizza.id,
         };
         
         setTimeout(() => {
@@ -254,36 +208,22 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                     
                     {availableAddons.length > 0 && (
                         <div>
-                            <div className="flex justify-between items-center mb-2">
-                                <h3 className="font-bold">3. Adicionais (Opcional)</h3>
-                                {initialPizza.maxAddons && (
-                                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${selectedAddonIds.size >= initialPizza.maxAddons ? 'bg-orange-100 text-orange-700' : 'bg-blue-50 text-blue-700'}`}>
-                                        {selectedAddonIds.size} / {initialPizza.maxAddons}
-                                    </span>
-                                )}
-                            </div>
+                            <h3 className="font-bold mb-2">3. Adicionais (Opcional)</h3>
                             <div className="space-y-2">
-                                {availableAddons.map(addon => {
-                                    const isSelected = selectedAddonIds.has(String(addon.id));
-                                    const maxAddons = initialPizza.maxAddons !== undefined && initialPizza.maxAddons !== null ? Number(initialPizza.maxAddons) : null;
-                                    const isDisabled = !isSelected && maxAddons !== null && (maxAddons === 0 || selectedAddonIds.size >= maxAddons);
-                                    
-                                    return (
-                                        <label key={addon.id} className={`flex items-center justify-between p-3 border rounded-lg transition-all ${isDisabled ? 'opacity-50 cursor-not-allowed bg-gray-50' : 'cursor-pointer hover:bg-gray-50'} ${isSelected ? 'bg-orange-50 border-orange-400' : ''}`}>
-                                            <div className="flex items-center">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isSelected}
-                                                    onChange={() => handleAddonToggle(addon.id)}
-                                                    disabled={isDisabled}
-                                                    className="sr-only"
-                                                />
-                                                <span className={`ml-3 font-semibold ${isSelected ? 'text-orange-900' : 'text-gray-700'}`}>{addon.name}</span>
-                                            </div>
-                                            {addon.price > 0 && <span className="font-semibold text-gray-600">+ R$ {Number(addon.price).toFixed(2)}</span>}
-                                        </label>
-                                    );
-                                })}
+                                {availableAddons.map(addon => (
+                                     <label key={addon.id} className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:bg-orange-50 has-[:checked]:border-orange-400">
+                                        <div className="flex items-center">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedAddonIds.has(addon.id)}
+                                                onChange={() => handleAddonToggle(addon.id)}
+                                                className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                                            />
+                                            <span className="ml-3 font-semibold text-gray-700">{addon.name}</span>
+                                        </div>
+                                        {addon.price > 0 && <span className="font-semibold text-gray-600">+ R$ {Number(addon.price).toFixed(2)}</span>}
+                                    </label>
+                                ))}
                             </div>
                         </div>
                     )}
@@ -312,13 +252,13 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                     >
                         {isAdding ? (
                             <>
-                                <span>{initialCartItem ? 'Atualizado!' : 'Adicionado!'}</span>
+                                <span>Adicionado!</span>
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-5 h-5">
                                     <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
                                 </svg>
                             </>
                         ) : (
-                            initialCartItem ? 'Atualizar Item' : 'Adicionar ao Carrinho'
+                            'Adicionar ao Carrinho'
                         )}
                     </button>
                 </div>
