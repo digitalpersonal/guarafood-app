@@ -64,6 +64,7 @@ const VersionChecker: React.FC = () => {
                         if (isForceMajorUpdate) {
                             localStorage.setItem('guarafood_app_version', APP_VERSION);
                             setNeedsUpdate(false);
+                            window.location.reload();
                         } else {
                             if ('serviceWorker' in navigator) {
                                 navigator.serviceWorker.getRegistrations().then(registrations => {
