@@ -1,6 +1,5 @@
-import React, { Component, ReactNode, ErrorInfo, StrictMode } from 'react';
+import React, { Component, ReactNode, ErrorInfo } from 'react';
 import { createRoot } from 'react-dom/client';
-import './index.css';
 import App from './App';
 
 interface ErrorBoundaryProps {
@@ -17,30 +16,37 @@ interface ErrorBoundaryState {
  * log those errors, and display a fallback UI.
  */
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = {
-      hasError: false,
-      error: null
-    };
-  }
+  // Explicitly declare the props property to resolve TypeScript error if it fails to infer from React.Component.
+  // This is usually implicitly available via `extends Component<ErrorBoundaryProps, ErrorBoundaryState>`.
+  public readonly props: Readonly<ErrorBoundaryProps>;
+  // Initializing state directly as a class property (modern React/TypeScript syntax)
+  // This implicitly calls super(props) with an empty constructor if none is defined,
+  // or merges with a constructor's state if present.
+  state: ErrorBoundaryState = {
+    hasError: false,
+    error: null
+  };
 
+  /**
+   * getDerivedStateFromError is called after an error has been thrown in a descendant component.
+   * It receives the error that was thrown as a parameter and should return a value to update state.
+   */
   public static getDerivedStateFromError(error: any): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
+  /**
+   * componentDidCatch is called after an error has been thrown in a descendant component.
+   * This is the place to log error information.
+   */
   public componentDidCatch(error: any, errorInfo: ErrorInfo) {
     console.error("GuaraFood Critical Error:", error, errorInfo);
-    if (typeof (window as any).hideSplash === 'function') {
-        (window as any).hideSplash();
-    }
   }
 
   public render(): ReactNode {
+    // FIX: Destructure `children` from `this.props` to resolve TypeScript error "Property 'props' does not exist on type 'ErrorBoundary'".
+    const { children } = this.props;
     if (this.state.hasError) {
-      if (typeof (window as any).hideSplash === 'function') {
-          (window as any).hideSplash();
-      }
       const errorMessage = this.state.error instanceof Error ? this.state.error.message : String(this.state.error);
 
       return (
@@ -62,19 +68,18 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
-    return this.props.children;
+    return children;
   }
 }
 
-console.log("GUARA-FOOD BOOTING - VERSION 1.0.3");
 const rootElement = document.getElementById('root');
 if (rootElement) {
   const root = createRoot(rootElement);
   root.render(
-    <StrictMode>
+    <React.StrictMode>
       <ErrorBoundary>
           <App />
       </ErrorBoundary>
-    </StrictMode>
+    </React.StrictMode>
   );
 }
