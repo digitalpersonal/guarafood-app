@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 
-export const APP_VERSION = "1.0.6"; // Versão atual incrementada para forçar atualização
+export const APP_VERSION = "1.0.7"; // Versão atual incrementada para forçar atualização
 
 const VersionChecker: React.FC = () => {
     const [needsUpdate, setNeedsUpdate] = useState(false);
