@@ -10,14 +10,6 @@ const VersionChecker: React.FC = () => {
     const [isUpdating, setIsUpdating] = useState(false);
 
     const checkVersion = useCallback(async () => {
-        // 1. Verificamos o localStorage para forçar a tela de atualização aos usuários do sistema antigo
-        const localVersion = localStorage.getItem('guarafood_app_version');
-        if (localVersion !== APP_VERSION) {
-            setNeedsUpdate(true);
-            setIsForceMajorUpdate(true);
-            return;
-        }
-
         try {
             // Adicionamos um timestamp para evitar cache do próprio arquivo version.json
             const response = await fetch(`/version.json?t=${Date.now()}`);
@@ -36,6 +28,8 @@ const VersionChecker: React.FC = () => {
                         registration.update();
                     }
                 }
+            } else {
+                localStorage.setItem('guarafood_app_version', APP_VERSION);
             }
         } catch (error) {
             console.error("Falha ao verificar versão:", error);
@@ -64,23 +58,17 @@ const VersionChecker: React.FC = () => {
                 <button 
                     onClick={() => {
                         setIsUpdating(true);
-                        if (isForceMajorUpdate) {
-                            localStorage.setItem('guarafood_app_version', APP_VERSION);
-                            setNeedsUpdate(false);
-                            window.location.reload();
+                        if ('serviceWorker' in navigator) {
+                            navigator.serviceWorker.getRegistrations().then(registrations => {
+                                for(let registration of registrations) {
+                                    registration.unregister();
+                                }
+                                window.location.href = window.location.pathname + '?v=' + new Date().getTime();
+                            }).catch(() => {
+                                window.location.href = window.location.pathname + '?v=' + new Date().getTime();
+                            });
                         } else {
-                            if ('serviceWorker' in navigator) {
-                                navigator.serviceWorker.getRegistrations().then(registrations => {
-                                    for(let registration of registrations) {
-                                        registration.unregister();
-                                    }
-                                    window.location.reload();
-                                }).catch(() => {
-                                    window.location.reload();
-                                });
-                            } else {
-                                window.location.reload();
-                            }
+                            window.location.href = window.location.pathname + '?v=' + new Date().getTime();
                         }
                     }}
                     disabled={isUpdating}
