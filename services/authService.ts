@@ -24,7 +24,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return null;
       }
   });
-  const [loading, setLoading] = useState(true);
+  // DESIGN OPTIMIZATION: Se já temos o perfil do usuário no cache local (localStorage),
+  // iniciamos 'loading' como FALSE para fazer com que a pintura do painel do restaurante/cliente
+  // seja Instantânea (Optimistic Loading/UI) ao apertar F5, sem travar na tela de carregamento.
+  const [loading, setLoading] = useState(() => {
+      try {
+          return !localStorage.getItem(USER_STORAGE_KEY);
+      } catch {
+          return true;
+      }
+  });
   const [authError, setAuthError] = useState<string | null>(null);
 
   const fetchUserProfile = async (authUser: SupabaseUser): Promise<User | null> => {
@@ -137,7 +146,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     window.addEventListener('auth:session-expired', handleSessionExpired);
 
-    setLoading(true);
+    // Executa a validação da sessão em segundo plano se o usuário já estiver cacheado,
+    // garantindo zero bloqueios visuais ao usuário final.
+    const hasLocalUser = (() => {
+        try {
+            return !!localStorage.getItem(USER_STORAGE_KEY);
+        } catch {
+            return false;
+        }
+    })();
+    
+    if (!hasLocalUser) {
+        setLoading(true);
+    }
+
     supabase.auth.getSession().then(async ({ data: { session }, error }) => {
       if (error) {
         console.warn("Session check error:", error.message);
@@ -151,29 +173,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setCurrentUser(profile);
         }
       } else {
-        // SENIOR MOVE: Se não há sessão do Supabase, verifica se temos um usuário "Staff" no localStorage
-        // Isso permite que garçons/gerentes fiquem logados sem conta real no Supabase
+        // SENIOR MOVE (Offline & Resilience First): Se o Supabase retornou sessão vazia ou nula
+        // (comum em oscilações de rede, ambientes de iFrame restritos ou recarregamento rápido F5),
+        // NÃO vamos deslogar o comerciante ou administrador de forma agressiva. 
+        // Se já temos as credenciais e perfil armazenados localmente e válidos, nós o mantemos 
+        // conectado para permitir operar o painel com as informações cacheadas (modo offline/resiliente).
+        // A sessão só deve ser limpa de fato se o usuário realizar logout explícito (SIGNED_OUT).
         const storedUser = localStorage.getItem(USER_STORAGE_KEY);
         if (storedUser) {
             try {
                 const user = JSON.parse(storedUser);
-                if (user.role === 'waiter' || user.role === 'manager') {
-                    // É um staff, mantemos logado
+                if (user) {
+                    console.log("Restaurando usuário em modo offline de sobrevivência:", user.role, user.name);
                     setCurrentUser(user);
                 } else {
-                    // Era um merchant/admin mas a sessão expirou
                     setCurrentUser(null);
                 }
             } catch {
                 setCurrentUser(null);
             }
+        } else {
+            setCurrentUser(null);
         }
       }
       setLoading(false);
     }).catch(async (err) => {
-        console.error("Unexpected auth error:", err);
-        localStorage.removeItem(USER_STORAGE_KEY);
-        setCurrentUser(null);
+        console.error("Unexpected auth error during session check:", err);
+        
+        // CORREÇÃO CRÍTICA CONTRA QUEDA DE CONEXÃO (OFFLINE):
+        // Se a chamada falhou puramente por erro de rede ("failed to fetch" ou "network error"),
+        // NÃO podemos remover o usuário local nem forçar logout. Deixamos ele trabalhar offline
+        // com o que já tem no painel. Apenas deslogamos se for um erro de credencial real.
+        const errorMsg = err?.message || String(err);
+        const isNetworkError = errorMsg.toLowerCase().includes('failed to fetch') || 
+                               errorMsg.toLowerCase().includes('network') || 
+                               errorMsg.toLowerCase().includes('load failed') ||
+                               errorMsg.toLowerCase().includes('cors');
+                               
+        if (!isNetworkError) {
+            console.warn("Real auth error detected, purging session cache.");
+            localStorage.removeItem(USER_STORAGE_KEY);
+            setCurrentUser(null);
+        } else {
+            console.log("Network glitch detected during auth check. Preserving offline user shell.");
+        }
         setLoading(false);
     });
 
