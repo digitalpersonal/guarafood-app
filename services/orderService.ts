@@ -47,8 +47,8 @@ export const subscribeToOrders = (
     const refreshData = async () => {
         if (!isMounted) return;
         try {
-            // Aumentado limite no polling também para consistência
-            const orders = await fetchOrders(restaurantId, { limit: 1000 });
+            // Usamos um limite de 150 para máxima velocidade e leveza em celulares e tablets dos restaurantes
+            const orders = await fetchOrders(restaurantId, { limit: 150 });
             if (isMounted) callback(orders);
         } catch (e) {
             console.error("Erro ao atualizar pedidos via polling:", e);
@@ -83,8 +83,15 @@ export const subscribeToOrders = (
 
     refreshData();
 
+    // GARANTIA COMPLETA E HEARTBEAT: Polling em segundo plano a cada 15 segundos
+    // Evita congelamento de novos pedidos e impressões se o WebSocket desconectar silenciosamente
+    const fallbackInterval = setInterval(() => {
+        refreshData();
+    }, 15000);
+
     return () => {
         isMounted = false;
+        clearInterval(fallbackInterval);
         supabase.removeChannel(channel);
     };
 };
@@ -95,8 +102,8 @@ export const fetchOrders = async (restaurantId?: number, options?: { limit?: num
         query = query.eq('restaurant_id', restaurantId);
     }
     
-    // Se não houver limite definido, usamos 5000 como segurança alta, mas limitando para evitar crash.
-    const finalLimit = options?.limit || 5000;
+    // Se não houver limite definido, usamos 150 como limite seguro e leve para evitar travamento em dispositivos móveis.
+    const finalLimit = options?.limit || 150;
     query = query.limit(finalLimit);
 
     const { data, error } = await query.order('timestamp', { ascending: false });

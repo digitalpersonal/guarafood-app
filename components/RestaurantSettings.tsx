@@ -11,6 +11,7 @@ import Spinner from './Spinner';
 import PrintableOrder from './PrintableOrder';
 import MensalistasManager from './MensalistasManager';
 import { getErrorMessage } from '../services/api';
+import ChromeMemorySaverGuide from './ChromeMemorySaverGuide';
 
 const NotificationSettings: React.FC = () => {
     const { addToast } = useNotification();
@@ -458,6 +459,8 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                 <h2 className="text-xl font-black text-gray-800 border-b pb-4 mb-6 uppercase tracking-widest">Painel de Configuração</h2>
                 
                 <NotificationSettings />
+
+                <ChromeMemorySaverGuide />
 
                 {restaurantId && (
                     <BannerSettings 

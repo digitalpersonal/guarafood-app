@@ -418,6 +418,7 @@ const AppContent: React.FC = () => {
 
     // Remove Splash Screen on mount
     useEffect(() => {
+        (window as any).reactAppMounted = true;
         const splash = document.getElementById('splash-screen');
         if (splash) {
             splash.style.opacity = '0';

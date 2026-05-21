@@ -95,7 +95,8 @@
     </div>
     <script>
       // CONFIGURAÇÃO DE VERSÃO PARA LIMPEZA AUTOMÁTICA
-      const APP_VERSION = "1.0.7"; 
+      const APP_VERSION = "1.0.9"; 
+      window.reactAppMounted = false;
       
       (function() {
         try {
@@ -136,15 +137,37 @@
 
       // RECUPERAÇÃO AUTOMÁTICA SE TRAVAR NO CARREGAMENTO
       window.addEventListener('load', function() {
-        // Se após 12 segundos a tela de splash ainda estiver visível, algo deu errado
+        // Se após 12 segundos o aplicativo React ainda não estiver montado, executa o auto-reparo seguro
         setTimeout(function() {
-          const splash = document.getElementById('splash-screen');
-          if (splash && !splash.classList.contains('hidden') && document.body.contains(splash)) {
-            console.warn('O sistema parece estar travado no carregamento. Executando auto-reparo...');
+          if (!window.reactAppMounted) {
+            console.warn('O sistema parece estar travado no carregamento. Executando auto-reparo seguro...');
             
-            // Limpeza total de emergência
-            localStorage.clear();
-            sessionStorage.clear();
+            try {
+              // Limpeza cirúrgica de emergência:
+              // Preservamos o login do usuário, chaves do Supabase e as configurações de impressora do restaurante
+              const keysToKeep = [
+                'guara-food-user-profile-v3', 
+                'guarafood-notifications-enabled', 
+                'guarafood-printer-width', 
+                'guarafood-is-print-server', 
+                'guarafood-panel-locked',
+                'guarafood_app_version'
+              ];
+              
+              for (let i = localStorage.length - 1; i >= 0; i--) {
+                const key = localStorage.key(i);
+                if (key) {
+                  const isSupabaseAuth = key.startsWith('sb-');
+                  const isCrucialConfig = keysToKeep.some(function(k) { return key === k; });
+                  if (!isSupabaseAuth && !isCrucialConfig) {
+                    localStorage.removeItem(key);
+                  }
+                }
+              }
+              sessionStorage.clear();
+            } catch (err) {
+              console.error('Erro na limpeza cirúrgica de localStorage:', err);
+            }
             
             if ('caches' in window) {
               caches.keys().then(function(names) {
@@ -165,6 +188,9 @@
           splash.style.pointerEvents = 'none';
         }
       }
+
+      // GARANTIA DE SAÍDA (Failsafe): some com a tela de carregamento após 4 segundos sob qualquer circunstância
+      setTimeout(hideSplash, 4000);
     </script>
   <script type="module" src="/index.tsx"></script>
 </body>
