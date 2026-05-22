@@ -27,15 +27,25 @@ const StaffManagement: React.FC = () => {
         if (!currentUser?.restaurantId) return;
         setLoading(true);
         try {
-            const restaurant = await fetchRestaurantByIdSecure(currentUser.restaurantId);
+            // Promise.race timeout for premium offline resiliency
+            const restaurant = await Promise.race([
+                fetchRestaurantByIdSecure(currentUser.restaurantId),
+                new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Fetch timeout')), 3500))
+            ]).catch(err => {
+                console.warn("[GuaraFood Offline Mode] Staff fetch timed out or failed. Pulling from cache.", err);
+                const cachedStaff = localStorage.getItem('guarafood-cached-staff');
+                return cachedStaff ? { staff: JSON.parse(cachedStaff) } as Restaurant : null;
+            });
+
             if (restaurant && restaurant.staff) {
                 setStaff(restaurant.staff);
+                localStorage.setItem('guarafood-cached-staff', JSON.stringify(restaurant.staff));
             } else {
                 setStaff([]);
             }
         } catch (error) {
             console.error("Error loading staff:", error);
-            addToast({ message: 'Erro ao carregar equipe.', type: 'error' });
+            addToast({ message: 'Erro ao carregar equipe. Usando dados locais.', type: 'warning' });
         } finally {
             setLoading(false);
         }

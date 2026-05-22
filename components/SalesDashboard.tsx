@@ -74,18 +74,57 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
         const loadData = async () => {
             if (!currentUser?.restaurantId) return;
             setIsLoading(true);
+            const restaurantId = currentUser.restaurantId;
             try {
-                const [ordersData, expensesData, restData, mensalistasData] = await Promise.all([
-                    fetchOrders(currentUser.restaurantId, { limit: 10000 }),
-                    fetchExpenses(currentUser.restaurantId),
-                    fetchRestaurantByIdSecure(currentUser.restaurantId),
-                    fetchMensalistas(currentUser.restaurantId)
-                ]);
-                setOrders(ordersData);
-                setExpenses(expensesData);
-                setRestaurant(restData);
-                setMensalistas(mensalistasData);
-            } catch (error) { console.error(error); } finally { setIsLoading(false); }
+                // Fetch reports data with a 3.5s timeout race for premium offline resiliency
+                const results = await Promise.race([
+                    Promise.all([
+                        fetchOrders(restaurantId, { limit: 10000 }),
+                        fetchExpenses(restaurantId),
+                        fetchRestaurantByIdSecure(restaurantId),
+                        fetchMensalistas(restaurantId)
+                    ]),
+                    new Promise<any[]>((_, reject) => setTimeout(() => reject(new Error('Fetch timeout')), 3500))
+                ]).catch(err => {
+                    console.warn("[GuaraFood Offline Mode] SalesDashboard fetch timed out or failed. Pulling from local storage cache.", err);
+                    const cachedOrders = localStorage.getItem(`guarafood-cached-orders-${restaurantId}`);
+                    const cachedExpenses = localStorage.getItem(`guarafood-cached-expenses-${restaurantId}`);
+                    const cachedRestaurant = localStorage.getItem('guarafood-cached-restaurant');
+                    const cachedMensalistas = localStorage.getItem(`guarafood-cached-mensalistas-${restaurantId}`);
+                    
+                    return [
+                        cachedOrders ? JSON.parse(cachedOrders) : [],
+                        cachedExpenses ? JSON.parse(cachedExpenses) : [],
+                        cachedRestaurant ? JSON.parse(cachedRestaurant) : null,
+                        cachedMensalistas ? JSON.parse(cachedMensalistas) : []
+                    ];
+                });
+
+                const [ordersData, expensesData, restData, mensalistasData] = results;
+
+                setOrders(ordersData || []);
+                setExpenses(expensesData || []);
+                setRestaurant(restData || null);
+                setMensalistas(mensalistasData || []);
+
+                // Write successful fetches to cache
+                if (ordersData && ordersData.length > 0) {
+                    localStorage.setItem(`guarafood-cached-orders-${restaurantId}`, JSON.stringify(ordersData));
+                }
+                if (expensesData && expensesData.length > 0) {
+                    localStorage.setItem(`guarafood-cached-expenses-${restaurantId}`, JSON.stringify(expensesData));
+                }
+                if (restData) {
+                    localStorage.setItem('guarafood-cached-restaurant', JSON.stringify(restData));
+                }
+                if (mensalistasData && mensalistasData.length > 0) {
+                    localStorage.setItem(`guarafood-cached-mensalistas-${restaurantId}`, JSON.stringify(mensalistasData));
+                }
+            } catch (error) { 
+                console.error("Dashboard loaded with some offline anomalies:", error); 
+            } finally { 
+                setIsLoading(false); 
+            }
         };
         loadData();
     }, [currentUser]);

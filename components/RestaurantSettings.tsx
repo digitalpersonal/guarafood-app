@@ -343,9 +343,20 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
         }
         try {
             setIsLoading(true);
-            const data = await fetchRestaurantByIdSecure(restaurantId);
+            
+            // Promise.race timeout for premium offline resiliency
+            const data = await Promise.race([
+                fetchRestaurantByIdSecure(restaurantId),
+                new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Fetch timeout')), 3500))
+            ]).catch(err => {
+                console.warn("[GuaraFood Offline Mode] Settings fetch timed out or failed. Pulling from local cache.", err);
+                const cachedRestaurant = localStorage.getItem('guarafood-cached-restaurant');
+                return cachedRestaurant ? JSON.parse(cachedRestaurant) : null;
+            });
+
             if (data) {
                 setRestaurant(data);
+                localStorage.setItem('guarafood-cached-restaurant', JSON.stringify(data));
                 setMercadoPagoToken(data.mercado_pago_credentials?.accessToken || '');
                 setManualPixKey(data.manualPixKey || '');
                 setBannerImageUrl(data.bannerImageUrl || '');
@@ -364,7 +375,7 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
             }
         } catch (err) { 
             console.error(err); 
-            addToast({ message: 'Erro ao carregar dados.', type: 'error' });
+            addToast({ message: 'Erro ao carregar dados. Usando dados locais.', type: 'warning' });
         } finally { 
             setIsLoading(false); 
         }

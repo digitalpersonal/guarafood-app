@@ -40,8 +40,22 @@ const CustomerList = React.lazy(() => import('./CustomerList'));
 const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { currentUser, logout } = useAuth();
     const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'help' | 'mensalistas'>('orders');
-    const [orders, setOrders] = useState<Order[]>([]);
-    const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+    const [orders, setOrders] = useState<Order[]>(() => {
+        try {
+            const cached = localStorage.getItem('guarafood-cached-orders');
+            return cached ? JSON.parse(cached) : [];
+        } catch {
+            return [];
+        }
+    });
+    const [restaurant, setRestaurant] = useState<Restaurant | null>(() => {
+        try {
+            const cached = localStorage.getItem('guarafood-cached-restaurant');
+            return cached ? JSON.parse(cached) : null;
+        } catch {
+            return null;
+        }
+    });
     const [printJob, setPrintJob] = useState<{ 
         order: Order, 
         mode: 'full' | 'kitchen', 
@@ -49,15 +63,24 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         jobId?: string 
     } | null>(null);
     const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'RECONNECTING'>('CONNECTED');
+    const [isManualSyncing, setIsManualSyncing] = useState(false);
     const { playNotification, initAudioContext } = useSound();
     
     // Staff & Security
-    const [staffList, setStaffList] = useState<StaffMember[]>([]);
+    const [staffList, setStaffList] = useState<StaffMember[]>(() => {
+        try {
+            const cached = localStorage.getItem('guarafood-cached-staff');
+            return cached ? JSON.parse(cached) : [];
+        } catch {
+            return [];
+        }
+    });
     const [currentStaffUser, setCurrentStaffUser] = useState<StaffMember | null>(null);
     const [isPinPadOpen, setIsPinPadOpen] = useState(false);
     const [isLocked, setIsLocked] = useState(localStorage.getItem('guarafood-panel-locked') === 'true');
 
     const lastSuccessfulSyncRef = useRef<number>(Date.now());
+    const isSyncingRef = useRef<boolean>(false);
     const previousOrdersStatusRef = useRef<Map<string, string>>(new Map());
     const isFirstLoadRef = useRef(true);
     const printedOrderIdsRef = useRef<Set<string>>(new Set());
@@ -76,15 +99,25 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         
         const loadConfig = async () => {
             try {
-                const rest = await fetchRestaurantByIdSecure(currentUser.restaurantId);
+                // Implement automatic 3.5s timeout race to prevent rendering thread from locking under poor network condition
+                const rest = await Promise.race([
+                    fetchRestaurantByIdSecure(currentUser.restaurantId),
+                    new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Fetch timeout')), 3500))
+                ]).catch(err => {
+                    console.warn("[GuaraFood Offline Mode] Restaurant details fetch timed out or failed. Utilizing cached state.", err);
+                    return null;
+                });
+
                 if (rest) {
                     setRestaurant(rest);
+                    localStorage.setItem('guarafood-cached-restaurant', JSON.stringify(rest));
                     if (rest.printerWidth) {
                         setPrinterWidth(rest.printerWidth);
                         localStorage.setItem('guarafood-printer-width', rest.printerWidth.toString());
                     }
                     if (rest.staff) {
                         setStaffList(rest.staff);
+                        localStorage.setItem('guarafood-cached-staff', JSON.stringify(rest.staff));
                     }
                 } else {
                     const saved = localStorage.getItem('guarafood-printer-width');
@@ -206,21 +239,44 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
         previousOrdersStatusRef.current = currentStatusMap;
         setOrders(visibleOrders);
+        try {
+            localStorage.setItem('guarafood-cached-orders', JSON.stringify(visibleOrders));
+        } catch (err) {
+            console.error("Erro ao persistir cache local de pedidos:", err);
+        }
         if (isFirstLoadRef.current) { visibleOrders.forEach(o => alertedOrderIdsRef.current.add(o.id)); }; isFirstLoadRef.current = false;
         lastSuccessfulSyncRef.current = Date.now(); setConnectionStatus('CONNECTED');
     }, [playNotification]);
 
     const forceSync = useCallback(async () => {
-        if (!currentUser?.restaurantId) return;
+        if (!currentUser?.restaurantId || isSyncingRef.current) return;
+        isSyncingRef.current = true;
+        setIsManualSyncing(true);
         try {
-            const allOrders = await fetchOrders(currentUser.restaurantId, { limit: 150 });
+            // Sincronização robusta com limite estendido para 15 segundos (ideal para as redes móveis instáveis dos restaurantes no Brasil)
+            const allOrders = await Promise.race([
+                fetchOrders(currentUser.restaurantId, { limit: 150 }),
+                new Promise<Order[]>((_, reject) => setTimeout(() => reject(new Error('Sync timeout')), 15000))
+            ]);
             processOrdersUpdate(allOrders);
             lastSuccessfulSyncRef.current = Date.now();
             setConnectionStatus('CONNECTED');
         } catch (e) {
-            console.warn("Sync failed, retrying silently...");
+            console.warn("[GuaraFood Sync] Falha ou timeout na sincronização automática. Utilizando estado guardado offline.", e);
+            try {
+                const cached = localStorage.getItem('guarafood-cached-orders');
+                if (cached && orders.length === 0) {
+                    const parsed = JSON.parse(cached);
+                    setOrders(parsed);
+                }
+            } catch (err) {
+                console.error("Erro ao ler cache secundário de pedidos:", err);
+            }
+        } finally {
+            isSyncingRef.current = false;
+            setIsManualSyncing(false);
         }
-    }, [currentUser?.restaurantId, processOrdersUpdate]);
+    }, [currentUser?.restaurantId, processOrdersUpdate, orders.length]);
 
     useEffect(() => {
         let wakeLock: any = null;
@@ -256,13 +312,13 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
         heartbeatIntervalRef.current = window.setInterval(() => {
             const idleTime = Date.now() - lastSuccessfulSyncRef.current;
-            if (idleTime > 30000) {
+            if (idleTime > 90000) { // Antes era 30000. Damos tolerância de 90s para redes móveis lentas
                 setConnectionStatus('RECONNECTING');
                 forceSync();
-            } else if (idleTime > 10000) {
+            } else if (idleTime > 45000) { // Antes era 10000. Damos tolerância de 45s para evitar acúmulo de tráfego
                 forceSync();
             }
-        }, 8000);
+        }, 15000); // Executa verificação a cada 15 segundos (antes era 8s)
 
         return () => { 
             if (wakeLock !== null) wakeLock.release(); 
@@ -415,7 +471,8 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }
     }
     
-    const showOfflineBanner = isBrowserOffline || (connectionStatus !== 'CONNECTED' && (Date.now() - lastSuccessfulSyncRef.current > 45000));
+    // A tarja vermelha só é exibida se realmente ficarmos mais de 60 segundos sem conseguir atualizar os pedidos
+    const showOfflineBanner = isBrowserOffline || (Date.now() - lastSuccessfulSyncRef.current > 60000);
     
     return (
         <div className="w-full min-h-screen bg-gray-50" onClick={enableAudio} onTouchStart={enableAudio}>
@@ -438,8 +495,20 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         <h1 className="text-xl sm:text-2xl font-black text-gray-800 truncate flex items-center gap-2">
                             {currentUser?.name || 'Painel Lojista'}
                             <span 
-                                className={`inline-block w-2.5 h-2.5 rounded-full transition-all duration-500 ${connectionStatus === 'CONNECTED' ? 'bg-green-500' : 'bg-red-500 animate-ping'}`} 
-                                title={connectionStatus === 'CONNECTED' ? 'Conexão em Tempo Real Ativa' : 'Reconectando ao servidor...'}
+                                className={`inline-block w-2.5 h-2.5 rounded-full transition-all duration-500 ${
+                                    connectionStatus === 'CONNECTED' 
+                                        ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' 
+                                        : (Date.now() - lastSuccessfulSyncRef.current < 45000 
+                                            ? 'bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.6)]' 
+                                            : 'bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]')
+                                }`} 
+                                title={
+                                    connectionStatus === 'CONNECTED' 
+                                        ? 'Conexão em Tempo Real Ativa' 
+                                        : (Date.now() - lastSuccessfulSyncRef.current < 45000 
+                                            ? 'Tempo real instável, mas sistema sincronizado via canal HTTP de backup útil' 
+                                            : 'Sem contato com o servidor. Verifique sua conexão...')
+                                }
                             />
                         </h1>
                         <div className="flex items-center gap-2">
@@ -477,10 +546,11 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     )}
                     <button 
                         onClick={forceSync}
-                        className={`p-2 rounded-lg transition-all ${connectionStatus === 'CONNECTED' ? 'text-gray-400 hover:text-orange-600' : 'text-white bg-red-500'}`}
+                        className={`p-2 rounded-lg transition-all ${isManualSyncing ? 'bg-orange-100 text-orange-600' : 'text-gray-400 hover:text-orange-600'}`}
+                        disabled={isManualSyncing}
                         title="Sincronizar Manualmente"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`w-6 h-6 ${connectionStatus !== 'CONNECTED' ? 'animate-spin' : ''}`}>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`w-6 h-6 ${isManualSyncing ? 'animate-spin' : ''}`}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
                         </svg>
                     </button>

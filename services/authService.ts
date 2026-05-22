@@ -292,9 +292,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const logout = useCallback(async () => {
-      await supabase.auth.signOut();
-      localStorage.removeItem(USER_STORAGE_KEY);
-      setCurrentUser(null);
+      try {
+          // Clear local cache immediately so the UI reacts instantly to provide premium offline-first resilience
+          localStorage.removeItem(USER_STORAGE_KEY);
+          setCurrentUser(null);
+          
+          // Fire-and-forget Supabase signOut in the background so slow or offline networks cannot freeze the UI
+          supabase.auth.signOut().catch(err => {
+              console.warn("Async signOut warning during logout:", err);
+          });
+      } catch (err) {
+          console.error("Critical error in logout:", err);
+          // Fallback force clean
+          localStorage.removeItem(USER_STORAGE_KEY);
+          setCurrentUser(null);
+      }
   }, []);
 
   const value = useMemo(() => ({

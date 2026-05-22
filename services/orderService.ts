@@ -43,43 +43,68 @@ export const subscribeToOrders = (
     onStatusChange?: (status: string) => void
 ): (() => void) => {
     let isMounted = true;
+    let isFetching = false;
 
     const refreshData = async () => {
-        if (!isMounted) return;
+        if (!isMounted || isFetching) return;
+        isFetching = true;
         try {
             // Usamos um limite de 150 para máxima velocidade e leveza em celulares e tablets dos restaurantes
             const orders = await fetchOrders(restaurantId, { limit: 150 });
             if (isMounted) callback(orders);
         } catch (e) {
             console.error("Erro ao atualizar pedidos via polling:", e);
+        } finally {
+            isFetching = false;
         }
     };
 
     // Canal Estático para estabilidade
     const channelName = restaurantId ? `orders_store_${restaurantId}` : `orders_global_admin`;
     
-    // Garantir que não existam múltiplos canais pendentes
-    const existingChannels = supabase.getChannels().filter(ch => (ch as any).topic === channelName || (ch as any).name === channelName);
-    existingChannels.forEach(ch => supabase.removeChannel(ch));
+    // Garantir que não existam múltiplos canais pendentes - defensivo para evitar falhas se getChannels não existir
+    let existingChannels: any[] = [];
+    try {
+        if (typeof supabase.getChannels === 'function') {
+            existingChannels = supabase.getChannels().filter(ch => (ch as any).topic === channelName || (ch as any).name === channelName);
+            existingChannels.forEach(ch => {
+                try {
+                    supabase.removeChannel(ch);
+                } catch (err) {
+                    console.warn("[GuaraFood WebSockets] Erro ao remover canal individual:", err);
+                }
+            });
+        }
+    } catch (err) {
+        console.warn("[GuaraFood WebSockets] Erro ao limpar canais antigos no Supabase:", err);
+    }
 
-    const channel = supabase.channel(channelName)
-        .on(
-            'postgres_changes',
-            { 
-                event: '*', 
-                schema: 'public', 
-                table: 'orders', 
-                filter: restaurantId ? `restaurant_id=eq.${restaurantId}` : undefined 
-            },
-            () => {
-                refreshData();
-            }
-        )
-        .subscribe((status) => {
-            if (isMounted && onStatusChange) {
-                onStatusChange(status);
-            }
-        });
+    let channel: any = null;
+    try {
+        channel = supabase.channel(channelName)
+            .on(
+                'postgres_changes',
+                { 
+                    event: '*', 
+                    schema: 'public', 
+                    table: 'orders', 
+                    filter: restaurantId ? `restaurant_id=eq.${restaurantId}` : undefined 
+                },
+                () => {
+                    refreshData();
+                }
+            )
+            .subscribe((status) => {
+                if (isMounted && onStatusChange) {
+                    onStatusChange(status);
+                }
+            });
+    } catch (err) {
+        console.error("[GuaraFood WebSockets] Erro ao criar canal de tempo real. Polling HTTP operando como fallback principal.", err);
+        if (isMounted && onStatusChange) {
+            onStatusChange('CHANNEL_ERROR');
+        }
+    }
 
     refreshData();
 
@@ -92,7 +117,13 @@ export const subscribeToOrders = (
     return () => {
         isMounted = false;
         clearInterval(fallbackInterval);
-        supabase.removeChannel(channel);
+        if (channel) {
+            try {
+                supabase.removeChannel(channel);
+            } catch (err) {
+                console.warn("[GuaraFood WebSockets] Erro ao remover canal no unmount:", err);
+            }
+        }
     };
 };
 

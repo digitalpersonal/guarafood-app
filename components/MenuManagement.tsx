@@ -122,23 +122,73 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
         try {
             setIsLoading(true);
             
-            // Fetch restaurant name to check for seeds
-            const { data: restData } = await supabase.from('restaurants').select('name').eq('id', restaurantId).single();
-            if (restData) setRestaurantName(restData.name);
+            // Try fetching restaurant name with 2.5s maximum timeout
+            const restNameData = await Promise.race([
+                supabase.from('restaurants').select('name').eq('id', restaurantId).single(),
+                new Promise<any>((resolve) => setTimeout(() => resolve({ data: null, error: new Error('Timeout') }), 2500))
+            ]).catch(() => null);
+            
+            if (restNameData?.data) setRestaurantName(restNameData.data.name);
 
-            const [menuData, promoData, couponData, addonData] = await Promise.all([
-                fetchMenuForRestaurant(restaurantId, true), // Pass true to ignore day filter
-                fetchPromotionsForRestaurant(restaurantId),
-                fetchCouponsForRestaurant(restaurantId),
-                fetchAddonsForRestaurant(restaurantId)
-            ]);
-            setMenuCategories(menuData);
-            setPromotions(promoData);
-            setCoupons(couponData);
-            setAddons(addonData);
+            // Fetch menu components concurrently with a 3.5s timeout race
+            const results = await Promise.race([
+                Promise.all([
+                    fetchMenuForRestaurant(restaurantId, true), // Pass true to ignore day filter
+                    fetchPromotionsForRestaurant(restaurantId),
+                    fetchCouponsForRestaurant(restaurantId),
+                    fetchAddonsForRestaurant(restaurantId)
+                ]),
+                new Promise<any[]>((_, reject) => setTimeout(() => reject(new Error('Fetch timeout')), 3500))
+            ]).catch(err => {
+                console.warn("[GuaraFood Offline Mode] Menu fetch timed out or failed. Attempting to fall back to local storage cache.", err);
+                const cachedMenu = localStorage.getItem(`guarafood-cached-menu-${restaurantId}`);
+                const cachedPromo = localStorage.getItem(`guarafood-cached-promo-${restaurantId}`);
+                const cachedCoupon = localStorage.getItem(`guarafood-cached-coupon-${restaurantId}`);
+                const cachedAddon = localStorage.getItem(`guarafood-cached-addon-${restaurantId}`);
+                
+                return [
+                    cachedMenu ? JSON.parse(cachedMenu) : [],
+                    cachedPromo ? JSON.parse(cachedPromo) : [],
+                    cachedCoupon ? JSON.parse(cachedCoupon) : [],
+                    cachedAddon ? JSON.parse(cachedAddon) : []
+                ];
+            });
+
+            const [menuData, promoData, couponData, addonData] = results;
+
+            setMenuCategories(menuData || []);
+            setPromotions(promoData || []);
+            setCoupons(couponData || []);
+            setAddons(addonData || []);
+
+            // Save successfully fetched data to local storage for offline tolerance
+            if (menuData && menuData.length > 0) {
+                localStorage.setItem(`guarafood-cached-menu-${restaurantId}`, JSON.stringify(menuData));
+            }
+            if (promoData && promoData.length > 0) {
+                localStorage.setItem(`guarafood-cached-promo-${restaurantId}`, JSON.stringify(promoData));
+            }
+            if (couponData && couponData.length > 0) {
+                localStorage.setItem(`guarafood-cached-coupon-${restaurantId}`, JSON.stringify(couponData));
+            }
+            if (addonData && addonData.length > 0) {
+                localStorage.setItem(`guarafood-cached-addon-${restaurantId}`, JSON.stringify(addonData));
+            }
+
             setError(null);
         } catch (err) {
             console.error("Failed to load menu management data:", err);
+            // Fallback inside catch as a safety net
+            try {
+                const cachedMenu = localStorage.getItem(`guarafood-cached-menu-${restaurantId}`);
+                if (cachedMenu) {
+                    setMenuCategories(JSON.parse(cachedMenu));
+                    setError(null);
+                    return;
+                }
+            } catch (innerErr) {
+                console.error("Second-level fallback failed:", innerErr);
+            }
             setError(`Falha ao carregar os dados do cardápio e promoções: ${getErrorMessage(err)}`);
         } finally {
             setIsLoading(false);
