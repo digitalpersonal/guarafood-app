@@ -197,10 +197,11 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
 
         try {
             if (!existingRestaurant || changeCredentials) {
-                const { error: fErr } = await supabase.functions.invoke('create-restaurant-with-user', {
+                const { data, error: fErr } = await supabase.functions.invoke('create-restaurant-with-user', {
                     body: { restaurantData: dbPayload, userData: { email: merchantEmail, password: merchantPassword } }
                 });
                 if (fErr) throw fErr;
+                if (data && data.error) throw new Error(data.error);
             } else {
                 const { error: uErr } = await supabase.from('restaurants').update(dbPayload).eq('id', existingRestaurant.id);
                 if (uErr) throw uErr;

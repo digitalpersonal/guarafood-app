@@ -47,19 +47,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               email: authUser.email!,
               role: meta.role as Role,
               name: meta.name,
-              restaurantId: meta.restaurantId,
+              restaurantId: meta.restaurantId ?? meta.restaurant_id,
           };
 
           // VERIFICAÇÃO DE INTEGRIDADE: O restaurante ainda existe?
           // Se o ID mudou (por causa de um seed), o metadado está obsoleto.
           if (profile.restaurantId) {
-              const { data: resExists, error: resError } = await supabase
-                  .from('restaurants')
-                  .select('id')
-                  .eq('id', profile.restaurantId)
-                  .maybeSingle();
-              
-              if (resExists && !resError) return profile;
+              try {
+                  const { data: resExists, error: resError } = await supabase
+                      .from('restaurants')
+                      .select('id')
+                      .eq('id', profile.restaurantId)
+                      .maybeSingle();
+                  
+                  if (resExists && !resError) return profile;
+              } catch (err) {
+                  console.warn("[GuaraFood Auth] Erro ao validar se restaurante existe na tabela, usando profile do metadado resiliente:", err);
+                  return profile;
+              }
               
               // Se não existe, vamos tentar achar o novo ID pelo staff
               console.warn(`Restaurant ID ${profile.restaurantId} not found. Searching for new ID...`);
@@ -69,60 +74,72 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       // Fallback para tabela profiles apenas se necessário
-      const { data, error } = await supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle();
-      
-      if (data) {
-          const profile: User = {
-              id: data.id,
-              email: authUser.email!,
-              role: data.role as Role,
-              name: data.name,
-              restaurantId: data.restaurantId
-          };
+      try {
+          const { data, error } = await supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle();
+          
+          if (data && !error) {
+              const profile: User = {
+                  id: data.id,
+                  email: authUser.email!,
+                  role: data.role as Role,
+                  name: data.name,
+                  restaurantId: data.restaurantId ?? data.restaurant_id
+              };
 
-          // Verifica se o restaurante do profile ainda existe
-          if (profile.restaurantId) {
-              const { data: resExists } = await supabase
-                  .from('restaurants')
-                  .select('id')
-                  .eq('id', profile.restaurantId)
-                  .maybeSingle();
-              
-              if (resExists) return profile;
-          } else {
-              return profile;
+              // Verifica se o restaurante do profile ainda existe
+              if (profile.restaurantId) {
+                  try {
+                      const { data: resExists } = await supabase
+                          .from('restaurants')
+                          .select('id')
+                          .eq('id', profile.restaurantId)
+                          .maybeSingle();
+                      
+                      if (resExists) return profile;
+                  } catch (e) {
+                      return profile;
+                  }
+              } else {
+                  return profile;
+              }
           }
+      } catch (err) {
+          console.warn("[GuaraFood Auth] Erro ao buscar dados na tabela profiles:", err);
       }
 
       // 3. SENIOR MOVE: Busca na lista de staff de todos os restaurantes
       // Se o usuário não é um merchant dono, ele pode ser um funcionário convidado
-      const { data: staffData } = await supabase
-          .from('restaurants')
-          .select('id, name, staff')
-          .not('staff', 'is', null);
+      try {
+          const { data: staffData } = await supabase
+              .from('restaurants')
+              .select('id, name, staff')
+              .not('staff', 'is', null);
 
-      if (staffData) {
-          for (const res of staffData) {
-              const staffList = res.staff as any[];
-              const member = staffList.find(s => s.email?.toLowerCase() === authUser.email?.toLowerCase() && s.active);
-              if (member) {
-                  const newProfile: User = {
-                      id: authUser.id,
-                      email: authUser.email!,
-                      role: member.role as Role,
-                      name: member.name,
-                      restaurantId: res.id
-                  };
-                  
-                  // SENIOR MOVE: Atualiza os metadados para o novo ID correto
-                  // Isso evita que o erro se repita no próximo login
-                  await supabase.auth.updateUser({
-                      data: { restaurantId: res.id }
-                  });
+          if (staffData) {
+              for (const res of staffData) {
+                  const staffList = Array.isArray(res.staff) ? (res.staff as any[]) : [];
+                  const member = staffList.find(s => s?.email?.toLowerCase() === authUser.email?.toLowerCase() && s?.active);
+                  if (member) {
+                      const newProfile: User = {
+                          id: authUser.id,
+                          email: authUser.email!,
+                          role: member.role as Role,
+                          name: member.name,
+                          restaurantId: res.id
+                      };
+                      
+                      // SENIOR MOVE: Atualiza os metadados para o novo ID correto
+                      // Isso evita que o erro se repita no próximo login
+                      await supabase.auth.updateUser({
+                          data: { restaurantId: res.id }
+                      }).catch(() => {});
 
-                  return newProfile;
+                      return newProfile;
+                  }
               }
           }
+      } catch (err) {
+          console.warn("[GuaraFood Auth] Erro ao buscar lista de staff dos restaurantes:", err);
       }
 
       // Se nada funcionar, mas o cara está autenticado, monta um perfil básico para não travar
@@ -230,9 +247,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setAuthError(null);
             }
         } else if (event === 'SIGNED_OUT') {
-          localStorage.removeItem(USER_STORAGE_KEY);
-          setCurrentUser(null);
-          setAuthError(null);
+          // Evita limpar se for apenas o evento de inicialização sem sessão no Supabase (F5/Hot-reload)
+          // Se o usuário já estava autenticado localmente, mantemos suas credenciais de sobrevivência offline até logout explícito.
+          if (!localStorage.getItem(USER_STORAGE_KEY)) {
+              setCurrentUser(null);
+              setAuthError(null);
+          }
         }
       }
     );
@@ -265,11 +285,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (staffData) {
               for (const res of staffData) {
-                  const staffList = res.staff as any[];
+                  const staffList = Array.isArray(res.staff) ? (res.staff as any[]) : [];
                   const member = staffList.find(s => 
-                      s.email?.toLowerCase() === cleanEmail && 
-                      (s.password === cleanPassword || s.password === password) && 
-                      s.active
+                      s?.email?.toLowerCase() === cleanEmail && 
+                      (s?.password === cleanPassword || s?.password === password) && 
+                      s?.active
                   );
                   
                   if (member) {
@@ -288,6 +308,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
           
           throw new Error(error.message);
+      } else if (data?.user) {
+          // 3. SE LOGIN NO SUPABASE DER CERTO: Já buscamos o perfil imediatamente e atualizamos os dados locais.
+          // Isso garante que no retorno do 'login' (que é esperado síncrono com a transição), o currentUser esteja preenchido.
+          const profile = await fetchUserProfile(data.user);
+          if (profile) {
+              localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
+              setCurrentUser(profile);
+          } else {
+              throw new Error("Perfil não encontrado para o usuário autenticado.");
+          }
       }
   }, []);
 
