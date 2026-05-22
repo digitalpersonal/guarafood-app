@@ -95,41 +95,74 @@
     </div>
     <script>
       // CONFIGURAÇÃO DE VERSÃO PARA LIMPEZA AUTOMÁTICA
-      const APP_VERSION = "1.1.2"; 
+      const APP_VERSION = "1.1.3"; 
       window.reactAppMounted = false;
       
       (function() {
         try {
           const lastVersion = localStorage.getItem('guarafood_app_version');
           
-          // Se a versão mudou, limpamos caches e service workers AGRESSIVAMENTE
-          if (lastVersion !== APP_VERSION) {
-            console.log('Nova versão detectada (' + APP_VERSION + '). Limpando caches...');
+          // 1. LIMPEZA SÍNCRONA IMEDIATA (Se o novo index.html carregou)
+          if (lastVersion && lastVersion !== APP_VERSION) {
+            console.log('[GuaraFood] Nova versão detectada via HTML estático (' + APP_VERSION + '). Limpando caches...');
             
-            // 1. Unregister Service Workers
             if ('serviceWorker' in navigator) {
               navigator.serviceWorker.getRegistrations().then(function(registrations) {
                 for(let registration of registrations) { registration.unregister(); }
               });
             }
             
-            // 2. Clear Cache Storage
             if ('caches' in window) {
               caches.keys().then(function(names) {
                 for (let name of names) caches.delete(name);
               });
             }
 
-            // 3. Marcar versão atualizada
             localStorage.setItem('guarafood_app_version', APP_VERSION);
             
-            // Forçar reload limpo apenas UMA vez para aplicar mudanças
             if (!sessionStorage.getItem('version_cleaned')) {
               sessionStorage.setItem('version_cleaned', 'true');
               window.location.reload(true);
               return;
             }
+          } else if (!lastVersion) {
+            // Primeiro acesso
+            localStorage.setItem('guarafood_app_version', APP_VERSION);
           }
+
+          // 2. VERIFICAÇÃO ASSÍNCRONA PREMIUM (Se o index.html antigo veio do cache local, isto força o update)
+          fetch('/version.json?t=' + Date.now())
+            .then(function(res) {
+              if (res.ok) return res.json();
+            })
+            .then(function(data) {
+              if (data && data.version && data.version !== localStorage.getItem('guarafood_app_version')) {
+                console.log('[GuaraFood Anti-Cache] Versão no servidor (' + data.version + ') diverge da local. Iniciando transição...');
+                
+                if ('serviceWorker' in navigator) {
+                  navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                    for(let registration of registrations) { registration.unregister(); }
+                  });
+                }
+                
+                if ('caches' in window) {
+                  caches.keys().then(function(names) {
+                    for (let name of names) caches.delete(name);
+                  });
+                }
+
+                localStorage.setItem('guarafood_app_version', data.version);
+                
+                // Recarrega forçando descarte do cache do HTML
+                setTimeout(function() {
+                  window.location.href = window.location.pathname + '?v=' + Date.now();
+                }, 300);
+              }
+            })
+            .catch(function(err) {
+              console.warn('[GuaraFood Anti-Cache] Falha ao verificar versão dinâmica:', err);
+            });
+
         } catch (e) {
           console.error('Erro na limpeza de cache:', e);
         }
