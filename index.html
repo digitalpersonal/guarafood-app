@@ -135,12 +135,20 @@
         }
       })();
 
-      // RECUPERAÇÃO AUTOMÁTICA SE TRAVAR NO CARREGAMENTO
+      // RECUPERAÇÃO AUTOMÁTICA SE TRAVAR NO CARREGAMENTO (AJUSTE PREMIUM: Evita loops infinitos e suporta 3G/4G oscilantes)
       window.addEventListener('load', function() {
-        // Se após 12 segundos o aplicativo React ainda não estiver montado, executa o auto-reparo seguro
+        var params = new URLSearchParams(window.location.search);
+        var hasRepairedRecently = params.has('repair');
+        var waitTime = hasRepairedRecently ? 120000 : 45000; // Dobra se já reparou, para não sobrecarregar
+        
         setTimeout(function() {
           if (!window.reactAppMounted) {
             console.warn('O sistema parece estar travado no carregamento. Executando auto-reparo seguro...');
+            
+            if (hasRepairedRecently) {
+              console.error('O sistema falhou ao se montar mesmo após reparo cirúrgico. Abortando loop de reloads automáticos.');
+              return;
+            }
             
             try {
               // Limpeza cirúrgica de emergência:
@@ -178,7 +186,7 @@
             // Redireciona com query string para ignorar cache de borda/proxy
             window.location.href = window.location.pathname + '?repair=' + new Date().getTime();
           }
-        }, 12000);
+        }, waitTime);
       });
 
       function hideSplash() {
