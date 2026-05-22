@@ -80,6 +80,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [isLocked, setIsLocked] = useState(localStorage.getItem('guarafood-panel-locked') === 'true');
 
     const lastSuccessfulSyncRef = useRef<number>(Date.now());
+    const [lastSuccessfulSyncTime, setLastSuccessfulSyncTime] = useState<number>(Date.now());
     const isSyncingRef = useRef<boolean>(false);
     const previousOrdersStatusRef = useRef<Map<string, string>>(new Map());
     const isFirstLoadRef = useRef(true);
@@ -245,7 +246,9 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             console.error("Erro ao persistir cache local de pedidos:", err);
         }
         if (isFirstLoadRef.current) { visibleOrders.forEach(o => alertedOrderIdsRef.current.add(o.id)); }; isFirstLoadRef.current = false;
-        lastSuccessfulSyncRef.current = Date.now(); setConnectionStatus('CONNECTED');
+        lastSuccessfulSyncRef.current = Date.now();
+        setLastSuccessfulSyncTime(Date.now());
+        setConnectionStatus('CONNECTED');
     }, [playNotification]);
 
     const forceSync = useCallback(async () => {
@@ -260,6 +263,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             ]);
             processOrdersUpdate(allOrders);
             lastSuccessfulSyncRef.current = Date.now();
+            setLastSuccessfulSyncTime(Date.now());
             setConnectionStatus('CONNECTED');
         } catch (e) {
             console.warn("[GuaraFood Sync] Falha ou timeout na sincronização automática. Utilizando estado guardado offline.", e);
@@ -301,8 +305,20 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         const handleOffline = () => {
             setIsBrowserOffline(true);
         };
-        const handleFocus = () => forceSync();
-        const handleVisibilityChange = () => { if (document.visibilityState === 'visible') forceSync(); };
+        const handleFocus = () => {
+            const now = Date.now();
+            lastSuccessfulSyncRef.current = now;
+            setLastSuccessfulSyncTime(now);
+            forceSync();
+        };
+        const handleVisibilityChange = () => { 
+            if (document.visibilityState === 'visible') {
+                const now = Date.now();
+                lastSuccessfulSyncRef.current = now;
+                setLastSuccessfulSyncTime(now);
+                forceSync(); 
+            }
+        };
 
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
@@ -472,7 +488,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     }
     
     // A tarja vermelha só é exibida se realmente ficarmos mais de 60 segundos sem conseguir atualizar os pedidos
-    const showOfflineBanner = isBrowserOffline || (Date.now() - lastSuccessfulSyncRef.current > 60000);
+    const showOfflineBanner = isBrowserOffline || (Date.now() - lastSuccessfulSyncTime > 60000);
     
     return (
         <div className="w-full min-h-screen bg-gray-50" onClick={enableAudio} onTouchStart={enableAudio}>
@@ -498,14 +514,14 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                                 className={`inline-block w-2.5 h-2.5 rounded-full transition-all duration-500 ${
                                     connectionStatus === 'CONNECTED' 
                                         ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' 
-                                        : (Date.now() - lastSuccessfulSyncRef.current < 45000 
+                                        : (Date.now() - lastSuccessfulSyncTime < 45000 
                                             ? 'bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.6)]' 
                                             : 'bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]')
                                 }`} 
                                 title={
                                     connectionStatus === 'CONNECTED' 
                                         ? 'Conexão em Tempo Real Ativa' 
-                                        : (Date.now() - lastSuccessfulSyncRef.current < 45000 
+                                        : (Date.now() - lastSuccessfulSyncTime < 45000 
                                             ? 'Tempo real instável, mas sistema sincronizado via canal HTTP de backup útil' 
                                             : 'Sem contato com o servidor. Verifique sua conexão...')
                                 }

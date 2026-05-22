@@ -49,11 +49,14 @@ export const subscribeToOrders = (
         if (!isMounted || isFetching) return;
         isFetching = true;
         try {
-            // Usamos um limite de 150 para máxima velocidade e leveza em celulares e tablets dos restaurantes
-            const orders = await fetchOrders(restaurantId, { limit: 150 });
+            // Usamos um limite de 150 para máxima velocidade e leveza em celulares e tablets dos restaurantes e timeout de 15s para evitar travamento em segundo plano
+            const orders = await Promise.race([
+                fetchOrders(restaurantId, { limit: 150 }),
+                new Promise<Order[]>((_, reject) => setTimeout(() => reject(new Error('Polling sync timeout')), 15000))
+            ]);
             if (isMounted) callback(orders);
         } catch (e) {
-            console.error("Erro ao atualizar pedidos via polling:", e);
+            console.warn("[GuaraFood Polling] Erro ou timeout ao atualizar pedidos:", e);
         } finally {
             isFetching = false;
         }
