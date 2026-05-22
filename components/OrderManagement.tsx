@@ -62,8 +62,11 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const isFirstLoadRef = useRef(true);
     const printedOrderIdsRef = useRef<Set<string>>(new Set());
     const processedJobIdsRef = useRef<Set<string>>(new Set());
+    const alertedOrderIdsRef = useRef<Set<string>>(new Set());
     const heartbeatIntervalRef = useRef<number | null>(null);
     const reconnectGraceTimeoutRef = useRef<number | null>(null);
+    const appStartTimeRef = useRef<number>(Date.now());
+    const [isBrowserOffline, setIsBrowserOffline] = useState(!navigator.onLine);
 
     const [printerWidth, setPrinterWidth] = useState<number>(80);
 
@@ -159,12 +162,26 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         if (!isFirstLoadRef.current) {
             const ordersToAlert = visibleOrders.filter(order => {
                 const prevStatus = previousOrdersStatusRef.current.get(order.id);
-                const isNewDelivery = order.status === 'Novo Pedido' && prevStatus !== 'Novo Pedido';
-                const isNewTable = order.tableNumber && !previousOrdersStatusRef.current.has(order.id);
+                const orderTime = order.timestamp ? new Date(order.timestamp).getTime() : Date.now();
+                const isRecent = (Date.now() - orderTime) < 600000; // 10 minutos
+                const isWithinStartupWindow = orderTime > appStartTimeRef.current - 120000; // 2 minutos antes do app abrir ou depois
+                const hasJustChangedStatus = prevStatus !== undefined && prevStatus !== order.status;
+
+                const isNewDelivery = order.status === 'Novo Pedido' && 
+                                      isRecent && 
+                                      !alertedOrderIdsRef.current.has(order.id) && 
+                                      (isWithinStartupWindow || hasJustChangedStatus);
+
+                const isNewTable = order.tableNumber && 
+                                   !previousOrdersStatusRef.current.has(order.id) && 
+                                   !alertedOrderIdsRef.current.has(order.id) && 
+                                   isRecent && 
+                                   (isWithinStartupWindow || prevStatus !== undefined);
+
                 return isNewDelivery || isNewTable;
             });
 
-            if (ordersToAlert.length > 0) {
+            if (ordersToAlert.length > 0) { ordersToAlert.forEach(o => alertedOrderIdsRef.current.add(o.id));
                 const newestOrder = ordersToAlert[0];
                 if (areNotificationsEnabled) {
                     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
@@ -189,14 +206,14 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
         previousOrdersStatusRef.current = currentStatusMap;
         setOrders(visibleOrders);
-        isFirstLoadRef.current = false;
-        lastSuccessfulSyncRef.current = Date.now();
+        if (isFirstLoadRef.current) { visibleOrders.forEach(o => alertedOrderIdsRef.current.add(o.id)); }; isFirstLoadRef.current = false;
+        lastSuccessfulSyncRef.current = Date.now(); setConnectionStatus('CONNECTED');
     }, [playNotification]);
 
     const forceSync = useCallback(async () => {
         if (!currentUser?.restaurantId) return;
         try {
-            const allOrders = await fetchOrders(currentUser.restaurantId, { limit: 200 });
+            const allOrders = await fetchOrders(currentUser.restaurantId, { limit: 150 });
             processOrdersUpdate(allOrders);
             lastSuccessfulSyncRef.current = Date.now();
             setConnectionStatus('CONNECTED');
@@ -221,18 +238,28 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         };
         requestWakeLock();
 
-        const handleOnline = () => forceSync();
+        const handleOnline = () => {
+            setIsBrowserOffline(false);
+            forceSync();
+        };
+        const handleOffline = () => {
+            setIsBrowserOffline(true);
+        };
         const handleFocus = () => forceSync();
         const handleVisibilityChange = () => { if (document.visibilityState === 'visible') forceSync(); };
 
         window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
         window.addEventListener('focus', handleFocus);
         document.addEventListener('visibilitychange', handleVisibilityChange);
         window.addEventListener('guarafood:update-orders', forceSync);
 
         heartbeatIntervalRef.current = window.setInterval(() => {
             const idleTime = Date.now() - lastSuccessfulSyncRef.current;
-            if (idleTime > 10000) {
+            if (idleTime > 30000) {
+                setConnectionStatus('RECONNECTING');
+                forceSync();
+            } else if (idleTime > 10000) {
                 forceSync();
             }
         }, 8000);
@@ -240,6 +267,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         return () => { 
             if (wakeLock !== null) wakeLock.release(); 
             window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
             window.removeEventListener('focus', handleFocus);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             window.removeEventListener('guarafood:update-orders', forceSync);
@@ -344,11 +372,10 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     reconnectGraceTimeoutRef.current = null;
                 }
             } else {
-                if (!reconnectGraceTimeoutRef.current) {
-                    reconnectGraceTimeoutRef.current = window.setTimeout(() => {
-                        setConnectionStatus('RECONNECTING');
-                    }, 10000);
-                }
+                // Quando o canal de tempo real oscila ou desconecta, nós não mostramos a temida tarja vermelha
+                // imediatamente porque o polling de backup em segundo plano está 100% ativo e atualizando tudo.
+                // A tarja vermelha só será ativada se ambos falharem no intervalo do heartbeat.
+                console.log(`Canal de tempo real oscilou (${status}). Polling HTTP de backup ativo operando.`);
             }
         };
 
@@ -388,15 +415,19 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }
     }
     
+    const showOfflineBanner = isBrowserOffline || (connectionStatus !== 'CONNECTED' && (Date.now() - lastSuccessfulSyncRef.current > 45000));
+    
     return (
         <div className="w-full min-h-screen bg-gray-50" onClick={enableAudio} onTouchStart={enableAudio}>
-            <div 
-                className={`text-white text-center text-[10px] uppercase tracking-widest font-black p-1.5 cursor-pointer flex items-center justify-center gap-2 transition-all duration-500 ${connectionStatus === 'CONNECTED' ? 'bg-green-600' : 'bg-red-600 animate-pulse'}`} 
-                onClick={forceSync}
-            >
-                <div className={`w-2.5 h-2.5 rounded-full bg-white ${connectionStatus === 'CONNECTED' ? 'opacity-100' : 'animate-ping'}`}></div>
-                {connectionStatus === 'CONNECTED' ? <span>Painel Conectado</span> : <span>Conectando...</span>}
-            </div>
+            {showOfflineBanner && (
+                <div 
+                    className="text-white text-center text-[10px] uppercase tracking-widest font-black p-1.5 cursor-pointer bg-red-600 animate-pulse flex items-center justify-center gap-2 transition-all duration-500 z-50 sticky top-0"
+                    onClick={forceSync}
+                >
+                    <div className="w-2.5 h-2.5 rounded-full bg-white animate-ping"></div>
+                    <span>{isBrowserOffline ? 'Sem Conexão com a Internet' : 'Sincronização Lenta ou Desconectado...'} - Clique para Forçar</span>
+                </div>
+            )}
 
             <header className="p-4 sticky top-0 bg-gray-50 z-20 border-b flex justify-between items-center gap-4">
                 <div className="flex items-center space-x-4 flex-grow min-w-0">
@@ -404,8 +435,12 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
                     </button>
                     <div className="flex flex-col">
-                        <h1 className="text-xl sm:text-2xl font-black text-gray-800 truncate">
+                        <h1 className="text-xl sm:text-2xl font-black text-gray-800 truncate flex items-center gap-2">
                             {currentUser?.name || 'Painel Lojista'}
+                            <span 
+                                className={`inline-block w-2.5 h-2.5 rounded-full transition-all duration-500 ${connectionStatus === 'CONNECTED' ? 'bg-green-500' : 'bg-red-500 animate-ping'}`} 
+                                title={connectionStatus === 'CONNECTED' ? 'Conexão em Tempo Real Ativa' : 'Reconectando ao servidor...'}
+                            />
                         </h1>
                         <div className="flex items-center gap-2">
                             <span className="text-xs text-orange-600 font-bold uppercase">
