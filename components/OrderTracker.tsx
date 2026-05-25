@@ -148,7 +148,17 @@ const OrderTracker: React.FC = () => {
         const checkInterval = activeOrders.some(o => o.status === 'Aguardando Pagamento') ? 10000 : 30000;
         pollingIntervalRef.current = window.setInterval(() => loadOrders(), checkInterval);
 
-        // SENIOR MOVE: Gerar um nome de canal único para evitar colisões no Supabase Realtime
+        return () => {
+            window.removeEventListener('guarafood:update-orders', handleUpdateOrders);
+            window.removeEventListener('guarafood:open-tracker', handleHandshake);
+            window.removeEventListener('focus', handleFocus);
+            if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+        };
+    }, [loadOrders, activeOrders.some(o => o.status === 'Aguardando Pagamento')]); // Re-executa apenas se mudar o status de aguardando pagamento
+
+    // SENIOR RESILIENCE FIRST: O canal de Realtime fica em um useEffect isolado de ciclo único (Mount)
+    // Isso evita completamente o churn de conexões (rapid disconnect/connect) e erros de subscribe no Supabase.
+    useEffect(() => {
         const uniqueChannelName = `customer_tracker_realtime_${Math.random().toString(36).substring(2, 10)}`;
         const subscription = supabase
             .channel(uniqueChannelName)
@@ -163,17 +173,13 @@ const OrderTracker: React.FC = () => {
             .subscribe();
 
         return () => {
-            window.removeEventListener('guarafood:update-orders', handleUpdateOrders);
-            window.removeEventListener('guarafood:open-tracker', handleHandshake);
-            window.removeEventListener('focus', handleFocus);
-            if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
             try {
                 supabase.removeChannel(subscription);
             } catch (err) {
                 console.error("Error removing realtime channel:", err);
             }
         };
-    }, [loadOrders, activeOrders.length]); // Re-executa efeito se o polling precisar mudar de velocidade
+    }, [loadOrders]);
 
     const handleRemoveFromTracker = async (orderId: string) => {
         const confirmed = await confirm({

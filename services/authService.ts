@@ -41,113 +41,132 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Se o usuário logou, o Supabase já nos deu quem ele é nos metadados.
       const meta = authUser.user_metadata;
       
-      if (meta && meta.role && meta.name) {
-          const profile: User = {
-              id: authUser.id,
-              email: authUser.email!,
-              role: meta.role as Role,
-              name: meta.name,
-              restaurantId: meta.restaurantId ?? meta.restaurant_id,
-          };
-
-          // VERIFICAÇÃO DE INTEGRIDADE: O restaurante ainda existe?
-          // Se o ID mudou (por causa de um seed), o metadado está obsoleto.
-          if (profile.restaurantId) {
-              try {
-                  const { data: resExists, error: resError } = await supabase
-                      .from('restaurants')
-                      .select('id')
-                      .eq('id', profile.restaurantId)
-                      .maybeSingle();
-                  
-                  if (resExists && !resError) return profile;
-              } catch (err) {
-                  console.warn("[GuaraFood Auth] Erro ao validar se restaurante existe na tabela, usando profile do metadado resiliente:", err);
-                  return profile;
-              }
-              
-              // Se não existe, vamos tentar achar o novo ID pelo staff
-              console.warn(`Restaurant ID ${profile.restaurantId} not found. Searching for new ID...`);
-          } else {
-              return profile;
-          }
-      }
-      
-      // Fallback para tabela profiles apenas se necessário
-      try {
-          const { data, error } = await supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle();
-          
-          if (data && !error) {
-              const profile: User = {
-                  id: data.id,
+      const buildProfileFromMeta = (): User | null => {
+          if (meta && meta.role && meta.name) {
+              const rawId = meta.restaurantId ?? meta.restaurant_id;
+              const parsedRestaurantId = rawId ? (isNaN(Number(rawId)) ? rawId : Number(rawId)) : undefined;
+              return {
+                  id: authUser.id,
                   email: authUser.email!,
-                  role: data.role as Role,
-                  name: data.name,
-                  restaurantId: data.restaurantId ?? data.restaurant_id
+                  role: meta.role as Role,
+                  name: meta.name,
+                  restaurantId: parsedRestaurantId,
               };
+          }
+          return null;
+      };
 
-              // Verifica se o restaurante do profile ainda existe
-              if (profile.restaurantId) {
+      const metaProfile = buildProfileFromMeta();
+
+      // Criamos um executor assíncrono para buscar dados adicionais do banco
+      const queryDbForProfile = async (): Promise<User | null> => {
+          if (metaProfile) {
+              // VERIFICAÇÃO DE INTEGRIDADE: O restaurante ainda existe?
+              if (metaProfile.restaurantId) {
                   try {
-                      const { data: resExists } = await supabase
+                      const { data: resExists, error: resError } = await supabase
                           .from('restaurants')
                           .select('id')
-                          .eq('id', profile.restaurantId)
+                          .eq('id', metaProfile.restaurantId)
                           .maybeSingle();
                       
-                      if (resExists) return profile;
-                  } catch (e) {
+                      if (resExists && !resError) return metaProfile;
+                  } catch (err) {
+                      console.warn("[GuaraFood Auth] Erro ao validar se restaurante existe na tabela, usando profile do metadado resiliente:", err);
+                      return metaProfile;
+                  }
+                  
+                  console.warn(`Restaurant ID ${metaProfile.restaurantId} not found. Searching for new ID...`);
+              } else {
+                  return metaProfile;
+              }
+          }
+          
+          // Fallback para tabela profiles apenas se necessário
+          try {
+              const { data, error } = await supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle();
+              
+              if (data && !error) {
+                  const rawId = data.restaurantId ?? data.restaurant_id;
+                  const parsedRestaurantId = rawId ? (isNaN(Number(rawId)) ? rawId : Number(rawId)) : undefined;
+                  const profile: User = {
+                      id: data.id,
+                      email: authUser.email!,
+                      role: data.role as Role,
+                      name: data.name,
+                      restaurantId: parsedRestaurantId
+                  };
+
+                  // Verifica se o restaurante do profile ainda existe
+                  if (profile.restaurantId) {
+                      try {
+                          const { data: resExists } = await supabase
+                              .from('restaurants')
+                              .select('id')
+                              .eq('id', profile.restaurantId)
+                              .maybeSingle();
+                          
+                          if (resExists) return profile;
+                      } catch (e) {
+                          return profile;
+                      }
+                  } else {
                       return profile;
                   }
-              } else {
-                  return profile;
               }
+          } catch (err) {
+              console.warn("[GuaraFood Auth] Erro ao buscar dados na tabela profiles:", err);
           }
-      } catch (err) {
-          console.warn("[GuaraFood Auth] Erro ao buscar dados na tabela profiles:", err);
-      }
 
-      // 3. SENIOR MOVE: Busca na lista de staff de todos os restaurantes
-      // Se o usuário não é um merchant dono, ele pode ser um funcionário convidado
-      try {
-          const { data: staffData } = await supabase
-              .from('restaurants')
-              .select('id, name, staff')
-              .not('staff', 'is', null);
+          // 3. SENIOR MOVE: Busca na lista de staff de todos os restaurantes
+          // Se o usuário não é um merchant dono, ele pode ser um funcionário convidado
+          try {
+              const { data: staffData } = await supabase
+                  .from('restaurants')
+                  .select('id, name, staff')
+                  .not('staff', 'is', null);
 
-          if (staffData) {
-              for (const res of staffData) {
-                  const staffList = Array.isArray(res.staff) ? (res.staff as any[]) : [];
-                  const member = staffList.find(s => s?.email?.toLowerCase() === authUser.email?.toLowerCase() && s?.active);
-                  if (member) {
-                      const newProfile: User = {
-                          id: authUser.id,
-                          email: authUser.email!,
-                          role: member.role as Role,
-                          name: member.name,
-                          restaurantId: res.id
-                      };
-                      
-                      // SENIOR MOVE: Atualiza os metadados para o novo ID correto
-                      // Isso evita que o erro se repita no próximo login
-                      await supabase.auth.updateUser({
-                          data: { restaurantId: res.id }
-                      }).catch(() => {});
-
-                      return newProfile;
+              if (staffData) {
+                  for (const res of staffData) {
+                      const staffList = Array.isArray(res.staff) ? (res.staff as any[]) : [];
+                      const member = staffList.find(s => s?.email?.toLowerCase() === authUser.email?.toLowerCase() && s?.active);
+                      if (member) {
+                          const newProfile: User = {
+                              id: authUser.id,
+                              email: authUser.email!,
+                              role: member.role as Role,
+                              name: member.name,
+                              restaurantId: res.id
+                          };
+                          
+                          return newProfile;
+                      }
                   }
               }
+          } catch (err) {
+              console.warn("[GuaraFood Auth] Erro ao buscar lista de staff dos restaurantes:", err);
           }
+
+          // Se nada funcionar, mas o cara está autenticado, monta um perfil básico para não travar
+          if (authUser.email === 'admin@guarafood.com.br' || authUser.email === 'digitalpersonal@gmail.com') {
+              return { id: authUser.id, email: authUser.email!, role: 'admin', name: 'Administrador' };
+          }
+
+          return null;
+      };
+
+      try {
+          // Timeout ultra-rápido de 2 segundos para garantir reatividade e impedir travamento
+          const timeoutPromise = new Promise<User | null>((_, reject) => {
+              setTimeout(() => reject(new Error("Timeout checking session database")), 2000);
+          });
+          
+          const finalProfile = await Promise.race([queryDbForProfile(), timeoutPromise]);
+          return finalProfile || metaProfile;
       } catch (err) {
-          console.warn("[GuaraFood Auth] Erro ao buscar lista de staff dos restaurantes:", err);
+          console.warn("[GuaraFood Auth] Timeout ou erro buscando perfil no banco de dados. Usando metadados locais de sobrevivência:", err);
+          return metaProfile;
       }
-
-      // Se nada funcionar, mas o cara está autenticado, monta um perfil básico para não travar
-      if (authUser.email === 'admin@guarafood.com.br' || authUser.email === 'digitalpersonal@gmail.com') {
-          return { id: authUser.id, email: authUser.email!, role: 'admin', name: 'Administrador' };
-      }
-
-      return null;
   };
 
   useEffect(() => {
