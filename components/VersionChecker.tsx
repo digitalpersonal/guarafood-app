@@ -2,6 +2,21 @@ import React, { useState, useEffect, useCallback } from 'react';
 
 export const APP_VERSION = "1.2.1"; // Versão atual incrementada para forçar atualização e limpeza de caches obsoletos
 
+// Helper to compare semantic versions to ensure update banner only shows for genuine upgrades
+const isNewerVersion = (server: string, local: string): boolean => {
+    if (!server || !local) return false;
+    const sParts = server.split('.').map(part => parseInt(part, 10) || 0);
+    const lParts = local.split('.').map(part => parseInt(part, 10) || 0);
+    
+    for (let i = 0; i < Math.max(sParts.length, lParts.length); i++) {
+        const sVal = sParts[i] || 0;
+        const lVal = lParts[i] || 0;
+        if (sVal > lVal) return true;
+        if (sVal < lVal) return false;
+    }
+    return false;
+};
+
 const VersionChecker: React.FC = () => {
     const [needsUpdate, setNeedsUpdate] = useState(false);
     const [serverVersion, setServerVersion] = useState("");
@@ -15,12 +30,13 @@ const VersionChecker: React.FC = () => {
             
             const data = await response.json();
             
-            // SENIOR BUG PREVENTION: Só sinaliza se a versão do servidor for de fato uma string diferente e não vazia
-            if (data && data.version && data.version !== APP_VERSION) {
+            // SENIOR BUG PREVENTION: Só sinaliza se a versão do servidor for estritamente mais recente (semver superior)
+            if (data && data.version && isNewerVersion(data.version, APP_VERSION)) {
                 console.log(`[GuaraFood] Nova versão disponível: ${data.version}. Atual: ${APP_VERSION}`);
                 setServerVersion(data.version);
                 setNeedsUpdate(true);
             } else {
+                setNeedsUpdate(false);
                 localStorage.setItem('guarafood_app_version', APP_VERSION);
             }
         } catch (error) {
