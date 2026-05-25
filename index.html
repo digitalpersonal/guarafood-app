@@ -94,133 +94,7 @@
         </div>
     </div>
     <script>
-      // CONFIGURAÇÃO DE VERSÃO PARA LIMPEZA AUTOMÁTICA
-      const APP_VERSION = "1.1.3"; 
       window.reactAppMounted = false;
-      
-      (function() {
-        try {
-          const lastVersion = localStorage.getItem('guarafood_app_version');
-          
-          // 1. LIMPEZA SÍNCRONA IMEDIATA (Se o novo index.html carregou)
-          if (lastVersion && lastVersion !== APP_VERSION) {
-            console.log('[GuaraFood] Nova versão detectada via HTML estático (' + APP_VERSION + '). Limpando caches...');
-            
-            if ('serviceWorker' in navigator) {
-              navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                for(let registration of registrations) { registration.unregister(); }
-              });
-            }
-            
-            if ('caches' in window) {
-              caches.keys().then(function(names) {
-                for (let name of names) caches.delete(name);
-              });
-            }
-
-            localStorage.setItem('guarafood_app_version', APP_VERSION);
-            
-            if (!sessionStorage.getItem('version_cleaned')) {
-              sessionStorage.setItem('version_cleaned', 'true');
-              window.location.reload(true);
-              return;
-            }
-          } else if (!lastVersion) {
-            // Primeiro acesso
-            localStorage.setItem('guarafood_app_version', APP_VERSION);
-          }
-
-          // 2. VERIFICAÇÃO ASSÍNCRONA PREMIUM (Se o index.html antigo veio do cache local, isto força o update)
-          fetch('/version.json?t=' + Date.now())
-            .then(function(res) {
-              if (res.ok) return res.json();
-            })
-            .then(function(data) {
-              if (data && data.version && data.version !== localStorage.getItem('guarafood_app_version')) {
-                console.log('[GuaraFood Anti-Cache] Versão no servidor (' + data.version + ') diverge da local. Iniciando transição...');
-                
-                if ('serviceWorker' in navigator) {
-                  navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                    for(let registration of registrations) { registration.unregister(); }
-                  });
-                }
-                
-                if ('caches' in window) {
-                  caches.keys().then(function(names) {
-                    for (let name of names) caches.delete(name);
-                  });
-                }
-
-                localStorage.setItem('guarafood_app_version', data.version);
-                
-                // Recarrega forçando descarte do cache do HTML
-                setTimeout(function() {
-                  window.location.href = window.location.pathname + '?v=' + Date.now();
-                }, 300);
-              }
-            })
-            .catch(function(err) {
-              console.warn('[GuaraFood Anti-Cache] Falha ao verificar versão dinâmica:', err);
-            });
-
-        } catch (e) {
-          console.error('Erro na limpeza de cache:', e);
-        }
-      })();
-
-      // RECUPERAÇÃO AUTOMÁTICA SE TRAVAR NO CARREGAMENTO (AJUSTE PREMIUM: Evita loops infinitos e suporta 3G/4G oscilantes)
-      window.addEventListener('load', function() {
-        var params = new URLSearchParams(window.location.search);
-        var hasRepairedRecently = params.has('repair');
-        var waitTime = hasRepairedRecently ? 120000 : 45000; // Dobra se já reparou, para não sobrecarregar
-        
-        setTimeout(function() {
-          if (!window.reactAppMounted) {
-            console.warn('O sistema parece estar travado no carregamento. Executando auto-reparo seguro...');
-            
-            if (hasRepairedRecently) {
-              console.error('O sistema falhou ao se montar mesmo após reparo cirúrgico. Abortando loop de reloads automáticos.');
-              return;
-            }
-            
-            try {
-              // Limpeza cirúrgica de emergência:
-              // Preservamos o login do usuário, chaves do Supabase e as configurações de impressora do restaurante
-              const keysToKeep = [
-                'guara-food-user-profile-v3', 
-                'guarafood-notifications-enabled', 
-                'guarafood-printer-width', 
-                'guarafood-is-print-server', 
-                'guarafood-panel-locked',
-                'guarafood_app_version'
-              ];
-              
-              for (let i = localStorage.length - 1; i >= 0; i--) {
-                const key = localStorage.key(i);
-                if (key) {
-                  const isSupabaseAuth = key.startsWith('sb-');
-                  const isCrucialConfig = keysToKeep.some(function(k) { return key === k; });
-                  if (!isSupabaseAuth && !isCrucialConfig) {
-                    localStorage.removeItem(key);
-                  }
-                }
-              }
-              sessionStorage.clear();
-            } catch (err) {
-              console.error('Erro na limpeza cirúrgica de localStorage:', err);
-            }
-            
-            if ('caches' in window) {
-              caches.keys().then(function(names) {
-                for (let name of names) caches.delete(name);
-              });
-            }
-            
-            // Redireciona com query string para ignorar cache de borda/proxy
-            window.location.href = window.location.pathname + '?repair=' + new Date().getTime();
-          }
-        }, waitTime);
-      });
 
       function hideSplash() {
         const splash = document.getElementById('splash-screen');
@@ -230,8 +104,8 @@
         }
       }
 
-      // GARANTIA DE SAÍDA (Failsafe): some com a tela de carregamento após 4 segundos sob qualquer circunstância
-      setTimeout(hideSplash, 4000);
+      // GARANTIA DE SAÍDA (Failsafe): some com a tela de carregamento após 3 segundos sob qualquer circunstância
+      setTimeout(hideSplash, 3000);
     </script>
   <script type="module" src="/index.tsx"></script>
 </body>

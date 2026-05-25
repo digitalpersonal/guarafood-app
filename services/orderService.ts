@@ -49,10 +49,10 @@ export const subscribeToOrders = (
         if (!isMounted || isFetching) return;
         isFetching = true;
         try {
-            // Usamos um limite de 150 para máxima velocidade e leveza em celulares e tablets dos restaurantes e timeout de 15s para evitar travamento em segundo plano
+            // Usamos um limite de 150 para máxima velocidade e leveza em celulares e tablets dos restaurantes e timeout de 10s para evitar travamento
             const orders = await Promise.race([
                 fetchOrders(restaurantId, { limit: 150 }),
-                new Promise<Order[]>((_, reject) => setTimeout(() => reject(new Error('Polling sync timeout')), 15000))
+                new Promise<Order[]>((_, reject) => setTimeout(() => reject(new Error('Polling sync timeout')), 10000))
             ]);
             if (isMounted) callback(orders);
         } catch (e) {
@@ -101,6 +101,10 @@ export const subscribeToOrders = (
                 if (isMounted && onStatusChange) {
                     onStatusChange(status);
                 }
+                // Se o WebSocket desconectar ou falhar, força atualização imediata para garantir resiliência
+                if (status === 'TIMED_OUT' || status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+                    refreshData();
+                }
             });
     } catch (err) {
         console.error("[GuaraFood WebSockets] Erro ao criar canal de tempo real. Polling HTTP operando como fallback principal.", err);
@@ -111,15 +115,30 @@ export const subscribeToOrders = (
 
     refreshData();
 
-    // GARANTIA COMPLETA E HEARTBEAT: Polling em segundo plano a cada 15 segundos
-    // Evita congelamento de novos pedidos e impressões se o WebSocket desconectar silenciosamente
+    // GARANTIA COMPLETA E HEARTBEAT: Polling em segundo plano a cada 12 segundos para máxima reatividade
     const fallbackInterval = setInterval(() => {
         refreshData();
-    }, 15000);
+    }, 12000);
+
+    // Sincronização inteligente ao ganhar foco, reconectar ou ficar visível (evita perda de sincronia após telefone/tablet dormir)
+    const handleActivity = () => {
+        if (isMounted) {
+            refreshData();
+        }
+    };
+
+    window.addEventListener('focus', handleActivity);
+    window.addEventListener('online', handleActivity);
+    document.addEventListener('visibilitychange', handleActivity);
+    window.addEventListener('guarafood:update-orders', handleActivity);
 
     return () => {
         isMounted = false;
         clearInterval(fallbackInterval);
+        window.removeEventListener('focus', handleActivity);
+        window.removeEventListener('online', handleActivity);
+        document.removeEventListener('visibilitychange', handleActivity);
+        window.removeEventListener('guarafood:update-orders', handleActivity);
         if (channel) {
             try {
                 supabase.removeChannel(channel);
@@ -404,16 +423,25 @@ export const fetchOpenTableOrders = async (restaurantId: number, tableNumber: st
             .from('orders')
             .select('*')
             .eq('restaurant_id', restaurantId)
-            .eq('status', 'Aguardando Pagamento')
-            .or(`table_number.eq.${tableNumber},customer_address->>tableNumber.eq.${tableNumber}`)
-            .order('created_at', { ascending: true });
+            .eq('status', 'Aguardando Pagamento');
 
         if (error) {
             console.error("Error fetching table orders:", error);
             return [];
         }
 
-        return (data || []).map(normalizeOrder);
+        const normalized = (data || []).map(normalizeOrder);
+        
+        // Filtro ultra-robusto em memória que é 100% imune a erros de tipagem/cast do Postgres ou JSON
+        return normalized.filter(order => {
+            const numStr = String(tableNumber).trim();
+            const orderTableNum = order.tableNumber ? String(order.tableNumber).trim() : '';
+            const addressTableNum = (order.customerAddress && typeof order.customerAddress === 'object') 
+                ? String((order.customerAddress as any).tableNumber || '').trim() 
+                : '';
+                
+            return orderTableNum === numStr || addressTableNum === numStr;
+        });
     } catch (e) {
         console.error("Exception fetching table orders:", e);
         return [];
@@ -422,22 +450,8 @@ export const fetchOpenTableOrders = async (restaurantId: number, tableNumber: st
 
 export const fetchOpenTableOrder = async (restaurantId: number, tableNumber: string): Promise<Order | null> => {
     try {
-        const { data, error } = await supabase
-            .from('orders')
-            .select('*')
-            .eq('restaurant_id', restaurantId)
-            .eq('status', 'Aguardando Pagamento')
-            .contains('customer_address', { tableNumber: tableNumber })
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-        if (error) {
-            console.error("Error fetching table order:", error);
-            return null;
-        }
-
-        return data ? normalizeOrder(data) : null;
+        const orders = await fetchOpenTableOrders(restaurantId, tableNumber);
+        return orders.length > 0 ? orders[0] : null;
     } catch (e) {
         console.error("Exception fetching table order:", e);
         return null;

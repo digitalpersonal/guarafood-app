@@ -136,7 +136,11 @@ const OrderTracker: React.FC = () => {
             loadOrders();
         };
 
-        window.addEventListener('guarafood:update-orders', () => loadOrders());
+        const handleUpdateOrders = () => {
+            loadOrders();
+        };
+
+        window.addEventListener('guarafood:update-orders', handleUpdateOrders);
         window.addEventListener('guarafood:open-tracker', handleHandshake);
         window.addEventListener('focus', handleFocus);
         
@@ -144,8 +148,10 @@ const OrderTracker: React.FC = () => {
         const checkInterval = activeOrders.some(o => o.status === 'Aguardando Pagamento') ? 10000 : 30000;
         pollingIntervalRef.current = window.setInterval(() => loadOrders(), checkInterval);
 
+        // SENIOR MOVE: Gerar um nome de canal único para evitar colisões no Supabase Realtime
+        const uniqueChannelName = `customer_tracker_realtime_${Math.random().toString(36).substring(2, 10)}`;
         const subscription = supabase
-            .channel('public:orders:customer_tracker_realtime')
+            .channel(uniqueChannelName)
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (payload) => {
                 const updatedOrder = payload.new;
                 const storedOrderIds = JSON.parse(localStorage.getItem('guarafood-active-orders') || '[]');
@@ -157,11 +163,15 @@ const OrderTracker: React.FC = () => {
             .subscribe();
 
         return () => {
-            window.removeEventListener('guarafood:update-orders', loadOrders);
+            window.removeEventListener('guarafood:update-orders', handleUpdateOrders);
             window.removeEventListener('guarafood:open-tracker', handleHandshake);
             window.removeEventListener('focus', handleFocus);
             if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
-            supabase.removeChannel(subscription);
+            try {
+                supabase.removeChannel(subscription);
+            } catch (err) {
+                console.error("Error removing realtime channel:", err);
+            }
         };
     }, [loadOrders, activeOrders.length]); // Re-executa efeito se o polling precisar mudar de velocidade
 

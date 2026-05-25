@@ -1,6 +1,55 @@
 import React, { Component, ReactNode, ErrorInfo } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { APP_VERSION } from './components/VersionChecker';
+
+// ==============================================================================
+// 🧼 AUTO-UPDATER E LIMPEZA PREVENTIVA DE CACHE (DEPLOYS SEM TRAVAMENTO)
+// ==============================================================================
+const storedVersion = localStorage.getItem('guarafood_app_version');
+if (storedVersion !== APP_VERSION) {
+    console.log(`[GuaraFood Auto-Update] Nova versão detectada (${APP_VERSION}). Realizando limpeza preventiva de caches obsoletos...`);
+    
+    // Grava a nova versão imediatamente para evitar reloads infinitos
+    localStorage.setItem('guarafood_app_version', APP_VERSION);
+    
+    // 1. Limpar localStorage mantendo APENAS a sessão de Login do Usuário (Evita forçar logout!)
+    try {
+        const preservedKeys = ['guara-food-user-profile-v3'];
+        const keysToRemove: string[] = [];
+        
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (!key) continue;
+            
+            // Chaves do Supabase (sb-) ou chaves de login preservadas não são removidas!
+            if (key.startsWith('sb-') || preservedKeys.includes(key) || key === 'guarafood_app_version') {
+                continue;
+            }
+            keysToRemove.push(key);
+        }
+        
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+        console.log("[GuaraFood Auto-Update] LocalStorage higienizado.");
+    } catch (e) {
+        console.error("[GuaraFood Auto-Update] Erro ao limpar LocalStorage:", e);
+    }
+
+    // 2. Desregistrar Service Workers e apagar API Cache Storage de forma assíncrona
+    Promise.all([
+        ('serviceWorker' in navigator) ? navigator.serviceWorker.getRegistrations().then(regs => {
+            return Promise.all(regs.map(r => r.unregister()));
+        }).catch(() => {}) : Promise.resolve(),
+        
+        ('caches' in window) ? caches.keys().then(keys => {
+            return Promise.all(keys.map(k => caches.delete(k)));
+        }).catch(() => {}) : Promise.resolve()
+    ]).finally(() => {
+        console.log("[GuaraFood Auto-Update] Caches limpos! Recarregando sistema com as correções...");
+        // Adiciona timestamp para furar cache do index.html pelo navegador
+        window.location.reload();
+    });
+}
 
 interface ErrorBoundaryProps {
   children?: ReactNode;
@@ -74,7 +123,12 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
 const rootElement = document.getElementById('root');
 if (rootElement) {
-  const root = createRoot(rootElement);
+  // SENIOR MOVE: Cache the root in window to prevent double createRoot calls under hot reload, scripts or nested bundles
+  let root = (window as any)._reactRoot;
+  if (!root) {
+    root = createRoot(rootElement);
+    (window as any)._reactRoot = root;
+  }
   root.render(
     <React.StrictMode>
       <ErrorBoundary>

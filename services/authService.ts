@@ -177,65 +177,86 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setLoading(true);
     }
 
-    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
-      if (error) {
-        console.warn("Session check error:", error.message);
-        if (error.message.includes("Refresh Token") || error.message.includes("refresh_token")) {
-            handleSessionExpired();
-        }
-      } else if (session?.user) {
-        const profile = await fetchUserProfile(session.user);
-        if (profile) {
-            localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
-            setCurrentUser(profile);
-        }
-      } else {
-        // SENIOR MOVE (Offline & Resilience First): Se o Supabase retornou sessão vazia ou nula
-        // (comum em oscilações de rede, ambientes de iFrame restritos ou recarregamento rápido F5),
-        // NÃO vamos deslogar o comerciante ou administrador de forma agressiva. 
-        // Se já temos as credenciais e perfil armazenados localmente e válidos, nós o mantemos 
-        // conectado para permitir operar o painel com as informações cacheadas (modo offline/resiliente).
-        // A sessão só deve ser limpa de fato se o usuário realizar logout explícito (SIGNED_OUT).
-        const storedUser = localStorage.getItem(USER_STORAGE_KEY);
-        if (storedUser) {
-            try {
-                const user = JSON.parse(storedUser);
-                if (user) {
-                    console.log("Restaurando usuário em modo offline de sobrevivência:", user.role, user.name);
-                    setCurrentUser(user);
-                } else {
-                    setCurrentUser(null);
-                }
-            } catch {
-                setCurrentUser(null);
-            }
-        } else {
-            setCurrentUser(null);
-        }
-      }
-      setLoading(false);
-    }).catch(async (err) => {
-        console.error("Unexpected auth error during session check:", err);
+    const checkSessionWithTimeout = async () => {
+      // SENIOR RESILIENCE FIRST: Encapsula todo o processo de obter sessão E buscar o perfil do usuário
+      // em uma única promessa. Se ela demorar mais de 2500ms, aborta tudo de forma segura.
+      const getSessionAndProfile = async () => {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
         
-        // CORREÇÃO CRÍTICA CONTRA QUEDA DE CONEXÃO (OFFLINE):
-        // Se a chamada falhou puramente por erro de rede ("failed to fetch" ou "network error"),
+        if (session?.user) {
+          const profile = await fetchUserProfile(session.user);
+          return { session, profile };
+        }
+        return { session: null, profile: null };
+      };
+
+      const timeoutPromise = new Promise<{ session: null; profile: null }>((_, reject) => {
+        setTimeout(() => reject(new Error("Timeout checking session and profile")), 2500);
+      });
+
+      try {
+        const { session, profile } = await Promise.race([getSessionAndProfile(), timeoutPromise]);
+        
+        if (session?.user && profile) {
+          localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
+          setCurrentUser(profile);
+        } else {
+          // Restaurar usuário em modo offline / sessão inexistente
+          const storedUser = localStorage.getItem(USER_STORAGE_KEY);
+          if (storedUser) {
+              try {
+                  const user = JSON.parse(storedUser);
+                  if (user) {
+                      console.log("Restaurando usuário em modo offline de sobrevivência:", user.role, user.name);
+                      setCurrentUser(user);
+                  } else {
+                      setCurrentUser(null);
+                  }
+              } catch {
+                  setCurrentUser(null);
+              }
+          } else {
+              setCurrentUser(null);
+          }
+        }
+      } catch (err: any) {
+        console.warn("Unexpected auth error or timeout during session check:", err);
+        
+        // CORREÇÃO CRÍTICA (OFFLINE E RESILIÊNCIA):
+        // Se a chamada falhou puramente por erro de rede ou excedeu o tempo limite (timeout),
         // NÃO podemos remover o usuário local nem forçar logout. Deixamos ele trabalhar offline
-        // com o que já tem no painel. Apenas deslogamos se for um erro de credencial real.
+        // com o perfil que já tem no cache do painel.
         const errorMsg = err?.message || String(err);
-        const isNetworkError = errorMsg.toLowerCase().includes('failed to fetch') || 
-                               errorMsg.toLowerCase().includes('network') || 
-                               errorMsg.toLowerCase().includes('load failed') ||
-                               errorMsg.toLowerCase().includes('cors');
-                               
-        if (!isNetworkError) {
-            console.warn("Real auth error detected, purging session cache.");
+        const isNetworkOrTimeout = errorMsg.toLowerCase().includes('timeout') ||
+                                   errorMsg.toLowerCase().includes('failed to fetch') || 
+                                   errorMsg.toLowerCase().includes('network') || 
+                                   errorMsg.toLowerCase().includes('load failed') ||
+                                   errorMsg.toLowerCase().includes('cors');
+                                   
+        if (!isNetworkOrTimeout) {
+            console.warn("Real auth error detected during setup, purging session cache.");
             localStorage.removeItem(USER_STORAGE_KEY);
             setCurrentUser(null);
         } else {
-            console.log("Network glitch detected during auth check. Preserving offline user shell.");
+            console.log("Network glitch/timeout detected during auth check. Preserving offline user shell.");
+            // Tenta restaurar usuário local para modo offline
+            const storedUser = localStorage.getItem(USER_STORAGE_KEY);
+            if (storedUser) {
+                try {
+                    const user = JSON.parse(storedUser);
+                    if (user) {
+                        setCurrentUser(user);
+                    }
+                } catch {}
+            }
         }
+      } finally {
         setLoading(false);
-    });
+      }
+    };
+
+    checkSessionWithTimeout();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {

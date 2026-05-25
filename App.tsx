@@ -148,16 +148,68 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
 
     useEffect(() => {
         window.scrollTo(0, 0);
-        const loadMenu = async () => {
+
+        // SENIOR MOVE: Carrega dados do cache local imediatamente para exibição instantânea (Optimistic UI)
+        const loadFromCache = () => {
             try {
+                const cachedMenuStr = localStorage.getItem(`guarafood-cached-menu-${restaurant.id}`);
+                const cachedAddonsStr = localStorage.getItem(`guarafood-cached-addon-${restaurant.id}`);
+                
+                if (cachedMenuStr) {
+                    const menuData = JSON.parse(cachedMenuStr);
+                    const addonsData = cachedAddonsStr ? JSON.parse(cachedAddonsStr) : [];
+                    
+                    const newCategoryNameMap = new Map<number, string>();
+                    menuData.forEach((cat: any) => newCategoryNameMap.set(cat.id, cat.name));
+                    setCategoryNameMap(newCategoryNameMap);
+
+                    const now = new Date();
+                    const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+                    const startTime = restaurant.marmitaStartTime || '10:00';
+                    const endTime = restaurant.marmitaEndTime || '15:30';
+                    const isLunchTime = currentTime >= startTime && currentTime <= endTime;
+
+                    const allItems = menuData.flatMap((c: any) => c.items);
+                    const lunchItems = allItems.filter((item: any) => item.isDailySpecial);
+                    
+                    setDailySpecials(isLunchTime ? lunchItems : []);
+                    setAllPizzas(allItems.filter((item: any) => item.isPizza));
+                    
+                    const filteredMenu = menuData.map((cat: any) => ({
+                        ...cat,
+                        items: cat.items.filter((item: any) => !item.isDailySpecial && !item.isWeeklySpecial && !item.isMarmita)
+                    })).filter((cat: any) => cat.items.length > 0 || (cat.combos && cat.combos.length > 0));
+
+                    setMenu(filteredMenu);
+                    setAddons(addonsData);
+                    if (filteredMenu.length > 0) setActiveCategory(slugify(filteredMenu[0].name));
+                    
+                    // Como já temos cache, desliga o tela de carregamento imediatamente
+                    setIsLoading(false);
+                } else {
+                    setIsLoading(true);
+                }
+            } catch (e) {
+                console.warn("[GuaraFood App] Falha ao carregar cardápio do cache preliminar:", e);
                 setIsLoading(true);
-                const [menuData, addonsData] = await Promise.all([
-                    fetchMenuForRestaurant(restaurant.id, true), 
-                    fetchAddonsForRestaurant(restaurant.id),
+            }
+        };
+
+        loadFromCache();
+
+        const loadRealTimeMenu = async () => {
+            try {
+                // Executa a busca em tempo real com timeout de 3.5s para evitar telas brancas / travamentos eternos
+                const [menuData, addonsData] = await Promise.race([
+                    Promise.all([
+                        fetchMenuForRestaurant(restaurant.id, true), 
+                        fetchAddonsForRestaurant(restaurant.id),
+                    ]),
+                    new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Fetch menu/addons timed out')), 3500))
                 ]);
 
                 const newCategoryNameMap = new Map<number, string>();
-                menuData.forEach(cat => newCategoryNameMap.set(cat.id, cat.name));
+                menuData.forEach((cat: any) => newCategoryNameMap.set(cat.id, cat.name));
                 setCategoryNameMap(newCategoryNameMap);
 
                 const now = new Date();
@@ -166,28 +218,34 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                 const endTime = restaurant.marmitaEndTime || '15:30';
                 const isLunchTime = currentTime >= startTime && currentTime <= endTime;
 
-                const allItems = menuData.flatMap(c => c.items);
-                
-                // Filtra destaques (marmitas) para exibir apenas se estiver no horário
-                const lunchItems = allItems.filter(item => item.isDailySpecial);
+                const allItems = menuData.flatMap((c: any) => c.items);
+                const lunchItems = allItems.filter((item: any) => item.isDailySpecial);
                 setDailySpecials(isLunchTime ? lunchItems : []);
-                setAllPizzas(allItems.filter(item => item.isPizza));
+                setAllPizzas(allItems.filter((item: any) => item.isPizza));
                 
-                const filteredMenu = menuData.map(cat => ({
+                const filteredMenu = menuData.map((cat: any) => ({
                     ...cat,
-                    items: cat.items.filter(item => !item.isDailySpecial && !item.isWeeklySpecial && !item.isMarmita)
-                })).filter(cat => cat.items.length > 0 || (cat.combos && cat.combos.length > 0));
+                    items: cat.items.filter((item: any) => !item.isDailySpecial && !item.isWeeklySpecial && !item.isMarmita)
+                })).filter((cat: any) => cat.items.length > 0 || (cat.combos && cat.combos.length > 0));
 
                 setMenu(filteredMenu);
                 setAddons(addonsData);
-                if (filteredMenu.length > 0) setActiveCategory(slugify(filteredMenu[0].name));
+                
+                if (filteredMenu.length > 0) {
+                    setActiveCategory(prev => prev || slugify(filteredMenu[0].name));
+                }
+
+                // Armazena no cache local para acelerar os próximos acessos após F5
+                localStorage.setItem(`guarafood-cached-menu-${restaurant.id}`, JSON.stringify(menuData));
+                localStorage.setItem(`guarafood-cached-addon-${restaurant.id}`, JSON.stringify(addonsData));
             } catch (err) {
-                console.error(err);
+                console.warn("[GuaraFood App] Não foi possível atualizar o cardápio do servidor em tempo real (Supabase dormindo/offline). Mantendo dados de visualização local:", err);
             } finally {
                 setIsLoading(false);
             }
         };
-        loadMenu();
+
+        loadRealTimeMenu();
     }, [restaurant]);
 
     const handleNavClick = (categoryName: string) => {
@@ -272,17 +330,43 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
 };
 
 const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRestaurant: (r: Restaurant | null) => void }> = ({ selectedRestaurant, onSelectRestaurant }) => {
-    const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [restaurants, setRestaurants] = useState<Restaurant[]>(() => {
+        try {
+            const cached = localStorage.getItem('guarafood-cached-all-restaurants');
+            return cached ? JSON.parse(cached) : [];
+        } catch {
+            return [];
+        }
+    });
+    const [isLoading, setIsLoading] = useState(() => {
+        try {
+            const cached = localStorage.getItem('guarafood-cached-all-restaurants');
+            return !cached || JSON.parse(cached).length === 0;
+        } catch {
+            return true;
+        }
+    });
     const [selectedCategories, setSelectedCategories] = useState<string[]>(['Todos']);
     const [showOpenOnly, setShowOpenOnly] = useState(false);
 
     useEffect(() => {
         const loadInitialData = async () => {
             try {
-                const data = await fetchRestaurants();
-                setRestaurants(data);
-            } catch (err) { console.error(err); } finally { setIsLoading(false); }
+                // Sincronização em tempo real c/ timeout de 3.5s contra travas de rede e banco adormecido (free tier)
+                const data = await Promise.race([
+                    fetchRestaurants(),
+                    new Promise<Restaurant[]>((_, reject) => setTimeout(() => reject(new Error('Fetch restaurants timed out')), 3500))
+                ]);
+                
+                if (data && data.length > 0) {
+                    setRestaurants(data);
+                    localStorage.setItem('guarafood-cached-all-restaurants', JSON.stringify(data));
+                }
+            } catch (err) { 
+                console.warn("[GuaraFood App] Falha ao carregar restaurantes em tempo real, utilizando cache local anterior:", err);
+            } finally { 
+                setIsLoading(false); 
+            }
         };
         loadInitialData();
     }, []);
