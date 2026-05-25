@@ -58,10 +58,17 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     });
     const [printJob, setPrintJob] = useState<{ 
         order: Order, 
-        mode: 'full' | 'kitchen', 
+        mode: 'full' | 'kitchen' | 'admin', 
         items?: CartItem[], 
         jobId?: string 
     } | null>(null);
+    const [printQueue, setPrintQueue] = useState<Array<{ 
+        order: Order, 
+        mode: 'full' | 'kitchen' | 'admin', 
+        items?: CartItem[], 
+        jobId?: string 
+    }>>([]);
+    const [isPrintingCooldown, setIsPrintingCooldown] = useState<boolean>(false);
     const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'RECONNECTING'>('CONNECTED');
     const [isManualSyncing, setIsManualSyncing] = useState(false);
     const { playNotification, initAudioContext } = useSound();
@@ -91,6 +98,59 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const reconnectGraceTimeoutRef = useRef<number | null>(null);
     const appStartTimeRef = useRef<number>(Date.now());
     const [isBrowserOffline, setIsBrowserOffline] = useState(!navigator.onLine);
+
+    // Screen Wake Lock API
+    const [isWakeLocked, setIsWakeLocked] = useState<boolean>(false);
+    const wakeLockRef = useRef<any>(null);
+
+    const requestWakeLock = useCallback(async () => {
+        if ('wakeLock' in navigator) {
+            try {
+                if (wakeLockRef.current) {
+                    await wakeLockRef.current.release();
+                }
+                const lock = await (navigator as any).wakeLock.request('screen');
+                wakeLockRef.current = lock;
+                setIsWakeLocked(true);
+                console.log('[GuaraFood] Screen Wake Lock ativo com sucesso!');
+                
+                lock.addEventListener('release', () => {
+                    setIsWakeLocked(false);
+                    console.log('[GuaraFood] Screen Wake Lock foi liberado.');
+                });
+            } catch (err: any) {
+                console.warn('[GuaraFood] Falha ao solicitar Screen Wake Lock:', err.message || err);
+                setIsWakeLocked(false);
+            }
+        }
+    }, []);
+
+    const releaseWakeLock = useCallback(async () => {
+        if (wakeLockRef.current) {
+            try {
+                await wakeLockRef.current.release();
+                wakeLockRef.current = null;
+            } catch (err) {
+                console.error('[GuaraFood] Erro ao liberar Screen Wake Lock:', err);
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                requestWakeLock();
+            }
+        };
+
+        requestWakeLock();
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            releaseWakeLock();
+        };
+    }, [requestWakeLock, releaseWakeLock]);
 
     const [printerWidth, setPrinterWidth] = useState<number>(80);
 
@@ -233,7 +293,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 }
                 // Only auto-print delivery orders, not empty table openings
                 if (!newestOrder.tableNumber) {
-                    setPrintJob({ order: newestOrder, mode: 'full' });
+                    setPrintQueue(prev => [...prev, { order: newestOrder, mode: 'full' }]);
                 }
             }
         }
@@ -359,29 +419,49 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             }
 
             const printTimer = setTimeout(async () => {
-                window.focus();
-                
-                if (printJob.mode === 'full' && !printJob.jobId) {
-                    printedOrderIdsRef.current.add(printJob.order.id);
-                }
-                
-                window.print();
-
-                // Se era um trabalho da fila remota (jobId), marcamos como feito no banco
-                if (printJob.jobId) {
-                    try {
-                        const { markPrintJobAsDone } = await import('../services/orderService');
-                        await markPrintJobAsDone(printJob.order.id, printJob.jobId);
-                    } catch (e) {
-                        console.error("Erro ao marcar impressão como concluída:", e);
+                const printJobId = printJob.jobId;
+                const orderId = printJob.order.id;
+                try {
+                    window.focus();
+                    
+                    if (printJob.mode === 'full' && !printJob.jobId) {
+                        printedOrderIdsRef.current.add(printJob.order.id);
                     }
-                }
+                    
+                    window.print();
 
-                setTimeout(() => setPrintJob(null), 1000);
+                    // Se era um trabalho da fila remota (jobId), marcamos como feito no banco
+                    if (printJobId) {
+                        try {
+                            const { markPrintJobAsDone } = await import('../services/orderService');
+                            await markPrintJobAsDone(orderId, printJobId);
+                        } catch (e) {
+                            console.error("Erro ao marcar impressão como concluída:", e);
+                        }
+                    }
+                } catch (err) {
+                    console.error("Erro ao processar impressão:", err);
+                } finally {
+                    // Ativa o cooldown e limpa o job ativo de forma limpa para recuperar thread
+                    setIsPrintingCooldown(true);
+                    setPrintJob(null);
+                    setTimeout(() => {
+                        setIsPrintingCooldown(false);
+                    }, 1800);
+                }
             }, 500); 
             return () => clearTimeout(printTimer);
         }
     }, [printJob]);
+
+    // GESTOR DE FILA DE IMPRESSÃO LOCAL
+    useEffect(() => {
+        if (!printJob && !isPrintingCooldown && printQueue.length > 0) {
+            const nextJob = printQueue[0];
+            setPrintQueue(prev => prev.slice(1));
+            setPrintJob(nextJob);
+        }
+    }, [printJob, printQueue, isPrintingCooldown]);
 
     // MONITOR DE FILA DE IMPRESSÃO REMOTA (Para Mesas/Garçons)
     useEffect(() => {
@@ -389,48 +469,57 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         if (!isPrintServer || orders.length === 0) return;
 
         // Procuramos em todos os pedidos ativos por solicitações de impressão pendentes
+        const pendingJobsToQueue: Array<{
+            order: Order;
+            mode: 'full' | 'kitchen' | 'admin';
+            items?: any[];
+            jobId?: string;
+        }> = [];
+        let shouldPlayNotification = false;
+
         for (const order of orders) {
             const queue = order.payment_details?.print_queue || [];
-            const pendingJob = queue.find((job: any) => job.status === 'pending');
+            const pendingJobs = queue.filter((job: any) => job.status === 'pending');
             
-            if (pendingJob) {
-                // Se já estamos imprimindo algo ou já processamos esse ID, ignoramos
-                if (printJob || processedJobIdsRef.current.has(pendingJob.id)) break;
+            for (const pendingJob of pendingJobs) {
+                // Se já processamos esse ID ou se já está em processamento, ignoramos
+                if (!processedJobIdsRef.current.has(pendingJob.id)) {
+                    processedJobIdsRef.current.add(pendingJob.id);
+                    
+                    shouldPlayNotification = true;
+                    pendingJobsToQueue.push({
+                        order: order,
+                        mode: pendingJob.type || 'kitchen',
+                        items: pendingJob.items,
+                        jobId: pendingJob.id
+                    });
+                }
+            }
+        }
 
-                processedJobIdsRef.current.add(pendingJob.id);
-                
-                // Toca a campainha para novos pedidos da mesa (impressão remota)
+        if (pendingJobsToQueue.length > 0) {
+            if (shouldPlayNotification) {
                 const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
                 if (areNotificationsEnabled) {
                     playNotification();
                 }
-
-                setPrintJob({
-                    order: order,
-                    mode: pendingJob.type || 'kitchen',
-                    items: pendingJob.items,
-                    jobId: pendingJob.id
-                });
-                break; // Processa um por vez
             }
+            // Enfilera no spooler local de forma limpa
+            setPrintQueue(prev => [...prev, ...pendingJobsToQueue]);
         }
-    }, [orders, printJob, playNotification]);
+    }, [orders, playNotification]);
 
-    const handleManualPrint = (order: Order, mode: 'full' | 'kitchen' = 'full') => {
+    const handleManualPrint = (order: Order, mode: 'full' | 'kitchen' | 'admin' = 'full') => {
         // Se for modo cozinha, verificamos se há itens novos para evitar impressão em branco
         if (mode === 'kitchen') {
             const hasNewItems = order.items.some(item => {
-                // Se o item já foi marcado como 'printed' no front ou via banco
-                // Nota: o app não guarda 'printed' no banco por item individualmente de forma nativa ainda, 
-                // mas podemos checar se o modo é específico.
-                return true; // Por enquanto permitimos manual, o auto já filtra
+                return true; 
             });
             if (!hasNewItems && mode === 'kitchen') return;
         }
 
         printedOrderIdsRef.current.delete(order.id);
-        setPrintJob(null);
-        setTimeout(() => setPrintJob({ order, mode }), 50);
+        setPrintQueue(prev => [...prev, { order, mode }]);
     };
 
     useEffect(() => {
@@ -527,11 +616,26 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                                 }
                             />
                         </h1>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs text-orange-600 font-bold uppercase">
                                 {currentUser?.role === 'waiter' ? 'Garçom' : currentUser?.role === 'manager' ? 'Gerente' : 'Administrador'}
                             </span>
                             <span className="text-[9px] bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded font-bold">v{APP_VERSION}</span>
+                            {isWakeLocked ? (
+                                <span className="text-[9px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-1 animate-pulse" title="A tela não entrará em repouso automaticamente para evitar que você perca pedidos novos!">
+                                    <span className="w-1 h-1 rounded-full bg-green-500 inline-block"></span>
+                                    Tela Ativa
+                                </span>
+                            ) : (
+                                <span 
+                                    onClick={requestWakeLock}
+                                    className="text-[9px] bg-gray-200 text-gray-500 hover:bg-orange-100 hover:text-orange-700 cursor-pointer px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1 transition-colors"
+                                    title="O navegador permite repouso da tela. Clique para forçar a tela a ficar sempre ativada!"
+                                >
+                                    <span className="w-1 h-1 rounded-full bg-gray-400 inline-block"></span>
+                                    Tela Normal
+                                </span>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -634,6 +738,33 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 onSuccess={handleStaffLogin}
                 title={isLocked ? "Desbloquear Gerente" : "Acesso Restrito"}
             />
+
+            {printQueue.length > 0 && (
+                <div id="print-queue-indicator" className="fixed bottom-6 right-6 bg-gradient-to-r from-orange-600 to-red-600 text-white rounded-3xl p-5 shadow-2xl z-[80] flex items-center gap-4 animate-bounce max-w-sm border border-orange-500/30">
+                    <div className="flex-shrink-0 relative flex items-center justify-center">
+                        <span className="absolute inline-flex h-full w-full rounded-full bg-white opacity-40 animate-ping"></span>
+                        <svg className="w-6 h-6 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </div>
+                    <div className="flex-grow min-w-0">
+                        <p className="font-black text-xs uppercase tracking-wider">Fila de Impressão</p>
+                        <p className="text-[11px] opacity-90 truncate">{printQueue.length} {printQueue.length === 1 ? 'impressão na fila' : 'impressões na fila'}...</p>
+                    </div>
+                    <button 
+                        id="btn-cancel-print-queue"
+                        onClick={() => {
+                            setPrintQueue([]);
+                            setPrintJob(null);
+                            setIsPrintingCooldown(false);
+                        }}
+                        className="bg-white/20 hover:bg-white/35 active:scale-95 transition-all text-[9px] font-black uppercase px-3 py-2 rounded-xl border border-white/25 flex-shrink-0"
+                    >
+                        Limpar
+                    </button>
+                </div>
+            )}
         </div>
     );
 };
