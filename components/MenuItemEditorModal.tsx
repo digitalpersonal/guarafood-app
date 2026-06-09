@@ -494,10 +494,10 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                 isDailySpecial,
                 isWeeklySpecial,
                 isMarmita,
-                marmitaOptions: isMarmita ? marmitaOptions.filter(opt => opt.trim() !== '') : undefined,
+                marmitaOptions: isMarmita ? marmitaOptions.filter(opt => opt.trim() !== '') : null,
                 availableDays,
-                sizes: hasSizes ? sizes : undefined,
-                optionGroups: optionGroups.length > 0 ? optionGroups : undefined,
+                sizes: hasSizes ? sizes : null,
+                optionGroups: optionGroups.length > 0 ? optionGroups : null,
                 availableAddonIds: Array.from(selectedAddonIds),
                 available: available
             }, category);

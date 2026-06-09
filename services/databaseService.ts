@@ -172,7 +172,8 @@ const normalizeItem = (data: any): MenuItem => ({
     isWeeklySpecial: data.is_weekly_special,
     availableDays: data.available_days,
     displayOrder: data.display_order,
-    available: data.available !== false // Assume true if null
+    available: data.available !== false, // Assume true if null
+    optionGroups: data.option_groups
 });
 
 const normalizeCombo = (data: any): Combo => ({
@@ -513,13 +514,16 @@ export const updateCategoryOrder = async (restaurantId: number, categories: Menu
 export const createMenuItem = async (restaurantId: number, item: any): Promise<void> => {
     const { data: catData } = await supabase.from('menu_categories').select('id').eq('restaurant_id', restaurantId).eq('name', item.category).single();
     if (!catData) throw new Error(`Categoria ${item.category} não encontrada.`);
-    const payload = {
+    const payload: any = {
         restaurant_id: restaurantId, category_id: catData.id, name: item.name, description: item.description, price: item.price,
         original_price: item.originalPrice, image_url: item.imageUrl, is_pizza: item.isPizza, is_acai: item.isAcai,
         is_marmita: item.isMarmita, marmita_options: item.marmitaOptions, available_addon_ids: item.availableAddonIds,
         sizes: item.sizes, is_daily_special: item.isDailySpecial, is_weekly_special: item.isWeeklySpecial, available_days: item.availableDays,
-        available: item.available !== false
+        available: item.available !== false, option_groups: item.optionGroups
     };
+    if (item.displayOrder !== undefined) {
+        payload.display_order = item.displayOrder;
+    }
     const { error } = await supabase.from('menu_items').insert(payload);
     handleSupabaseError({ error, customMessage: 'Failed to create item' });
 };
@@ -527,13 +531,16 @@ export const createMenuItem = async (restaurantId: number, item: any): Promise<v
 export const updateMenuItem = async (restaurantId: number, id: number, item: any): Promise<void> => {
     const { data: catData } = await supabase.from('menu_categories').select('id').eq('restaurant_id', restaurantId).eq('name', item.category).single();
     if (!catData) throw new Error(`Categoria ${item.category} não encontrada.`);
-    const payload = {
+    const payload: any = {
         category_id: catData.id, name: item.name, description: item.description, price: item.price, original_price: item.originalPrice,
         image_url: item.imageUrl, is_pizza: item.isPizza, is_acai: item.isAcai, is_marmita: item.isMarmita,
         marmita_options: item.marmitaOptions, available_addon_ids: item.availableAddonIds, sizes: item.sizes,
         is_daily_special: item.isDailySpecial, is_weekly_special: item.isWeeklySpecial, available_days: item.availableDays,
-        available: item.available !== false
+        available: item.available !== false, option_groups: item.optionGroups
     };
+    if (item.displayOrder !== undefined) {
+        payload.display_order = item.displayOrder;
+    }
     const { error } = await supabase.from('menu_items').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
     handleSupabaseError({ error, customMessage: 'Failed to update item' });
 };
@@ -544,9 +551,18 @@ export const deleteMenuItem = async (restaurantId: number, id: number): Promise<
 };
 
 export const updateMenuItemOrder = async (restaurantId: number, items: MenuItem[]): Promise<void> => {
-    const updates = items.map((item, index) => ({ id: item.id, restaurant_id: restaurantId, display_order: index }));
-    const { error } = await supabase.from('menu_items').upsert(updates, { onConflict: 'id' });
-    handleSupabaseError({ error, customMessage: 'Failed to reorder items' });
+    const promises = items.map((item, index) => 
+        supabase
+            .from('menu_items')
+            .update({ display_order: index })
+            .eq('id', item.id)
+            .eq('restaurant_id', restaurantId)
+    );
+    const results = await Promise.all(promises);
+    const firstWithError = results.find(r => r.error);
+    if (firstWithError) {
+        handleSupabaseError({ error: firstWithError.error, customMessage: 'Failed to reorder items' });
+    }
 };
 
 // --- ADDONS ---

@@ -94,7 +94,9 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
                 if (current.length < max) {
                     return { ...prev, [groupId]: [...current, optionName] };
                 }
-                return prev;
+                // Se atingiu o limite, remove a primeira opção escolhida e adiciona a nova (FIFO)
+                // permitindo escolher e mudar de ideia com facilidade
+                return { ...prev, [groupId]: [...current.slice(1), optionName] };
             }
         });
     };
@@ -201,28 +203,6 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
                         </div>
                     </div>
 
-                    {availableAddons.length > 0 && (
-                        <div>
-                            <h3 className="font-bold mb-2">Selecione os adicionais</h3>
-                            <div className="space-y-2">
-                                {availableAddons.map(addon => (
-                                     <label key={addon.id} className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:bg-orange-50 has-[:checked]:border-orange-400">
-                                        <div className="flex items-center">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedAddonIds.has(addon.id)}
-                                                onChange={() => handleAddonToggle(addon.id)}
-                                                className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
-                                            />
-                                            <span className="ml-3 font-semibold text-gray-700">{addon.name}</span>
-                                        </div>
-                                        {addon.price > 0 && <span className="font-semibold text-gray-600">+ R$ {Number(addon.price).toFixed(2)}</span>}
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
                     {initialItem.optionGroups?.map((group, gIdx) => {
                         const isValid = isGroupValid(group);
                         const selectedCount = (selectedOptions[group.id] || []).length;
@@ -244,18 +224,14 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
                                 <div className="space-y-2">
                                     {group.options.map(option => {
                                         const isSelected = (selectedOptions[group.id] || []).includes(option.name);
-                                        const isLimitReached = !isSelected && selectedCount >= group.maxSelections;
                                         
                                         return (
-                                            <label key={option.name} className={`flex items-center justify-between p-3 border rounded-lg transition-all ${
-                                                isLimitReached ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'
-                                            } ${isSelected ? 'bg-orange-50 border-orange-400 ring-1 ring-orange-400' : 'border-gray-200'}`}>
+                                            <label key={option.name} className={`flex items-center justify-between p-3 border rounded-lg transition-all cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-orange-50 border-orange-400 ring-1 ring-orange-400' : 'border-gray-200'}`}>
                                                 <div className="flex items-center gap-3">
                                                     <input 
                                                         type={group.maxSelections === 1 ? "radio" : "checkbox"}
                                                         checked={isSelected}
                                                         onChange={() => handleOptionToggle(group.id, option.name, group.maxSelections)}
-                                                        disabled={isLimitReached}
                                                         className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
                                                     />
                                                     <span className={`font-semibold ${isSelected ? 'text-orange-900' : 'text-gray-700'}`}>{option.name}</span>
@@ -270,6 +246,28 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
                             </div>
                         );
                     })}
+
+                    {availableAddons.length > 0 && (
+                        <div>
+                            <h3 className="font-bold mb-2">Selecione os adicionais</h3>
+                            <div className="space-y-2">
+                                {availableAddons.map(addon => (
+                                     <label key={addon.id} className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:bg-orange-50 has-[:checked]:border-orange-400">
+                                        <div className="flex items-center">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedAddonIds.has(addon.id)}
+                                                onChange={() => handleAddonToggle(addon.id)}
+                                                className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                                            />
+                                            <span className="ml-3 font-semibold text-gray-700">{addon.name}</span>
+                                        </div>
+                                        {addon.price > 0 && <span className="font-semibold text-gray-600">+ R$ {Number(addon.price).toFixed(2)}</span>}
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     <div className="mt-4">
                         <label className="block text-sm font-bold text-gray-700 mb-2">Observações</label>

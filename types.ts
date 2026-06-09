@@ -138,11 +138,11 @@ export interface MenuItem {
   isPizza?: boolean;
   isAcai?: boolean;
   isMarmita?: boolean; // For daily specials like lunch boxes
-  marmitaOptions?: string[]; // Editable daily text options for marmitas
+  marmitaOptions?: string[] | null; // Editable daily text options for marmitas
   freeAddonCount?: number; // Kept for simple items, but sizes will override
   availableAddonIds?: number[];
-  sizes?: SizeOption[]; // Array for different sizes
-  optionGroups?: OptionGroup[]; // NEW: Generic customization groups
+  sizes?: SizeOption[] | null; // Array for different sizes
+  optionGroups?: OptionGroup[] | null; // NEW: Generic customization groups
   isDailySpecial?: boolean; // For "Destaque do Dia"
   isWeeklySpecial?: boolean; // For supermarket "Promoções da Semana"
   availableDays?: number[]; // For "Prato do Dia". 0=Sun, 1=Mon, etc.

@@ -97,9 +97,15 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
             if (isSelected) {
                 newSet.delete(addon.id);
             } else {
-                if (Number(addon.price) === 0) {
-                    if (currentFreeCount >= freeAddonCountLimit) {
-                        return prev;
+                if (Number(addon.price) === 0 && freeAddonCountLimit > 0) {
+                    const currentFreeIds = Array.from(newSet).filter(id => {
+                        const a = availableAddons.find(item => item.id === id);
+                        return a && Number(a.price) === 0;
+                    });
+                    
+                    if (currentFreeIds.length >= freeAddonCountLimit) {
+                        // Se atingiu o limite de grátis, remove a primeira adicionada (FIFO) para dar espaço para a nova
+                        newSet.delete(currentFreeIds[0]);
                     }
                 }
                 newSet.add(addon.id);
@@ -122,7 +128,8 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
                 if (current.length < max) {
                     return { ...prev, [groupId]: [...current, optionName] };
                 }
-                return prev;
+                // Se atingiu o limite, remove a primeira opção e adiciona a nova (FIFO)
+                return { ...prev, [groupId]: [...current.slice(1), optionName] };
             }
         });
     };
@@ -273,12 +280,9 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
                                     <div className="grid grid-cols-1 gap-2">
                                         {group.options.map(option => {
                                             const isOptionSelected = (selectedOptions[group.id] || []).includes(option.name);
-                                            const isLimitReachedForGroup = !isOptionSelected && selectedCount >= group.maxSelections;
                                             
                                             return (
-                                                <label key={option.name} className={`flex items-center justify-between p-3 border rounded-xl transition-all ${
-                                                    isLimitReachedForGroup ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-purple-50/20'
-                                                } ${isOptionSelected ? 'bg-purple-50 border-purple-400 ring-1 ring-purple-400' : 'border-gray-200'}`}>
+                                                <label key={option.name} className={`flex items-center justify-between p-3 border rounded-xl transition-all cursor-pointer hover:bg-purple-50/20 ${isOptionSelected ? 'bg-purple-50 border-purple-400 ring-1 ring-purple-400' : 'border-gray-200'}`}>
                                                     <div className="flex items-center gap-3">
                                                         <div className={`w-5 h-5 rounded flex items-center justify-center transition-all ${
                                                             isOptionSelected ? 'bg-purple-600' : 'border-2 border-gray-300 bg-white'
@@ -289,7 +293,6 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
                                                             type={group.maxSelections === 1 ? "radio" : "checkbox"}
                                                             checked={isOptionSelected}
                                                             onChange={() => handleOptionToggle(group.id, option.name, group.maxSelections)}
-                                                            disabled={isLimitReachedForGroup}
                                                             className="hidden"
                                                         />
                                                         <span className={`font-bold text-sm ${isOptionSelected ? 'text-purple-900' : 'text-gray-700'}`}>{option.name}</span>
@@ -336,12 +339,9 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
                                 <div className="grid grid-cols-1 gap-2">
                                     {freePool.map(addon => {
                                         const isSelected = selectedAddonIds.has(addon.id);
-                                        const isDisabled = !isSelected && isLimitReached;
                                         
                                         return (
-                                            <label key={addon.id} className={`flex items-center justify-between p-3 border rounded-xl transition-all ${
-                                                isDisabled ? 'opacity-40 bg-gray-50 cursor-not-allowed border-gray-100' : 'cursor-pointer hover:bg-purple-50/30'
-                                            } ${isSelected ? 'bg-purple-50 border-purple-400 ring-1 ring-purple-400 shadow-sm' : 'border-gray-200'}`}>
+                                            <label key={addon.id} className={`flex items-center justify-between p-3 border rounded-xl transition-all cursor-pointer hover:bg-purple-50/30 ${isSelected ? 'bg-purple-50 border-purple-400 ring-1 ring-purple-400 shadow-sm' : 'border-gray-200'}`}>
                                                 <div className="flex items-center gap-3 w-full">
                                                     <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all ${
                                                         isSelected ? 'bg-purple-600 border-purple-600' : 'border-gray-300 bg-white'
@@ -352,7 +352,6 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
                                                         type="checkbox"
                                                         checked={isSelected}
                                                         onChange={() => handleAddonToggle(addon)}
-                                                        disabled={isDisabled}
                                                         className="hidden"
                                                     />
                                                     <span className={`font-bold text-sm ${isSelected ? 'text-purple-900' : 'text-gray-700'}`}>{addon.name}</span>

@@ -424,10 +424,22 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
         try {
             // Prepare data for the new item (removing ID and adjusting details if needed)
             const { id: _, ...itemData } = item;
+
+            // Encontrar os itens da categoria correspondente para determinar o próximo displayOrder
+            const category = menuCategories.find(c => c.name === categoryName);
+            const itemsInCategory = category ? category.items : [];
+            let maxDisplayOrder = 0;
+            if (itemsInCategory.length > 0) {
+                // Mapeia os displayOrder garantindo que sejam convertidos para número
+                maxDisplayOrder = Math.max(...itemsInCategory.map(i => Number(i.displayOrder || 0)));
+            }
+            const nextDisplayOrder = maxDisplayOrder + 1;
+
             const duplicatedItem = {
                 ...itemData,
                 name: `${item.name} (Cópia)`,
                 category: categoryName,
+                displayOrder: nextDisplayOrder,
             };
 
             await createMenuItem(restaurantId, duplicatedItem);
@@ -1099,7 +1111,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                                                         </td>
                                                         <td className="p-4">
                                                             <div className="font-semibold text-gray-900">{item.name}</div>
-                                                            <div className="text-xs text-gray-500 line-clamp-1">{item.description}</div>
+                                                            <div className="text-xs text-gray-500">{item.description}</div>
                                                         </td>
                                                         <td className="p-4 text-center">
                                                             <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${item.available !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
