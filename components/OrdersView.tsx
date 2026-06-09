@@ -83,6 +83,11 @@ const formatOrderDetailsForWhatsApp = (order: Order): string => {
 
         detailsMessage += `${itemLine}\n`;
 
+        if (item.selectedOptions && item.selectedOptions.length > 0) {
+            item.selectedOptions.forEach(opt => {
+                detailsMessage += `  _ + ${opt.optionName} ${opt.price > 0 ? `(R$ ${opt.price.toFixed(2)})` : ''}_\n`;
+            });
+        }
         if (item.selectedAddons && item.selectedAddons.length > 0) {
             item.selectedAddons.forEach(addon => {
                 detailsMessage += `  _ + ${addon.name} ${addon.price > 0 ? `(R$ ${addon.price.toFixed(2)})` : ''}_\n`;
@@ -274,12 +279,38 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
                 </button>
                 
                 {isExpanded && (
-                    <ul className="mt-1 space-y-1 bg-gray-50 p-1 rounded text-[10px] text-gray-700">
+                    <ul className="mt-1 space-y-1.5 bg-gray-50 p-2 rounded text-[10px] text-gray-700">
                         {order.items.map((item, idx) => (
-                            <li key={`${order.id}-item-${idx}`} className="flex justify-between border-b border-gray-100 last:border-0 pb-0.5">
-                                <span className="truncate w-full">
-                                    <strong className="text-orange-600">{item.quantity}x</strong> {item.name} {item.weight && item.isKiloItem && <span className="text-gray-400 font-normal">({Number(item.weight).toFixed(3)}kg)</span>}
-                                </span>
+                            <li key={`${order.id}-item-${idx}`} className="flex flex-col border-b border-gray-100 last:border-0 pb-1 pt-0.5">
+                                <div className="flex justify-between items-start gap-1">
+                                    <span className="w-full">
+                                        <strong className="text-orange-600 font-extrabold">{item.quantity}x</strong> {item.name} {item.sizeName && `(${item.sizeName})`} {item.weight && item.isKiloItem && <span className="text-gray-400 font-normal">({Number(item.weight).toFixed(3)}kg)</span>}
+                                    </span>
+                                    <span className="font-semibold text-gray-500 shrink-0">R$ {(Number(item.price) * item.quantity).toFixed(2)}</span>
+                                </div>
+                                {item.selectedOptions && item.selectedOptions.length > 0 && (
+                                    <div className="pl-3.5 text-[9px] text-blue-600 font-semibold space-y-0.5 mt-0.5">
+                                        {item.selectedOptions.map((opt, oIdx) => (
+                                            <span key={oIdx} className="block">
+                                                • {opt.groupTitle}: {opt.optionName} {opt.price > 0 ? `(+R$ ${Number(opt.price).toFixed(2)})` : ''}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                                {item.selectedAddons && item.selectedAddons.length > 0 && (
+                                    <div className="pl-3.5 text-[9px] text-gray-500 font-medium space-y-0.5 mt-0.5">
+                                        {item.selectedAddons.map((addon, aIdx) => (
+                                            <span key={aIdx} className="block font-medium text-gray-500">
+                                                • + {addon.name} {addon.price > 0 ? `(+R$ ${Number(addon.price).toFixed(2)})` : ''}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                                {item.notes && (
+                                    <div className="pl-3.5 text-[9px] text-orange-600 font-bold mt-0.5 italic">
+                                        Obs: {item.notes}
+                                    </div>
+                                )}
                             </li>
                         ))}
                     </ul>

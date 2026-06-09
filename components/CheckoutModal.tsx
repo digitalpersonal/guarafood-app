@@ -97,6 +97,11 @@ const formatOrderDetailsForWhatsApp = (order: Order): string => {
         if (item.sizeName && item.sizeName !== 'Único') itemLine += ` (${item.sizeName})`;
         itemLine += ` (R$ ${item.price.toFixed(2)})`;
         detailsMessage += `${itemLine}\n`;
+        if (item.selectedOptions && item.selectedOptions.length > 0) {
+            item.selectedOptions.forEach(opt => {
+                detailsMessage += `  _ + ${opt.optionName} ${opt.price > 0 ? `(R$ ${opt.price.toFixed(2)})` : ''}_\n`;
+            });
+        }
         if (item.selectedAddons && item.selectedAddons.length > 0) {
             item.selectedAddons.forEach(addon => {
                 detailsMessage += `  _ + ${addon.name} ${addon.price > 0 ? `(R$ ${addon.price.toFixed(2)})` : ''}_\n`;
@@ -666,6 +671,29 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                     <OptimizedImage src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-md object-cover flex-shrink-0" />
                                     <div className="flex-grow">
                                         <p className="font-semibold text-gray-800 text-sm">{item.quantity}x {item.name} {item.sizeName && `(${item.sizeName})`}</p>
+                                        
+                                        {item.selectedOptions && item.selectedOptions.length > 0 && (
+                                            <ul className="text-xs text-blue-600 font-semibold pl-1 mt-1 space-y-0.5">
+                                                {item.selectedOptions.map((opt, idx) => (
+                                                    <li key={idx}>
+                                                        • {opt.groupTitle}: {opt.optionName} {opt.price > 0 && `(+ R$ ${opt.price.toFixed(2)})`}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                        {item.selectedAddons && item.selectedAddons.length > 0 && (
+                                            <ul className="text-xs text-gray-500 pl-1 mt-1 font-semibold">
+                                                {item.selectedAddons.map(addon => (
+                                                    <li key={addon.id}>
+                                                        + {addon.name} {addon.price > 0 && `(+ R$ ${addon.price.toFixed(2)})`}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                        {item.notes && (
+                                            <p className="text-xs text-orange-600 font-bold mt-1 italic">Obs: {item.notes}</p>
+                                        )}
+
                                         <p className="text-xs text-orange-600 font-bold mt-1">R$ {(Number(item.price) * item.quantity).toFixed(2)}</p>
                                     </div>
                                 </div>

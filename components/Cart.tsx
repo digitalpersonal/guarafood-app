@@ -145,6 +145,15 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
                                                     (Meia {item.halves.map(h => h.name).join(' / Meia ')})
                                                 </p>
                                             )}
+                                            {item.selectedOptions && item.selectedOptions.length > 0 && (
+                                                <ul className="text-xs text-blue-600 font-semibold pl-1 mt-1 space-y-0.5">
+                                                    {item.selectedOptions.map((opt, idx) => (
+                                                        <li key={idx}>
+                                                            • {opt.groupTitle}: {opt.optionName} {opt.price > 0 && `(+ R$ ${opt.price.toFixed(2)})`}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
                                             {item.selectedAddons && item.selectedAddons.length > 0 && (
                                                 <ul className="text-xs text-gray-500 pl-1 mt-1">
                                                     {item.selectedAddons.map(addon => (

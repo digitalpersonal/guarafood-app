@@ -306,7 +306,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                             
                             {/* ADICIONAIS E OPÇÕES */}
                             {item.selectedOptions?.map((opt, i) => (
-                                <div key={i} style={{ fontSize: smallFontSize, paddingLeft: '4mm' }}>+ {opt.optionName.toUpperCase()}</div>
+                                <div key={i} style={{ fontSize: smallFontSize, paddingLeft: '4mm' }}>• {opt.groupTitle.toUpperCase()}: {opt.optionName.toUpperCase()} {opt.price > 0 ? `(+R$ ${Number(opt.price).toFixed(2)})` : ''}</div>
                             ))}
                             {item.selectedAddons?.map((a, i) => (
                                 <div key={i} style={{ fontSize: smallFontSize, paddingLeft: '4mm' }}>+ {a.name.toUpperCase()}</div>

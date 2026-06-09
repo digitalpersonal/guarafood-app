@@ -784,7 +784,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                                         <span className={`font-black ${item.served ? 'text-green-600' : 'text-orange-600'}`}>
                                                             {item.isKiloItem ? `${item.weight?.toFixed(3)}kg` : `${item.quantity}x`}
                                                         </span>
-                                                        <span className={`font-bold text-sm ${item.served ? 'text-gray-500 line-through decoration-gray-300' : 'text-gray-800'}`}>{item.name}</span>
+                                                        <span className={`font-bold text-sm ${item.served ? 'text-gray-500 line-through decoration-gray-300' : 'text-gray-800'}`}>{item.name} {item.sizeName && `(${item.sizeName})`}</span>
                                                     </div>
                                                     <div className="flex items-center gap-3">
                                                         <span className={`font-bold text-sm ${item.served ? 'text-gray-400' : 'text-gray-600'}`}>R$ {(item.price * item.quantity).toFixed(2)}</span>
@@ -797,6 +797,24 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                                         </button>
                                                     </div>
                                                 </div>
+                                                {item.selectedOptions && item.selectedOptions.length > 0 && (
+                                                    <div className="ml-14 text-xs text-blue-600 font-semibold space-y-0.5 mt-0.5">
+                                                        {item.selectedOptions.map((opt, oIdx) => (
+                                                            <span key={oIdx} className="block">
+                                                                • {opt.groupTitle}: {opt.optionName} {opt.price > 0 ? `(+R$ ${Number(opt.price).toFixed(2)})` : ''}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                {item.selectedAddons && item.selectedAddons.length > 0 && (
+                                                    <div className="ml-14 text-xs text-gray-500 font-semibold space-y-0.5 mt-0.5">
+                                                        {item.selectedAddons.map((addon, aIdx) => (
+                                                            <span key={aIdx} className="block">
+                                                                • + {addon.name} {addon.price > 0 ? `(+R$ ${Number(addon.price).toFixed(2)})` : ''}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
                                                 {(item.notes || (item.isKiloItem && item.description)) && (
                                                     <p className={`text-[10px] italic mt-1 ml-14 ${item.served ? 'text-gray-300' : 'text-gray-400'}`}>
                                                         {item.isKiloItem ? item.description : `Obs: ${item.notes}`}

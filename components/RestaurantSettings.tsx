@@ -445,7 +445,23 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
         const dummyOrder: Order = {
             id: 'TESTE-01', timestamp: new Date().toISOString(), status: 'Novo Pedido',
             customerName: 'Teste Layout Jerê/Renovação', customerPhone: '(35) 99999-9999',
-            items: [{ id: '1', name: 'Pastel de Carne com Queijo', price: 15.00, basePrice: 15.00, quantity: 2, imageUrl: '', description: '' }],
+            items: [{ 
+                id: '1', 
+                name: 'Pastel de Carne com Queijo', 
+                price: 15.00, 
+                basePrice: 15.00, 
+                quantity: 2, 
+                imageUrl: '', 
+                description: '',
+                selectedOptions: [
+                    { groupTitle: 'Massa', optionName: 'Integral', price: 0 },
+                    { groupTitle: 'Borda', optionName: 'Cheddar', price: 2.50 }
+                ],
+                selectedAddons: [
+                    { id: 101, name: 'Bacon Extra', price: 4.00, restaurantId: restaurant.id }
+                ],
+                notes: 'Bem assado e crocante'
+            }],
             totalPrice: 35.00, subtotal: 30.00, deliveryFee: 5.00,
             restaurantId: restaurant.id, restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
             paymentMethod: 'Dinheiro',
