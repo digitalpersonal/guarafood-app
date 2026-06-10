@@ -412,12 +412,14 @@ export const createBanner = async (banner: Omit<Banner, 'id'>): Promise<Banner> 
 };
 
 export const updateBanner = async (id: number, banner: Partial<Banner>): Promise<Banner> => {
-    const payload: any = { ...banner };
-    if (banner.imageUrl) payload.image_url = banner.imageUrl;
-    if (banner.ctaText) payload.cta_text = banner.ctaText;
-    if (banner.targetType) payload.target_type = banner.targetType;
-    if (banner.targetValue) payload.target_value = banner.targetValue;
-    delete payload.imageUrl; delete payload.ctaText; delete payload.targetType; delete payload.targetValue;
+    const payload: any = {};
+    if (banner.title !== undefined) payload.title = banner.title;
+    if (banner.description !== undefined) payload.description = banner.description;
+    if (banner.imageUrl !== undefined) payload.image_url = banner.imageUrl;
+    if (banner.ctaText !== undefined) payload.cta_text = banner.ctaText;
+    if (banner.targetType !== undefined) payload.target_type = banner.targetType;
+    if (banner.targetValue !== undefined) payload.target_value = banner.targetValue;
+    if (banner.active !== undefined) payload.active = banner.active;
 
     const { data, error } = await supabase.from('banners').update(payload).eq('id', id).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to update banner' });
@@ -739,12 +741,26 @@ export const fetchAds = async (onlyActive: boolean = false): Promise<any[]> => {
 };
 
 export const createAd = async (ad: any): Promise<void> => {
-    const { error } = await supabase.from('ads').insert([ad]);
+    const payload = {
+        image_url: ad.image_url,
+        link_url: ad.link_url,
+        alt_text: ad.alt_text,
+        is_active: ad.is_active,
+        display_order: Number(ad.display_order || 0)
+    };
+    const { error } = await supabase.from('ads').insert([payload]);
     handleSupabaseError({ error, customMessage: 'Failed to create ad' });
 };
 
 export const updateAd = async (id: string, ad: any): Promise<void> => {
-    const { error } = await supabase.from('ads').update(ad).eq('id', id);
+    const payload = {
+        image_url: ad.image_url,
+        link_url: ad.link_url,
+        alt_text: ad.alt_text,
+        is_active: ad.is_active,
+        display_order: Number(ad.display_order || 0)
+    };
+    const { error } = await supabase.from('ads').update(payload).eq('id', id);
     handleSupabaseError({ error, customMessage: 'Failed to update ad' });
 };
 
