@@ -8,6 +8,7 @@ import OrderEditorModal from './OrderEditorModal';
 import { updateOrderStatus, createOrder } from '../services/orderService';
 import { getMensalistaByPhone, searchMensalistas } from '../services/mensalistaService';
 import type { Mensalista } from '../types';
+import PaymentDiagnostic from './PaymentDiagnostic';
 
 
 const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -548,6 +549,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
 
     return (
         <>
+            <PaymentDiagnostic restaurant={restaurant} />
             <div className="p-3 border-b bg-white sticky top-[138px] z-10 shadow-sm">
                 <div className="relative flex gap-2">
                      <div className="relative flex-grow">

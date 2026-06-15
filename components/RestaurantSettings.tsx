@@ -10,6 +10,7 @@ import type { Restaurant, OperatingHours, Order } from '../types';
 import Spinner from './Spinner';
 import PrintableOrder from './PrintableOrder';
 import MensalistasManager from './MensalistasManager';
+import MercadoPagoGuide from './MercadoPagoGuide';
 import { getErrorMessage } from '../services/api';
 import ChromeMemorySaverGuide from './ChromeMemorySaverGuide';
 
@@ -677,6 +678,7 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                                 <input type="password" value={mercadoPagoToken} onChange={e => setMercadoPagoToken(e.target.value)} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50" placeholder="APP_USR-..." />
                             </div>
                         </div>
+                        {restaurantId && <MercadoPagoGuide restaurantId={restaurantId} />}
                     </div>
                 </div>
 

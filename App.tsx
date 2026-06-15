@@ -172,7 +172,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                     const allItems = menuData.flatMap((c: any) => c.items);
                     const lunchItems = allItems.filter((item: any) => item.isDailySpecial);
                     
-                    setDailySpecials(isLunchTime ? lunchItems : []);
+                    setDailySpecials(lunchItems);
                     setAllPizzas(allItems.filter((item: any) => item.isPizza));
                     
                     const filteredMenu = menuData.map((cat: any) => ({
@@ -220,7 +220,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
 
                 const allItems = menuData.flatMap((c: any) => c.items);
                 const lunchItems = allItems.filter((item: any) => item.isDailySpecial);
-                setDailySpecials(isLunchTime ? lunchItems : []);
+                setDailySpecials(lunchItems);
                 setAllPizzas(allItems.filter((item: any) => item.isPizza));
                 
                 const filteredMenu = menuData.map((cat: any) => ({
