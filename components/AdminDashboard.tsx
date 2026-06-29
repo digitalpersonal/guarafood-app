@@ -33,12 +33,13 @@ const MegaphoneIcon: React.FC<{ className?: string }> = ({ className }) => (
 const ArrowDownTrayIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
 );
+import FiscalReportPanel from './FiscalReportPanel';
 import { fetchRestaurantsSecure, deleteRestaurant } from '../services/databaseService';
 
 const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { logout } = useAuth();
     const { addToast } = useNotification();
-    const [activeTab, setActiveTab] = useState<'restaurants' | 'categories' | 'marketing' | 'ads' | 'customers' | 'settings' | 'help' | 'mensalistas'>('restaurants');
+    const [activeTab, setActiveTab] = useState<'restaurants' | 'categories' | 'marketing' | 'ads' | 'customers' | 'settings' | 'help' | 'mensalistas' | 'fiscal'>('restaurants');
     const [editingMenuRestaurantId, setEditingMenuRestaurantId] = useState<number | null>(null);
     const [editingSettingsRestaurantId, setEditingSettingsRestaurantId] = useState<number | null>(null);
 
@@ -139,6 +140,8 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 return <GlobalCustomerList />;
             case 'mensalistas':
                 return <MensalistasManager />;
+            case 'fiscal':
+                return <FiscalReportPanel />;
             case 'settings':
                 return renderSettings();
             case 'help':
@@ -173,6 +176,7 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     <button onClick={() => setActiveTab('marketing')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'marketing' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Marketing</button>
                     <button onClick={() => setActiveTab('ads')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'ads' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Propagandas</button>
                     <button onClick={() => setActiveTab('mensalistas')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'mensalistas' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Mensalistas</button>
+                    <button onClick={() => setActiveTab('fiscal')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'fiscal' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Fiscal</button>
                     <button onClick={() => setActiveTab('customers')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'customers' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Clientes</button>
                     <button onClick={() => setActiveTab('settings')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'settings' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Config</button>
                     <button onClick={() => setActiveTab('help')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'help' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Ajuda</button>

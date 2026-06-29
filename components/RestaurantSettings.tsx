@@ -406,7 +406,8 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                 bannerImageUrl: bannerImageUrl,
                 hasMensalistas: hasMensalistas,
                 hasKiloService: hasKiloService,
-                pricePerKilo: pricePerKilo
+                pricePerKilo: pricePerKilo,
+                enableFiscal: restaurant.enableFiscal
             });
             localStorage.setItem('guarafood-printer-width', printerWidth.toString());
             localStorage.setItem('guarafood-is-print-server', isPrintServer.toString());
@@ -650,6 +651,25 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                                 <input type="time" value={restaurant.marmitaEndTime || '15:30'} onChange={e => setRestaurant({...restaurant, marmitaEndTime: e.target.value})} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50" />
                             </div>
                         </div>
+                    </div>
+
+                    <div className="border-t pt-8">
+                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Módulo Fiscal (Emissão de Notas)</h3>
+                        <label className="flex items-center justify-between cursor-pointer p-4 bg-orange-50 rounded-xl border border-orange-200">
+                            <div>
+                                <span className="font-bold text-orange-900 block">Ativar Modo Fiscal no PDV e Cardápio</span>
+                                <span className="text-xs text-orange-700">Habilita a solicitação de CPF/CNPJ aos clientes e a aba de relatórios fiscais para o contador.</span>
+                            </div>
+                            <div className="relative">
+                                <input 
+                                    type="checkbox" 
+                                    className="sr-only peer" 
+                                    checked={!!restaurant.enableFiscal} 
+                                    onChange={e => setRestaurant({ ...restaurant, enableFiscal: e.target.checked })} 
+                                />
+                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
+                            </div>
+                        </label>
                     </div>
 
                     <div className="border-t pt-8">

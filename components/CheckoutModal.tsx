@@ -141,6 +141,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [currentStep, setCurrentStep] = useState<CheckoutStep>('SUMMARY');
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
+    const [customerCpf, setCustomerCpf] = useState('');
     const [paymentMethod, setPaymentMethod] = useState(''); 
     const [changeFor, setChangeFor] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -530,6 +531,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             paymentMethod: pm, customerAddress, wantsSachets, 
             changeFor: (!isNaN(changeValue) && changeValue > 0) ? changeValue : undefined, 
             mensalistaId, pointsRedeemed,
+            customerCpf: customerCpf || undefined,
+            fiscalStatus: restaurant.enableFiscal ? 'pending' : 'none',
             status: pm === 'Pix' ? 'Aguardando Pagamento' : 'Novo Pedido',
         };
     };
@@ -746,6 +749,20 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                     placeholder="Ex: 35999998888" 
                                 />
                             </div>
+
+                            {restaurant.enableFiscal && (
+                                <div className="pt-1">
+                                    <label htmlFor="customerCpf" className="block text-xs font-black text-gray-500 uppercase mb-1 tracking-widest">CPF na Nota Fiscal <span className="text-[10px] font-normal lowercase">(opcional)</span></label>
+                                    <input 
+                                        id="customerCpf" 
+                                        type="text" 
+                                        value={customerCpf} 
+                                        onChange={e => setCustomerCpf(e.target.value)} 
+                                        className="w-full p-3 border-2 border-white rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-400 font-bold text-gray-800 transition-all placeholder:font-normal placeholder:text-gray-400" 
+                                        placeholder="000.000.000-00 (Para Cupom Fiscal / Bling)" 
+                                    />
+                                </div>
+                            )}
                         </div>
 
                         <div ref={deliveryMethodRef} className="space-y-3 animate-fadeIn">

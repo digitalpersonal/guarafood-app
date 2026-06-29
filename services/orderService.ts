@@ -211,6 +211,8 @@ export interface NewOrderData {
     status?: OrderStatus;
     mensalistaId?: string; // NEW: Para pedidos de mensalistas
     pointsRedeemed?: number; // NEW: Pontos de fidelidade resgatados
+    customerCpf?: string;
+    fiscalStatus?: 'pending' | 'selected' | 'emitted' | 'none';
 }
 
 export const createOrder = async (orderData: NewOrderData): Promise<Order> => {

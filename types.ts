@@ -95,6 +95,10 @@ export interface Restaurant {
   pricePerKilo?: number; // NEW: Price per kilogram
   staff?: StaffMember[]; // NEW: List of staff members
   loyaltyProgram?: LoyaltyProgram; // NEW: Fidelity Program
+  enableFiscal?: boolean; // Módulo fiscal / envio para contador
+  fiscalProvider?: 'bling' | 'plugnotas' | 'none'; // Provedor integrado
+  blingApiKey?: string; // Token API Bling
+  cnpj?: string; // CNPJ do restaurante
 }
 
 export interface Addon {
@@ -272,6 +276,8 @@ export interface Order {
   comandaNumber?: string; // NEW: Para múltiplas comandas por mesa
   paymentHistory?: PaymentEntry[]; // NEW: Para pagamentos fracionados
   mensalistaId?: string; // NEW: Para pedidos de mensalistas
+  fiscalStatus?: 'pending' | 'selected' | 'emitted' | 'none'; // Controle fiscal e seleção para Bling
+  customerCpf?: string; // CPF na nota fiscal
 }
 
 export type Role = 'admin' | 'merchant' | 'waiter' | 'manager';

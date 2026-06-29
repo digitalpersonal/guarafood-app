@@ -344,6 +344,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
     const [isManualModalOpen, setIsManualModalOpen] = useState(false);
     const [manualCustomerName, setManualCustomerName] = useState('');
     const [manualCustomerPhone, setManualCustomerPhone] = useState('');
+    const [manualCustomerCpf, setManualCustomerCpf] = useState('');
     const [manualPaymentMethod, setManualPaymentMethod] = useState('Dinheiro');
     const [mensalistaSuggestions, setMensalistaSuggestions] = useState<Mensalista[]>([]);
     const [isSearchingMensalista, setIsSearchingMensalista] = useState(false);
@@ -412,7 +413,9 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                 restaurantPhone: '',
                 paymentMethod: finalPaymentMethod,
                 status: 'Novo Pedido',
-                mensalistaId: mensalistaId
+                mensalistaId: mensalistaId,
+                customerCpf: manualCustomerCpf.trim() || undefined,
+                fiscalStatus: manualCustomerCpf.trim() ? 'selected' : 'pending'
             });
             
             addToast({ message: 'Pedido criado! Adicione os itens agora.', type: 'success' });
@@ -420,6 +423,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
             setIsManualModalOpen(false);
             setManualCustomerName('');
             setManualCustomerPhone('');
+            setManualCustomerCpf('');
             setManualPaymentMethod('Dinheiro');
         } catch (e: any) {
             addToast({ message: `Erro ao criar pedido: ${e.message}`, type: 'error' });
@@ -528,7 +532,17 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
             {historySections.map(section => (
                 (groupedOrders[section.status] && groupedOrders[section.status]!.length > 0) ? (
                     <div key={section.status} role="region" aria-labelledby={`section-title-${section.status}`} className="mb-8">
-                        <h2 id={`section-title-${section.status}`} className="text-xl font-bold mb-4">{section.title} ({groupedOrders[section.status]!.length})</h2>
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 id={`section-title-${section.status}`} className="text-xl font-bold">{section.title} ({groupedOrders[section.status]!.length})</h2>
+                            {section.status === 'Entregue' && (
+                                <button 
+                                    onClick={() => handleExportFiscalCSV(groupedOrders[section.status])}
+                                    className="bg-purple-600 text-white px-4 py-2 text-xs font-black rounded-lg hover:bg-purple-700 shadow transition-all"
+                                >
+                                    Exportar Planilha Fiscal (CSV)
+                                </button>
+                            )}
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" role="list">
                             {groupedOrders[section.status]!.map((order: Order) => (
                                 <OrderCard 
@@ -546,6 +560,28 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
             ))}
         </>
     );
+
+    const handleExportFiscalCSV = (ordersToExport: Order[]) => {
+        const headers = ["Data", "Pedido", "Cliente", "CPF", "Total", "Status Fiscal"];
+        const rows = ordersToExport.map(o => [
+            new Date(o.timestamp).toLocaleDateString(),
+            o.order_number || o.id,
+            o.customerName,
+            o.customerCpf || '',
+            o.totalPrice.toFixed(2),
+            o.fiscalStatus || 'pending'
+        ]);
+
+        const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `pedidos_fiscais_${new Date().toISOString().slice(0,10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     return (
         <>
@@ -776,6 +812,16 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                                     placeholder="Apenas números. Ex: 35999998888"
                                 />
                                 <p className="text-[10px] text-gray-500 mt-1">Obrigatório apenas se selecionar "Mensalista".</p>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-black text-gray-500 uppercase mb-1">CPF (Opcional - Nota Fiscal)</label>
+                                <input 
+                                    type="text" 
+                                    value={manualCustomerCpf} 
+                                    onChange={e => setManualCustomerCpf(e.target.value.replace(/\D/g, ''))} 
+                                    className="w-full p-3 border-2 rounded-xl bg-gray-50 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all font-bold text-gray-800"
+                                    placeholder="Ex: 000.000.000-00"
+                                />
                             </div>
                             <div>
                                 <label className="block text-xs font-black text-gray-500 uppercase mb-1">Forma de Pagamento</label>
