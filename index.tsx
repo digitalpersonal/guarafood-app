@@ -7,35 +7,28 @@ import { APP_VERSION } from './components/VersionChecker';
 // 🧼 AUTO-UPDATER E LIMPEZA PREVENTIVA DE CACHE (DEPLOYS SEM TRAVAMENTO)
 // ==============================================================================
 const storedVersion = localStorage.getItem('guarafood_app_version');
-if (storedVersion !== APP_VERSION) {
-    console.log(`[GuaraFood Auto-Update] Nova versão detectada (${APP_VERSION}). Realizando limpeza preventiva de caches obsoletos...`);
+if (storedVersion && storedVersion !== APP_VERSION) {
+    console.log(`[GuaraFood Auto-Update] Nova versão detectada (${storedVersion} -> ${APP_VERSION}). Realizando limpeza preventiva de caches temporários...`);
     
     // Grava a nova versão imediatamente para evitar reloads infinitos
     localStorage.setItem('guarafood_app_version', APP_VERSION);
     
-    // 1. Limpar localStorage mantendo APENAS a sessão de Login do Usuário (Evita forçar logout!)
+    // 1. Limpar APENAS caches temporários de menus e listas que são recriados na hora
     try {
-        const preservedKeys = ['guara-food-user-profile-v3'];
         const keysToRemove: string[] = [];
-        
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
-            if (!key) continue;
-            
-            // Chaves do Supabase (sb-) ou chaves de login preservadas não são removidas!
-            if (key.startsWith('sb-') || preservedKeys.includes(key) || key === 'guarafood_app_version') {
-                continue;
+            if (key && (key.includes('cached-menu') || key.includes('cached-addon') || key.includes('all-restaurants'))) {
+                keysToRemove.push(key);
             }
-            keysToRemove.push(key);
         }
-        
         keysToRemove.forEach(k => localStorage.removeItem(k));
-        console.log("[GuaraFood Auto-Update] LocalStorage higienizado.");
+        console.log("[GuaraFood Auto-Update] Caches temporários de cardápio removidos. Dados de pedidos, impressoras, clientes e configurações totalmente preservados.");
     } catch (e) {
-        console.error("[GuaraFood Auto-Update] Erro ao limpar LocalStorage:", e);
+        console.error("[GuaraFood Auto-Update] Erro ao limpar caches temporários de cardápio:", e);
     }
 
-    // 2. Desregistrar Service Workers e apagar API Cache Storage de forma assíncrona
+    // 2. Desregistrar Service Workers e apagar API Cache Storage de forma assíncrona para garantir novos arquivos de bundle
     Promise.all([
         ('serviceWorker' in navigator) ? navigator.serviceWorker.getRegistrations().then(regs => {
             return Promise.all(regs.map(r => r.unregister()));
@@ -45,10 +38,13 @@ if (storedVersion !== APP_VERSION) {
             return Promise.all(keys.map(k => caches.delete(k)));
         }).catch(() => {}) : Promise.resolve()
     ]).finally(() => {
-        console.log("[GuaraFood Auto-Update] Caches limpos! Recarregando sistema com as correções...");
+        console.log("[GuaraFood Auto-Update] Caches limpos! Recarregando sistema com nova versão...");
         // Adiciona timestamp para furar cache do index.html pelo navegador
-        window.location.reload();
+        window.location.href = window.location.pathname + '?v=' + Date.now() + window.location.hash;
     });
+} else if (!storedVersion) {
+    // Inicializa a versão sem limpar nada (caso de primeira visita)
+    localStorage.setItem('guarafood_app_version', APP_VERSION);
 }
 
 interface ErrorBoundaryProps {
@@ -81,6 +77,17 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
    * It receives the error that was thrown as a parameter and should return a value to update state.
    */
   public static getDerivedStateFromError(error: any): ErrorBoundaryState {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const isChunkError = errorMsg.includes('ChunkLoadError') || 
+                         errorMsg.includes('Loading chunk') ||
+                         errorMsg.includes('Failed to fetch') ||
+                         errorMsg.includes('dynamically imported');
+    
+    if (isChunkError) {
+      console.warn('[GuaraFood ErrorBoundary] Falha ao carregar chunk de código obsoleto. Forçando recarregamento limpo para atualizar para a última versão...');
+      // Redireciona com query parameter para furar o cache do navegador
+      window.location.href = window.location.pathname + '?v=' + Date.now() + window.location.hash;
+    }
     return { hasError: true, error };
   }
 

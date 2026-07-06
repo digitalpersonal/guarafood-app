@@ -13,6 +13,7 @@ const normalizeOrder = (data: any): Order => {
         status: data.status,
         customerName: data.customer_name,
         customerPhone: data.customer_phone,
+        fiscalExport: data.fiscalExport || false,
         customerAddress: data.customer_address,
         wantsSachets: wantsSachets,
         items: data.items,
@@ -211,8 +212,6 @@ export interface NewOrderData {
     status?: OrderStatus;
     mensalistaId?: string; // NEW: Para pedidos de mensalistas
     pointsRedeemed?: number; // NEW: Pontos de fidelidade resgatados
-    customerCpf?: string;
-    fiscalStatus?: 'pending' | 'selected' | 'emitted' | 'none';
 }
 
 export const createOrder = async (orderData: NewOrderData): Promise<Order> => {
@@ -289,6 +288,12 @@ export const updateOrderStatus = async (orderId: string, status: OrderStatus): P
     window.dispatchEvent(new Event('guarafood:update-orders'));
     
     return normalizeOrder(data);
+};
+
+export const updateOrderFiscalExport = async (orderId: string, fiscalExport: boolean): Promise<void> => {
+    const { error } = await supabase.from('orders').update({ fiscalExport }).eq('id', orderId);
+    handleSupabaseError({ error, customMessage: 'Failed to update fiscal export status' });
+    window.dispatchEvent(new Event('guarafood:update-orders'));
 };
 
 export const updateOrderPaymentStatus = async (orderId: string, paymentStatus: 'paid' | 'pending' | 'partial'): Promise<void> => {

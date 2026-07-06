@@ -327,6 +327,7 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
     const [hasMensalistas, setHasMensalistas] = useState(false);
     const [hasKiloService, setHasKiloService] = useState(false);
     const [pricePerKilo, setPricePerKilo] = useState(0);
+    const [enableFiscal, setEnableFiscal] = useState(false);
     const [printerWidth, setPrinterWidth] = useState(80);
     const [isPrintServer, setIsPrintServer] = useState(false);
     const [operatingHours, setOperatingHours] = useState<OperatingHours[]>(getDefaultOperatingHours());
@@ -364,6 +365,7 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                 setHasMensalistas(data.hasMensalistas || false);
                 setHasKiloService(data.hasKiloService || false);
                 setPricePerKilo(data.pricePerKilo || 0);
+                setEnableFiscal(data.enableFiscal || false);
                 setOperatingHours(data.operatingHours || getDefaultOperatingHours());
                 
                 // Força o estado da impressora a partir do banco e sincroniza LocalStorage
@@ -407,7 +409,7 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                 hasMensalistas: hasMensalistas,
                 hasKiloService: hasKiloService,
                 pricePerKilo: pricePerKilo,
-                enableFiscal: restaurant.enableFiscal
+                enableFiscal: enableFiscal
             });
             localStorage.setItem('guarafood-printer-width', printerWidth.toString());
             localStorage.setItem('guarafood-is-print-server', isPrintServer.toString());
@@ -634,6 +636,23 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                         </div>
                     </div>
 
+                    {/* --- CONFIGURAÇÃO FISCAL --- */}
+                    <div className="border-t pt-8">
+                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Integração Fiscal</h3>
+                        <div className="space-y-4">
+                            <label className="flex items-center justify-between cursor-pointer p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                <div>
+                                    <span className="font-bold text-gray-800 block">Ativar Emissão de Notas Fiscais</span>
+                                    <span className="text-xs text-gray-500">Habilita a exportação e a seleção de pedidos para emissão fiscal.</span>
+                                </div>
+                                <div className="relative">
+                                    <input type="checkbox" className="sr-only peer" checked={enableFiscal} onChange={e => setEnableFiscal(e.target.checked)} />
+                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
                     <LoyaltyProgramSettings 
                         loyaltyProgram={restaurant.loyaltyProgram} 
                         onChange={(loyaltyProgram) => setRestaurant({ ...restaurant, loyaltyProgram })} 
@@ -651,25 +670,6 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                                 <input type="time" value={restaurant.marmitaEndTime || '15:30'} onChange={e => setRestaurant({...restaurant, marmitaEndTime: e.target.value})} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50" />
                             </div>
                         </div>
-                    </div>
-
-                    <div className="border-t pt-8">
-                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Módulo Fiscal (Emissão de Notas)</h3>
-                        <label className="flex items-center justify-between cursor-pointer p-4 bg-orange-50 rounded-xl border border-orange-200">
-                            <div>
-                                <span className="font-bold text-orange-900 block">Ativar Modo Fiscal no PDV e Cardápio</span>
-                                <span className="text-xs text-orange-700">Habilita a solicitação de CPF/CNPJ aos clientes e a aba de relatórios fiscais para o contador.</span>
-                            </div>
-                            <div className="relative">
-                                <input 
-                                    type="checkbox" 
-                                    className="sr-only peer" 
-                                    checked={!!restaurant.enableFiscal} 
-                                    onChange={e => setRestaurant({ ...restaurant, enableFiscal: e.target.checked })} 
-                                />
-                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
-                            </div>
-                        </label>
                     </div>
 
                     <div className="border-t pt-8">

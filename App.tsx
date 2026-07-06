@@ -26,7 +26,7 @@ import HelpCenter from './components/HelpCenter';
 import HeaderGlobal from './components/HeaderGlobal';
 import Footer from './components/Footer';
 import AdRotator from './components/AdRotator';
-import VersionChecker from './components/VersionChecker';
+import VersionChecker, { APP_VERSION } from './components/VersionChecker';
 
 const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -536,8 +536,84 @@ const AppContent: React.FC = () => {
     );
 };
 
+const usePersistentVersion = () => {
+    useEffect(() => {
+        const storedVersion = localStorage.getItem('guarafood_app_version');
+
+        const performHardReload = async () => {
+            console.log(`[GuaraFood] Versão mudou ou não registrada (Local: ${storedVersion} -> Atual: ${APP_VERSION}). Limpando cache e recarregando...`);
+            
+            // Unregister service workers
+            if ('serviceWorker' in navigator) {
+                try {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    for (const registration of registrations) {
+                        await registration.unregister();
+                    }
+                } catch (e) {
+                    console.error('Erro ao unregister service worker:', e);
+                }
+            }
+            
+            // Clear API Cache Storage
+            if ('caches' in window) {
+                try {
+                    const keys = await caches.keys();
+                    await Promise.all(keys.map(key => caches.delete(key)));
+                } catch (e) {
+                    console.error('Erro ao limpar cache storage:', e);
+                }
+            }
+
+            // Limpar chaves antigas do localStorage para evitar incompatibilidades, sem apagar login
+            try {
+                const keysToRemove: string[] = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && (key.includes('cached-menu') || key.includes('cached-addon') || key.includes('all-restaurants'))) {
+                        keysToRemove.push(key);
+                    }
+                }
+                keysToRemove.forEach(k => localStorage.removeItem(k));
+            } catch (e) {
+                console.error('Erro ao limpar localStorage:', e);
+            }
+
+            // Grava a nova versão atualizada
+            localStorage.setItem('guarafood_app_version', APP_VERSION);
+
+            // Recarrega a página forçando bypass de cache
+            window.location.href = window.location.pathname + '?v=' + Date.now() + window.location.hash;
+        };
+
+        if (!storedVersion || storedVersion !== APP_VERSION) {
+            performHardReload();
+        }
+
+        // Checagem assíncrona periódica do version.json do servidor
+        const checkServerVersion = async () => {
+            try {
+                const response = await fetch(`/version.json?t=${Date.now()}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.version && data.version !== APP_VERSION) {
+                        console.log(`[GuaraFood] Nova versão de deploy detectada no servidor: ${data.version}. Atualizando...`);
+                        localStorage.setItem('guarafood_app_version', data.version);
+                        window.location.href = window.location.pathname + '?v=' + Date.now() + window.location.hash;
+                    }
+                }
+            } catch (error) {
+                console.warn('Erro silencioso na checagem de versão no usePersistentVersion:', error);
+            }
+        };
+
+        checkServerVersion();
+    }, []);
+};
+
 const App: React.FC = () => {
     const supabaseError = getInitializationError();
+    usePersistentVersion();
     if (supabaseError) return <div className="h-screen flex items-center justify-center p-4 text-center">Erro crítico de configuração do banco de dados.</div>;
     return (
         <NotificationProvider>

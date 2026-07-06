@@ -106,6 +106,28 @@
 
       // GARANTIA DE SAÍDA (Failsafe): some com a tela de carregamento após 3 segundos sob qualquer circunstância
       setTimeout(hideSplash, 3000);
+
+      // ==============================================================================
+      // 🛡️ SUPORTE PROFISSIONAL A AUTO-MIGRAÇÃO DE DEPLOYS SEM DERRUBAR LOJISTAS
+      // ==============================================================================
+      // Quando um novo deploy apaga os assets antigos, chamadas lazy import lançam um erro de preload.
+      // Ouvimos esse erro globalmente para fazer um reload automático silencioso e atualizar os assets do lojista.
+      window.addEventListener('vite:preloadError', (event) => {
+        console.warn('[GuaraFood Deploy Handler] Nova versão detectada no servidor (Erro de Preload). Recarregando aplicação...');
+        window.location.href = window.location.pathname + '?v=' + Date.now() + window.location.hash;
+      });
+
+      window.addEventListener('error', (event) => {
+        const errorMsg = event.message || '';
+        const isChunkError = errorMsg.indexOf('ChunkLoadError') !== -1 || 
+                             errorMsg.indexOf('Loading chunk') !== -1 ||
+                             errorMsg.indexOf('Failed to fetch dynamically imported module') !== -1;
+        if (isChunkError) {
+          console.warn('[GuaraFood Deploy Handler] Falha ao carregar fragmento de código antigo. Recarregando página...');
+          event.preventDefault();
+          window.location.href = window.location.pathname + '?v=' + Date.now() + window.location.hash;
+        }
+      }, true);
     </script>
   <script type="module" src="/index.tsx"></script>
 </body>

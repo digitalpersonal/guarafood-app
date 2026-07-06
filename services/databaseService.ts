@@ -100,7 +100,13 @@ const normalizeRestaurant = (data: any): Restaurant => {
         hasKiloService: data.has_kilo_service,
         pricePerKilo: data.price_per_kilo,
         staff: data.staff || [], // NEW
-        loyaltyProgram: data.loyalty_program || undefined
+        loyaltyProgram: data.loyalty_program || undefined,
+        enableFiscal: data.enable_fiscal ?? data.enableFiscal ?? false,
+        cnpj: data.cnpj || undefined,
+        ie: data.ie || undefined,
+        im: data.im || undefined,
+        blingApiKey: data.bling_api_key || undefined,
+        fiscalProvider: data.fiscal_provider || undefined
     };
 };
 
@@ -145,7 +151,13 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         hasKiloService: data.has_kilo_service,
         pricePerKilo: data.price_per_kilo,
         staff: data.staff || [], // NEW
-        loyaltyProgram: data.loyalty_program || undefined
+        loyaltyProgram: data.loyalty_program || undefined,
+        enableFiscal: data.enable_fiscal ?? data.enableFiscal ?? false,
+        cnpj: data.cnpj || undefined,
+        ie: data.ie || undefined,
+        im: data.im || undefined,
+        blingApiKey: data.bling_api_key || undefined,
+        fiscalProvider: data.fiscal_provider || undefined
     };
 };
 
@@ -244,12 +256,20 @@ export const fetchRestaurantsSecure = async (): Promise<Restaurant[]> => {
 };
 
 export const fetchRestaurantById = async (id: number): Promise<Restaurant | null> => {
+    if (!id || isNaN(Number(id))) {
+        console.warn("[databaseService] fetchRestaurantById called with invalid or empty ID:", id);
+        return null;
+    }
     const { data, error } = await supabaseAnon.from('restaurants').select('*').eq('id', id).single();
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurant' });
     return data ? normalizeRestaurant(data) : null;
 };
 
 export const fetchRestaurantByIdSecure = async (id: number): Promise<Restaurant | null> => {
+    if (!id || isNaN(Number(id))) {
+        console.warn("[databaseService] fetchRestaurantByIdSecure called with invalid or empty ID:", id);
+        return null;
+    }
     const { data, error } = await supabase.from('restaurants').select('*').eq('id', id).single();
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurant details' });
     return data ? normalizeRestaurantSecure(data) : null;
@@ -286,6 +306,10 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     if (updates.hasMensalistas !== undefined) dbUpdates.has_mensalistas = updates.hasMensalistas;
     if (updates.hasKiloService !== undefined) dbUpdates.has_kilo_service = updates.hasKiloService;
     if (updates.pricePerKilo !== undefined) dbUpdates.price_per_kilo = updates.pricePerKilo;
+    if (updates.enableFiscal !== undefined) {
+        dbUpdates.enable_fiscal = updates.enableFiscal;
+        dbUpdates.enableFiscal = updates.enableFiscal;
+    }
     if (updates.staff !== undefined) dbUpdates.staff = updates.staff;
     if (updates.loyaltyProgram !== undefined) dbUpdates.loyalty_program = updates.loyaltyProgram;
 
@@ -436,6 +460,10 @@ export const deleteBanner = async (id: number): Promise<void> => {
 // ==============================================================================
 
 export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilter = false): Promise<MenuCategory[]> => {
+    if (!restaurantId || isNaN(Number(restaurantId))) {
+        console.warn("[databaseService] fetchMenuForRestaurant called with invalid or empty ID:", restaurantId);
+        return [];
+    }
     const { data: categoriesData, error: catError } = await supabaseAnon
         .from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true });
     handleSupabaseError({ error: catError, customMessage: 'Failed to fetch menu categories' });
@@ -569,6 +597,10 @@ export const updateMenuItemOrder = async (restaurantId: number, items: MenuItem[
 
 // --- ADDONS ---
 export const fetchAddonsForRestaurant = async (restaurantId: number): Promise<Addon[]> => {
+    if (!restaurantId || isNaN(Number(restaurantId))) {
+        console.warn("[databaseService] fetchAddonsForRestaurant called with invalid or empty ID:", restaurantId);
+        return [];
+    }
     const { data, error } = await supabaseAnon.from('addons').select('*').eq('restaurant_id', restaurantId);
     handleSupabaseError({ error, customMessage: 'Failed to fetch addons' });
     return (data || []).map(normalizeAddon);

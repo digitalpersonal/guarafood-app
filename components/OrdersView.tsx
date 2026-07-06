@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
+import { motion } from 'motion/react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
 import type { Order, OrderStatus, CartItem, StaffMember, Restaurant } from '../types';
@@ -129,7 +130,15 @@ const formatOrderDetailsForWhatsApp = (order: Order): string => {
 };
 
 
-const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: OrderStatus) => void; onNotify: (order: Order) => void; onViewDetails: (order: Order) => void; onPrint: (order: Order) => void; }> = ({ order, onStatusUpdate, onNotify, onViewDetails, onPrint }) => {
+const OrderCard: React.FC<{ 
+    order: Order; 
+    onStatusUpdate: (id: string, status: OrderStatus) => void; 
+    onNotify: (order: Order) => void; 
+    onViewDetails: (order: Order) => void; 
+    onPrint: (order: Order) => void;
+    enableFiscal?: boolean;
+    onToggleFiscal?: (id: string, currentVal: boolean) => void;
+}> = ({ order, onStatusUpdate, onNotify, onViewDetails, onPrint, enableFiscal, onToggleFiscal }) => {
     const { confirm } = useNotification();
     const { text, color } = statusConfig[order.status];
     const [isExpanded, setIsExpanded] = useState(false);
@@ -232,6 +241,15 @@ const OrderCard: React.FC<{ order: Order; onStatusUpdate: (id: string, status: O
             </div>
             
             <div className="flex justify-end mb-1 items-center gap-2">
+                {enableFiscal && onToggleFiscal && (
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); onToggleFiscal(order.id, !!order.fiscalExport); }}
+                        className={`text-[10px] px-2 py-0.5 rounded font-bold border transition-colors ${order.fiscalExport ? 'bg-purple-100 text-purple-700 border-purple-300' : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'}`}
+                        title="Exportar para NF?"
+                    >
+                        {order.fiscalExport ? 'NF: Sim' : 'NF: Não'}
+                    </button>
+                )}
                 {isPixPaid && (
                     <span className="bg-green-100 text-green-800 text-[10px] font-bold px-1.5 py-0.5 rounded border border-green-200 shadow-sm">
                         PIX PAGO
@@ -344,10 +362,140 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
     const [isManualModalOpen, setIsManualModalOpen] = useState(false);
     const [manualCustomerName, setManualCustomerName] = useState('');
     const [manualCustomerPhone, setManualCustomerPhone] = useState('');
-    const [manualCustomerCpf, setManualCustomerCpf] = useState('');
     const [manualPaymentMethod, setManualPaymentMethod] = useState('Dinheiro');
     const [mensalistaSuggestions, setMensalistaSuggestions] = useState<Mensalista[]>([]);
     const [isSearchingMensalista, setIsSearchingMensalista] = useState(false);
+    const [filterFiscalOnly, setFilterFiscalOnly] = useState(false);
+
+    const fiscalSelectedCount = useMemo(() => {
+        return orders.filter(o => o.fiscalExport).length;
+    }, [orders]);
+
+    const fiscalSelectedTotalAmount = useMemo(() => {
+        return orders.filter(o => o.fiscalExport).reduce((sum, o) => sum + (o.totalPrice || 0), 0);
+    }, [orders]);
+
+    const escapeXml = (unsafe: string): string => {
+        if (!unsafe) return '';
+        return unsafe.replace(/[<>&'"]/g, (c) => {
+            switch (c) {
+                case '<': return '&lt;';
+                case '>': return '&gt;';
+                case '&': return '&amp;';
+                case '\'': return '&apos;';
+                case '"': return '&quot;';
+                default: return c;
+            }
+        });
+    };
+
+    const handleExportFiscalXML = () => {
+        const selectedOrders = orders.filter(o => o.fiscalExport);
+        if (selectedOrders.length === 0) {
+            addToast({ message: "Nenhum pedido marcado para exportação fiscal.", type: 'error' });
+            return;
+        }
+
+        const now = new Date().toISOString();
+        const emitenteNome = restaurant?.name || 'GuaraFood';
+        const emitenteCnpj = restaurant?.cnpj || 'Não Informado';
+        const emitenteIe = restaurant?.ie || 'Não Informado';
+        const emitentePhone = restaurant?.phone || 'Não Informado';
+        const emitenteAddress = restaurant?.address || 'Não Informado';
+
+        let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+        xml += `<exportacao_fiscal>\n`;
+        xml += `    <data_geracao>${now}</data_geracao>\n`;
+        xml += `    <emitente>\n`;
+        xml += `        <razao_social>${escapeXml(emitenteNome)}</razao_social>\n`;
+        xml += `        <cnpj>${escapeXml(emitenteCnpj)}</cnpj>\n`;
+        xml += `        <inscricao_estadual>${escapeXml(emitenteIe)}</inscricao_estadual>\n`;
+        xml += `        <telefone>${escapeXml(emitentePhone)}</telefone>\n`;
+        xml += `        <endereco>${escapeXml(emitenteAddress)}</endereco>\n`;
+        xml += `    </emitente>\n`;
+        xml += `    <pedidos_quantidade>${selectedOrders.length}</pedidos_quantidade>\n`;
+        xml += `    <pedidos>\n`;
+
+        selectedOrders.forEach(order => {
+            const displayOrderNum = order.order_number 
+                ? String(order.order_number).padStart(3, '0')
+                : order.id.substring(order.id.length - 4).toUpperCase();
+
+            xml += `        <pedido>\n`;
+            xml += `            <id>${escapeXml(order.id)}</id>\n`;
+            xml += `            <numero>${escapeXml(displayOrderNum)}</numero>\n`;
+            xml += `            <data_hora>${escapeXml(order.timestamp)}</data_hora>\n`;
+            
+            // Cliente
+            xml += `            <cliente>\n`;
+            xml += `                <nome>${escapeXml(order.customerName)}</nome>\n`;
+            xml += `                <telefone>${escapeXml(order.customerPhone || '')}</telefone>\n`;
+            if (order.customerAddress && order.customerAddress.street !== 'Retirada no Local') {
+                xml += `                <endereco_entrega>\n`;
+                xml += `                    <rua>${escapeXml(order.customerAddress.street || '')}</rua>\n`;
+                xml += `                    <numero>${escapeXml(order.customerAddress.number || '')}</numero>\n`;
+                xml += `                    <bairro>${escapeXml(order.customerAddress.neighborhood || '')}</bairro>\n`;
+                xml += `                    <complemento>${escapeXml(order.customerAddress.complement || '')}</complemento>\n`;
+                xml += `                    <cep>${escapeXml(order.customerAddress.zipCode || '')}</cep>\n`;
+                xml += `                </endereco_entrega>\n`;
+            } else {
+                xml += `                <tipo_entrega>Retirada no Balcão</tipo_entrega>\n`;
+            }
+            xml += `            </cliente>\n`;
+
+            // Itens
+            xml += `            <itens>\n`;
+            order.items.forEach(item => {
+                const totalItemPrice = item.price * item.quantity;
+                xml += `                <item>\n`;
+                xml += `                    <nome>${escapeXml(item.name)}</nome>\n`;
+                xml += `                    <quantidade>${item.quantity}</quantidade>\n`;
+                xml += `                    <preco_unitario>${item.price.toFixed(2)}</preco_unitario>\n`;
+                xml += `                    <preco_total>${totalItemPrice.toFixed(2)}</preco_total>\n`;
+                if (item.sizeName) {
+                    xml += `                    <tamanho>${escapeXml(item.sizeName)}</tamanho>\n`;
+                }
+                if (item.notes) {
+                    xml += `                    <observacoes>${escapeXml(item.notes)}</observacoes>\n`;
+                }
+                xml += `                </item>\n`;
+            });
+            xml += `            </itens>\n`;
+
+            // Financeiro
+            xml += `            <valores>\n`;
+            xml += `                <subtotal>${Number(order.subtotal || 0).toFixed(2)}</subtotal>\n`;
+            xml += `                <taxa_entrega>${Number(order.deliveryFee || 0).toFixed(2)}</taxa_entrega>\n`;
+            xml += `                <desconto>${Number(order.discountAmount || 0).toFixed(2)}</desconto>\n`;
+            xml += `                <total>${order.totalPrice.toFixed(2)}</total>\n`;
+            xml += `            </valores>\n`;
+
+            // Pagamento
+            xml += `            <pagamento>\n`;
+            xml += `                <metodo>${escapeXml(order.paymentMethod)}</metodo>\n`;
+            xml += `                <status>${escapeXml(order.paymentStatus || 'pending')}</status>\n`;
+            xml += `            </pagamento>\n`;
+
+            xml += `        </pedido>\n`;
+        });
+
+        xml += `    </pedidos>\n`;
+        xml += `</exportacao_fiscal>\n`;
+
+        const blob = new Blob([xml], { type: 'application/xml;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        
+        const formattedDate = new Date().toISOString().slice(0, 10);
+        link.setAttribute('download', `export_fiscal_${formattedDate}_${selectedOrders.length}_pedidos.xml`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        addToast({ message: "Arquivo XML exportado com sucesso!", type: 'success' });
+    };
 
     const handleSearchMensalista = async (query: string) => {
         setManualCustomerName(query);
@@ -413,9 +561,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                 restaurantPhone: '',
                 paymentMethod: finalPaymentMethod,
                 status: 'Novo Pedido',
-                mensalistaId: mensalistaId,
-                customerCpf: manualCustomerCpf.trim() || undefined,
-                fiscalStatus: manualCustomerCpf.trim() ? 'selected' : 'pending'
+                mensalistaId: mensalistaId
             });
             
             addToast({ message: 'Pedido criado! Adicione os itens agora.', type: 'success' });
@@ -423,7 +569,6 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
             setIsManualModalOpen(false);
             setManualCustomerName('');
             setManualCustomerPhone('');
-            setManualCustomerCpf('');
             setManualPaymentMethod('Dinheiro');
         } catch (e: any) {
             addToast({ message: `Erro ao criar pedido: ${e.message}`, type: 'error' });
@@ -440,6 +585,16 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
             .catch(err => {
                 addToast({ message: `Erro: ${err.message}`, type: 'error' });
             });
+    };
+
+    const handleToggleFiscal = async (orderId: string, currentFiscalExport: boolean) => {
+        try {
+            const { updateOrderFiscalExport } = await import('../services/orderService');
+            await updateOrderFiscalExport(orderId, !currentFiscalExport);
+            addToast({ message: "Status fiscal atualizado!", type: 'success' });
+        } catch (err: any) {
+            addToast({ message: `Erro: ${err.message}`, type: 'error' });
+        }
     };
 
     const handleNotify = (order: Order) => {
@@ -484,14 +639,18 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
     };
 
     const filteredOrders = useMemo(() => {
-        if (!searchTerm.trim()) return orders;
+        let list = orders;
+        if (filterFiscalOnly) {
+            list = list.filter(order => order.fiscalExport);
+        }
+        if (!searchTerm.trim()) return list;
         const lowerSearch = searchTerm.toLowerCase();
-        return orders.filter(order =>
+        return list.filter(order =>
             order.customerName.toLowerCase().includes(lowerSearch) ||
             String(order.order_number).includes(lowerSearch) ||
             order.id.toLowerCase().includes(lowerSearch)
         );
-    }, [orders, searchTerm]);
+    }, [orders, searchTerm, filterFiscalOnly]);
 
     const { activeOrders, historyOrders, groupedActiveOrders, groupedHistoryOrders } = useMemo(() => {
         const active = filteredOrders.filter(o => 
@@ -516,6 +675,31 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
         };
     }, [filteredOrders]);
 
+    const allCurrentSelectedForFiscal = useMemo(() => {
+        const targetOrders = viewMode === 'active' ? activeOrders : historyOrders;
+        if (targetOrders.length === 0) return false;
+        return targetOrders.every(o => o.fiscalExport);
+    }, [viewMode, activeOrders, historyOrders]);
+
+    const handleToggleAllFiscal = async () => {
+        const targetOrders = viewMode === 'active' ? activeOrders : historyOrders;
+        if (targetOrders.length === 0) return;
+
+        const anyUnmarked = targetOrders.some(o => !o.fiscalExport);
+        const newValue = anyUnmarked;
+
+        try {
+            const { updateOrderFiscalExport } = await import('../services/orderService');
+            addToast({ message: newValue ? "Marcando todos..." : "Desmarcando todos...", type: 'info' });
+            
+            await Promise.all(targetOrders.map(order => updateOrderFiscalExport(order.id, newValue)));
+            
+            addToast({ message: `Configuração fiscal atualizada para ${targetOrders.length} pedidos!`, type: 'success' });
+        } catch (err: any) {
+            addToast({ message: `Erro ao atualizar pedidos: ${err.message}`, type: 'error' });
+        }
+    };
+
     const activeSections = [
         { title: 'Novos', status: 'Novo Pedido' as OrderStatus, bgColor: 'bg-blue-50' },
         { title: 'Cozinha', status: 'Preparando' as OrderStatus, bgColor: 'bg-yellow-50' },
@@ -532,17 +716,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
             {historySections.map(section => (
                 (groupedOrders[section.status] && groupedOrders[section.status]!.length > 0) ? (
                     <div key={section.status} role="region" aria-labelledby={`section-title-${section.status}`} className="mb-8">
-                        <div className="flex justify-between items-center mb-4">
-                            <h2 id={`section-title-${section.status}`} className="text-xl font-bold">{section.title} ({groupedOrders[section.status]!.length})</h2>
-                            {section.status === 'Entregue' && (
-                                <button 
-                                    onClick={() => handleExportFiscalCSV(groupedOrders[section.status])}
-                                    className="bg-purple-600 text-white px-4 py-2 text-xs font-black rounded-lg hover:bg-purple-700 shadow transition-all"
-                                >
-                                    Exportar Planilha Fiscal (CSV)
-                                </button>
-                            )}
-                        </div>
+                        <h2 id={`section-title-${section.status}`} className="text-xl font-bold mb-4">{section.title} ({groupedOrders[section.status]!.length})</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" role="list">
                             {groupedOrders[section.status]!.map((order: Order) => (
                                 <OrderCard 
@@ -552,6 +726,8 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                                     onNotify={handleNotify} 
                                     onViewDetails={setSelectedOrder}
                                     onPrint={onPrint}
+                                    enableFiscal={restaurant?.enableFiscal}
+                                    onToggleFiscal={handleToggleFiscal}
                                 />
                             ))}
                         </div>
@@ -560,28 +736,6 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
             ))}
         </>
     );
-
-    const handleExportFiscalCSV = (ordersToExport: Order[]) => {
-        const headers = ["Data", "Pedido", "Cliente", "CPF", "Total", "Status Fiscal"];
-        const rows = ordersToExport.map(o => [
-            new Date(o.timestamp).toLocaleDateString(),
-            o.order_number || o.id,
-            o.customerName,
-            o.customerCpf || '',
-            o.totalPrice.toFixed(2),
-            o.fiscalStatus || 'pending'
-        ]);
-
-        const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", `pedidos_fiscais_${new Date().toISOString().slice(0,10)}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
 
     return (
         <>
@@ -703,6 +857,123 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                         </button>
                     </div>
                 </div>
+                
+                {restaurant?.enableFiscal && viewMode === 'history' && (
+                    <motion.div 
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mt-3 bg-white border border-purple-200 rounded-2xl shadow-sm overflow-hidden"
+                    >
+                        {/* Resumo de Seleção (Topo do Dashboard Fiscal) */}
+                        <div className="p-4 bg-purple-900 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                    <span className="p-1.5 bg-purple-800 text-purple-300 rounded-lg">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                                        </svg>
+                                    </span>
+                                    <h3 className="text-xs font-black uppercase tracking-widest text-purple-200 font-mono">Resumo de Seleção</h3>
+                                </div>
+                                <div className="flex items-baseline gap-1.5">
+                                    <motion.span 
+                                        key={fiscalSelectedCount}
+                                        initial={{ scale: 0.8, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        className="text-2xl font-black text-white"
+                                    >
+                                        {fiscalSelectedCount}
+                                    </motion.span>
+                                    <span className="text-sm font-bold text-purple-300">
+                                        {fiscalSelectedCount === 1 ? 'pedido selecionado' : 'pedidos selecionados'} para exportação
+                                    </span>
+                                </div>
+                                <p className="text-[10px] text-purple-400 font-semibold uppercase tracking-wider">
+                                    Otimizando a exportação múltipla em lote de arquivos XML
+                                </p>
+                            </div>
+
+                            {/* Indicadores de Progresso e Valor Acumulado */}
+                            <div className="flex flex-wrap items-center gap-4 md:gap-6 bg-purple-950/40 p-3 rounded-xl border border-purple-800/40">
+                                <div className="space-y-1">
+                                    <span className="text-[10px] text-purple-400 font-bold uppercase tracking-wider block font-mono">Progresso da Seleção</span>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-24 bg-purple-900 rounded-full h-1.5 overflow-hidden">
+                                            <motion.div 
+                                                initial={{ width: 0 }}
+                                                animate={{ width: `${orders.length > 0 ? (fiscalSelectedCount / orders.length) * 100 : 0}%` }}
+                                                transition={{ duration: 0.3, ease: "easeOut" }}
+                                                className="bg-purple-400 h-1.5 rounded-full"
+                                            />
+                                        </div>
+                                        <span className="text-xs font-mono font-black text-purple-200">
+                                            {orders.length > 0 ? Math.round((fiscalSelectedCount / orders.length) * 100) : 0}%
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-0.5 border-l border-purple-800/60 pl-4">
+                                    <span className="text-[10px] text-purple-400 font-bold uppercase tracking-wider block font-mono">Valor Consolidado</span>
+                                    <motion.span 
+                                        key={fiscalSelectedTotalAmount}
+                                        initial={{ opacity: 0, y: 5 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        className="text-base font-mono font-black text-emerald-400 block"
+                                    >
+                                        R$ {fiscalSelectedTotalAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </motion.span>
+                                </div>
+
+                                <div className="space-y-0.5 border-l border-purple-800/60 pl-4">
+                                    <span className="text-[10px] text-purple-400 font-bold uppercase tracking-wider block font-mono">Total Geral</span>
+                                    <span className="text-sm font-mono font-bold text-purple-200 block">
+                                        {orders.length} pedidos
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Controles de Ação do Dashboard */}
+                        <div className="p-3 bg-purple-50/50 border-t border-purple-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <button 
+                                    onClick={handleToggleAllFiscal}
+                                    className="px-3 py-1.5 text-xs font-bold text-purple-700 bg-purple-100 hover:bg-purple-200 border border-purple-200 rounded-lg transition-colors flex items-center gap-1.5 uppercase tracking-wider"
+                                >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 0 1-1.043 3.296 3.745 3.745 0 0 1-3.296 1.043A3.745 3.745 0 0 1 12 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 0 1-3.296-1.043 3.745 3.745 0 0 1-1.043-3.296A3.745 3.745 0 0 1 3 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 0 1 1.043-3.296 3.746 3.746 0 0 1 3.296-1.043A3.746 3.746 0 0 1 12 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 0 1 3.296 1.043 3.746 3.746 0 0 1 1.043 3.296A3.745 3.745 0 0 1 21 12Z" />
+                                    </svg>
+                                    {allCurrentSelectedForFiscal ? 'Desmarcar Todos' : 'Marcar Todos'}
+                                </button>
+                                
+                                <button
+                                    onClick={() => setFilterFiscalOnly(!filterFiscalOnly)}
+                                    className={`px-3 py-1.5 text-xs font-bold border rounded-lg transition-colors flex items-center gap-1.5 uppercase tracking-wider ${
+                                        filterFiscalOnly 
+                                            ? 'bg-purple-600 border-purple-600 text-white shadow-sm' 
+                                            : 'bg-white border-purple-200 text-purple-700 hover:bg-purple-50'
+                                    }`}
+                                >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+                                    </svg>
+                                    {filterFiscalOnly ? 'Mostrando Apenas NF' : 'Filtrar por NF'}
+                                </button>
+                            </div>
+
+                            <button
+                                onClick={handleExportFiscalXML}
+                                disabled={fiscalSelectedCount === 0}
+                                className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-40 disabled:bg-purple-300 text-xs font-black rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm uppercase tracking-wider"
+                            >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                                </svg>
+                                Exportar XML ({fiscalSelectedCount})
+                            </button>
+                        </div>
+                    </motion.div>
+                )}
             </div>
 
             <main className="p-3 bg-gray-50 min-h-[calc(100vh-200px)]">
@@ -730,6 +1001,8 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                                                         onNotify={handleNotify} 
                                                         onViewDetails={setSelectedOrder}
                                                         onPrint={onPrint}
+                                                        enableFiscal={restaurant?.enableFiscal}
+                                                        onToggleFiscal={handleToggleFiscal}
                                                     />
                                                 ))
                                             ) : (
@@ -812,16 +1085,6 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                                     placeholder="Apenas números. Ex: 35999998888"
                                 />
                                 <p className="text-[10px] text-gray-500 mt-1">Obrigatório apenas se selecionar "Mensalista".</p>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-black text-gray-500 uppercase mb-1">CPF (Opcional - Nota Fiscal)</label>
-                                <input 
-                                    type="text" 
-                                    value={manualCustomerCpf} 
-                                    onChange={e => setManualCustomerCpf(e.target.value.replace(/\D/g, ''))} 
-                                    className="w-full p-3 border-2 rounded-xl bg-gray-50 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all font-bold text-gray-800"
-                                    placeholder="Ex: 000.000.000-00"
-                                />
                             </div>
                             <div>
                                 <label className="block text-xs font-black text-gray-500 uppercase mb-1">Forma de Pagamento</label>

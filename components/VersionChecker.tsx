@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
-export const APP_VERSION = "1.2.1"; // Versão atual incrementada para forçar atualização e limpeza de caches obsoletos
+export const APP_VERSION = "1.2.2"; // Versão atual incrementada para forçar atualização e limpeza de caches obsoletos
 
 // Helper to compare semantic versions to ensure update banner only shows for genuine upgrades
 const isNewerVersion = (server: string, local: string): boolean => {

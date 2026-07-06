@@ -56,7 +56,6 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
     const [newComandaName, setNewComandaName] = useState('');
     const [newComandaNum, setNewComandaNum] = useState('');
     const [newComandaPhone, setNewComandaPhone] = useState('');
-    const [newComandaCpf, setNewComandaCpf] = useState('');
     const [paymentAmount, setPaymentAmount] = useState('');
     const [changeFor, setChangeFor] = useState('');
     const [paymentMethod, setPaymentMethod] = useState('Dinheiro');
@@ -150,9 +149,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                 tableNumber: selectedTable,
                 comandaNumber: newComandaNum || undefined,
                 status: 'Aguardando Pagamento',
-                mensalistaId: selectedMensalista?.id,
-                customerCpf: newComandaCpf.trim() || undefined,
-                fiscalStatus: newComandaCpf.trim() ? 'selected' : 'pending'
+                mensalistaId: selectedMensalista?.id
             });
             
             addToast({ message: `Comanda para ${newComandaName} aberta na Mesa ${selectedTable}!`, type: 'success' });
@@ -162,7 +159,6 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
             setNewComandaName('');
             setNewComandaNum('');
             setNewComandaPhone('');
-            setNewComandaCpf('');
             setSelectedMensalista(null);
             setMensalistaSearch('');
         } catch (e: any) {
@@ -1029,17 +1025,6 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                     </div>
                                 </div>
                             )}
-
-                            <div>
-                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">CPF (Opcional - Nota Fiscal)</label>
-                                <input 
-                                    type="text"
-                                    value={newComandaCpf}
-                                    onChange={e => setNewComandaCpf(e.target.value.replace(/\D/g, ''))}
-                                    placeholder="Ex: 000.000.000-00"
-                                    className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-sm font-bold focus:border-orange-500 outline-none transition-all"
-                                />
-                            </div>
 
                             <div>
                                 <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Nº Comanda / Identificador</label>
