@@ -231,7 +231,7 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
     const handleAddComboToOrder = useCallback((combo: Combo) => {
         const comboCartItem: CartItem = {
             id: `combo-${combo.id}-${Date.now()}`, // Unique ID
-            name: combo.name,
+            restaurantId: order.restaurantId, name: combo.name,
             price: combo.price,
             basePrice: combo.price,
             imageUrl: combo.imageUrl,
@@ -263,7 +263,7 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
 
         const kiloItem: CartItem = {
             id: `kilo-${Date.now()}`,
-            name: 'Prato por Kilo',
+            restaurantId: order.restaurantId, name: 'Prato por Kilo',
             price: itemPrice,
             basePrice: itemPrice,
             imageUrl: '',

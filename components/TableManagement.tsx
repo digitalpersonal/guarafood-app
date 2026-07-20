@@ -208,7 +208,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
         try {
             const kiloItem: CartItem = {
                 id: `kilo-${Date.now()}`,
-                name: 'Prato por Kilo',
+                restaurantId: currentUser?.restaurantId || 0, name: 'Prato por Kilo',
                 price: itemPrice,
                 basePrice: itemPrice,
                 imageUrl: '',
@@ -273,7 +273,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
         try {
             const kiloItem: CartItem = {
                 id: `kilo-${Date.now()}`,
-                name: 'Prato por Kilo',
+                restaurantId: currentUser?.restaurantId || 0, name: 'Prato por Kilo',
                 price: itemPrice,
                 basePrice: itemPrice,
                 imageUrl: '',

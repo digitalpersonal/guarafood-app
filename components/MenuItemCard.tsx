@@ -97,23 +97,27 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
       setIsGenericModalOpen(true);
     }
     else {
-      setIsAdding(true);
-      setTimeout(() => setIsAdding(false), 500);
-      
-      const rect = event.currentTarget.getBoundingClientRect();
-      addFlyingItem(finalImageUrl, rect);
-      addToCart(item);
+      const success = addToCart(item);
+      if (success) {
+        setIsAdding(true);
+        setTimeout(() => setIsAdding(false), 500);
+        
+        const rect = event.currentTarget.getBoundingClientRect();
+        addFlyingItem(finalImageUrl, rect);
+      }
     }
   };
 
   const handleCustomizedItemAddToCart = (customizedItem: CartItem) => {
-    setIsAdding(true);
-    setTimeout(() => setIsAdding(false), 500);
-    
-    addToCart(customizedItem);
-    setIsPizzaModalOpen(false);
-    setIsAcaiModalOpen(false);
-    setIsGenericModalOpen(false);
+    const success = addToCart(customizedItem);
+    if (success) {
+      setIsAdding(true);
+      setTimeout(() => setIsAdding(false), 500);
+      
+      setIsPizzaModalOpen(false);
+      setIsAcaiModalOpen(false);
+      setIsGenericModalOpen(false);
+    }
   };
 
   const containerClasses = item.isDailySpecial 

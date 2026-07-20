@@ -71,9 +71,11 @@ const ComboCard: React.FC<ComboCardProps> = ({ combo, menuItems, isOpen = true }
           addToast({ message: "Este restaurante está fechado agora.", type: 'warning' });
           return;
       }
-      const rect = event.currentTarget.getBoundingClientRect();
-      addFlyingItem(combo.imageUrl, rect);
-      addToCart(combo);
+      const success = addToCart(combo);
+      if (success) {
+          const rect = event.currentTarget.getBoundingClientRect();
+          addFlyingItem(combo.imageUrl, rect);
+      }
   };
   
   const tagText = combo.activePromotion ? 'PROMO' : 'COMBO';

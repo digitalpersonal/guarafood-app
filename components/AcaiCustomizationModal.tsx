@@ -183,6 +183,7 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
         
         const customizedItem: CartItem = {
             id: cartId,
+            restaurantId: initialItem.restaurantId,
             name: name,
             price: totalPrice,
             basePrice: Number(selectedSize.price),

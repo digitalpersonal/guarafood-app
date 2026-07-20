@@ -169,7 +169,9 @@ const OrderCard: React.FC<{
         }
     };
 
-    const timeString = new Date(order.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const orderDateObj = new Date(order.timestamp);
+    const dateString = orderDateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const timeString = orderDateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
     const ActionButtons: React.FC = () => {
         const btnClass = "flex-1 py-1 px-2 rounded text-xs font-bold text-white shadow-sm hover:opacity-90 transition-opacity whitespace-nowrap";
@@ -229,7 +231,9 @@ const OrderCard: React.FC<{
             <div className="flex justify-between items-start mb-1">
                 <div className="flex items-center gap-1">
                     <span className="font-mono font-black text-orange-600 text-sm">{displayOrderNum}</span>
-                    <span className="text-[10px] text-gray-500 bg-gray-100 px-1 rounded">{timeString}</span>
+                    <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded font-mono" title={`${dateString} ${timeString}`}>
+                        {dateString} {timeString}
+                    </span>
                 </div>
                 <button 
                     onClick={(e) => { e.stopPropagation(); onPrint(order); }} 

@@ -218,6 +218,7 @@ export interface Expense {
 // Refactored CartItem to support custom pizzas and addons
 export interface CartItem {
   id: string; // Composite key like 'item-101' or 'pizza-201-202-addon-1'
+  restaurantId?: number; // Added to prevent mixed restaurant orders
   name: string;
   price: number; // Final price including addons and half-pizza logic
   basePrice: number; // Price before addons

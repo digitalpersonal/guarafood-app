@@ -16,7 +16,7 @@ import LoginScreen from './components/LoginScreen';
 import AdminDashboard from './components/AdminDashboard';
 import OrderManagement from './components/OrderManagement';
 import HomePromotionalBanner from './components/HomePromotionalBanner';
-import { CartProvider } from './hooks/useCart';
+import { CartProvider, useCart } from './hooks/useCart';
 import { AnimationProvider } from './hooks/useAnimation';
 import { NotificationProvider, useNotification } from './hooks/useNotification';
 import OptimizedImage from './components/OptimizedImage';
@@ -330,6 +330,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
 };
 
 const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRestaurant: (r: Restaurant | null) => void }> = ({ selectedRestaurant, onSelectRestaurant }) => {
+    const { cartItems } = useCart();
     const [restaurants, setRestaurants] = useState<Restaurant[]>(() => {
         try {
             const cached = localStorage.getItem('guarafood-cached-all-restaurants');
@@ -403,10 +404,17 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
 
     if (isLoading) return <div className="h-screen flex items-center justify-center"><Spinner /></div>;
 
+    const cartRestaurantId = cartItems.length > 0 ? cartItems[0].restaurantId : null;
+    let effectiveRestaurant = selectedRestaurant;
+    if (cartRestaurantId && restaurants.length > 0) {
+        const found = restaurants.find(r => r.id === cartRestaurantId);
+        if (found) effectiveRestaurant = found;
+    }
+
     if (selectedRestaurant) return (
         <>
             <RestaurantMenu restaurant={selectedRestaurant} onBack={() => onSelectRestaurant(null)} />
-            <Cart restaurant={selectedRestaurant} />
+            <Cart restaurant={effectiveRestaurant} />
         </>
     );
 
@@ -469,7 +477,7 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
                 )}
             </div>
             <AdRotator />
-            <Cart restaurant={selectedRestaurant} />
+            <Cart restaurant={effectiveRestaurant} />
         </main>
     );
 };

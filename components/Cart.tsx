@@ -70,6 +70,14 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
             addToast({ message: "Desculpe, o restaurante fechou enquanto você escolhia.", type: 'error' });
             return;
         }
+        
+        // Block checkout if cart has items from another restaurant
+        const hasDifferentRestaurant = cartItems.some(i => i.restaurantId !== undefined && i.restaurantId !== restaurant.id);
+        if (hasDifferentRestaurant) {
+            addToast({ message: "Seu carrinho contém itens de outro restaurante. Por favor, esvazie o carrinho para pedir aqui.", type: 'error' });
+            return;
+        }
+
         setIsCheckoutOpen(true);
     };
 

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import type { MenuItem, Addon, CartItem, SizeOption } from '../types';
+import type { MenuItem, Addon, CartItem, SizeOption, OptionGroup } from '../types';
 import OptimizedImage from './OptimizedImage';
 
 interface PizzaCustomizationModalProps {
@@ -24,6 +24,7 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
     const [firstHalf, setFirstHalf] = useState<MenuItem>(initialPizza);
     const [secondHalf, setSecondHalf] = useState<MenuItem | null>(null);
     const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
+    const [selectedOptions, setSelectedOptions] = useState<{ [groupId: string]: string[] }>({});
     const [showSecondHalfSelector, setShowSecondHalfSelector] = useState(false);
     const [notes, setNotes] = useState('');
 
@@ -38,6 +39,14 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
         }
         setSecondHalf(null);
         setSelectedAddonIds(new Set());
+        
+        const initialOptions: { [groupId: string]: string[] } = {};
+        initialPizza.optionGroups?.forEach(group => {
+            const defaults = group.options.filter(o => o.default).map(o => o.name);
+            initialOptions[group.id] = defaults;
+        });
+        setSelectedOptions(initialOptions);
+
         setShowSecondHalfSelector(false);
         setNotes('');
         setIsAdding(false);
@@ -64,11 +73,20 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
             .filter(addon => selectedAddonIds.has(addon.id))
             .reduce((total, addon) => total + Number(addon.price || 0), 0);
 
+        let optionsPrice = 0;
+        initialPizza.optionGroups?.forEach(group => {
+            const selectedInGroup = selectedOptions[group.id] || [];
+            selectedInGroup.forEach(optName => {
+                const opt = group.options.find(o => o.name === optName);
+                if (opt) optionsPrice += Number(opt.price || 0);
+            });
+        });
+
         return { 
             basePrice: pizzaPrice, 
-            totalPrice: pizzaPrice + addonsPrice 
+            totalPrice: pizzaPrice + addonsPrice + optionsPrice
         };
-    }, [firstHalf, secondHalf, selectedAddonIds, allAddons, selectedSize]);
+    }, [firstHalf, secondHalf, selectedAddonIds, allAddons, selectedSize, selectedOptions, initialPizza.optionGroups]);
     
     const handleAddonToggle = (addonId: number) => {
         setSelectedAddonIds(prev => {
@@ -86,6 +104,34 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
         setSecondHalf(pizza);
         setShowSecondHalfSelector(false);
     };
+
+    const handleOptionToggle = (groupId: string, optionName: string, max: number) => {
+        setSelectedOptions(prev => {
+            const current = prev[groupId] || [];
+            const isSelected = current.includes(optionName);
+            
+            if (isSelected) {
+                return { ...prev, [groupId]: current.filter(o => o !== optionName) };
+            } else {
+                if (max === 1) {
+                    return { ...prev, [groupId]: [optionName] };
+                }
+                if (current.length < max) {
+                    return { ...prev, [groupId]: [...current, optionName] };
+                }
+                return { ...prev, [groupId]: [...current.slice(1), optionName] };
+            }
+        });
+    };
+
+    const isGroupValid = (group: OptionGroup) => {
+        const count = (selectedOptions[group.id] || []).length;
+        return count >= group.minSelections;
+    };
+
+    const allGroupsValid = initialPizza.optionGroups 
+        ? initialPizza.optionGroups.every(isGroupValid) 
+        : true;
     
     const handleAddToCartClick = () => {
         if (!selectedSize) return;
@@ -107,8 +153,24 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
         const sortedAddonIds = Array.from(selectedAddonIds).sort();
         const cartId = `pizza-${sortedHalfIds.join('-')}_size-${selectedSize.name}_addons-${sortedAddonIds.join('-')}`;
         
+        const cartSelectedOptions: { groupTitle: string, optionName: string, price: number }[] = [];
+        initialPizza.optionGroups?.forEach(group => {
+            const selected = selectedOptions[group.id] || [];
+            selected.forEach(optName => {
+                const opt = group.options.find(o => o.name === optName);
+                if (opt) {
+                    cartSelectedOptions.push({
+                        groupTitle: group.title,
+                        optionName: opt.name,
+                        price: Number(opt.price) || 0
+                    });
+                }
+            });
+        });
+
         const customizedPizza: CartItem = {
             id: cartId,
+            restaurantId: initialPizza.restaurantId,
             name,
             price: totalPrice,
             basePrice,
@@ -117,6 +179,7 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
             description: secondHalf ? 'Pizza com dois sabores' : firstHalf.description,
             halves,
             selectedAddons,
+            selectedOptions: cartSelectedOptions.length > 0 ? cartSelectedOptions : undefined,
             sizeName: selectedSize.name,
             notes: notes.trim() || undefined,
         };
@@ -206,6 +269,50 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                         </div>
                     )}
                     
+                    {initialPizza.optionGroups?.map((group, gIdx) => {
+                        const isValid = isGroupValid(group);
+                        const selectedCount = (selectedOptions[group.id] || []).length;
+                        
+                        return (
+                            <div key={group.id} className="p-4 bg-white rounded-xl shadow-sm border border-gray-100">
+                                <div className="flex justify-between items-center mb-3">
+                                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                                        {group.title}
+                                        {group.minSelections > 0 && (
+                                            <span className="bg-red-100 text-red-600 text-[10px] px-2 py-0.5 rounded-full font-black uppercase">Obrigatório</span>
+                                        )}
+                                    </h3>
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${isValid ? 'bg-green-50 text-green-600 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200 animate-pulse'}`}>
+                                        {selectedCount} / {group.maxSelections}
+                                    </span>
+                                </div>
+
+                                <div className="space-y-2">
+                                    {group.options.map(option => {
+                                        const isSelected = (selectedOptions[group.id] || []).includes(option.name);
+                                        
+                                        return (
+                                            <label key={option.name} className={`flex items-center justify-between p-3 border rounded-lg transition-all cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-orange-50 border-orange-400 ring-1 ring-orange-400' : 'border-gray-200'}`}>
+                                                <div className="flex items-center gap-3">
+                                                    <input 
+                                                        type={group.maxSelections === 1 ? "radio" : "checkbox"}
+                                                        checked={isSelected}
+                                                        onChange={() => handleOptionToggle(group.id, option.name, group.maxSelections)}
+                                                        className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                                                    />
+                                                    <span className={`font-semibold ${isSelected ? 'text-orange-900' : 'text-gray-700'}`}>{option.name}</span>
+                                                </div>
+                                                {option.price > 0 && (
+                                                    <span className="text-sm font-bold text-gray-500">+ R$ {option.price.toFixed(2)}</span>
+                                                )}
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        );
+                    })}
+
                     {availableAddons.length > 0 && (
                         <div>
                             <h3 className="font-bold mb-2">3. Adicionais (Opcional)</h3>
@@ -247,8 +354,8 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                     </div>
                     <button 
                         onClick={handleAddToCartClick}
-                        disabled={isAdding}
-                        className={`font-bold py-3 px-6 rounded-lg transition-all flex items-center gap-2 ${isAdding ? 'bg-green-600 text-white scale-105' : 'bg-orange-600 text-white hover:bg-orange-700'}`}
+                        disabled={isAdding || !allGroupsValid}
+                        className={`font-bold py-3 px-6 rounded-lg transition-all flex items-center gap-2 ${isAdding ? 'bg-green-600 text-white scale-105' : (!allGroupsValid ? 'bg-gray-400 text-gray-200 cursor-not-allowed' : 'bg-orange-600 text-white hover:bg-orange-700')}`}
                     >
                         {isAdding ? (
                             <>

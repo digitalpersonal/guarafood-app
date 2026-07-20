@@ -1,10 +1,11 @@
 
 import React, { createContext, useState, useContext, useMemo, useCallback, useEffect } from 'react';
 import type { CartItem, MenuItem, Combo } from '../types';
+import { useNotification } from './useNotification';
 
 interface CartContextType {
   cartItems: CartItem[];
-  addToCart: (item: MenuItem | Combo | CartItem) => void;
+  addToCart: (item: MenuItem | Combo | CartItem) => boolean;
   removeFromCart: (itemId: string) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
   updateItemNotes: (itemId: string, notes: string) => void;
@@ -18,6 +19,7 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 const CART_STORAGE_KEY = 'guara-food-cart-v2';
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { addToast } = useNotification();
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
     try {
       const storedCart = window.localStorage.getItem(CART_STORAGE_KEY);
@@ -32,9 +34,19 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [cartItems]);
 
   const addToCart = useCallback((item: MenuItem | Combo | CartItem) => {
-    if ('basePrice' in item) {
-        const customItem = item as CartItem;
-        setCartItems(prevItems => {
+    const itemRestaurantId = ('restaurantId' in item) ? item.restaurantId : undefined;
+
+    if (itemRestaurantId !== undefined && cartItems.length > 0) {
+        const hasDifferentRestaurant = cartItems.some(i => i.restaurantId !== undefined && i.restaurantId !== itemRestaurantId);
+        if (hasDifferentRestaurant) {
+            addToast({ message: 'Não é possível adicionar produtos de restaurantes diferentes no mesmo carrinho. Limpe o carrinho atual para pedir deste restaurante.', type: 'error' });
+            return false;
+        }
+    }
+
+    setCartItems(prevItems => {
+        if ('basePrice' in item) {
+            const customItem = item as CartItem;
             const existingItem = prevItems.find(cartItem => cartItem.id === customItem.id);
             if (existingItem) {
                 return prevItems.map(cartItem =>
@@ -42,34 +54,33 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 );
             }
             return [...prevItems, { ...customItem, quantity: 1 }];
-        });
-        return;
-    }
+        }
 
-    const isCombo = 'menuItemIds' in item;
-    const cartId = isCombo ? `combo-${item.id}` : `item-${item.id}`;
+        const isCombo = 'menuItemIds' in item;
+        const cartId = isCombo ? `combo-${item.id}` : `item-${item.id}`;
 
-    setCartItems(prevItems => {
-      const existingItem = prevItems.find(cartItem => cartItem.id === cartId);
-      if (existingItem) {
-        return prevItems.map(cartItem =>
-          cartItem.id === cartId ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
-        );
-      }
-      const newCartItem: CartItem = {
-          id: cartId,
-          name: item.name,
-          price: Number(item.price),
-          basePrice: Number(item.price),
-          imageUrl: item.imageUrl,
-          quantity: 1,
-          description: item.description,
-          originalPrice: item.activePromotion?.name ? Number(item.price) : (item.originalPrice ? Number(item.originalPrice) : undefined),
-          promotionName: item.activePromotion?.name,
-      };
-      return [...prevItems, newCartItem];
+        const existingItem = prevItems.find(cartItem => cartItem.id === cartId);
+        if (existingItem) {
+            return prevItems.map(cartItem =>
+              cartItem.id === cartId ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
+            );
+        }
+        const newCartItem: CartItem = {
+            id: cartId,
+            restaurantId: itemRestaurantId,
+            name: item.name,
+            price: Number(item.price),
+            basePrice: Number(item.price),
+            imageUrl: item.imageUrl,
+            quantity: 1,
+            description: item.description,
+            originalPrice: item.activePromotion?.name ? Number(item.price) : (item.originalPrice ? Number(item.originalPrice) : undefined),
+            promotionName: item.activePromotion?.name,
+        };
+        return [...prevItems, newCartItem];
     });
-  }, []);
+    return true;
+  }, [cartItems, addToast]);
 
   const removeFromCart = useCallback((itemId: string) => {
     setCartItems(prevItems => prevItems.filter(item => item.id !== itemId));
