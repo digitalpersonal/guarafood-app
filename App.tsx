@@ -5,7 +5,7 @@ import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from
 import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant, fetchRestaurantById } from './services/databaseService';
 import { AuthProvider, useAuth } from './services/authService';
 import { getInitializationError, getErrorMessage } from './services/api';
-import { isRestaurantOpen } from './utils/restaurantUtils';
+import { isRestaurantOpen, isMenuItemAvailableByTime } from './utils/restaurantUtils';
 
 import RestaurantCard from './components/RestaurantCard';
 import Spinner from './components/Spinner';
@@ -291,7 +291,8 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         {dailySpecials.map(item => {
                             const categoryName = item.categoryId ? categoryNameMap.get(item.categoryId) : undefined;
-                            return <MenuItemCard key={`destaque-${item.id}`} item={item} allPizzas={allPizzas} allAddons={addons} categoryName={categoryName} />
+                            const catObj = item.categoryId ? menu.find(c => c.id === item.categoryId) : undefined;
+                            return <MenuItemCard key={`destaque-${item.id}`} item={item} allPizzas={allPizzas} allAddons={addons} categoryName={categoryName} category={catObj} />
                         })}
                     </div>
                  </div>
@@ -314,10 +315,29 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                     <div className="space-y-8">
                         {menu.map((category) => (
                             <div key={category.name} id={slugify(category.name)} className="scroll-mt-44 rounded-lg">
-                                <h2 className="text-2xl font-bold mb-4">{category.name}</h2>
+                                <div className="flex flex-wrap items-center gap-2 mb-4">
+                                    <h2 className="text-2xl font-bold">{category.name}</h2>
+                                    {(category.availableStartTime || category.availableEndTime) && (
+                                        <span className={`text-xs font-extrabold px-3 py-1 rounded-full border flex items-center gap-1 ${
+                                            isMenuItemAvailableByTime({ availableStartTime: '', availableEndTime: '' }, category).isAvailable
+                                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                                : 'bg-amber-50 text-amber-800 border-amber-300'
+                                        }`}>
+                                            <span>⏰</span>
+                                            <span>
+                                                {category.availableStartTime && category.availableEndTime
+                                                    ? `Disponível das ${category.availableStartTime} às ${category.availableEndTime}`
+                                                    : category.availableStartTime
+                                                    ? `Disponível a partir das ${category.availableStartTime}`
+                                                    : `Disponível até às ${category.availableEndTime}`
+                                                }
+                                            </span>
+                                        </span>
+                                    )}
+                                </div>
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                     {category.combos?.map(combo => <ComboCard key={`combo-${combo.id}`} combo={combo} menuItems={menu.flatMap(c => c.items)} />)}
-                                    {category.items.map(item => <MenuItemCard key={item.id} item={item} allPizzas={allPizzas} allAddons={addons} categoryName={category.name} />)}
+                                    {category.items.map(item => <MenuItemCard key={item.id} item={item} allPizzas={allPizzas} allAddons={addons} categoryName={category.name} category={category} />)}
                                 </div>
                             </div>
                         ))}
