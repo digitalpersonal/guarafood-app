@@ -105,7 +105,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
     const [reorderingItemsCategoryId, setReorderingItemsCategoryId] = useState<number | null>(null);
 
     // Category editing state
-    const [editingCategory, setEditingCategory] = useState<{ id: number; oldName: string; newName: string; newIconUrl: string | null } | null>(null);
+    const [editingCategory, setEditingCategory] = useState<{ id: number; oldName: string; newName: string; newIconUrl: string | null; newAvailableStartTime: string | null; newAvailableEndTime: string | null } | null>(null);
     const [restaurantName, setRestaurantName] = useState<string | null>(null);
     const [isSeeding, setIsSeeding] = useState(false);
 
@@ -530,7 +530,9 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             id: category.id,
             oldName: category.name,
             newName: category.name,
-            newIconUrl: category.iconUrl || null // Initialize with existing iconUrl or null
+            newIconUrl: category.iconUrl || null,
+            newAvailableStartTime: category.availableStartTime || null,
+            newAvailableEndTime: category.availableEndTime || null
         });
     };
 
@@ -569,13 +571,13 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
 
     const handleSaveCategoryChanges = async () => {
         if (!editingCategory || !restaurantId) return;
-        const { id, oldName, newName, newIconUrl } = editingCategory;
-        if (newName.trim() === '' || (newName === oldName && newIconUrl === (menuCategories.find(c => c.id === id)?.iconUrl || null))) {
+        const { id, oldName, newName, newIconUrl, newAvailableStartTime, newAvailableEndTime } = editingCategory;
+        if (newName.trim() === '' || (newName === oldName && newIconUrl === (menuCategories.find(c => c.id === id)?.iconUrl || null) && newAvailableStartTime === (menuCategories.find(c => c.id === id)?.availableStartTime || null) && newAvailableEndTime === (menuCategories.find(c => c.id === id)?.availableEndTime || null))) {
             setEditingCategory(null); // No changes made
             return;
         }
         try {
-            await updateCategory(restaurantId, id, newName.trim(), newIconUrl);
+            await updateCategory(restaurantId, id, newName.trim(), newIconUrl, newAvailableStartTime || undefined, newAvailableEndTime || undefined);
             setEditingCategory(null);
             await loadData();
             addToast({ message: 'Categoria atualizada!', type: 'success' });
@@ -1017,12 +1019,40 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                                                         <img src={editingCategory.newIconUrl} alt="Icon preview" className="w-8 h-8 object-contain" />
                                                     )}
                                                 </div>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <div className="flex flex-col w-1/2">
+                                                        <label className="text-[10px] font-bold text-gray-500 uppercase">Início (Opcional)</label>
+                                                        <input 
+                                                            type="time" 
+                                                            value={editingCategory.newAvailableStartTime || ''} 
+                                                            onChange={(e) => setEditingCategory({...editingCategory, newAvailableStartTime: e.target.value})}
+                                                            className="text-sm p-1 border rounded-md"
+                                                        />
+                                                    </div>
+                                                    <div className="flex flex-col w-1/2">
+                                                        <label className="text-[10px] font-bold text-gray-500 uppercase">Fim (Opcional)</label>
+                                                        <input 
+                                                            type="time" 
+                                                            value={editingCategory.newAvailableEndTime || ''} 
+                                                            onChange={(e) => setEditingCategory({...editingCategory, newAvailableEndTime: e.target.value})}
+                                                            className="text-sm p-1 border rounded-md"
+                                                        />
+                                                    </div>
+                                                </div>
                                             </div>
                                         ) : (
-                                            <h3 className="text-xl font-bold text-gray-700 flex items-center gap-2">
-                                                {category.iconUrl && category.iconUrl.trim() !== '' && <img src={category.iconUrl} alt={category.name} className="w-6 h-6 object-contain" />}
-                                                {category.name}
-                                            </h3>
+                                            <div className="flex flex-col">
+                                                <h3 className="text-xl font-bold text-gray-700 flex items-center gap-2">
+                                                    {category.iconUrl && category.iconUrl.trim() !== '' && <img src={category.iconUrl} alt={category.name} className="w-6 h-6 object-contain" />}
+                                                    {category.name}
+                                                </h3>
+                                                {(category.availableStartTime || category.availableEndTime) && (
+                                                    <p className="text-[10px] font-bold text-orange-600 uppercase mt-0.5">
+                                                        ⏰ Disponível 
+                                                        {category.availableStartTime && category.availableEndTime ? ` das ${category.availableStartTime} às ${category.availableEndTime}` : category.availableStartTime ? ` a partir das ${category.availableStartTime}` : ` até às ${category.availableEndTime}`}
+                                                    </p>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                     <div className="flex items-center gap-1">

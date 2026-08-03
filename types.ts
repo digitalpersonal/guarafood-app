@@ -151,9 +151,6 @@ export interface MenuItem {
   optionGroups?: OptionGroup[] | null; // NEW: Generic customization groups
   isDailySpecial?: boolean; // For "Destaque do Dia"
   isWeeklySpecial?: boolean; // For supermarket "Promoções da Semana"
-  availableDays?: number[]; // For "Prato do Dia". 0=Sun, 1=Mon, etc.
-  availableStartTime?: string; // e.g. "18:30"
-  availableEndTime?: string; // e.g. "23:59"
   displayOrder?: number; // Added for item reordering
   available?: boolean; // NEW: Field to mark item as out of stock
 }
@@ -179,8 +176,9 @@ export interface MenuCategory {
   restaurantId: number;
   displayOrder?: number; // Added for reordering
   iconUrl?: string; // NEW FIELD
+  availableDays?: number[]; // For "Menu do Dia"
   availableStartTime?: string; // e.g. "18:30"
-  availableEndTime?: string;   // e.g. "23:59"
+  availableEndTime?: string; // e.g. "23:59"
 }
 
 // New Promotion interface

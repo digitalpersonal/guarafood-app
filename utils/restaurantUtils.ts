@@ -110,3 +110,40 @@ export const isRestaurantOpen = (restaurant: Restaurant): boolean => {
         return true;
     }
 };
+
+export const isAvailableByTime = (entity: { availableStartTime?: string; availableEndTime?: string }): { isAvailable: boolean; message?: string } => {
+    const openStr = entity.availableStartTime?.trim() || '';
+    const closeStr = entity.availableEndTime?.trim() || '';
+
+    if (!openStr && !closeStr) {
+        return { isAvailable: true };
+    }
+
+    const now = new Date();
+    const currentMins = now.getHours() * 60 + now.getMinutes();
+
+    if (openStr && closeStr) {
+        const isAvailable = checkTimeRange(currentMins, openStr, closeStr);
+        return {
+            isAvailable,
+            message: isAvailable ? undefined : `Disponível das ${openStr} às ${closeStr}`
+        };
+    } else if (openStr) {
+        const openMins = timeToMinutes(openStr);
+        const isAvailable = currentMins >= openMins;
+        return {
+            isAvailable,
+            message: isAvailable ? undefined : `Disponível a partir das ${openStr}`
+        };
+    } else if (closeStr) {
+        const closeMins = timeToMinutes(closeStr);
+        const isAvailable = currentMins < closeMins;
+        return {
+            isAvailable,
+            message: isAvailable ? undefined : `Disponível até às ${closeStr}`
+        };
+    }
+
+    return { isAvailable: true };
+};
+

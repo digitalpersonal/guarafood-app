@@ -159,6 +159,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [countdown, setCountdown] = useState(300);
     const countdownIntervalRef = useRef<number | null>(null);
     const pixChannelRef = useRef<any>(null);
+    const pixPollingRef = useRef<number | null>(null);
     const [couponCodeInput, setCouponCodeInput] = useState('');
     const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
     const [formError, setFormError] = useState<string | null>(null);
@@ -281,6 +282,10 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         if (countdownIntervalRef.current) {
             clearInterval(countdownIntervalRef.current);
             countdownIntervalRef.current = null;
+        }
+        if (pixPollingRef.current) {
+            clearInterval(pixPollingRef.current);
+            pixPollingRef.current = null;
         }
         if (pixChannelRef.current) {
             pixChannelRef.current.unsubscribe();
@@ -428,7 +433,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             countdownIntervalRef.current = window.setInterval(() => {
                 setCountdown(prev => {
                     if (prev <= 1) {
-                        clearInterval(countdownIntervalRef.current!);
+                        if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+                        if (pixPollingRef.current) clearInterval(pixPollingRef.current);
                         setPixError("Tempo esgotado.");
                         return 0;
                     }
@@ -436,20 +442,53 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 });
             }, 1000);
 
+            const handlePaymentSuccess = (updatedOrder: any) => {
+                if (pixChannelRef.current) { 
+                    try { pixChannelRef.current.unsubscribe(); } catch(e) {}
+                    pixChannelRef.current = null; 
+                }
+                if (countdownIntervalRef.current) {
+                    clearInterval(countdownIntervalRef.current);
+                    countdownIntervalRef.current = null;
+                }
+                if (pixPollingRef.current) {
+                    clearInterval(pixPollingRef.current);
+                    pixPollingRef.current = null;
+                }
+                setSuccessfulOrder(normalizeOrder(updatedOrder));
+                setCurrentStep('SUCCESS');
+                clearCart();
+            };
+
             const channel = supabase.channel(`order-status:${orderId}`);
             pixChannelRef.current = channel;
             channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${orderId}` },
                 (payload) => {
                     const updatedOrder = payload.new;
-                    if (updatedOrder.status === 'Novo Pedido') {
-                        if (pixChannelRef.current) { pixChannelRef.current.unsubscribe(); pixChannelRef.current = null; }
-                        if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-                        setSuccessfulOrder(normalizeOrder(updatedOrder));
-                        setCurrentStep('SUCCESS');
-                        clearCart();
+                    if (updatedOrder.status === 'Novo Pedido' || updatedOrder.payment_status === 'paid' || (updatedOrder.status !== 'Aguardando Pagamento' && updatedOrder.status !== 'Cancelado')) {
+                        handlePaymentSuccess(updatedOrder);
                     }
                 }
             ).subscribe();
+
+            // Polling de backup a cada 3 segundos
+            pixPollingRef.current = window.setInterval(async () => {
+                try {
+                    const { data, error } = await supabase
+                        .from('orders')
+                        .select('*')
+                        .eq('id', orderId)
+                        .maybeSingle();
+
+                    if (!error && data) {
+                        if (data.status === 'Novo Pedido' || data.payment_status === 'paid' || (data.status !== 'Aguardando Pagamento' && data.status !== 'Cancelado')) {
+                            handlePaymentSuccess(data);
+                        }
+                    }
+                } catch (e) {
+                    console.error("Error polling Pix status:", e);
+                }
+            }, 3000);
 
         } catch (err: any) {
             console.error("Pix Auto Error:", err);
@@ -572,6 +611,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const handleBackFromPix = () => {
         if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+        if (pixPollingRef.current) clearInterval(pixPollingRef.current);
         if (pixChannelRef.current) pixChannelRef.current.unsubscribe();
         setCurrentStep('DETAILS');
         setPixData(null);
@@ -603,8 +643,11 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             const customerMessage = `Olá, ${restaurant.name}! Recebi a confirmação "Seu pedido foi recebido!" no app.\n\nEstou enviando uma cópia aqui no WhatsApp para registro. Entendo que o acompanhamento oficial é 100% pelo GuaraFood.\n`;
             const orderDetails = formatOrderDetailsForWhatsApp(successfulOrder);
             const fullMessage = `${customerMessage}${orderDetails}`;
-            const restaurantPhone = (restaurant.phone || '').replace(/\D/g, '');
-            const whatsappUrl = `https://wa.me/55${restaurantPhone}?text=${encodeURIComponent(fullMessage)}`;
+            let cleanPhone = (restaurant.phone || '').replace(/\D/g, '');
+            if (cleanPhone.startsWith('55') && cleanPhone.length > 11) {
+                cleanPhone = cleanPhone.substring(2);
+            }
+            const whatsappUrl = `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(fullMessage)}`;
             window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
         }
         

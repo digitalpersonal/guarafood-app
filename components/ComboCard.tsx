@@ -9,6 +9,8 @@ interface ComboCardProps {
   combo: Combo;
   menuItems: MenuItem[];
   isOpen?: boolean;
+  isCategoryAvailable?: boolean;
+  categoryUnavailableMessage?: string;
 }
 
 const ComboDetailsModal: React.FC<{ combo: Combo; items: MenuItem[]; onClose: () => void }> = ({ combo, items, onClose }) => (
@@ -54,7 +56,7 @@ const ComboDetailsModal: React.FC<{ combo: Combo; items: MenuItem[]; onClose: ()
     </div>
 );
 
-const ComboCard: React.FC<ComboCardProps> = ({ combo, menuItems, isOpen = true }) => {
+const ComboCard: React.FC<ComboCardProps> = ({ combo, menuItems, isOpen = true, isCategoryAvailable = true, categoryUnavailableMessage }) => {
   const { addToCart } = useCart();
   const { addFlyingItem } = useAnimation();
   const { addToast } = useNotification();
@@ -66,9 +68,15 @@ const ComboCard: React.FC<ComboCardProps> = ({ combo, menuItems, isOpen = true }
       .filter((item): item is MenuItem => !!item);
   }, [combo.menuItemIds, menuItems]);
   
+  const canPurchase = isOpen && isCategoryAvailable;
+
   const handleAddToCart = (event: React.MouseEvent<HTMLButtonElement>) => {
       if (!isOpen) {
           addToast({ message: "Este restaurante está fechado agora.", type: 'warning' });
+          return;
+      }
+      if (!isCategoryAvailable) {
+          addToast({ message: categoryUnavailableMessage || "Categoria indisponível no momento.", type: 'warning' });
           return;
       }
       const success = addToCart(combo);
@@ -82,7 +90,7 @@ const ComboCard: React.FC<ComboCardProps> = ({ combo, menuItems, isOpen = true }
 
   return (
     <>
-      <div className={`rounded-2xl overflow-hidden flex flex-col p-4 border-2 shadow-lg relative ${combo.activePromotion ? 'bg-orange-50 border-orange-400' : 'bg-white border-gray-100'} ${!isOpen ? 'grayscale opacity-75' : ''}`}>
+      <div className={`rounded-2xl overflow-hidden flex flex-col p-4 border-2 shadow-lg relative ${combo.activePromotion ? 'bg-orange-50 border-orange-400' : 'bg-white border-gray-100'} ${!canPurchase ? 'grayscale opacity-75' : ''}`}>
         <div className={`absolute top-0 left-0 text-black text-xs font-extrabold px-4 py-1 rounded-br-lg rounded-tl-xl shadow-md ${combo.activePromotion ? 'bg-orange-500 text-white' : 'bg-yellow-400'}`}>
             {tagText}
         </div>
@@ -122,7 +130,8 @@ const ComboCard: React.FC<ComboCardProps> = ({ combo, menuItems, isOpen = true }
                 </button>
                 <button 
                     onClick={handleAddToCart}
-                    className={`rounded-lg px-4 py-1.5 font-bold text-sm transition-all ${isOpen ? 'bg-gray-800 text-white hover:bg-orange-600' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                    disabled={!canPurchase}
+                    className={`rounded-lg px-4 py-1.5 font-bold text-sm transition-all ${canPurchase ? 'bg-gray-800 text-white hover:bg-orange-600' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
                 >
                     Adicionar
                 </button>

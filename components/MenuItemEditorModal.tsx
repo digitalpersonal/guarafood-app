@@ -127,7 +127,6 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
     const [marmitaOptions, setMarmitaOptions] = useState<string[]>(['']);
     const [sizes, setSizes] = useState<SizeOption[]>([]);
     const [optionGroups, setOptionGroups] = useState<OptionGroup[]>([]);
-    const [availableDays, setAvailableDays] = useState<number[]>([]);
     const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
     const [addonSearchTerm, setAddonSearchTerm] = useState('');
     const [isCopyingGroups, setIsCopyingGroups] = useState(false);
@@ -160,7 +159,6 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                         isMarmita: item.is_marmita,
                         isDailySpecial: item.is_daily_special,
                         isWeeklySpecial: item.is_weekly_special,
-                        availableDays: item.available_days,
                         optionGroups: item.option_groups
                     } as MenuItem)));
                 }
@@ -206,7 +204,6 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             setMarmitaOptions(existingItem.marmitaOptions && existingItem.marmitaOptions.length > 0 ? existingItem.marmitaOptions : ['']);
             setSizes(existingItem.sizes || []);
             setOptionGroups(existingItem.optionGroups || []);
-            setAvailableDays(existingItem.availableDays || []);
             setSelectedAddonIds(new Set(existingItem.availableAddonIds || []));
             setAvailable(existingItem.available !== false);
         } else {
@@ -225,7 +222,6 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             setMarmitaOptions(['']);
             setSizes([]);
             setOptionGroups([]);
-            setAvailableDays([]);
             setSelectedAddonIds(new Set());
             setAvailable(true);
         }
@@ -394,13 +390,6 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
         }));
     };
 
-    const handleDayToggle = (dayIndex: number) => {
-        setAvailableDays(prev => 
-            prev.includes(dayIndex) 
-                ? prev.filter(d => d !== dayIndex) 
-                : [...prev, dayIndex]
-        );
-    };
 
     const handleAddonToggle = (addonId: number) => {
         setSelectedAddonIds(prev => {
@@ -495,7 +484,6 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                 isWeeklySpecial,
                 isMarmita,
                 marmitaOptions: isMarmita ? marmitaOptions.filter(opt => opt.trim() !== '') : null,
-                availableDays,
                 sizes: hasSizes ? sizes : null,
                 optionGroups: optionGroups.length > 0 ? optionGroups : null,
                 availableAddonIds: Array.from(selectedAddonIds),
@@ -810,25 +798,6 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                     )}
 
                     {/* --- WEEKDAY AVAILABILITY --- */}
-                    <div className="p-3 bg-gray-50 rounded-lg border">
-                        <h3 className="font-bold text-gray-700 mb-2">Menu do Dia (Visibilidade)</h3>
-                        <div className="flex justify-around">
-                            {dayAbbreviations.map((day, index) => (
-                                <button
-                                    key={index}
-                                    type="button"
-                                    onClick={() => handleDayToggle(index)}
-                                    className={`w-10 h-10 rounded-full font-bold text-sm transition-colors ${
-                                        availableDays.includes(index)
-                                            ? 'bg-orange-600 text-white'
-                                            : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                                    }`}
-                                >
-                                    {day}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
 
                     <div className="space-y-3">
                          <div className="flex flex-col p-3 bg-gray-100 rounded-lg">

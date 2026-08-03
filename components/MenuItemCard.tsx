@@ -43,6 +43,8 @@ interface MenuItemCardProps {
   allAddons: Addon[];
   isOpen?: boolean;
   categoryName?: string;
+  isCategoryAvailable?: boolean;
+  categoryUnavailableMessage?: string;
 }
 
 const StarIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -59,7 +61,7 @@ const CalendarDaysIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 
 
-const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons, isOpen = true, categoryName }) => {
+const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons, isOpen = true, categoryName, isCategoryAvailable = true, categoryUnavailableMessage }) => {
   const { addToCart } = useCart();
   const { addFlyingItem } = useAnimation();
   const { addToast } = useNotification();
@@ -73,11 +75,15 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
   const finalImageUrl = item.imageUrl || getGenericImageUrl(categoryName) || '';
 
   const isAvailable = item.available !== false;
-  const canPurchase = isOpen && isAvailable;
+  const canPurchase = isOpen && isAvailable && isCategoryAvailable;
 
   const handleAddToCartClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (!isOpen) {
         addToast({ message: "Este restaurante está fechado agora.", type: 'warning' });
+        return;
+    }
+    if (!isCategoryAvailable) {
+        addToast({ message: categoryUnavailableMessage || "Categoria indisponível no momento.", type: 'warning' });
         return;
     }
     if (!isAvailable) {
@@ -151,12 +157,6 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
           )}
 
           {/* Badge: Menu do Dia (Disponibilidade Limitada) */}
-          {item.availableDays && item.availableDays.length > 0 && !item.isDailySpecial && isAvailable && (
-             <div className="absolute top-0 left-0 bg-purple-600 text-white text-[10px] font-bold px-2 py-1 rounded-br-lg z-10 flex items-center gap-1">
-                <CalendarDaysIcon className="w-3 h-3" />
-                <span>HOJE</span>
-             </div>
-          )}
 
         <div className="flex-grow pt-4"> 
           <h4 className="font-bold text-md text-gray-800 flex items-center gap-1">
@@ -164,13 +164,6 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
               {item.isDailySpecial && <StarIcon className="w-4 h-4 text-yellow-500 fill-yellow-500" />}
           </h4>
           
-          {item.availableDays && item.availableDays.length > 0 && !item.isDailySpecial && (
-              <div className="flex items-center gap-1 text-[10px] text-purple-700 font-semibold bg-purple-50 rounded-full px-2 py-0.5 w-fit my-1 border border-purple-100">
-                  <CalendarDaysIcon className="w-3 h-3" />
-                  <span>Menu do Dia</span>
-              </div>
-          )}
-
           <p className="text-sm text-gray-500 my-1">{item.description}</p>
           
           {item.isMarmita && item.marmitaOptions && item.marmitaOptions.length > 0 && (

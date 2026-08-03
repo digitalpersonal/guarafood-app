@@ -165,7 +165,9 @@ const normalizeCategory = (data: any): MenuCategory => ({
     ...data,
     restaurantId: data.restaurant_id,
     displayOrder: data.display_order,
-    iconUrl: data.icon_url
+    iconUrl: data.icon_url,
+    availableStartTime: data.available_start_time,
+    availableEndTime: data.available_end_time
 });
 
 const normalizeItem = (data: any): MenuItem => ({
@@ -182,7 +184,6 @@ const normalizeItem = (data: any): MenuItem => ({
     availableAddonIds: data.available_addon_ids,
     isDailySpecial: data.is_daily_special,
     isWeeklySpecial: data.is_weekly_special,
-    availableDays: data.available_days,
     displayOrder: data.display_order,
     available: data.available !== false, // Assume true if null
     optionGroups: data.option_groups
@@ -488,9 +489,6 @@ export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilt
         // Sort by manual display_order primarily
         items.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
 
-        if (!ignoreDayFilter) {
-            items = items.filter(item => !item.availableDays || item.availableDays.length === 0 || item.availableDays.includes(todayIndex));
-        }
         items = items.map(item => {
             const activePromo = promotions.find(p => 
                 (p.itemIds && p.itemIds.includes(item.id)) || 
@@ -525,8 +523,8 @@ export const createCategory = async (restaurantId: number, name: string): Promis
     handleSupabaseError({ error, customMessage: 'Failed to create category' });
 };
 
-export const updateCategory = async (restaurantId: number, id: number, name: string, iconUrl?: string | null): Promise<void> => {
-    const { error } = await supabase.from('menu_categories').update({ name, icon_url: iconUrl }).eq('id', id).eq('restaurant_id', restaurantId);
+export const updateCategory = async (restaurantId: number, id: number, name: string, iconUrl?: string | null, availableStartTime?: string, availableEndTime?: string): Promise<void> => {
+    const { error } = await supabase.from('menu_categories').update({ name, icon_url: iconUrl, available_start_time: availableStartTime || null, available_end_time: availableEndTime || null }).eq('id', id).eq('restaurant_id', restaurantId);
     handleSupabaseError({ error, customMessage: 'Failed to update category' });
 };
 
@@ -548,7 +546,7 @@ export const createMenuItem = async (restaurantId: number, item: any): Promise<v
         restaurant_id: restaurantId, category_id: catData.id, name: item.name, description: item.description, price: item.price,
         original_price: item.originalPrice, image_url: item.imageUrl, is_pizza: item.isPizza, is_acai: item.isAcai,
         is_marmita: item.isMarmita, marmita_options: item.marmitaOptions, available_addon_ids: item.availableAddonIds,
-        sizes: item.sizes, is_daily_special: item.isDailySpecial, is_weekly_special: item.isWeeklySpecial, available_days: item.availableDays,
+        sizes: item.sizes, is_daily_special: item.isDailySpecial, is_weekly_special: item.isWeeklySpecial,
         available: item.available !== false, option_groups: item.optionGroups
     };
     if (item.displayOrder !== undefined) {
@@ -565,7 +563,7 @@ export const updateMenuItem = async (restaurantId: number, id: number, item: any
         category_id: catData.id, name: item.name, description: item.description, price: item.price, original_price: item.originalPrice,
         image_url: item.imageUrl, is_pizza: item.isPizza, is_acai: item.isAcai, is_marmita: item.isMarmita,
         marmita_options: item.marmitaOptions, available_addon_ids: item.availableAddonIds, sizes: item.sizes,
-        is_daily_special: item.isDailySpecial, is_weekly_special: item.isWeeklySpecial, available_days: item.availableDays,
+        is_daily_special: item.isDailySpecial, is_weekly_special: item.isWeeklySpecial,
         available: item.available !== false, option_groups: item.optionGroups
     };
     if (item.displayOrder !== undefined) {

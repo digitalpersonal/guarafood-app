@@ -5,7 +5,7 @@ import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from
 import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant, fetchRestaurantById } from './services/databaseService';
 import { AuthProvider, useAuth } from './services/authService';
 import { getInitializationError, getErrorMessage } from './services/api';
-import { isRestaurantOpen, isMenuItemAvailableByTime } from './utils/restaurantUtils';
+import { isRestaurantOpen, isAvailableByTime } from './utils/restaurantUtils';
 
 import RestaurantCard from './components/RestaurantCard';
 import Spinner from './components/Spinner';
@@ -291,8 +291,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         {dailySpecials.map(item => {
                             const categoryName = item.categoryId ? categoryNameMap.get(item.categoryId) : undefined;
-                            const catObj = item.categoryId ? menu.find(c => c.id === item.categoryId) : undefined;
-                            return <MenuItemCard key={`destaque-${item.id}`} item={item} allPizzas={allPizzas} allAddons={addons} categoryName={categoryName} category={catObj} />
+                            return <MenuItemCard key={`destaque-${item.id}`} item={item} allPizzas={allPizzas} allAddons={addons} categoryName={categoryName} />
                         })}
                     </div>
                  </div>
@@ -313,34 +312,26 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
             <div className="p-4">
                 {isLoading ? <Spinner /> : (
                     <div className="space-y-8">
-                        {menu.map((category) => (
+                        {menu.map((category) => {
+                            const timeCheck = isAvailableByTime({ availableStartTime: category.availableStartTime, availableEndTime: category.availableEndTime });
+                            const isCategoryAvailable = timeCheck.isAvailable;
+                            const categoryUnavailableMessage = timeCheck.message || 'Esta categoria está fora do horário.';
+                            return (
                             <div key={category.name} id={slugify(category.name)} className="scroll-mt-44 rounded-lg">
-                                <div className="flex flex-wrap items-center gap-2 mb-4">
-                                    <h2 className="text-2xl font-bold">{category.name}</h2>
-                                    {(category.availableStartTime || category.availableEndTime) && (
-                                        <span className={`text-xs font-extrabold px-3 py-1 rounded-full border flex items-center gap-1 ${
-                                            isMenuItemAvailableByTime({ availableStartTime: '', availableEndTime: '' }, category).isAvailable
-                                                ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                                : 'bg-amber-50 text-amber-800 border-amber-300'
-                                        }`}>
-                                            <span>⏰</span>
-                                            <span>
-                                                {category.availableStartTime && category.availableEndTime
-                                                    ? `Disponível das ${category.availableStartTime} às ${category.availableEndTime}`
-                                                    : category.availableStartTime
-                                                    ? `Disponível a partir das ${category.availableStartTime}`
-                                                    : `Disponível até às ${category.availableEndTime}`
-                                                }
-                                            </span>
+                                <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                                    {category.name}
+                                    {!isCategoryAvailable && (
+                                        <span className="text-xs font-black bg-blue-100 text-blue-800 px-2 py-1 rounded-full uppercase tracking-wider whitespace-nowrap">
+                                            ⏰ {category.availableStartTime ? `A partir das ${category.availableStartTime}` : 'Indisponível'}
                                         </span>
                                     )}
-                                </div>
+                                </h2>
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                    {category.combos?.map(combo => <ComboCard key={`combo-${combo.id}`} combo={combo} menuItems={menu.flatMap(c => c.items)} />)}
-                                    {category.items.map(item => <MenuItemCard key={item.id} item={item} allPizzas={allPizzas} allAddons={addons} categoryName={category.name} category={category} />)}
+                                    {category.combos?.map(combo => <ComboCard key={`combo-${combo.id}`} combo={combo} menuItems={menu.flatMap(c => c.items)} isOpen={isRestaurantOpen(restaurant)} isCategoryAvailable={isCategoryAvailable} categoryUnavailableMessage={categoryUnavailableMessage} />)}
+                                    {category.items.map(item => <MenuItemCard key={item.id} item={item} allPizzas={allPizzas} allAddons={addons} categoryName={category.name} isOpen={isRestaurantOpen(restaurant)} isCategoryAvailable={isCategoryAvailable} categoryUnavailableMessage={categoryUnavailableMessage} />)}
                                 </div>
                             </div>
-                        ))}
+                        )})}
                     </div>
                 )}
             </div>
