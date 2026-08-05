@@ -169,6 +169,10 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         if (!formData.name || !formData.address || !formData.phone) {
             setError('Campos obrigatórios faltando (Nome, Endereço, Telefone).'); return;
         }
+        if (!existingRestaurant && (!merchantEmail || !merchantPassword)) {
+            setError('Para criar um novo restaurante, informe Email e Senha (estes serão usados para acessar o painel).'); return;
+        }
+        
         setIsSaving(true);
         let finalImageUrl = existingRestaurant?.imageUrl || '';
         if (logoFile) {

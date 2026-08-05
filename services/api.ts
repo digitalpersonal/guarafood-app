@@ -144,7 +144,7 @@ export const handleSupabaseError = ({ error, customMessage, tableName }: { error
             console.warn("Supabase warning: .single() query returned no rows.", customMessage);
             // Se for um erro de "não encontrado" em uma operação que deveria retornar algo, avisamos
             if (customMessage.toLowerCase().includes('atualizar') || customMessage.toLowerCase().includes('update')) {
-                enhancedMessage = `Acesso Negado: Você não tem permissão para modificar este pedido ou ele não existe. (Apenas gerentes/donos podem editar se o RLS não estiver configurado para equipe).`;
+                enhancedMessage = `Acesso Negado: Você não tem permissão para modificar este item (pode ser o pedido, restaurante ou configuração) ou ele não existe. (Verifique suas permissões ou políticas RLS do banco de dados).`;
                 throw new Error(enhancedMessage);
             }
             return;
