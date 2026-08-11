@@ -52,6 +52,31 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
         setIsAdding(false);
     }, [initialPizza, isOpen]);
 
+    const allowsMultipleFlavors = useMemo(() => {
+        if (!selectedSize) return true;
+        const name = selectedSize.name.toLowerCase().trim();
+        if (
+            name.includes('méd') ||
+            name.includes('med') ||
+            name === 'm' ||
+            name.includes('peque') ||
+            name.includes('peq') ||
+            name === 'p' ||
+            name.includes('broto') ||
+            name.includes('individual')
+        ) {
+            return false;
+        }
+        return true;
+    }, [selectedSize]);
+
+    useEffect(() => {
+        if (!allowsMultipleFlavors) {
+            setSecondHalf(null);
+            setShowSecondHalfSelector(false);
+        }
+    }, [allowsMultipleFlavors]);
+
     const availableAddons = useMemo(() => {
         return allAddons.filter(addon => firstHalf.availableAddonIds?.includes(addon.id));
     }, [allAddons, firstHalf]);
@@ -223,39 +248,59 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                     )}
                     
                      <div>
-                        <h3 className="font-bold mb-2">2. Escolha o(s) Sabor(es)</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="border rounded-lg p-3">
-                                <h3 className="font-bold text-center text-gray-600 text-sm mb-2">1ª Metade</h3>
-                                <div className="flex items-center space-x-3">
-                                    <OptimizedImage src={firstHalf.imageUrl || ''} alt={firstHalf.name} className="w-14 h-14 rounded-md object-cover flex-shrink-0" />
-                                    <div>
-                                        <p className="font-semibold">{firstHalf.name}</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="border rounded-lg p-3 flex flex-col justify-center items-center">
-                                <h3 className="font-bold text-center text-gray-600 text-sm mb-2">2ª Metade</h3>
-                                {secondHalf ? (
-                                    <div className="w-full">
-                                        <div className="flex items-center space-x-3">
-                                            <OptimizedImage src={secondHalf.imageUrl || ''} alt={secondHalf.name} className="w-14 h-14 rounded-md object-cover flex-shrink-0" />
-                                            <div className="flex-grow">
-                                                <p className="font-semibold">{secondHalf.name}</p>
-                                            </div>
-                                            <button onClick={() => setSecondHalf(null)} className="text-red-500 hover:text-red-700 text-xl font-bold p-1">&times;</button>
+                        <div className="flex justify-between items-center mb-2">
+                            <h3 className="font-bold">2. Escolha o(s) Sabor(es)</h3>
+                            {!allowsMultipleFlavors && (
+                                <span className="text-xs font-semibold text-amber-800 bg-amber-100 px-2.5 py-1 rounded-full border border-amber-200">
+                                    Sabor único ({selectedSize?.name || 'Média'})
+                                </span>
+                            )}
+                        </div>
+
+                        {allowsMultipleFlavors ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="border rounded-lg p-3">
+                                    <h3 className="font-bold text-center text-gray-600 text-sm mb-2">1ª Metade</h3>
+                                    <div className="flex items-center space-x-3">
+                                        <OptimizedImage src={firstHalf.imageUrl || ''} alt={firstHalf.name} className="w-14 h-14 rounded-md object-cover flex-shrink-0" />
+                                        <div>
+                                            <p className="font-semibold">{firstHalf.name}</p>
                                         </div>
                                     </div>
-                                ) : (
-                                    <button onClick={() => setShowSecondHalfSelector(true)} className="w-full text-center text-orange-600 font-semibold border-2 border-dashed border-gray-300 rounded-lg py-4 hover:bg-orange-50">
-                                        + Escolher outro sabor
-                                    </button>
-                                )}
+                                </div>
+                                <div className="border rounded-lg p-3 flex flex-col justify-center items-center">
+                                    <h3 className="font-bold text-center text-gray-600 text-sm mb-2">2ª Metade</h3>
+                                    {secondHalf ? (
+                                        <div className="w-full">
+                                            <div className="flex items-center space-x-3">
+                                                <OptimizedImage src={secondHalf.imageUrl || ''} alt={secondHalf.name} className="w-14 h-14 rounded-md object-cover flex-shrink-0" />
+                                                <div className="flex-grow">
+                                                    <p className="font-semibold">{secondHalf.name}</p>
+                                                </div>
+                                                <button onClick={() => setSecondHalf(null)} className="text-red-500 hover:text-red-700 text-xl font-bold p-1">&times;</button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <button onClick={() => setShowSecondHalfSelector(true)} className="w-full text-center text-orange-600 font-semibold border-2 border-dashed border-gray-300 rounded-lg py-4 hover:bg-orange-50">
+                                            + Escolher outro sabor
+                                        </button>
+                                    )}
+                                </div>
                             </div>
-                        </div>
+                        ) : (
+                            <div className="border rounded-lg p-3 bg-gray-50 flex items-center space-x-3">
+                                <OptimizedImage src={firstHalf.imageUrl || ''} alt={firstHalf.name} className="w-14 h-14 rounded-md object-cover flex-shrink-0" />
+                                <div>
+                                    <p className="font-semibold text-gray-800">{firstHalf.name}</p>
+                                    <p className="text-xs text-amber-700 font-medium mt-0.5">
+                                        Pizzas tamanho {selectedSize?.name || 'Média'} possuem sabor único. Para dividir em 2 sabores (meia-meia), selecione o tamanho Grande.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
                      </div>
                     
-                    {showSecondHalfSelector && (
+                    {allowsMultipleFlavors && showSecondHalfSelector && (
                         <div>
                             <h3 className="font-bold mb-2">Escolha o segundo sabor:</h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border rounded-lg bg-gray-50">

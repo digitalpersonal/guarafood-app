@@ -15,6 +15,7 @@ import MensalistasManager from './MensalistasManager';
 import PinPadModal from './PinPadModal';
 import HelpCenter from './HelpCenter';
 import { useSound } from '../hooks/useSound';
+import { useNotification } from '../hooks/useNotification';
 
 const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -72,6 +73,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'RECONNECTING'>('CONNECTED');
     const [isManualSyncing, setIsManualSyncing] = useState(false);
     const { playNotification, initAudioContext } = useSound();
+    const { addToast } = useNotification();
     
     // Staff & Security
     const [staffList, setStaffList] = useState<StaffMember[]>(() => {
@@ -275,7 +277,15 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 return isNewDelivery || isNewTable;
             });
 
-            if (ordersToAlert.length > 0) { ordersToAlert.forEach(o => alertedOrderIdsRef.current.add(o.id));
+            if (ordersToAlert.length > 0) {
+                ordersToAlert.forEach(o => {
+                    alertedOrderIdsRef.current.add(o.id);
+                    // Only auto-print delivery/balcão orders if they actually have items
+                    if (!o.tableNumber && o.items && o.items.length > 0) {
+                        setPrintQueue(prev => [...prev, { order: o, mode: 'full' }]);
+                    }
+                });
+
                 const newestOrder = ordersToAlert[0];
                 if (areNotificationsEnabled) {
                     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
@@ -290,10 +300,6 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                          } catch (e) { console.error("Notification API error", e); }
                     }
                     playNotification(); 
-                }
-                // Only auto-print delivery orders, not empty table openings
-                if (!newestOrder.tableNumber) {
-                    setPrintQueue(prev => [...prev, { order: newestOrder, mode: 'full' }]);
                 }
             }
         }
@@ -412,6 +418,18 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     useEffect(() => {
         if (printJob) {
+            // Se o pedido não tiver itens, cancelamos o printJob para evitar impressão em branco
+            const itemsToPrint = printJob.items || printJob.order.items || [];
+            if (itemsToPrint.length === 0) {
+                if (printJob.jobId) {
+                    import('../services/orderService').then(({ markPrintJobAsDone }) => {
+                        markPrintJobAsDone(printJob.order.id, printJob.jobId!);
+                    }).catch(err => console.error("Erro ao finalizar job em branco:", err));
+                }
+                setPrintJob(null);
+                return;
+            }
+
             // Se for um pedido de delivery novo, evitamos duplicidade pelo ID
             if (printJob.mode === 'full' && !printJob.jobId && printedOrderIdsRef.current.has(printJob.order.id)) {
                 setPrintJob(null); 
@@ -486,6 +504,14 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 if (!processedJobIdsRef.current.has(pendingJob.id)) {
                     processedJobIdsRef.current.add(pendingJob.id);
                     
+                    const jobItems = pendingJob.items || order.items || [];
+                    if (jobItems.length === 0) {
+                        import('../services/orderService').then(({ markPrintJobAsDone }) => {
+                            markPrintJobAsDone(order.id, pendingJob.id);
+                        }).catch(e => console.error(e));
+                        continue;
+                    }
+
                     shouldPlayNotification = true;
                     pendingJobsToQueue.push({
                         order: order,
@@ -510,12 +536,9 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     }, [orders, playNotification]);
 
     const handleManualPrint = (order: Order, mode: 'full' | 'kitchen' | 'admin' = 'full') => {
-        // Se for modo cozinha, verificamos se há itens novos para evitar impressão em branco
-        if (mode === 'kitchen') {
-            const hasNewItems = order.items.some(item => {
-                return true; 
-            });
-            if (!hasNewItems && mode === 'kitchen') return;
+        if (!order.items || order.items.length === 0) {
+            addToast({ message: 'O pedido não possui itens para imprimir.', type: 'warning' });
+            return;
         }
 
         printedOrderIdsRef.current.delete(order.id);

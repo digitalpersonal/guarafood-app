@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Order, CartItem, MenuItem, Combo, Addon } from '../types';
 import { useNotification } from '../hooks/useNotification';
-import { updateOrderDetails } from '../services/orderService';
+import { updateOrderDetails, requestKitchenPrint } from '../services/orderService';
 import { getMensalistaByPhone } from '../services/mensalistaService';
 import { fetchMenuForRestaurant, fetchAddonsForRestaurant, fetchRestaurantByIdSecure } from '../services/databaseService';
 import Spinner from './Spinner';
@@ -200,6 +200,33 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
                 customerPhone: editedCustomerPhone,
                 mensalistaId: mensalistaIdToUpdate,
             });
+
+            // If new items were added, send kitchen print request
+            const initialItemsMap = new Map<string, number>();
+            (order.items || []).forEach(item => {
+                const key = `${item.id}-${item.name}-${item.price}`;
+                initialItemsMap.set(key, (initialItemsMap.get(key) || 0) + item.quantity);
+            });
+
+            const newlyAddedItems: CartItem[] = [];
+            editedItems.forEach(item => {
+                const key = `${item.id}-${item.name}-${item.price}`;
+                const initialQty = initialItemsMap.get(key) || 0;
+                if (item.quantity > initialQty) {
+                    newlyAddedItems.push({
+                        ...item,
+                        quantity: item.quantity - initialQty
+                    });
+                }
+            });
+
+            if (newlyAddedItems.length > 0) {
+                try {
+                    await requestKitchenPrint(order.id, newlyAddedItems);
+                } catch (printErr) {
+                    console.error("Erro ao solicitar impressão para cozinha:", printErr);
+                }
+            }
             
             // Play notification if it's a table order
             if (order.tableNumber && playNotification) {

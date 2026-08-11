@@ -10,6 +10,15 @@ interface PrintableOrderProps {
     printedItems?: string[]; // IDs of items already printed (for kitchen mode)
 }
 
+const sanitizePrintText = (str?: string): string => {
+    if (!str) return '';
+    return str
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'")
+        .replace(/[–—]/g, '-')
+        .trim();
+};
+
 const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 80, printMode = 'full', printedItems = [] }) => {
     const paperSize = `${printerWidth}mm`;
     
@@ -18,8 +27,8 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
         ? (order.items || []).filter(item => !printedItems.includes(item.id))
         : (order.items || []);
 
-    // If kitchen/admin mode and no new items, don't render anything
-    if ((printMode === 'kitchen' || printMode === 'admin') && itemsToPrint.length === 0) {
+    // If no items to print, don't render anything to avoid blank prints
+    if (itemsToPrint.length === 0) {
         return null; 
     }
 
@@ -139,7 +148,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                 }
 
                 #thermal-content {
-                    font-family: 'Courier New', Courier, monospace; 
+                    font-family: Arial, Helvetica, sans-serif; 
                     color: #000 !important;
                     line-height: ${lineHeight};
                     background: #fff !important;
@@ -231,7 +240,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
             <div id="thermal-content">
                 {/* CABEÇALHO */}
                 <div className="receipt-header">
-                    <div style={{ fontSize: headerFontSize, marginBottom: '2px' }}>{order.restaurantName.toUpperCase()}</div>
+                    <div style={{ fontSize: headerFontSize, marginBottom: '2px' }}>{sanitizePrintText(order.restaurantName).toUpperCase()}</div>
                     <div style={{ fontSize: smallFontSize }}>
                         {new Date(order.timestamp).toLocaleDateString('pt-BR')} - {new Date(order.timestamp).toLocaleTimeString('pt-BR').substring(0,5)}
                     </div>
