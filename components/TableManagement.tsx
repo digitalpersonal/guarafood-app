@@ -88,11 +88,25 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
 
     // Agrupar pedidos por mesa para o grid
     const tableSummaries = useMemo(() => {
-        const summaries: Record<string, { count: number; total: number; hasUnserved: boolean }> = {};
-        activeTables.forEach(o => {
+        const summaries: Record<string, { count: number; total: number; hasUnserved: boolean; firstCustomerName?: string }> = {};
+        
+        // Ordenamos por timestamp / id para garantir que capturamos o primeiro cliente cadastrado na mesa
+        const sortedActiveTables = [...activeTables].sort((a, b) => {
+            const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+            const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+            if (timeA !== timeB) return timeA - timeB;
+            return (a.order_number || 0) - (b.order_number || 0);
+        });
+
+        sortedActiveTables.forEach(o => {
             const num = o.tableNumber!;
             if (!summaries[num]) {
-                summaries[num] = { count: 0, total: 0, hasUnserved: false };
+                summaries[num] = { 
+                    count: 0, 
+                    total: 0, 
+                    hasUnserved: false,
+                    firstCustomerName: o.customerName || undefined 
+                };
             }
             summaries[num].count += 1;
             summaries[num].total += o.totalPrice;
@@ -108,11 +122,14 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
         if (currentUser?.restaurantId) {
             try {
                 const orders = await fetchOpenTableOrders(currentUser.restaurantId, tableNum);
-                setTableOrders(orders);
-                
-                // Se só tiver uma comanda e ela não tiver número/nome específico além de "Mesa X", 
-                // talvez queiramos abrir direto? Mas o usuário quer a opção de comandas.
-                // Vamos mostrar a lista sempre que houver pelo menos uma ou para criar a primeira.
+                // Ordenar cronologicamente para garantir que o primeiro cliente cadastrado fique no topo
+                const sorted = (orders || []).sort((a, b) => {
+                    const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+                    const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+                    if (timeA !== timeB) return timeA - timeB;
+                    return (a.order_number || 0) - (b.order_number || 0);
+                });
+                setTableOrders(sorted);
             } catch (e) {
                 console.error("Erro ao buscar comandas da mesa:", e);
                 setTableOrders([]);
@@ -569,7 +586,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                 </h2>
             </div>
 
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
                 {tableNumbers.map(num => {
                     const summary = tableSummaries[num];
                     const isOpen = !!summary;
@@ -588,22 +605,35 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                         <button
                             key={num}
                             onClick={() => handleOpenTable(num)}
-                            className={`aspect-square rounded-2xl flex flex-col items-center justify-center border-2 transition-all shadow-sm active:scale-95 ${buttonClass}`}
+                            className={`min-h-[115px] sm:min-h-[125px] aspect-square rounded-2xl flex flex-col items-center justify-between p-2.5 sm:p-3 border-2 transition-all shadow-sm active:scale-95 text-center ${buttonClass}`}
                         >
-                            <div className="flex flex-col items-center">
-                                <span className="text-[10px] font-black uppercase opacity-60">Mesa</span>
-                                <span className="text-3xl font-black">{num}</span>
+                            <div className="flex flex-col items-center w-full">
+                                <span className="text-[10px] font-black uppercase opacity-75">Mesa</span>
+                                <span className="text-2xl sm:text-3xl font-black leading-none">{num}</span>
                             </div>
-                            {isOpen && (
-                                <div className="mt-1 flex flex-col items-center">
-                                    <span className="text-[9px] font-black bg-white/20 px-1.5 rounded uppercase flex items-center gap-1">
+
+                            {isOpen ? (
+                                <div className="flex flex-col items-center w-full min-w-0 mt-1">
+                                    {summary.firstCustomerName && (
+                                        <div className="w-full truncate px-1 text-center mb-1">
+                                            <span 
+                                                className="text-[11px] sm:text-xs font-black tracking-tight leading-none truncate block drop-shadow-sm" 
+                                                title={summary.firstCustomerName}
+                                            >
+                                                {summary.firstCustomerName}
+                                            </span>
+                                        </div>
+                                    )}
+                                    <span className="text-[9px] font-black bg-white/25 px-1.5 py-0.5 rounded-md uppercase flex items-center gap-1 leading-tight">
                                         {summary.count} {summary.count === 1 ? 'Comanda' : 'Comandas'}
                                         {hasUnservedItems && <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span>}
                                     </span>
-                                    <span className="text-[10px] font-bold truncate w-full px-2 text-center">
+                                    <span className="text-[11px] sm:text-xs font-black truncate w-full px-1 text-center mt-1">
                                         R$ {summary.total.toFixed(2)}
                                     </span>
                                 </div>
+                            ) : (
+                                <span className="text-[10px] font-bold opacity-40 uppercase">Livre</span>
                             )}
                         </button>
                     );
@@ -616,8 +646,18 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                     <div className="bg-white w-full max-w-lg sm:rounded-3xl shadow-2xl animate-slideUp max-h-[90vh] flex flex-col">
                         <div className="p-6 border-b flex justify-between items-center bg-gray-50 sm:rounded-t-3xl">
                             <div>
-                                <h3 className="text-2xl font-black text-gray-800 uppercase">Mesa {selectedTable}</h3>
-                                <p className="text-sm text-gray-500 font-bold">Selecione ou abra uma comanda</p>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <h3 className="text-2xl font-black text-gray-800 uppercase">Mesa {selectedTable}</h3>
+                                    {tableOrders.length > 0 && tableOrders[0].customerName && (
+                                        <span className="bg-orange-100 text-orange-700 text-xs font-black px-2.5 py-1 rounded-lg flex items-center gap-1">
+                                            <UserIcon className="w-3.5 h-3.5 inline-block" />
+                                            {tableOrders[0].customerName}
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="text-sm text-gray-500 font-bold">
+                                    {tableOrders.length > 0 ? `${tableOrders.length} ${tableOrders.length === 1 ? 'comanda aberta' : 'comandas abertas'}` : 'Selecione ou abra uma comanda'}
+                                </p>
                             </div>
                             <button 
                                 onClick={handleCloseTableList}
