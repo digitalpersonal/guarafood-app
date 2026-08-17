@@ -13,6 +13,7 @@ import MensalistasManager from './MensalistasManager';
 import MercadoPagoGuide from './MercadoPagoGuide';
 import { getErrorMessage } from '../services/api';
 import ChromeMemorySaverGuide from './ChromeMemorySaverGuide';
+import { KNOWN_CITIES } from '../utils/locationService';
 
 const NotificationSettings: React.FC = () => {
     const { addToast } = useNotification();
@@ -321,6 +322,7 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
     const { currentUser } = useAuth();
     const { addToast, confirm } = useNotification();
     const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+    const [city, setCity] = useState('Guaranésia');
     const [mercadoPagoToken, setMercadoPagoToken] = useState('');
     const [manualPixKey, setManualPixKey] = useState('');
     const [bannerImageUrl, setBannerImageUrl] = useState('');
@@ -359,6 +361,7 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
             if (data) {
                 setRestaurant(data);
                 localStorage.setItem('guarafood-cached-restaurant', JSON.stringify(data));
+                setCity(data.city || 'Guaranésia');
                 setMercadoPagoToken(data.mercado_pago_credentials?.accessToken || '');
                 setManualPixKey(data.manualPixKey || '');
                 setBannerImageUrl(data.bannerImageUrl || '');
@@ -399,6 +402,7 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
         setIsSaving(true);
         try {
             await updateRestaurant(restaurantId, {
+                city: city,
                 mercado_pago_credentials: { accessToken: mercadoPagoToken },
                 operatingHours: operatingHours,
                 marmitaStartTime: restaurant.marmitaStartTime,
@@ -501,10 +505,45 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                     />
                 )}
 
+                {/* --- CIDADE ATENDIDA (MULTI-CIDADES) --- */}
+                <div className="mb-10 bg-gradient-to-r from-orange-50 to-amber-50 p-6 rounded-2xl border-2 border-orange-200 shadow-sm">
+                    <div className="flex items-center gap-3 mb-2">
+                        <span className="text-2xl">📍</span>
+                        <div>
+                            <h3 className="text-md font-black text-orange-900 uppercase tracking-tight">Cidade de Atendimento</h3>
+                            <p className="text-xs text-orange-700 font-medium">Os clientes com GPS nesta cidade verão seu cardápio no aplicativo.</p>
+                        </div>
+                    </div>
+                    <div className="mt-3">
+                        <input 
+                            type="text"
+                            list="settings-cities-list"
+                            value={city}
+                            onChange={e => setCity(e.target.value)}
+                            placeholder="Ex: Guaranésia, Guaxupé..."
+                            className="w-full p-3.5 border-2 border-orange-300 rounded-xl font-bold text-gray-900 bg-white focus:ring-2 focus:ring-orange-500 outline-none shadow-inner text-base"
+                        />
+                        <datalist id="settings-cities-list">
+                            {KNOWN_CITIES.map(c => (
+                                <option key={c.name} value={c.name}>{c.name} - {c.state}</option>
+                            ))}
+                        </datalist>
+                    </div>
+                </div>
+
                 {/* --- SELETOR DE IMPRESSORA - DESTAQUE NO TOPO --- */}
                 <div className="mb-10 bg-orange-50 p-6 rounded-2xl border-2 border-orange-100 shadow-sm">
-                    <h3 className="text-md font-black text-orange-800 mb-2 uppercase tracking-tight">Configuração da Impressora</h3>
-                    <p className="text-xs text-orange-600/70 mb-4 font-bold">Selecione o tamanho do papel para alinhar o layout:</p>
+                    <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-md font-black text-orange-800 uppercase tracking-tight flex items-center gap-2">
+                            <span>🖨️</span> Configuração da Impressora Térmica
+                        </h3>
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-orange-200 text-orange-800 rounded-md">
+                            Chrome Kiosk Printing
+                        </span>
+                    </div>
+                    <p className="text-xs text-orange-700/80 mb-4 font-medium">
+                        Selecione o tamanho da bobina para ajustar o layout de impressão dos cupons e comandas:
+                    </p>
                     <div className="grid grid-cols-2 gap-4">
                         <button 
                             type="button"
@@ -526,22 +565,39 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                     <button 
                         type="button"
                         onClick={() => handleTestPrint(printerWidth)} 
-                        className="w-full mt-4 py-3 text-[10px] font-black uppercase bg-gray-800 text-white rounded-xl hover:bg-black transition-all shadow-sm active:scale-95"
+                        className="w-full mt-4 py-3 text-[10px] font-black uppercase bg-gray-800 text-white rounded-xl hover:bg-black transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2"
                     >
-                        Imprimir Cupom de Teste
+                        <span>🖨️</span> Imprimir Cupom de Teste
                     </button>
                     
                     <div className="mt-6 pt-6 border-t border-orange-200">
                         <label className="flex items-center justify-between cursor-pointer">
                             <div>
                                 <span className="font-bold text-orange-900 block">Modo Servidor de Impressão</span>
-                                <span className="text-xs text-orange-700">Ative APENAS no computador que tem a impressora conectada.</span>
+                                <span className="text-xs text-orange-700">Ative APENAS no computador que está conectado fisicamente ao cabo da impressora.</span>
                             </div>
                             <div className="relative">
                                 <input type="checkbox" className="sr-only peer" checked={isPrintServer} onChange={e => setIsPrintServer(e.target.checked)} />
                                 <div className="w-11 h-6 bg-orange-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
                             </div>
                         </label>
+                    </div>
+
+                    {/* Guia Rápido Chrome Kiosk */}
+                    <div className="mt-4 p-4 bg-white rounded-xl border border-orange-200 text-xs text-gray-700 space-y-2">
+                        <div className="flex items-center gap-1.5 font-black text-orange-800">
+                            <span>⚡</span>
+                            <span>Como ativar a Impressão Silenciosa e 100% Automática:</span>
+                        </div>
+                        <p className="text-[11px] text-gray-600 leading-relaxed">
+                            No atalho do Google Chrome na Área de Trabalho do Windows, clique com o botão direito &rarr; <strong>Propriedades</strong> &rarr; no campo <strong>Destino</strong> adicione ao final:
+                        </p>
+                        <code className="block p-2 bg-gray-900 text-orange-400 rounded-lg font-mono text-[11px]">
+                            --kiosk-printing
+                        </code>
+                        <p className="text-[11px] text-gray-500">
+                            Assim, todos os novos pedidos e impressões de cozinha saem instantaneamente sem abrir janelas de confirmação. Mais detalhes na <strong>Central de Ajuda</strong>.
+                        </p>
                     </div>
                 </div>
 

@@ -35,7 +35,7 @@ const HomePromotionalBanner: React.FC<HomePromotionalBannerProps> = ({ onBannerC
     const defaultBanner: Banner = {
         id: 0,
         title: "Sua fome pede,\nGuaraFood entrega.",
-        description: "Uma praça de alimentação completa de Guaranésia na palma de sua mão!",
+        description: "Uma praça de alimentação completa na palma de sua mão!",
         imageUrl: "https://images.pexels.com/photos/1639562/pexels-photo-1639562.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1",
         ctaText: "", // Sem botão
         targetType: 'category',

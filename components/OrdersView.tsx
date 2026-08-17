@@ -130,6 +130,12 @@ const formatOrderDetailsForWhatsApp = (order: Order): string => {
 };
 
 
+interface UpdatingOrderState {
+    targetStatus: OrderStatus;
+    attempt: number;
+    isRetrying: boolean;
+}
+
 const OrderCard: React.FC<{ 
     order: Order; 
     onStatusUpdate: (id: string, status: OrderStatus) => void; 
@@ -138,7 +144,8 @@ const OrderCard: React.FC<{
     onPrint: (order: Order) => void;
     enableFiscal?: boolean;
     onToggleFiscal?: (id: string, currentVal: boolean) => void;
-}> = ({ order, onStatusUpdate, onNotify, onViewDetails, onPrint, enableFiscal, onToggleFiscal }) => {
+    updatingState?: UpdatingOrderState;
+}> = ({ order, onStatusUpdate, onNotify, onViewDetails, onPrint, enableFiscal, onToggleFiscal, updatingState }) => {
     const { confirm } = useNotification();
     const { text, color } = statusConfig[order.status];
     const [isExpanded, setIsExpanded] = useState(false);
@@ -158,6 +165,7 @@ const OrderCard: React.FC<{
     const isPickup = !order.customerAddress || order.customerAddress.street === 'Retirada no Local';
 
     const handleConfirmAndUpdate = async (message: string, newStatus: OrderStatus) => {
+        if (updatingState) return;
         const confirmed = await confirm({
             title: 'Confirmar Ação',
             message: message,
@@ -174,8 +182,26 @@ const OrderCard: React.FC<{
     const timeString = orderDateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
     const ActionButtons: React.FC = () => {
-        const btnClass = "flex-1 py-1 px-2 rounded text-xs font-bold text-white shadow-sm hover:opacity-90 transition-opacity whitespace-nowrap";
+        const btnClass = "flex-1 py-1 px-2 rounded text-xs font-bold text-white shadow-sm hover:opacity-90 transition-opacity whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed";
         
+        if (updatingState) {
+            return (
+                <div className="flex items-center justify-between gap-1.5 mt-2 p-1.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-800 font-semibold animate-pulse">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                        <svg className="animate-spin h-3.5 w-3.5 text-amber-600 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                        </svg>
+                        <span className="truncate">
+                            {updatingState.isRetrying 
+                                ? `Reconectando Wi-Fi (tentativa ${updatingState.attempt}/4)...` 
+                                : `Confirmando...`}
+                        </span>
+                    </div>
+                </div>
+            );
+        }
+
         switch (order.status) {
             case 'Novo Pedido':
                  return (
@@ -370,6 +396,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
     const [mensalistaSuggestions, setMensalistaSuggestions] = useState<Mensalista[]>([]);
     const [isSearchingMensalista, setIsSearchingMensalista] = useState(false);
     const [filterFiscalOnly, setFilterFiscalOnly] = useState(false);
+    const [updatingOrders, setUpdatingOrders] = useState<Record<string, UpdatingOrderState>>({});
 
     const fiscalSelectedCount = useMemo(() => {
         return orders.filter(o => o.fiscalExport).length;
@@ -582,12 +609,39 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
     };
 
     const handleStatusUpdate = (orderId: string, newStatus: OrderStatus) => {
-        updateOrderStatus(orderId, newStatus)
+        setUpdatingOrders(prev => ({
+            ...prev,
+            [orderId]: { targetStatus: newStatus, attempt: 1, isRetrying: false }
+        }));
+
+        updateOrderStatus(orderId, newStatus, {
+            onRetry: (attempt, _err, _delayMs) => {
+                setUpdatingOrders(prev => ({
+                    ...prev,
+                    [orderId]: { targetStatus: newStatus, attempt, isRetrying: true }
+                }));
+                addToast({
+                    message: `Wi-Fi instável: Reenviando confirmação de status... (tentativa ${attempt}/4)`,
+                    type: 'info'
+                });
+            }
+        })
             .then(() => {
-                addToast({ message: "Status atualizado!", type: 'success' });
+                setUpdatingOrders(prev => {
+                    const copy = { ...prev };
+                    delete copy[orderId];
+                    return copy;
+                });
+                const statusLabel = newStatus === 'Preparando' ? 'aceito e enviado à cozinha' : (newStatus === 'A Caminho' ? 'despachado para entrega' : (newStatus === 'Entregue' ? 'marcado como entregue/retirado' : newStatus));
+                addToast({ message: `Pedido ${statusLabel}!`, type: 'success' });
             })
             .catch(err => {
-                addToast({ message: `Erro: ${err.message}`, type: 'error' });
+                setUpdatingOrders(prev => {
+                    const copy = { ...prev };
+                    delete copy[orderId];
+                    return copy;
+                });
+                addToast({ message: `Falha na conexão após 4 tentativas: ${err.message || 'Verifique o Wi-Fi'}`, type: 'error' });
             });
     };
 
@@ -732,6 +786,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                                     onPrint={onPrint}
                                     enableFiscal={restaurant?.enableFiscal}
                                     onToggleFiscal={handleToggleFiscal}
+                                    updatingState={updatingOrders[order.id]}
                                 />
                             ))}
                         </div>
@@ -1007,6 +1062,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                                                         onPrint={onPrint}
                                                         enableFiscal={restaurant?.enableFiscal}
                                                         onToggleFiscal={handleToggleFiscal}
+                                                        updatingState={updatingOrders[order.id]}
                                                     />
                                                 ))
                                             ) : (

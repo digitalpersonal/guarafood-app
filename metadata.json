@@ -1,5 +1,10 @@
 {
   "name": "GuaraFood",
-  "description": "An iFood-style food delivery web application that uses the Gemini API to dynamically generate restaurant and menu data, providing a seamless and interactive user experience for browsing and ordering food.",
-  "requestFramePermissions": []
+  "description": "Aplicativo de delivery e gestão de restaurantes com cardápio digital, mesas, comandas e localização por cidades.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

@@ -97,7 +97,7 @@ const Footer: React.FC<FooterProps> = ({ onLoginClick, onHelpClick }) => {
               GUARA<span className="text-orange-500">FOOD</span>
             </p>
             <p className="text-xs text-white/50 max-w-xs mx-auto">
-              A única praça de alimentação digital de Guaranésia. Qualidade e rapidez em cada entrega.
+              A sua praça de alimentação digital. Qualidade e rapidez em cada entrega.
             </p>
           </div>
 

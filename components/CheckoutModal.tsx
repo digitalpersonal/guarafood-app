@@ -778,7 +778,12 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                             </div>
 
                             <div>
-                                <label htmlFor="customerPhone" className="block text-xs font-black text-gray-500 uppercase mb-1 tracking-widest">WhatsApp <span className="text-[10px] font-normal lowercase">(somente números)</span></label>
+                                <label htmlFor="customerPhone" className="block text-xs font-black text-gray-500 uppercase mb-1 tracking-widest">
+                                    WhatsApp / Telefone Celular
+                                </label>
+                                <p className="text-[11px] text-gray-500 mb-1.5 font-medium leading-tight">
+                                    Digite seu DDD e número celular (somente números) para receber o status e atualizações do seu pedido.
+                                </p>
                                 <input 
                                     id="customerPhone" 
                                     type="tel" 

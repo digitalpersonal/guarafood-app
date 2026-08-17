@@ -78,6 +78,7 @@ const normalizeRestaurant = (data: any): Restaurant => {
         name: data.name,
         category: data.category,
         description: data.description,
+        city: data.city || 'Guaranésia',
         deliveryTime: data.delivery_time,
         rating: data.rating,
         imageUrl: data.image_url,
@@ -129,6 +130,7 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         name: data.name,
         category: data.category,
         description: data.description,
+        city: data.city || 'Guaranésia',
         deliveryTime: data.delivery_time,
         rating: data.rating,
         imageUrl: data.image_url,
@@ -281,6 +283,7 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     const dbUpdates: any = { ...updates };
     
     if (updates.deliveryTime !== undefined) dbUpdates.delivery_time = updates.deliveryTime;
+    if (updates.city !== undefined) dbUpdates.city = updates.city;
     if (updates.imageUrl !== undefined) dbUpdates.image_url = updates.imageUrl;
     if (updates.paymentGateways !== undefined) dbUpdates.payment_gateways = updates.paymentGateways;
     if (updates.openingHours !== undefined) dbUpdates.opening_hours = updates.openingHours;

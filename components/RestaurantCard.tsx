@@ -95,43 +95,54 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, is
 
   return (
     <div 
-      className={`bg-white rounded-2xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col relative border border-gray-100 ${!isOpen ? 'grayscale opacity-70' : ''}`}
+      className={`bg-white rounded-2xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col relative border border-gray-100 ${!isOpen ? 'grayscale-[0.4] opacity-85' : ''}`}
       onClick={() => onClick(restaurant)}
     >
-      {/* Badge de Status Superior */}
-      {!isOpen && (
-        <div className="absolute top-0 right-0 bg-gray-900/90 backdrop-blur-sm text-white text-[10px] font-black px-3 py-1 rounded-bl-xl z-20 uppercase tracking-widest shadow-lg">
-            {statusMessage}
+      <div className="flex items-center gap-3.5 p-4 flex-grow">
+        <div className="relative flex-shrink-0">
+          <OptimizedImage 
+            src={restaurant.imageUrl} 
+            alt={restaurant.name} 
+            className="w-20 h-20 rounded-2xl flex-shrink-0 shadow-sm border border-gray-100 object-cover"
+          />
+          {!isOpen && (
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] rounded-2xl flex items-center justify-center p-1">
+              <span className="bg-gray-900/90 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider text-center leading-tight shadow-sm">
+                Fechado
+              </span>
+            </div>
+          )}
         </div>
-      )}
-      
-      <div className="flex items-center gap-4 p-4 flex-grow">
-        <OptimizedImage 
-          src={restaurant.imageUrl} 
-          alt={restaurant.name} 
-          className="w-20 h-20 rounded-2xl flex-shrink-0 shadow-sm border border-gray-50"
-        />
+
         <div className="flex-grow min-w-0">
-          <h3 className="text-lg font-black text-gray-800 truncate leading-tight mb-0.5">{restaurant.name}</h3>
+          <h3 className="text-base sm:text-lg font-black text-gray-800 truncate leading-snug mb-0.5">
+            {restaurant.name}
+          </h3>
           
           {restaurant.description && (
-             <p className="text-xs text-gray-500 line-clamp-1 mb-2 font-medium">{restaurant.description}</p>
+             <p className="text-xs text-gray-500 line-clamp-1 mb-1.5 font-medium">{restaurant.description}</p>
           )}
 
           {/* Exibição do horário dinâmico */}
-          <div className="flex items-center gap-1.5 mb-2">
-            <ClockIcon className={`w-3.5 h-3.5 ${isOpen ? 'text-green-600' : 'text-gray-400'}`} />
-            <span className={`text-[11px] font-bold ${isOpen ? 'text-green-600' : 'text-gray-500'}`}>
-                {isOpen ? hoursDisplay : statusMessage}
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <ClockIcon className={`w-3.5 h-3.5 flex-shrink-0 ${isOpen ? 'text-emerald-600' : 'text-amber-600'}`} />
+            <span className={`text-[11px] font-bold truncate ${isOpen ? 'text-emerald-700' : 'text-amber-700'}`}>
+                {isOpen ? (hoursDisplay ? `${hoursDisplay}` : 'Aberto agora') : statusMessage}
             </span>
           </div>
 
-          <div className="flex items-center text-[11px] font-bold text-gray-400 gap-2 flex-wrap">
+          <div className="flex items-center text-[11px] font-bold text-gray-400 gap-1.5 flex-wrap">
             <span className="text-orange-600">★ {restaurant.rating || 'Novo'}</span>
             <span className="text-gray-300">•</span>
             <span>{(restaurant.category || '').split(',')[0]}</span>
             <span className="text-gray-300">•</span>
             <span>{restaurant.deliveryTime}</span>
+            {restaurant.city && (
+              <>
+                <span className="text-gray-300">•</span>
+                <span className="text-orange-700/80 font-black">📍 {restaurant.city}</span>
+              </>
+            )}
           </div>
         </div>
       </div>

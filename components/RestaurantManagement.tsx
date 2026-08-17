@@ -166,6 +166,7 @@ COMMIT;
                         <tr>
                             <th scope="col" className="px-6 py-3">Status</th>
                             <th scope="col" className="px-6 py-3">Nome</th>
+                            <th scope="col" className="px-6 py-3">Cidade</th>
                             <th scope="col" className="px-6 py-3">Categoria</th>
                             <th scope="col" className="px-6 py-3">Telefone</th>
                             <th scope="col" className="px-6 py-3 min-w-[250px]">Link da Loja</th>
@@ -181,6 +182,11 @@ COMMIT;
                                     </span>
                                 </td>
                                 <td className="px-6 py-4 font-semibold text-gray-900">{restaurant.name}</td>
+                                <td className="px-6 py-4">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-orange-50 text-orange-700 border border-orange-200">
+                                        📍 {restaurant.city || 'Guaranésia'}
+                                    </span>
+                                </td>
                                 <td className="px-6 py-4">{restaurant.category}</td>
                                 <td className="px-6 py-4">{restaurant.phone}</td>
                                 <td className="px-6 py-4 min-w-[250px]">

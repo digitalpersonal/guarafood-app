@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { subscribeToOrders, fetchOrders } from '../services/orderService';
+import { retryWithExponentialBackoff } from '../utils/retry';
 import { useAuth } from '../services/authService'; 
 import { APP_VERSION } from './VersionChecker';
 import { fetchRestaurantByIdSecure } from '../services/databaseService';
@@ -322,17 +323,17 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         isSyncingRef.current = true;
         setIsManualSyncing(true);
         try {
-            // Sincronização robusta com limite estendido para 15 segundos (ideal para as redes móveis instáveis dos restaurantes no Brasil)
-            const allOrders = await Promise.race([
-                fetchOrders(currentUser.restaurantId, { limit: 150 }),
-                new Promise<Order[]>((_, reject) => setTimeout(() => reject(new Error('Sync timeout')), 15000))
-            ]);
+            // Sincronização resiliente com retry exponencial para evitar falhas em conexões instáveis de Wi-Fi
+            const allOrders = await retryWithExponentialBackoff(
+                () => fetchOrders(currentUser.restaurantId, { limit: 150 }),
+                { maxRetries: 3, initialDelayMs: 600, timeoutMs: 12000 }
+            );
             processOrdersUpdate(allOrders);
             lastSuccessfulSyncRef.current = Date.now();
             setLastSuccessfulSyncTime(Date.now());
             setConnectionStatus('CONNECTED');
         } catch (e) {
-            console.warn("[GuaraFood Sync] Falha ou timeout na sincronização automática. Utilizando estado guardado offline.", e);
+            console.warn("[GuaraFood Sync] Falha na sincronização após tentativas. Utilizando estado guardado offline.", e);
             try {
                 const cached = localStorage.getItem('guarafood-cached-orders');
                 if (cached && orders.length === 0) {

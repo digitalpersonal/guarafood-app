@@ -5,6 +5,7 @@ import { useNotification } from '../hooks/useNotification';
 import { supabase } from '../services/api';
 import { fetchRestaurantCategories } from '../services/databaseService';
 import { SUPABASE_URL } from '../config';
+import { KNOWN_CITIES } from '../utils/locationService';
 
 interface RestaurantEditorModalProps {
     isOpen: boolean;
@@ -50,6 +51,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
     const [formData, setFormData] = useState<FormData>({
         name: '',
         category: '',
+        city: 'Guaranésia',
         deliveryTime: '',
         rating: 0,
         imageUrl: '',
@@ -117,6 +119,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             setShowSecondShift(opHours.map(d => !!(d && d.opens2 || d && d.closes2)));
             setFormData({
                 ...existingRestaurant,
+                city: existingRestaurant.city || 'Guaranésia',
                 mercado_pago_credentials: typeof existingRestaurant.mercado_pago_credentials === 'object' && existingRestaurant.mercado_pago_credentials !== null ? existingRestaurant.mercado_pago_credentials : { accessToken: '' },
                 operatingHours: opHours,
                 manualPixKey: existingRestaurant.manualPixKey || '',
@@ -132,7 +135,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             setChangeCredentials(false);
         } else {
             setFormData({
-                name: '', category: '', deliveryTime: '', rating: 0, imageUrl: '', paymentGateways: [],
+                name: '', category: '', city: 'Guaranésia', deliveryTime: '', rating: 0, imageUrl: '', paymentGateways: [],
                 address: '', phone: '', openingHours: '', closingHours: '', deliveryFee: 0,
                 mercado_pago_credentials: { accessToken: '' }, operatingHours: getDefaultOperatingHours(),
                 manualPixKey: '', active: true
@@ -187,9 +190,15 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
 
         const openDays = formData.operatingHours?.filter(d => d.isOpen) || [];
         const dbPayload = {
-            name: formData.name, category: formData.category, delivery_time: formData.deliveryTime,
-            rating: formData.rating, image_url: finalImageUrl, payment_gateways: formData.paymentGateways,
-            address: formData.address, phone: formData.phone, 
+            name: formData.name, 
+            category: formData.category, 
+            city: formData.city || 'Guaranésia',
+            delivery_time: formData.deliveryTime,
+            rating: formData.rating, 
+            image_url: finalImageUrl, 
+            payment_gateways: formData.paymentGateways,
+            address: formData.address, 
+            phone: formData.phone, 
             opening_hours: openDays.length > 0 ? openDays[0].opens : '',
             closing_hours: openDays.length > 0 ? openDays[0].closes : '',
             delivery_fee: formData.deliveryFee || 0,
@@ -241,10 +250,50 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                         }} className="text-xs" />
                     </div>
 
-                    <input name="name" value={formData.name} onChange={handleChange} placeholder="Nome" className="w-full p-2 border rounded" />
-                    <input name="address" value={formData.address} onChange={handleChange} placeholder="Endereço" className="w-full p-2 border rounded" />
+                    <div>
+                        <label className="block text-xs font-black text-gray-700 uppercase mb-1">
+                            Nome do Restaurante / Estabelecimento
+                        </label>
+                        <p className="text-[11px] text-gray-500 mb-1.5 font-medium leading-tight">
+                            Nome fantasia exibido aos clientes no aplicativo.
+                        </p>
+                        <input name="name" value={formData.name} onChange={handleChange} placeholder="Ex: Pastelaria Renovação" className="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-orange-500 font-bold text-gray-800" />
+                    </div>
                     
-                    <div className="border rounded p-3 bg-white">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-black text-gray-700 uppercase mb-1">
+                                📍 Cidade Atendida (Multi-cidades)
+                            </label>
+                            <p className="text-[11px] text-gray-500 mb-1.5 font-medium leading-tight">
+                                Cidade principal onde o cardápio ficará visível aos clientes.
+                            </p>
+                            <input 
+                                name="city" 
+                                list="cities-list"
+                                value={formData.city || ''} 
+                                onChange={handleChange} 
+                                placeholder="Ex: Guaranésia, Guaxupé..." 
+                                className="w-full p-2.5 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 bg-orange-50/20 font-bold" 
+                            />
+                            <datalist id="cities-list">
+                                {KNOWN_CITIES.map(c => (
+                                    <option key={c.name} value={c.name}>{c.name} - {c.state}</option>
+                                ))}
+                            </datalist>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black text-gray-700 uppercase mb-1">
+                                Endereço Completo
+                            </label>
+                            <p className="text-[11px] text-gray-500 mb-1.5 font-medium leading-tight">
+                                Rua, número e bairro para retirada no local e cálculo de distância.
+                            </p>
+                            <input name="address" value={formData.address} onChange={handleChange} placeholder="Rua, Número, Bairro" className="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-orange-500" />
+                        </div>
+                    </div>
+                    
+                    <div className="border rounded-xl p-3 bg-white">
                         <h3 className="font-bold text-sm mb-2">Categorias do Restaurante</h3>
                         <div className="grid grid-cols-2 gap-2 text-sm">
                             {categories.map(cat => (
@@ -254,7 +303,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                                         type="checkbox"
                                         checked={(formData.category || '').split(',').map(c => c.trim()).includes(cat.name)}
                                         onChange={(e) => {
-                                            const currentCategories = (formData.category || '').split(',').map(c => c.trim()).filter(c => c !== '');
+                                             const currentCategories = (formData.category || '').split(',').map(c => c.trim()).filter(c => c !== '');
                                             if (e.target.checked) {
                                                 setFormData(prev => ({ ...prev, category: [...currentCategories, cat.name].join(', ') }));
                                             } else {
@@ -268,9 +317,43 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <input name="phone" value={formData.phone} onChange={handleChange} placeholder="Telefone" className="p-2 border rounded" />
-                        <input name="deliveryFee" type="number" value={formData.deliveryFee} onChange={handleChange} placeholder="Taxa Entrega" className="p-2 border rounded" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                        <div>
+                            <label className="block text-xs font-black text-gray-800 uppercase mb-1">
+                                📞 Telefone / WhatsApp de Contato
+                            </label>
+                            <p className="text-[11px] text-gray-500 mb-2 font-medium leading-tight">
+                                Insira o número do estabelecimento com DDD (ex: 35999998888) para receber pedidos, contatos e mensagens automáticas de clientes.
+                            </p>
+                            <input 
+                                name="phone" 
+                                value={formData.phone} 
+                                onChange={handleChange} 
+                                placeholder="Ex: (35) 99999-8888" 
+                                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 bg-white font-medium text-gray-800 shadow-sm" 
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black text-gray-800 uppercase mb-1">
+                                🛵 Valor da Taxa de Entrega (R$)
+                            </label>
+                            <p className="text-[11px] text-gray-500 mb-2 font-medium leading-tight">
+                                Digite o valor fixo cobrado por entrega em domicílio (ex: 5.00). Caso a entrega seja gratuita para os clientes, deixe 0.
+                            </p>
+                            <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">R$</span>
+                                <input 
+                                    name="deliveryFee" 
+                                    type="number" 
+                                    step="0.01" 
+                                    min="0"
+                                    value={formData.deliveryFee} 
+                                    onChange={handleChange} 
+                                    placeholder="0.00" 
+                                    className="w-full p-2.5 pl-9 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 bg-white font-mono font-bold text-gray-800 shadow-sm" 
+                                />
+                            </div>
+                        </div>
                     </div>
 
                     <div className="border-t pt-4">

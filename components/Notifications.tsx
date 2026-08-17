@@ -54,7 +54,7 @@ const Toast: React.FC<{ options: ToastOptions; onRemove: (id: number) => void }>
 
 // --- MODAL COMPONENTS ---
 const ConfirmationModal: React.FC<{ options: ConfirmOptions }> = ({ options }) => {
-    const { title, message, onConfirm, onCancel, confirmText = 'Confirm', cancelText = 'Cancel', isDestructive = false } = options;
+    const { title, message, onConfirm, onCancel, confirmText = 'Confirmar', cancelText = 'Cancelar', isDestructive = false } = options;
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex justify-center items-center p-4">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
@@ -71,7 +71,7 @@ const ConfirmationModal: React.FC<{ options: ConfirmOptions }> = ({ options }) =
 
 const PromptModal: React.FC<{ options: PromptOptions }> = ({ options }) => {
     const [value, setValue] = useState('');
-    const { title, message, placeholder, onSubmit, onCancel, submitText = 'Submit', cancelText = 'Cancel' } = options;
+    const { title, message, placeholder, onSubmit, onCancel, submitText = 'Confirmar', cancelText = 'Cancelar' } = options;
     const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {

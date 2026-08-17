@@ -27,12 +27,9 @@ import HeaderGlobal from './components/HeaderGlobal';
 import Footer from './components/Footer';
 import AdRotator from './components/AdRotator';
 import VersionChecker, { APP_VERSION } from './components/VersionChecker';
-
-const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-  </svg>
-);
+import GpsBanner from './components/GpsBanner';
+import CitySelectorModal from './components/CitySelectorModal';
+import { getSelectedCity, saveSelectedCity, normalizeCityName, getCurrentUserCity, isGpsPromptDismissed, setGpsPromptDismissed } from './utils/locationService';
 
 const FunnelIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
@@ -272,10 +269,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                          <OptimizedImage src={restaurant.imageUrl} alt={restaurant.name} priority={true} className="w-full h-full rounded-full" objectFit="contain" />
                     </div>
                 </div>
-                <button onClick={onBack} className="absolute top-4 left-4 bg-white/90 backdrop-blur rounded-full p-2 shadow-md z-20 hover:scale-105 active:scale-95 transition-transform text-gray-800">
-                    <ArrowLeftIcon className="w-6 h-6"/>
-                </button>
-                <button onClick={handleShare} className="absolute top-4 right-4 bg-white/90 backdrop-blur rounded-full p-2 shadow-md z-20 hover:scale-105 active:scale-95 transition-transform text-gray-800">
+                <button onClick={handleShare} className="absolute top-4 right-4 bg-white/90 backdrop-blur rounded-full p-2 shadow-md z-20 hover:scale-105 active:scale-95 transition-transform text-gray-800" title="Compartilhar Cardápio">
                     <ShareIcon className="w-6 h-6"/>
                 </button>
             </div>
@@ -283,15 +277,46 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
             <div className="p-4 bg-white rounded-t-2xl -mt-4 relative z-20 text-center border-b shadow-sm">
                 <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{restaurant.name}</h1>
                 <p className="text-gray-600 mt-1 text-sm font-medium uppercase tracking-wide">{restaurant.category}</p>
+                {!isRestaurantOpen(restaurant) && (
+                    <div className="mt-3 inline-flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 px-3.5 py-1.5 rounded-full text-xs font-bold shadow-sm">
+                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                        <span>Restaurante Fechado • Pedidos Indisponíveis</span>
+                    </div>
+                )}
             </div>
             
             {dailySpecials.length > 0 && (
                  <div className="p-4 bg-yellow-50 border-b-4 border-yellow-200">
-                    <h2 className="text-xl font-black text-yellow-800 uppercase mb-4">Destaques do Dia</h2>
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-xl font-black text-yellow-800 uppercase">Destaques do Dia</h2>
+                        {!isRestaurantOpen(restaurant) && (
+                            <span className="text-[11px] font-black text-amber-800 bg-amber-200/80 px-2.5 py-1 rounded-full uppercase tracking-wider">
+                                Fechado
+                            </span>
+                        )}
+                    </div>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         {dailySpecials.map(item => {
                             const categoryName = item.categoryId ? categoryNameMap.get(item.categoryId) : undefined;
-                            return <MenuItemCard key={`destaque-${item.id}`} item={item} allPizzas={allPizzas} allAddons={addons} categoryName={categoryName} />
+                            const category = menu.find(c => c.id === item.categoryId || c.name === categoryName);
+                            const timeCheck = category 
+                                ? isAvailableByTime({ availableStartTime: category.availableStartTime, availableEndTime: category.availableEndTime })
+                                : { isAvailable: true, message: '' };
+                            const isCategoryAvailable = timeCheck.isAvailable;
+                            const categoryUnavailableMessage = timeCheck.message || 'Esta categoria está fora do horário.';
+
+                            return (
+                                <MenuItemCard 
+                                    key={`destaque-${item.id}`} 
+                                    item={item} 
+                                    allPizzas={allPizzas} 
+                                    allAddons={addons} 
+                                    categoryName={categoryName} 
+                                    isOpen={isRestaurantOpen(restaurant)}
+                                    isCategoryAvailable={isCategoryAvailable}
+                                    categoryUnavailableMessage={categoryUnavailableMessage}
+                                />
+                            );
                         })}
                     </div>
                  </div>
@@ -340,7 +365,23 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     );
 };
 
-const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRestaurant: (r: Restaurant | null) => void }> = ({ selectedRestaurant, onSelectRestaurant }) => {
+interface CustomerViewProps {
+    selectedRestaurant: Restaurant | null;
+    onSelectRestaurant: (r: Restaurant | null) => void;
+    currentCity: string;
+    onCityChange: (newCity: string) => void;
+    onOpenCityModal: () => void;
+    onRestaurantsLoaded?: (restaurants: Restaurant[]) => void;
+}
+
+const CustomerView: React.FC<CustomerViewProps> = ({ 
+    selectedRestaurant, 
+    onSelectRestaurant, 
+    currentCity, 
+    onCityChange, 
+    onOpenCityModal,
+    onRestaurantsLoaded 
+}) => {
     const { cartItems } = useCart();
     const [restaurants, setRestaurants] = useState<Restaurant[]>(() => {
         try {
@@ -373,6 +414,9 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
                 if (data && data.length > 0) {
                     setRestaurants(data);
                     localStorage.setItem('guarafood-cached-all-restaurants', JSON.stringify(data));
+                    if (onRestaurantsLoaded) {
+                        onRestaurantsLoaded(data);
+                    }
                 }
             } catch (err) { 
                 console.warn("[GuaraFood App] Falha ao carregar restaurantes em tempo real, utilizando cache local anterior:", err);
@@ -381,25 +425,40 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
             }
         };
         loadInitialData();
-    }, []);
+    }, [onRestaurantsLoaded]);
 
     const availableCategories = useMemo(() => {
-        const activeRestaurants = restaurants.filter(r => r.active !== false);
+        const activeRestaurants = restaurants.filter(r => {
+            if (r.active === false) return false;
+            if (currentCity && currentCity !== 'Todas') {
+                const restCity = r.city || 'Guaranésia';
+                return normalizeCityName(restCity) === normalizeCityName(currentCity);
+            }
+            return true;
+        });
         const all = activeRestaurants.flatMap(r => r.category ? r.category.split(',').map(c => c.trim()) : []);
         return ['Todos', ...Array.from(new Set(all))];
-    }, [restaurants]);
+    }, [restaurants, currentCity]);
 
     const filteredRestaurants = useMemo(() => {
         return restaurants.filter(restaurant => {
             // CRITICAL: Filter out suspended restaurants for customers
             if (restaurant.active === false) return false;
 
+            // Multi-city filter: match selected city or show all if 'Todas'
+            if (currentCity && currentCity !== 'Todas') {
+                const restCity = restaurant.city || 'Guaranésia';
+                if (normalizeCityName(restCity) !== normalizeCityName(currentCity)) {
+                    return false;
+                }
+            }
+
             const restaurantCats = restaurant.category ? restaurant.category.split(',').map(c => c.trim()) : [];
             const matchesCategory = selectedCategories.includes('Todos') || selectedCategories.some(c => restaurantCats.includes(c));
             const matchesOpen = !showOpenOnly || isRestaurantOpen(restaurant);
             return matchesCategory && matchesOpen;
         });
-    }, [restaurants, selectedCategories, showOpenOnly]);
+    }, [restaurants, selectedCategories, showOpenOnly, currentCity]);
 
     const handleCategoryToggle = (category: string) => {
         if (category === 'Todos') { setSelectedCategories(['Todos']); return; }
@@ -431,6 +490,13 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
 
     return (
         <main className="pb-16 bg-white min-h-screen">
+            {/* Barra de Localização & GPS Banner */}
+            <GpsBanner 
+                currentCity={currentCity} 
+                onCityChange={onCityChange} 
+                onOpenCityModal={onOpenCityModal} 
+            />
+
             <HomePromotionalBanner onBannerClick={(type, val) => {
                 if (type === 'restaurant') {
                     const r = restaurants.find(res => res.name === val && res.active !== false);
@@ -466,10 +532,37 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
                 >
                     <FunnelIcon className="w-3 h-3" /> Abertos agora
                 </button>
+                {currentCity !== 'Todas' && (
+                    <button
+                        onClick={onOpenCityModal}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-xs font-black hover:bg-orange-100 transition-all"
+                    >
+                        <span>📍 {currentCity}</span>
+                        <span className="text-[10px] text-orange-500 underline font-normal">trocar</span>
+                    </button>
+                )}
             </div>
 
             <div className="p-4 pt-6">
-                <h2 className="text-xl font-black text-gray-800 mb-6">Escolha o lugar e faça seu pedido!</h2>
+                <div className="flex items-center justify-between mb-6">
+                    <div>
+                        <h2 className="text-xl font-black text-gray-800">
+                            {currentCity === 'Todas' ? 'Todos os Restaurantes' : `Restaurantes em ${currentCity}`}
+                        </h2>
+                        <p className="text-xs text-gray-500 font-medium">
+                            {filteredRestaurants.length} {filteredRestaurants.length === 1 ? 'estabelecimento disponível' : 'estabelecimentos disponíveis'}
+                        </p>
+                    </div>
+                    {currentCity !== 'Todas' && (
+                        <button
+                            onClick={() => onCityChange('Todas')}
+                            className="text-xs text-orange-600 hover:text-orange-700 font-bold hover:underline"
+                        >
+                            Ver todas as cidades
+                        </button>
+                    )}
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredRestaurants.map(restaurant => (
                         <RestaurantCard 
@@ -480,10 +573,40 @@ const CustomerView: React.FC<{ selectedRestaurant: Restaurant | null; onSelectRe
                         />
                     ))}
                 </div>
+
                 {filteredRestaurants.length === 0 && (
-                    <div className="text-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
-                        <p className="text-gray-400 font-bold">Nenhum restaurante encontrado.</p>
-                        <button onClick={() => { setSelectedCategories(['Todos']); setShowOpenOnly(false); }} className="mt-4 text-orange-600 font-black underline">Limpar Filtros</button>
+                    <div className="text-center py-16 px-4 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
+                        <div className="w-16 h-16 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl shadow-inner">
+                            📍
+                        </div>
+                        <h3 className="text-lg font-black text-gray-800 mb-1">
+                            Nenhum restaurante encontrado em {currentCity}
+                        </h3>
+                        <p className="text-sm text-gray-500 max-w-md mx-auto mb-6">
+                            Não encontramos estabelecimentos ativos com os filtros selecionados nesta cidade. Você pode selecionar outra cidade ou usar a localização GPS.
+                        </p>
+                        <div className="flex flex-wrap justify-center gap-3">
+                            <button 
+                                onClick={onOpenCityModal}
+                                className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-black shadow-md shadow-orange-600/20 active:scale-95 transition-all"
+                            >
+                                Trocar Cidade ou Usar GPS
+                            </button>
+                            <button 
+                                onClick={() => onCityChange('Todas')}
+                                className="px-5 py-2.5 bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 rounded-xl text-xs font-black active:scale-95 transition-all"
+                            >
+                                Ver Todas as Cidades
+                            </button>
+                            {(selectedCategories.length > 1 || !selectedCategories.includes('Todos') || showOpenOnly) && (
+                                <button 
+                                    onClick={() => { setSelectedCategories(['Todos']); setShowOpenOnly(false); }} 
+                                    className="px-5 py-2.5 bg-white border border-orange-200 text-orange-600 rounded-xl text-xs font-black active:scale-95 transition-all"
+                                >
+                                    Limpar Filtros
+                                </button>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>
@@ -497,6 +620,16 @@ const AppContent: React.FC = () => {
     const [view, setView] = useState<'customer' | 'login' | 'history' | 'help'>('customer');
     const { currentUser, loading } = useAuth();
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
+    const [selectedCity, setSelectedCity] = useState<string>(() => getSelectedCity());
+    const [isCityModalOpen, setIsCityModalOpen] = useState(false);
+    const [allRestaurants, setAllRestaurants] = useState<Restaurant[]>(() => {
+        try {
+            const cached = localStorage.getItem('guarafood-cached-all-restaurants');
+            return cached ? JSON.parse(cached) : [];
+        } catch {
+            return [];
+        }
+    });
 
     useEffect(() => {
         window.scrollTo(0, 0);
@@ -529,6 +662,25 @@ const AppContent: React.FC = () => {
         }
     }, []);
 
+    const handleCityChange = (newCity: string) => {
+        setSelectedCity(newCity);
+        saveSelectedCity(newCity);
+    };
+
+    const isInsideRestaurant = Boolean(selectedRestaurant);
+    const isInsideSubView = view !== 'customer' || Boolean(currentUser && (currentUser.role === 'admin' || currentUser.role === 'merchant' || currentUser.role === 'waiter' || currentUser.role === 'manager'));
+    const canGoBack = isInsideRestaurant || isInsideSubView;
+
+    const handleGlobalBack = () => {
+        if (selectedRestaurant) {
+            setSelectedRestaurant(null);
+        } else if (view !== 'customer') {
+            setView('customer');
+        }
+    };
+
+    const backLabel = isInsideRestaurant ? 'Restaurantes' : 'Voltar';
+
     const renderContent = () => {
         if (loading) return <div className="h-screen flex items-center justify-center"><Spinner /></div>;
         if (currentUser?.role === 'admin') return <AdminDashboard onBack={() => setView('customer')} />;
@@ -536,7 +688,16 @@ const AppContent: React.FC = () => {
         if (view === 'login') return <LoginScreen onLoginSuccess={() => setView('customer')} onBack={() => setView('customer')} />;
         if (view === 'history') return <CustomerOrders onBack={() => setView('customer')} />;
         if (view === 'help') return <HelpCenter onBack={() => setView('customer')} />;
-        return <CustomerView selectedRestaurant={selectedRestaurant} onSelectRestaurant={setSelectedRestaurant} />;
+        return (
+            <CustomerView 
+                selectedRestaurant={selectedRestaurant} 
+                onSelectRestaurant={setSelectedRestaurant}
+                currentCity={selectedCity}
+                onCityChange={handleCityChange}
+                onOpenCityModal={() => setIsCityModalOpen(true)}
+                onRestaurantsLoaded={setAllRestaurants}
+            />
+        );
     };
 
     return (
@@ -544,13 +705,25 @@ const AppContent: React.FC = () => {
             <VersionChecker />
             <HeaderGlobal 
                 onOrdersClick={() => setView('history')} 
-                onHomeClick={() => { setView('customer'); setSelectedRestaurant(null); }} 
+                onHomeClick={() => { setView('customer'); setSelectedRestaurant(null); }}
+                canGoBack={canGoBack}
+                onBack={handleGlobalBack}
+                backLabel={backLabel}
             />
             <div className="flex-grow relative print-container">
                 {renderContent()}
             </div>
             <OrderTracker />
             <Footer onLoginClick={() => setView('login')} onHelpClick={() => setView('help')} />
+            
+            {/* Modal de Seleção de Cidades e Ativação GPS */}
+            <CitySelectorModal 
+                isOpen={isCityModalOpen}
+                onClose={() => setIsCityModalOpen(false)}
+                currentCity={selectedCity}
+                onCityChange={handleCityChange}
+                restaurants={allRestaurants}
+            />
         </div>
     );
 };

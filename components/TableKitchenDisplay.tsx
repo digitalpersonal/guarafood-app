@@ -42,9 +42,23 @@ const TableKitchenDisplay: React.FC<TableKitchenDisplayProps> = ({ orders, onUpd
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {tableOrders.map(order => (
                     <div key={order.id} className={`bg-white p-4 rounded-2xl shadow-sm border border-gray-200 transition-all duration-500 ${newOrderIds.has(order.id) ? 'animate-pulse ring-4 ring-orange-400 bg-orange-50' : ''}`}>
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-black text-gray-800">Mesa {order.tableNumber}</h3>
-                            <span className="text-xs font-bold text-gray-500">#{order.order_number}</span>
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <h3 className="text-lg font-black text-gray-800 leading-tight">Mesa {order.tableNumber}</h3>
+                                {order.customerName && (
+                                    <p className="text-xs font-bold text-orange-600 truncate max-w-[150px]">
+                                        👤 {order.customerName}
+                                    </p>
+                                )}
+                            </div>
+                            <div className="text-right">
+                                <span className="text-xs font-bold text-gray-500">#{order.order_number}</span>
+                                {order.comandaNumber && (
+                                    <span className="block text-[10px] font-black text-purple-600">
+                                        Cmd: {order.comandaNumber}
+                                    </span>
+                                )}
+                            </div>
                         </div>
                         <div className="space-y-2">
                             {order.items.map((item, i) => (

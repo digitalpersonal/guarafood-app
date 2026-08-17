@@ -1,70 +1,75 @@
-
 import React from 'react';
 import { Logo } from './Logo';
 
 interface HeaderGlobalProps {
   onOrdersClick?: () => void;
   onHomeClick?: () => void;
+  onBack?: () => void;
+  canGoBack?: boolean;
+  backLabel?: string;
 }
 
+const ChevronLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+    </svg>
+);
+
 const ClockIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
 );
 
-const HomeIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
-    </svg>
-);
-
-const HeaderGlobal: React.FC<HeaderGlobalProps> = ({ onOrdersClick, onHomeClick }) => {
+const HeaderGlobal: React.FC<HeaderGlobalProps> = ({ 
+  onOrdersClick, 
+  onHomeClick, 
+  onBack, 
+  canGoBack, 
+  backLabel = "Voltar" 
+}) => {
   return (
-    <header className="bg-orange-600 p-3 shadow-md fixed top-0 left-0 right-0 z-50 h-[64px] flex items-center">
-      <div className="w-full max-w-7xl mx-auto px-4 grid grid-cols-3 items-center">
+    <header className="bg-orange-600 shadow-md fixed top-0 left-0 right-0 z-50 h-[64px] flex items-center">
+      <div className="w-full max-w-7xl mx-auto px-3 sm:px-4 flex items-center justify-between">
         
-        {/* Lado Esquerdo */}
-        <div className="flex justify-start">
-          {onHomeClick && (
-              <button 
-                  onClick={onHomeClick}
-                  className="text-white hover:bg-orange-700 p-2 rounded-lg transition-colors flex items-center gap-1.5 -ml-2 group"
-                  title="Página Inicial"
-              >
-                  <div className="p-1 rounded-full group-active:bg-orange-800 transition-colors">
-                    <HomeIcon className="w-6 h-6" />
-                  </div>
-                  <span className="text-sm font-black hidden sm:inline uppercase tracking-tight">Início</span>
-              </button>
-          )}
+        {/* Lado Esquerdo: Botão Voltar discreto quando aplicável */}
+        <div className="w-10 sm:w-16 flex items-center justify-start flex-shrink-0">
+          {canGoBack && onBack ? (
+            <button 
+              onClick={onBack}
+              className="w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-orange-700 active:bg-orange-800 active:scale-90 transition-all border border-orange-500/30 shadow-sm"
+              title={backLabel}
+              aria-label={backLabel}
+            >
+              <ChevronLeftIcon className="w-6 h-6 text-white" />
+            </button>
+          ) : null}
         </div>
 
-        {/* Centro - Logo */}
-        <div className="flex justify-center">
+        {/* Centro: Logo GuaraFood - Totalmente livre e sem obstruções */}
+        <div className="flex-1 flex justify-center items-center px-2">
           <button 
-              onClick={onHomeClick} 
-              className={`focus:outline-none transition-transform active:scale-95 ${onHomeClick ? 'cursor-pointer hover:opacity-90' : 'cursor-default'}`}
-              disabled={!onHomeClick}
+            onClick={onHomeClick} 
+            className={`focus:outline-none transition-transform active:scale-95 flex items-center ${onHomeClick ? 'cursor-pointer hover:opacity-95' : 'cursor-default'}`}
+            disabled={!onHomeClick}
+            title="GuaraFood - Início"
           >
-              <Logo />
+            <Logo />
           </button>
         </div>
         
-        {/* Lado Direito */}
-        <div className="flex justify-end">
-          {onOrdersClick && (
+        {/* Lado Direito: Meus Pedidos (ícone limpo e circular) */}
+        <div className="w-10 sm:w-16 flex items-center justify-end flex-shrink-0">
+          {onOrdersClick ? (
             <button 
               onClick={onOrdersClick}
-              className="text-white hover:bg-orange-700 p-2 rounded-lg transition-colors flex items-center gap-1.5 -mr-2 group"
+              className="w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-orange-700 active:bg-orange-800 active:scale-90 transition-all border border-orange-500/30 shadow-sm"
               title="Meus Pedidos"
+              aria-label="Meus Pedidos"
             >
-              <span className="text-sm font-black hidden sm:inline uppercase tracking-tight">Pedidos</span>
-              <div className="p-1 rounded-full group-active:bg-orange-800 transition-colors">
-                <ClockIcon className="w-6 h-6" />
-              </div>
+              <ClockIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </button>
-          )}
+          ) : null}
         </div>
       </div>
     </header>

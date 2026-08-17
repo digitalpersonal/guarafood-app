@@ -72,6 +72,7 @@ export interface Restaurant {
   name: string;
   category: string;
   description?: string; // Added short description
+  city?: string; // NEW: City served by the restaurant (default 'Guaranésia')
   deliveryTime: string;
   rating: number;
   imageUrl: string;
