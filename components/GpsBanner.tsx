@@ -74,7 +74,7 @@ const GpsBanner: React.FC<GpsBannerProps> = ({ currentCity, onCityChange, onOpen
                                     <span>Permitir acesso à sua localização?</span>
                                 </h4>
                                 <p className="text-xs text-gray-600 font-medium mt-0.5 leading-relaxed">
-                                    O GuaraFood solicita sua localização para exibir os restaurantes abertos na sua cidade e calcular o tempo de entrega com exatidão.
+                                    Estamos chegando em mais cidades... O GuaraFood solicitará somente uma vez a sua localização para exibir os restaurantes abertos na sua cidade.
                                 </p>
                             </div>
                         </div>

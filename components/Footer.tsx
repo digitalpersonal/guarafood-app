@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { APP_VERSION } from './VersionChecker';
+import { usePWAInstall } from '../hooks/usePWAInstall';
+import { useNotification } from '../hooks/useNotification';
 
 // Icons
 const DevicePhoneMobileIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -21,8 +23,26 @@ const XMarkIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 
 const ShareIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+    </svg>
+);
+
+const PlusSquareIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+);
+
+const EllipsisVerticalIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" />
+    </svg>
+);
+
+const CheckCircleIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+        <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm13.36-1.814a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.74-5.25z" clipRule="evenodd" />
     </svg>
 );
 
@@ -39,6 +59,58 @@ interface FooterProps {
 
 const Footer: React.FC<FooterProps> = ({ onLoginClick, onHelpClick }) => {
   const [showInstallModal, setShowInstallModal] = useState(false);
+  const { isInstalled, isIOS, isAndroid, canPromptDirectly, triggerInstall } = usePWAInstall();
+  const { addToast } = useNotification();
+  const [activeTab, setActiveTab] = useState<'ios' | 'android'>('android');
+
+  // Ajusta a aba padrão com base no aparelho detectado
+  useEffect(() => {
+    if (isIOS) {
+      setActiveTab('ios');
+    } else {
+      setActiveTab('android');
+    }
+  }, [isIOS]);
+
+  const handleInstallClick = async () => {
+    if (isInstalled) {
+      addToast({
+        type: 'info',
+        message: 'O GuaraFood já está instalado no seu aparelho! Acesse direto pelo ícone na sua tela inicial.',
+        duration: 4000
+      });
+      setShowInstallModal(true);
+      return;
+    }
+
+    // Se estiver no Android/Chrome e o prompt direto estiver pronto
+    if (canPromptDirectly) {
+      const result = await triggerInstall();
+      if (result === 'accepted') {
+        addToast({
+          type: 'success',
+          message: 'Aplicativo adicionado à sua tela inicial com sucesso! 🎉',
+          duration: 4000
+        });
+        return;
+      }
+    }
+
+    // Caso contrário (iOS, ou Android sem prompt ativo), abre o modal visual
+    setShowInstallModal(true);
+  };
+
+  const handleDirectInstallFromModal = async () => {
+    const result = await triggerInstall();
+    if (result === 'accepted') {
+      addToast({
+        type: 'success',
+        message: 'Aplicativo adicionado à sua tela inicial com sucesso! 🎉',
+        duration: 4000
+      });
+      setShowInstallModal(false);
+    }
+  };
 
   return (
     <>
@@ -58,20 +130,20 @@ const Footer: React.FC<FooterProps> = ({ onLoginClick, onHelpClick }) => {
         <div className="relative z-10 container mx-auto flex flex-col items-center justify-center px-4 text-center space-y-8">
           
           <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md justify-center">
-            {/* Botão Como Instalar */}
+            {/* Botão Como Instalar / Adicionar à Tela Inicial */}
             <button 
-              onClick={() => setShowInstallModal(true)}
-              className="flex items-center justify-center gap-2 px-6 py-3 bg-white/10 backdrop-blur-md border border-white/20 rounded-xl hover:bg-white/20 transition-all text-sm font-bold shadow-xl"
+              onClick={handleInstallClick}
+              className="flex items-center justify-center gap-2 px-6 py-3 bg-white/10 backdrop-blur-md border border-white/20 rounded-xl hover:bg-white/20 transition-all text-sm font-bold shadow-xl active:scale-95 group"
             >
-              <DevicePhoneMobileIcon className="w-5 h-5" />
-              <span>Instalar Aplicativo</span>
+              <DevicePhoneMobileIcon className="w-5 h-5 text-orange-400 group-hover:scale-110 transition-transform" />
+              <span>{isInstalled ? 'App Já Instalado' : 'Instalar Aplicativo'}</span>
             </button>
 
             {/* Botão Central de Ajuda */}
             {onHelpClick && (
               <button 
                 onClick={onHelpClick}
-                className="flex items-center justify-center gap-2 px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-xl transition-all text-sm font-black shadow-xl shadow-orange-900/20"
+                className="flex items-center justify-center gap-2 px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-xl transition-all text-sm font-black shadow-xl shadow-orange-900/20 active:scale-95"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
@@ -85,7 +157,7 @@ const Footer: React.FC<FooterProps> = ({ onLoginClick, onHelpClick }) => {
               href="https://wa.me/5535991048020" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl transition-all text-sm font-black shadow-xl shadow-green-900/20"
+              className="flex items-center justify-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl transition-all text-sm font-black shadow-xl shadow-green-900/20 active:scale-95"
             >
               <WhatsAppIcon className="w-5 h-5" />
               <span>Suporte Técnico</span>
@@ -127,58 +199,194 @@ const Footer: React.FC<FooterProps> = ({ onLoginClick, onHelpClick }) => {
         </div>
       </footer>
 
-      {/* Modal de Instruções de Instalação */}
+      {/* Modal Inteligente de Instalação no Celular */}
       {showInstallModal && (
         <div 
-          className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[100] flex justify-center items-center p-4 animate-fadeIn" 
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex justify-center items-end sm:items-center p-0 sm:p-4 animate-fadeIn" 
           onClick={() => setShowInstallModal(false)}
         >
           <div 
-            className="bg-white text-gray-800 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100"
+            className="bg-white text-gray-800 rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all max-h-[92vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="bg-orange-600 p-5 flex justify-between items-center text-white">
-              <h3 className="font-black text-lg uppercase tracking-tight">Instalar no Celular</h3>
-              <button onClick={() => setShowInstallModal(false)} className="p-1 hover:bg-black/10 rounded-full">
-                <XMarkIcon className="w-6 h-6" />
+            {/* Header */}
+            <div className="bg-gradient-to-r from-orange-600 to-orange-500 p-5 flex justify-between items-center text-white">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-sm">
+                  <DevicePhoneMobileIcon className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-black text-lg uppercase tracking-tight leading-tight">Adicionar à Tela Inicial</h3>
+                  <p className="text-[11px] text-orange-100 font-medium">Acesse o GuaraFood como um App nativo</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowInstallModal(false)} 
+                className="p-2 hover:bg-white/20 rounded-full transition-colors active:scale-90"
+                aria-label="Fechar"
+              >
+                <XMarkIcon className="w-6 h-6 text-white" />
+              </button>
+            </div>
+
+            {/* Aviso se já estiver instalado */}
+            {isInstalled && (
+              <div className="bg-emerald-50 border-b border-emerald-100 p-3.5 flex items-center gap-2.5 text-emerald-800 text-xs font-bold">
+                <CheckCircleIcon className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                <span>O aplicativo já está instalado no seu aparelho!</span>
+              </div>
+            )}
+
+            {/* Seletor de Abas (iPhone vs Android) */}
+            <div className="grid grid-cols-2 p-2 bg-gray-100 border-b border-gray-200 gap-1 text-xs font-black">
+              <button
+                type="button"
+                onClick={() => setActiveTab('android')}
+                className={`py-2.5 px-3 rounded-xl transition-all flex items-center justify-center gap-2 ${
+                  activeTab === 'android' 
+                    ? 'bg-white text-gray-900 shadow-sm' 
+                    : 'text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                <span>🤖 Android</span>
+                {isAndroid && <span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span>}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('ios')}
+                className={`py-2.5 px-3 rounded-xl transition-all flex items-center justify-center gap-2 ${
+                  activeTab === 'ios' 
+                    ? 'bg-white text-gray-900 shadow-sm' 
+                    : 'text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                <span>🍏 iPhone (iOS)</span>
+                {isIOS && <span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span>}
               </button>
             </div>
             
-            <div className="p-6 space-y-8">
-              {/* Android Instructions */}
-              <div className="flex gap-4">
-                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <DevicePhoneMobileIcon className="w-6 h-6 text-green-600" />
-                </div>
-                <div>
-                    <h4 className="font-black text-gray-900 mb-1">Android (Chrome)</h4>
-                    <ol className="text-xs text-gray-600 space-y-2">
-                        <li>1. Toque nos <strong>três pontos ⋮</strong> no canto superior.</li>
-                        <li>2. Selecione <strong>"Instalar aplicativo"</strong>.</li>
-                        <li>3. Confirme em <strong>Adicionar</strong>.</li>
-                    </ol>
-                </div>
-              </div>
+            <div className="p-6 space-y-6 overflow-y-auto">
+              {activeTab === 'android' ? (
+                /* Conteúdo Android */
+                <div className="space-y-4">
+                  {canPromptDirectly && (
+                    <div className="p-4 bg-orange-50 border border-orange-200 rounded-2xl text-center space-y-3">
+                      <p className="text-xs font-bold text-orange-900">
+                        Seu navegador é compatível com a instalação automática em 1 toque:
+                      </p>
+                      <button
+                        onClick={handleDirectInstallFromModal}
+                        className="w-full bg-orange-600 hover:bg-orange-700 text-white font-black py-3.5 px-4 rounded-xl transition-all shadow-md shadow-orange-600/30 text-xs uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95"
+                      >
+                        <DevicePhoneMobileIcon className="w-5 h-5" />
+                        <span>Instalar no Celular Agora</span>
+                      </button>
+                    </div>
+                  )}
 
-              <div className="flex gap-4 border-t pt-6">
-                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <DevicePhoneMobileIcon className="w-6 h-6 text-blue-600" />
+                  <div className="space-y-3">
+                    <p className="text-xs font-black text-gray-400 uppercase tracking-wider">
+                      Passo a passo no Google Chrome / Samsung Internet:
+                    </p>
+
+                    <div className="flex items-start gap-3.5 p-3 rounded-2xl bg-gray-50 border border-gray-100">
+                      <div className="w-8 h-8 rounded-xl bg-orange-100 text-orange-700 font-black text-xs flex items-center justify-center flex-shrink-0">
+                        1
+                      </div>
+                      <div className="text-xs">
+                        <p className="font-bold text-gray-900">Abra o menu do navegador</p>
+                        <p className="text-gray-600 mt-0.5 flex items-center gap-1">
+                          Toque nos <strong>três pontos</strong> <EllipsisVerticalIcon className="w-4 h-4 inline text-gray-700" /> no canto superior direito.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3.5 p-3 rounded-2xl bg-gray-50 border border-gray-100">
+                      <div className="w-8 h-8 rounded-xl bg-orange-100 text-orange-700 font-black text-xs flex items-center justify-center flex-shrink-0">
+                        2
+                      </div>
+                      <div className="text-xs">
+                        <p className="font-bold text-gray-900">Selecione a opção de instalar</p>
+                        <p className="text-gray-600 mt-0.5">
+                          Toque em <strong>"Instalar aplicativo"</strong> ou <strong>"Adicionar à tela inicial"</strong>.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3.5 p-3 rounded-2xl bg-gray-50 border border-gray-100">
+                      <div className="w-8 h-8 rounded-xl bg-orange-100 text-orange-700 font-black text-xs flex items-center justify-center flex-shrink-0">
+                        3
+                      </div>
+                      <div className="text-xs">
+                        <p className="font-bold text-gray-900">Confirme a criação do atalho</p>
+                        <p className="text-gray-600 mt-0.5">
+                          Clique em <strong>"Instalar"</strong>. O ícone do GuaraFood aparecerá na sua tela inicial!
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                    <h4 className="font-black text-gray-900 mb-1">iPhone (Safari)</h4>
-                    <ol className="text-xs text-gray-600 space-y-2">
-                        <li>1. Toque no ícone de <strong>Compartilhar</strong> <ShareIcon className="w-4 h-4 inline" />.</li>
-                        <li>2. Role e toque em <strong>"Tela de Início"</strong>.</li>
-                        <li>3. Toque em <strong>Adicionar</strong> no topo.</li>
-                    </ol>
+              ) : (
+                /* Conteúdo iPhone (iOS Safari) */
+                <div className="space-y-4">
+                  <div className="p-3.5 bg-blue-50 border border-blue-100 rounded-2xl text-xs text-blue-900">
+                    <p className="font-bold">📱 No iPhone (Safari):</p>
+                    <p className="text-blue-700 text-[11px] mt-0.5">
+                      A Apple requer que o atalho seja adicionado através do botão de compartilhamento do Safari.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3.5 p-3 rounded-2xl bg-gray-50 border border-gray-100">
+                      <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 font-black text-xs flex items-center justify-center flex-shrink-0">
+                        1
+                      </div>
+                      <div className="text-xs">
+                        <p className="font-bold text-gray-900">Toque em Compartilhar</p>
+                        <p className="text-gray-600 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                          Na barra inferior do Safari, toque no ícone 
+                          <span className="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded border border-gray-200 font-bold text-blue-600">
+                            <ShareIcon className="w-3.5 h-3.5 inline" /> Compartilhar
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3.5 p-3 rounded-2xl bg-gray-50 border border-gray-100">
+                      <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 font-black text-xs flex items-center justify-center flex-shrink-0">
+                        2
+                      </div>
+                      <div className="text-xs">
+                        <p className="font-bold text-gray-900">Adicionar à Tela de Início</p>
+                        <p className="text-gray-600 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                          Role as opções para baixo e toque em
+                          <span className="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded border border-gray-200 font-bold text-gray-800">
+                            <PlusSquareIcon className="w-3.5 h-3.5 inline" /> Tela de Início
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3.5 p-3 rounded-2xl bg-gray-50 border border-gray-100">
+                      <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 font-black text-xs flex items-center justify-center flex-shrink-0">
+                        3
+                      </div>
+                      <div className="text-xs">
+                        <p className="font-bold text-gray-900">Conclua no topo</p>
+                        <p className="text-gray-600 mt-0.5">
+                          Toque em <strong>"Adicionar"</strong> no canto superior direito. Pronto!
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <button 
                 onClick={() => setShowInstallModal(false)}
-                className="w-full bg-gray-900 text-white font-black py-4 rounded-xl hover:bg-black transition-all shadow-lg uppercase text-xs tracking-widest"
+                className="w-full bg-gray-900 hover:bg-black text-white font-black py-3.5 rounded-xl transition-all shadow-lg uppercase text-xs tracking-widest active:scale-95"
               >
-                Pronto, entendi!
+                Entendi, fechar
               </button>
             </div>
           </div>
