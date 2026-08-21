@@ -11,6 +11,7 @@ import Spinner from './Spinner';
 import PrintableOrder from './PrintableOrder';
 import MensalistasManager from './MensalistasManager';
 import MercadoPagoGuide from './MercadoPagoGuide';
+import { PrintService } from '../services/printService';
 import { getErrorMessage } from '../services/api';
 import ChromeMemorySaverGuide from './ChromeMemorySaverGuide';
 import { KNOWN_CITIES } from '../utils/locationService';
@@ -324,6 +325,8 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
     const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
     const [city, setCity] = useState('Guaranésia');
     const [mercadoPagoToken, setMercadoPagoToken] = useState('');
+    const [asaasApiKey, setAsaasApiKey] = useState('');
+    const [selectedPaymentGateway, setSelectedPaymentGateway] = useState<'mercadopago' | 'asaas'>('mercadopago');
     const [manualPixKey, setManualPixKey] = useState('');
     const [bannerImageUrl, setBannerImageUrl] = useState('');
     const [hasMensalistas, setHasMensalistas] = useState(false);
@@ -363,6 +366,8 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                 localStorage.setItem('guarafood-cached-restaurant', JSON.stringify(data));
                 setCity(data.city || 'Guaranésia');
                 setMercadoPagoToken(data.mercado_pago_credentials?.accessToken || '');
+                setAsaasApiKey(data.asaas_credentials?.apiKey || '');
+                setSelectedPaymentGateway(data.selectedPaymentGateway || 'mercadopago');
                 setManualPixKey(data.manualPixKey || '');
                 setBannerImageUrl(data.bannerImageUrl || '');
                 setHasMensalistas(data.hasMensalistas || false);
@@ -404,6 +409,8 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
             await updateRestaurant(restaurantId, {
                 city: city,
                 mercado_pago_credentials: { accessToken: mercadoPagoToken },
+                asaas_credentials: { apiKey: asaasApiKey },
+                selectedPaymentGateway: selectedPaymentGateway,
                 operatingHours: operatingHours,
                 marmitaStartTime: restaurant.marmitaStartTime,
                 marmitaEndTime: restaurant.marmitaEndTime,
@@ -495,6 +502,36 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                 
                 <NotificationSettings />
 
+                <div className="mb-10 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+                    <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Configuração de Pagamento (Pix)</h3>
+                    
+                    <div className="mb-6">
+                        <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">Gateway Ativo</label>
+                        <div className="grid grid-cols-2 gap-4">
+                            <label className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedPaymentGateway === 'mercadopago' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'}`}>
+                                <input type="radio" className="sr-only" checked={selectedPaymentGateway === 'mercadopago'} onChange={() => setSelectedPaymentGateway('mercadopago')} />
+                                <span className="font-bold text-gray-800">Mercado Pago</span>
+                            </label>
+                            <label className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedPaymentGateway === 'asaas' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'}`}>
+                                <input type="radio" className="sr-only" checked={selectedPaymentGateway === 'asaas'} onChange={() => setSelectedPaymentGateway('asaas')} />
+                                <span className="font-bold text-gray-800">Asaas</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    {selectedPaymentGateway === 'mercadopago' ? (
+                        <div>
+                            <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1 ml-1">Token de Acesso (Mercado Pago)</label>
+                            <input type="password" value={mercadoPagoToken} onChange={e => setMercadoPagoToken(e.target.value)} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50" />
+                        </div>
+                    ) : (
+                        <div>
+                            <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1 ml-1">API Key (Asaas)</label>
+                            <input type="password" value={asaasApiKey} onChange={e => setAsaasApiKey(e.target.value)} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50" />
+                        </div>
+                    )}
+                </div>
+
                 <ChromeMemorySaverGuide />
 
                 {restaurantId && (
@@ -570,6 +607,28 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                         <span>🖨️</span> Imprimir Cupom de Teste
                     </button>
                     
+                    <div className="mt-6 pt-6 border-t border-orange-200">
+                        <h4 className="text-xs font-black text-orange-900 mb-3">Configuração QZ Tray (Impressão Profissional)</h4>
+                        <button 
+                            type="button"
+                            onClick={async () => {
+                                try {
+                                    const printers = await PrintService.getPrinters();
+                                    if (printers.length > 0) {
+                                        alert('Impressoras encontradas: ' + printers.join(', '));
+                                    } else {
+                                        alert('Nenhuma impressora encontrada.');
+                                    }
+                                } catch (e: any) {
+                                    alert('Erro ao buscar impressoras: ' + e.message);
+                                }
+                            }}
+                            className="w-full py-2 text-[10px] font-black uppercase bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-all shadow-sm"
+                        >
+                            Buscar Impressoras QZ Tray
+                        </button>
+                    </div>
+
                     <div className="mt-6 pt-6 border-t border-orange-200">
                         <label className="flex items-center justify-between cursor-pointer">
                             <div>

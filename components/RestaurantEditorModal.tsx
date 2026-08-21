@@ -62,6 +62,8 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         closingHours: '',
         deliveryFee: 0,
         mercado_pago_credentials: { accessToken: '' },
+        asaas_credentials: { apiKey: '' },
+        selectedPaymentGateway: 'mercadopago',
         operatingHours: getDefaultOperatingHours(),
         manualPixKey: '',
         active: true,
@@ -121,6 +123,8 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 ...existingRestaurant,
                 city: existingRestaurant.city || 'Guaranésia',
                 mercado_pago_credentials: typeof existingRestaurant.mercado_pago_credentials === 'object' && existingRestaurant.mercado_pago_credentials !== null ? existingRestaurant.mercado_pago_credentials : { accessToken: '' },
+                asaas_credentials: typeof existingRestaurant.asaas_credentials === 'object' && existingRestaurant.asaas_credentials !== null ? existingRestaurant.asaas_credentials : { apiKey: '' },
+                selectedPaymentGateway: existingRestaurant.selectedPaymentGateway || 'mercadopago',
                 operatingHours: opHours,
                 manualPixKey: existingRestaurant.manualPixKey || '',
                 active: existingRestaurant.active !== false,
@@ -137,7 +141,10 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             setFormData({
                 name: '', category: '', city: 'Guaranésia', deliveryTime: '', rating: 0, imageUrl: '', paymentGateways: [],
                 address: '', phone: '', openingHours: '', closingHours: '', deliveryFee: 0,
-                mercado_pago_credentials: { accessToken: '' }, operatingHours: getDefaultOperatingHours(),
+                mercado_pago_credentials: { accessToken: '' }, 
+                asaas_credentials: { apiKey: '' },
+                selectedPaymentGateway: 'mercadopago',
+                operatingHours: getDefaultOperatingHours(),
                 manualPixKey: '', active: true
             });
             setShowSecondShift(Array(7).fill(false));
@@ -203,6 +210,8 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             closing_hours: openDays.length > 0 ? openDays[0].closes : '',
             delivery_fee: formData.deliveryFee || 0,
             mercado_pago_credentials: formData.mercado_pago_credentials,
+            asaas_credentials: formData.asaas_credentials,
+            selected_payment_gateway: formData.selectedPaymentGateway,
             operating_hours: formData.operatingHours,
             manual_pix_key: formData.manualPixKey,
             active: formData.active
@@ -378,26 +387,42 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                         </div>
                     </div>
 
-                    {/* SEÇÃO MERCADO PAGO - ADICIONADA */}
                     <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 space-y-3">
-                        <h3 className="text-sm font-black text-blue-900 uppercase">Configuração Mercado Pago</h3>
+                        <h3 className="text-sm font-black text-blue-900 uppercase">Configuração de Pagamento</h3>
+                        
                         <div>
-                            <label className="text-[10px] font-bold text-blue-700">ACCESS TOKEN (PRODUÇÃO)</label>
-                            <input 
-                                type="password" 
-                                value={formData.mercado_pago_credentials?.accessToken || ''} 
-                                onChange={handleCredentialsChange}
-                                placeholder="APP_USR-..."
-                                className="w-full p-2 border border-blue-200 rounded text-sm font-mono" 
-                            />
+                            <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Gateway Ativo</label>
+                            <select 
+                                value={formData.selectedPaymentGateway || 'mercadopago'} 
+                                onChange={e => setFormData(prev => ({ ...prev, selectedPaymentGateway: e.target.value as any }))}
+                                className="w-full p-2 border rounded text-sm"
+                            >
+                                <option value="mercadopago">Mercado Pago</option>
+                                <option value="asaas">Asaas</option>
+                            </select>
                         </div>
-                        <div>
-                            <label className="text-[10px] font-bold text-blue-700">WEBHOOK URL (PARA O MP)</label>
-                            <div className="flex gap-2">
-                                <input readOnly value={webhookUrl} className="flex-grow p-2 text-[10px] bg-white border border-blue-200 rounded font-mono truncate" />
-                                <button onClick={() => { navigator.clipboard.writeText(webhookUrl); addToast({message: 'Copiado!', type:'success'}); }} className="p-2 bg-blue-600 text-white rounded"><ClipboardIcon className="w-4 h-4"/></button>
+
+                        {formData.selectedPaymentGateway === 'mercadopago' ? (
+                            <div>
+                                <label className="text-[10px] font-bold text-blue-700">ACCESS TOKEN (MERCADO PAGO)</label>
+                                <input 
+                                    type="password" 
+                                    value={formData.mercado_pago_credentials?.accessToken || ''} 
+                                    onChange={e => setFormData(prev => ({ ...prev, mercado_pago_credentials: { accessToken: e.target.value } }))}
+                                    className="w-full p-2 border border-blue-200 rounded text-sm font-mono" 
+                                />
                             </div>
-                        </div>
+                        ) : (
+                            <div>
+                                <label className="text-[10px] font-bold text-blue-700">API KEY (ASAAS)</label>
+                                <input 
+                                    type="password" 
+                                    value={formData.asaas_credentials?.apiKey || ''} 
+                                    onChange={e => setFormData(prev => ({ ...prev, asaas_credentials: { apiKey: e.target.value } }))}
+                                    className="w-full p-2 border border-blue-200 rounded text-sm font-mono" 
+                                />
+                            </div>
+                        )}
                     </div>
 
                     <div className="border-t pt-4">

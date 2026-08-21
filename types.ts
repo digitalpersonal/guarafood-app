@@ -83,6 +83,8 @@ export interface Restaurant {
   closingHours: string; // Kept for simple cases/backwards compatibility
   deliveryFee: number;
   mercado_pago_credentials?: { accessToken: string };
+  asaas_credentials?: { apiKey: string };
+  selectedPaymentGateway?: 'mercadopago' | 'asaas';
   operatingHours?: OperatingHours[]; // The new detailed structure
   marmitaStartTime?: string; // "HH:MM"
   marmitaEndTime?: string;   // "HH:MM"
