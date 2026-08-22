@@ -94,6 +94,7 @@ const normalizeRestaurant = (data: any): Restaurant => {
         hasPixConfigured: hasMpToken,
         active: data.active !== false,
         printerWidth: data.printer_width,
+        printerName: data.printer_name,
         bannerImageUrl: data.banner_image_url,
         marmitaStartTime: data.marmita_start_time,
         marmitaEndTime: data.marmita_end_time,
@@ -146,6 +147,7 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         hasPixConfigured: hasMpToken,
         active: data.active !== false,
         printerWidth: data.printer_width,
+        printerName: data.printer_name,
         bannerImageUrl: data.banner_image_url,
         marmitaStartTime: data.marmita_start_time,
         marmitaEndTime: data.marmita_end_time,
@@ -306,6 +308,9 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     if (updates.marmitaEndTime !== undefined) dbUpdates.marmita_end_time = updates.marmitaEndTime;
     if (updates.manualPixKey !== undefined) dbUpdates.manual_pix_key = updates.manualPixKey;
     if (updates.printerWidth !== undefined) dbUpdates.printer_width = updates.printerWidth;
+    if (updates.printerName !== undefined) dbUpdates.printer_name = updates.printerName;
+    if (updates.asaas_credentials !== undefined) dbUpdates.asaas_credentials = updates.asaas_credentials;
+    if (updates.selectedPaymentGateway !== undefined) dbUpdates.selected_payment_gateway = updates.selectedPaymentGateway;
     if (updates.bannerImageUrl !== undefined) dbUpdates.banner_image_url = updates.bannerImageUrl;
     if (updates.hasMensalistas !== undefined) dbUpdates.has_mensalistas = updates.hasMensalistas;
     if (updates.hasKiloService !== undefined) dbUpdates.has_kilo_service = updates.hasKiloService;
@@ -321,7 +326,7 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     const keysToRemove = [
         'deliveryTime', 'imageUrl', 'paymentGateways', 'openingHours', 
         'closingHours', 'deliveryFee', 'operatingHours', 'manualPixKey', 
-        'hasPixConfigured', 'printerWidth', 'bannerImageUrl', 'marmitaStartTime', 'marmitaEndTime',
+        'hasPixConfigured', 'printerWidth', 'printerName', 'selectedPaymentGateway', 'bannerImageUrl', 'marmitaStartTime', 'marmitaEndTime',
         'hasMensalistas', 'hasKiloService', 'pricePerKilo', 'loyaltyProgram'
     ];
     keysToRemove.forEach(key => delete dbUpdates[key]);

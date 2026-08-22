@@ -334,6 +334,8 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
     const [pricePerKilo, setPricePerKilo] = useState(0);
     const [enableFiscal, setEnableFiscal] = useState(false);
     const [printerWidth, setPrinterWidth] = useState(80);
+    const [printerName, setPrinterName] = useState('');
+    const [availablePrinters, setAvailablePrinters] = useState<string[]>([]);
     const [isPrintServer, setIsPrintServer] = useState(false);
     const [operatingHours, setOperatingHours] = useState<OperatingHours[]>(getDefaultOperatingHours());
     const [isLoading, setIsLoading] = useState(true);
@@ -379,6 +381,7 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                 // Força o estado da impressora a partir do banco e sincroniza LocalStorage
                 const savedWidth = data.printerWidth || 80;
                 setPrinterWidth(savedWidth);
+                setPrinterName(data.printerName || '');
                 localStorage.setItem('guarafood-printer-width', savedWidth.toString());
                 
                 const savedIsPrintServer = localStorage.getItem('guarafood-is-print-server') === 'true';
@@ -416,6 +419,7 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                 marmitaEndTime: restaurant.marmitaEndTime,
                 manualPixKey: manualPixKey,
                 printerWidth: printerWidth,
+                printerName: printerName,
                 bannerImageUrl: bannerImageUrl,
                 hasMensalistas: hasMensalistas,
                 hasKiloService: hasKiloService,
@@ -614,9 +618,8 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                             onClick={async () => {
                                 try {
                                     const printers = await PrintService.getPrinters();
-                                    if (printers.length > 0) {
-                                        alert('Impressoras encontradas: ' + printers.join(', '));
-                                    } else {
+                                    setAvailablePrinters(printers);
+                                    if (printers.length === 0) {
                                         alert('Nenhuma impressora encontrada.');
                                     }
                                 } catch (e: any) {
@@ -627,6 +630,19 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                         >
                             Buscar Impressoras QZ Tray
                         </button>
+                        {availablePrinters.length > 0 && (
+                            <div className="mt-4">
+                                <label className="block text-[10px] font-black text-orange-900 uppercase tracking-widest mb-1">Selecionar Impressora</label>
+                                <select 
+                                    value={printerName} 
+                                    onChange={e => setPrinterName(e.target.value)}
+                                    className="w-full p-2 border rounded-lg text-sm bg-white"
+                                >
+                                    <option value="">Selecione uma impressora</option>
+                                    {availablePrinters.map(p => <option key={p} value={p}>{p}</option>)}
+                                </select>
+                            </div>
+                        )}
                     </div>
 
                     <div className="mt-6 pt-6 border-t border-orange-200">

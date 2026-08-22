@@ -91,6 +91,7 @@ export interface Restaurant {
   manualPixKey?: string;
   hasPixConfigured?: boolean;
   printerWidth?: number; // 80 or 58 (mm) - AGORA NO BANCO
+  printerName?: string; // Nome da impressora QZ Tray selecionada
   bannerImageUrl?: string; // NEW: Custom background for the menu header
   active?: boolean; // NEW: Field to suspend restaurant
   hasMensalistas?: boolean; // NEW: Field to enable/disable mensalistas
