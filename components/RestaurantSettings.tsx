@@ -459,34 +459,52 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
         }
     };
     
-    const handleTestPrint = (width: number) => {
+    const handleTestPrint = async (width: number) => {
         if (!restaurant) return;
         const dummyOrder: Order = {
             id: 'TESTE-01', timestamp: new Date().toISOString(), status: 'Novo Pedido',
-            customerName: 'Teste Layout Jerê/Renovação', customerPhone: '(35) 99999-9999',
+            customerName: 'Teste Layout', customerPhone: '(35) 99999-9999',
             items: [{ 
-                id: '1', 
-                name: 'Pastel de Carne com Queijo', 
-                price: 15.00, 
-                basePrice: 15.00, 
-                quantity: 2, 
-                imageUrl: '', 
-                description: '',
-                selectedOptions: [
-                    { groupTitle: 'Massa', optionName: 'Integral', price: 0 },
-                    { groupTitle: 'Borda', optionName: 'Cheddar', price: 2.50 }
-                ],
-                selectedAddons: [
-                    { id: 101, name: 'Bacon Extra', price: 4.00, restaurantId: restaurant.id }
-                ],
-                notes: 'Bem assado e crocante'
+                id: '1', name: 'Pastel Especial', price: 15.00, basePrice: 15.00, quantity: 2, imageUrl: '', description: '',
+                selectedOptions: [{ groupTitle: 'Massa', optionName: 'Integral', price: 0 }],
+                selectedAddons: [], notes: 'Bem assado e crocante'
             }],
-            totalPrice: 35.00, subtotal: 30.00, deliveryFee: 5.00,
+            totalPrice: 30.00, subtotal: 30.00, deliveryFee: 0.00,
             restaurantId: restaurant.id, restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
             paymentMethod: 'Dinheiro',
         };
+        
         setTestOrder(dummyOrder);
-        setTimeout(() => window.print(), 300);
+        
+        setTimeout(async () => {
+            const el = document.getElementById('printable-order');
+            if (printerName && el) {
+                try {
+                    const { PrintService } = await import('../services/printService');
+                    const html = el.outerHTML;
+                    const qzHtml = `<html><head><meta charset="utf-8"><style>
+                      body { margin: 0; padding: 0; font-family: monospace, sans-serif; background: #fff; color: #000; }
+                      .printable-order { width: 100%; box-sizing: border-box; }
+                      .section-divider { border-top: 1px dashed #000; margin: 4px 0; width: 100%; }
+                      .item-row { display: flex; justify-content: space-between; width: 100%; }
+                      .label-center { text-align: center; font-weight: bold; width: 100%; }
+                      .mode-indicator { font-weight: 900; font-size: 16px; text-align: center; border: 2px dashed #000; padding: 4px; margin: 8px 0; }
+                      .condiments-box { border: 2px solid #000; padding: 6px; text-align: center; margin-bottom: 8px; }
+                      .payment-box { border: 1px solid #000; padding: 6px; margin-top: 8px; }
+                      .item-price-col { font-weight: bold; white-space: nowrap; }
+                    </style></head><body>${html}</body></html>`;
+                    
+                    const success = await PrintService.printHtml(printerName, qzHtml);
+                    if (success) {
+                        alert("Enviado via QZ Tray com sucesso!");
+                        return;
+                    }
+                } catch (e) {
+                    console.error("QZ Tray error:", e);
+                }
+            }
+            window.print();
+        }, 300);
     };
 
     if (isLoading) return <div className="p-8 flex justify-center"><Spinner message="Carregando painel de ajustes..." /></div>;

@@ -1,16 +1,29 @@
 import qz from 'qz-tray';
 
+let connectionPromise: Promise<boolean> | null = null;
+
 export const PrintService = {
   async connect() {
-    try {
-      if (!qz.websocket.isActive()) {
-        await qz.websocket.connect();
-      }
+    if (qz.websocket.isActive()) {
       return true;
-    } catch (error) {
-      console.error('Erro ao conectar ao QZ Tray:', error);
-      throw new Error('Não foi possível conectar ao QZ Tray. Certifique-se de que o software QZ Tray está instalado e rodando (ícone "Q" verde na barra de tarefas do Windows).');
     }
+
+    if (connectionPromise) {
+      return connectionPromise;
+    }
+
+    connectionPromise = (async () => {
+      try {
+        await qz.websocket.connect();
+        return true;
+      } catch (error) {
+        connectionPromise = null;
+        console.error('Erro ao conectar ao QZ Tray:', error);
+        throw new Error('Não foi possível conectar ao QZ Tray. Certifique-se de que o software QZ Tray está instalado e rodando (ícone "Q" verde na barra de tarefas do Windows).');
+      }
+    })();
+
+    return connectionPromise;
   },
 
   async getPrinters() {
@@ -34,6 +47,27 @@ export const PrintService = {
       return true;
     } catch (error) {
       console.error('Erro ao imprimir:', error);
+      return false;
+    }
+  },
+
+  async printHtml(printerName: string, htmlContent: string) {
+    try {
+      await this.connect();
+      // Configure print settings (you can add options like margins here if needed)
+      const config = qz.configs.create(printerName);
+      
+      const data = [{
+        type: 'pixel',
+        format: 'html',
+        flavor: 'plain',
+        data: htmlContent
+      }];
+      
+      await qz.print(config, data);
+      return true;
+    } catch (error) {
+      console.error('Erro ao imprimir HTML via QZ Tray:', error);
       return false;
     }
   }
