@@ -94,6 +94,7 @@ export interface Restaurant {
   printerName?: string; // Nome da impressora QZ Tray selecionada
   bannerImageUrl?: string; // NEW: Custom background for the menu header
   active?: boolean; // NEW: Field to suspend restaurant
+  disableDelivery?: boolean; // NEW: Field to disable delivery and allow pickup only
   hasMensalistas?: boolean; // NEW: Field to enable/disable mensalistas
   hasKiloService?: boolean; // NEW: Field to enable/disable kilo service
   pricePerKilo?: number; // NEW: Price per kilogram

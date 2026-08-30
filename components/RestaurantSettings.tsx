@@ -332,6 +332,7 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
     const [hasMensalistas, setHasMensalistas] = useState(false);
     const [hasKiloService, setHasKiloService] = useState(false);
     const [pricePerKilo, setPricePerKilo] = useState(0);
+    const [disableDelivery, setDisableDelivery] = useState(false);
     const [enableFiscal, setEnableFiscal] = useState(false);
     const [printerWidth, setPrinterWidth] = useState(80);
     const [printerName, setPrinterName] = useState('');
@@ -375,6 +376,7 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                 setHasMensalistas(data.hasMensalistas || false);
                 setHasKiloService(data.hasKiloService || false);
                 setPricePerKilo(data.pricePerKilo || 0);
+                setDisableDelivery(data.disableDelivery || false);
                 setEnableFiscal(data.enableFiscal || false);
                 setOperatingHours(data.operatingHours || getDefaultOperatingHours());
                 
@@ -424,6 +426,7 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                 hasMensalistas: hasMensalistas,
                 hasKiloService: hasKiloService,
                 pricePerKilo: pricePerKilo,
+                disableDelivery: disableDelivery,
                 enableFiscal: enableFiscal
             });
             localStorage.setItem('guarafood-printer-width', printerWidth.toString());
@@ -746,6 +749,23 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                             </label>
                         </div>
                         <MensalistasManager />
+                    </div>
+
+                    {/* --- CONFIGURAÇÃO DE COMIDA POR KILO --- */}
+                    <div className="border-t pt-8">
+                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Disponibilidade de Entregas</h3>
+                        <div className="space-y-4">
+                            <label className="flex items-center justify-between cursor-pointer p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                <div>
+                                    <span className="font-bold text-gray-800 block">Desativar Entregas (Apenas Retirada)</span>
+                                    <span className="text-xs text-gray-500">Útil para dias sem entregador. Clientes só poderão fazer pedidos para retirar no balcão.</span>
+                                </div>
+                                <div className="relative">
+                                    <input type="checkbox" className="sr-only peer" checked={disableDelivery} onChange={e => setDisableDelivery(e.target.checked)} />
+                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+                                </div>
+                            </label>
+                        </div>
                     </div>
 
                     {/* --- CONFIGURAÇÃO DE COMIDA POR KILO --- */}

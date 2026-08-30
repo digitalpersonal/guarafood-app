@@ -93,6 +93,7 @@ const normalizeRestaurant = (data: any): Restaurant => {
         manualPixKey: data.manual_pix_key,
         hasPixConfigured: hasMpToken,
         active: data.active !== false,
+        disableDelivery: data.disable_delivery || false,
         printerWidth: data.printer_width,
         printerName: data.printer_name,
         bannerImageUrl: data.banner_image_url,
@@ -146,6 +147,7 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         manualPixKey: data.manual_pix_key,
         hasPixConfigured: hasMpToken,
         active: data.active !== false,
+        disableDelivery: data.disable_delivery || false,
         printerWidth: data.printer_width,
         printerName: data.printer_name,
         bannerImageUrl: data.banner_image_url,
@@ -321,13 +323,14 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     }
     if (updates.staff !== undefined) dbUpdates.staff = updates.staff;
     if (updates.loyaltyProgram !== undefined) dbUpdates.loyalty_program = updates.loyaltyProgram;
+    if (updates.disableDelivery !== undefined) dbUpdates.disable_delivery = updates.disableDelivery;
 
     // Clean up all camelCase keys to prevent Supabase "column does not exist" errors
     const keysToRemove = [
         'deliveryTime', 'imageUrl', 'paymentGateways', 'openingHours', 
         'closingHours', 'deliveryFee', 'operatingHours', 'manualPixKey', 
         'hasPixConfigured', 'printerWidth', 'printerName', 'selectedPaymentGateway', 'bannerImageUrl', 'marmitaStartTime', 'marmitaEndTime',
-        'hasMensalistas', 'hasKiloService', 'pricePerKilo', 'loyaltyProgram'
+        'hasMensalistas', 'hasKiloService', 'pricePerKilo', 'loyaltyProgram', 'disableDelivery'
     ];
     keysToRemove.forEach(key => delete dbUpdates[key]);
 

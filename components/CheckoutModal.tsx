@@ -144,7 +144,15 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [paymentMethod, setPaymentMethod] = useState(''); 
     const [changeFor, setChangeFor] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('DELIVERY');
+    const isSubmittingRef = useRef(false); // <--- Adicionado para proteger contra cliques duplos
+    const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>(restaurant?.disableDelivery ? 'PICKUP' : 'DELIVERY');
+
+    useEffect(() => {
+        if (restaurant?.disableDelivery) {
+            setDeliveryMethod('PICKUP');
+        }
+    }, [restaurant?.disableDelivery]);
+
     const [wantsSachets, setWantsSachets] = useState(false);
     const [address, setAddress] = useState({
         zipCode: '37810-000', 
@@ -501,6 +509,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             }
         } finally {
             setIsSubmitting(false);
+            isSubmittingRef.current = false;
         }
     };
 
@@ -530,6 +539,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             addToast({ message: `Erro ao enviar pedido: ${errorMessage}`, type: 'error' });
         } finally {
             setIsSubmitting(false);
+            isSubmittingRef.current = false;
         }
     };
 
@@ -580,18 +590,30 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const handleSubmitDetails = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (currentStep !== 'DETAILS' || stepTransitionLock) return;
+        if (isSubmittingRef.current || currentStep !== 'DETAILS' || stepTransitionLock) return;
         
-        if (!isOpenNow) { addToast({ message: "O restaurante acabou de fechar.", type: 'error' }); return; }
+        isSubmittingRef.current = true;
+        setIsSubmitting(true);
+        
+        if (!isOpenNow) { setIsSubmitting(false); isSubmittingRef.current = false; addToast({ message: "O restaurante acabou de fechar.", type: 'error' }); return; }
         if (!customerName || !customerPhone || !paymentMethod) { 
+            setIsSubmitting(false);
+            isSubmittingRef.current = false;
             setFormError('Por favor, preencha seu nome, telefone e selecione uma forma de pagamento.'); 
             return; 
         }
         if (paymentMethod === 'Mensalista' && !mensalistaId) {
+            setIsSubmitting(false);
+            isSubmittingRef.current = false;
             setFormError('Por favor, insira um telefone válido de mensalista.');
             return;
         }
-        if (deliveryMethod === 'DELIVERY' && (!address.street || !address.number || !address.neighborhood)) { setFormError('Endereço incompleto.'); return; }
+        if (deliveryMethod === 'DELIVERY' && (!address.street || !address.number || !address.neighborhood)) { 
+            setIsSubmitting(false);
+            isSubmittingRef.current = false;
+            setFormError('Endereço incompleto.'); 
+            return; 
+        }
         
         setFormError(null);
         let finalPaymentMethod = paymentMethod;
@@ -799,9 +821,26 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         <div ref={deliveryMethodRef} className="space-y-3 animate-fadeIn">
                              <label className="block text-xs font-black text-gray-500 uppercase tracking-widest">Como quer receber seu pedido?</label>
                              <div className="bg-gray-100 p-1 rounded-xl flex shadow-inner border border-gray-200">
-                                <button type="button" onClick={() => setDeliveryMethod('DELIVERY')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-black text-sm transition-all ${deliveryMethod === 'DELIVERY' ? 'bg-white text-orange-600 shadow-md scale-[1.02]' : 'text-gray-500'}`}><TruckIcon className="w-5 h-5" />ENTREGA</button>
+                                <button 
+                                    type="button" 
+                                    onClick={() => {
+                                        if (restaurant?.disableDelivery) {
+                                            addToast({ message: "As entregas estão desativadas no momento. Apenas retirada no balcão.", type: 'error' });
+                                            return;
+                                        }
+                                        setDeliveryMethod('DELIVERY');
+                                    }} 
+                                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-black text-sm transition-all ${restaurant?.disableDelivery ? 'opacity-40 cursor-not-allowed text-gray-400 bg-gray-50' : deliveryMethod === 'DELIVERY' ? 'bg-white text-orange-600 shadow-md scale-[1.02]' : 'text-gray-500'}`}
+                                >
+                                    <TruckIcon className="w-5 h-5" />ENTREGA
+                                </button>
                                 <button type="button" onClick={() => setDeliveryMethod('PICKUP')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-black text-sm transition-all ${deliveryMethod === 'PICKUP' ? 'bg-white text-orange-600 shadow-md scale-[1.02]' : 'text-gray-500'}`}><StoreIcon className="w-5 h-5" />RETIRADA</button>
                             </div>
+                            {restaurant?.disableDelivery && (
+                                <p className="text-xs text-amber-700 font-bold bg-amber-50 p-2.5 rounded-xl border border-amber-200 flex items-center gap-2">
+                                    <span>⚠️</span> <strong>Atenção:</strong> As entregas estão temporariamente desativadas. O pedido será para retirada no balcão.
+                                </p>
+                            )}
                         </div>
                         
                         {deliveryMethod === 'DELIVERY' && (
