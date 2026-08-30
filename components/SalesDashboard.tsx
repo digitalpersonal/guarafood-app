@@ -64,31 +64,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
     const printerWidth = parseInt(localStorage.getItem('guarafood-printer-width') || '80', 10);
     const printableWidth = printerWidth === 80 ? '70mm' : '46mm';
     
-    const handlePrintClosing = async () => {
-        const el = document.getElementById('thermal-report-closing');
-        if (restaurant?.printerName && el) {
-            try {
-                const { PrintService } = await import('../services/printService');
-                const html = el.outerHTML;
-                const qzHtml = `<html><head><meta charset="utf-8"><style>
-                  body { margin: 0; padding: 0; font-family: monospace, sans-serif; background: #fff; color: #000; font-size: 11px; line-height: 1.2; }
-                  .thermal-header { text-align: center; border-bottom: 1.5px dashed black; padding-bottom: 4px; margin-bottom: 8px; }
-                  .thermal-row { display: flex; justify-content: space-between; margin-bottom: 4px; width: 100%; align-items: flex-start; }
-                  .thermal-divider { border-top: 1px dashed black; margin: 8px 0; width: 100%; }
-                  .thermal-title { font-weight: 900; text-transform: uppercase; font-size: 13px; }
-                  .thermal-bold { font-weight: 900; }
-                  .thermal-left { flex: 1; padding-right: 4px; }
-                  .thermal-right { white-space: nowrap !important; min-width: 70px; text-align: right; }
-                  .thermal-footer { text-align: center; margin-top: 20px; font-size: 10px; border-top: 1px solid black; padding-top: 6px; }
-                  #thermal-report-closing { width: ${printableWidth}; margin: 0 auto; padding: 5mm 0; display: block; }
-                </style></head><body>${html}</body></html>`;
-                const success = await PrintService.printHtml(restaurant.printerName, qzHtml);
-                if (success) return;
-            } catch (e) {
-                console.error("QZ Tray error", e);
-            }
-        }
-        
+    const handlePrintClosing = () => {
         const style = document.createElement('style');
         style.innerHTML = `@media print { #thermal-report-motoboy { display: none !important; } #thermal-report-closing { display: block !important; } }`;
         document.head.appendChild(style);
@@ -98,31 +74,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
         }, 100);
     };
 
-    const handlePrintMotoboy = async () => {
-        const el = document.getElementById('thermal-report-motoboy');
-        if (restaurant?.printerName && el) {
-            try {
-                const { PrintService } = await import('../services/printService');
-                const html = el.outerHTML;
-                const qzHtml = `<html><head><meta charset="utf-8"><style>
-                  body { margin: 0; padding: 0; font-family: monospace, sans-serif; background: #fff; color: #000; font-size: 11px; line-height: 1.2; }
-                  .thermal-header { text-align: center; border-bottom: 1.5px dashed black; padding-bottom: 4px; margin-bottom: 8px; }
-                  .thermal-row { display: flex; justify-content: space-between; margin-bottom: 4px; width: 100%; align-items: flex-start; }
-                  .thermal-divider { border-top: 1px dashed black; margin: 8px 0; width: 100%; }
-                  .thermal-title { font-weight: 900; text-transform: uppercase; font-size: 13px; }
-                  .thermal-bold { font-weight: 900; }
-                  .thermal-left { flex: 1; padding-right: 4px; }
-                  .thermal-right { white-space: nowrap !important; min-width: 70px; text-align: right; }
-                  .thermal-footer { text-align: center; margin-top: 20px; font-size: 10px; border-top: 1px solid black; padding-top: 6px; }
-                  #thermal-report-motoboy { width: ${printableWidth}; margin: 0 auto; padding: 5mm 0; display: block; }
-                </style></head><body>${html}</body></html>`;
-                const success = await PrintService.printHtml(restaurant.printerName, qzHtml);
-                if (success) return;
-            } catch (e) {
-                console.error("QZ Tray error", e);
-            }
-        }
-
+    const handlePrintMotoboy = () => {
         const style = document.createElement('style');
         style.innerHTML = `@media print { #thermal-report-closing { display: none !important; } #thermal-report-motoboy { display: block !important; } }`;
         document.head.appendChild(style);

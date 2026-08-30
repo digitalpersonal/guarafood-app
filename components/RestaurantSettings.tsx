@@ -11,7 +11,6 @@ import Spinner from './Spinner';
 import PrintableOrder from './PrintableOrder';
 import MensalistasManager from './MensalistasManager';
 import MercadoPagoGuide from './MercadoPagoGuide';
-import { PrintService } from '../services/printService';
 import { getErrorMessage } from '../services/api';
 import ChromeMemorySaverGuide from './ChromeMemorySaverGuide';
 import { KNOWN_CITIES } from '../utils/locationService';
@@ -335,8 +334,6 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
     const [disableDelivery, setDisableDelivery] = useState(false);
     const [enableFiscal, setEnableFiscal] = useState(false);
     const [printerWidth, setPrinterWidth] = useState(80);
-    const [printerName, setPrinterName] = useState('');
-    const [availablePrinters, setAvailablePrinters] = useState<string[]>([]);
     const [isPrintServer, setIsPrintServer] = useState(false);
     const [operatingHours, setOperatingHours] = useState<OperatingHours[]>(getDefaultOperatingHours());
     const [isLoading, setIsLoading] = useState(true);
@@ -383,7 +380,6 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                 // Força o estado da impressora a partir do banco e sincroniza LocalStorage
                 const savedWidth = data.printerWidth || 80;
                 setPrinterWidth(savedWidth);
-                setPrinterName(data.printerName || '');
                 localStorage.setItem('guarafood-printer-width', savedWidth.toString());
                 
                 const savedIsPrintServer = localStorage.getItem('guarafood-is-print-server') === 'true';
@@ -421,7 +417,6 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                 marmitaEndTime: restaurant.marmitaEndTime,
                 manualPixKey: manualPixKey,
                 printerWidth: printerWidth,
-                printerName: printerName,
                 bannerImageUrl: bannerImageUrl,
                 hasMensalistas: hasMensalistas,
                 hasKiloService: hasKiloService,
@@ -479,33 +474,7 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
         
         setTestOrder(dummyOrder);
         
-        setTimeout(async () => {
-            const el = document.getElementById('printable-order');
-            if (printerName && el) {
-                try {
-                    const { PrintService } = await import('../services/printService');
-                    const html = el.outerHTML;
-                    const qzHtml = `<html><head><meta charset="utf-8"><style>
-                      body { margin: 0; padding: 0; font-family: monospace, sans-serif; background: #fff; color: #000; }
-                      .printable-order { width: 100%; box-sizing: border-box; }
-                      .section-divider { border-top: 1px dashed #000; margin: 4px 0; width: 100%; }
-                      .item-row { display: flex; justify-content: space-between; width: 100%; }
-                      .label-center { text-align: center; font-weight: bold; width: 100%; }
-                      .mode-indicator { font-weight: 900; font-size: 16px; text-align: center; border: 2px dashed #000; padding: 4px; margin: 8px 0; }
-                      .condiments-box { border: 2px solid #000; padding: 6px; text-align: center; margin-bottom: 8px; }
-                      .payment-box { border: 1px solid #000; padding: 6px; margin-top: 8px; }
-                      .item-price-col { font-weight: bold; white-space: nowrap; }
-                    </style></head><body>${html}</body></html>`;
-                    
-                    const success = await PrintService.printHtml(printerName, qzHtml);
-                    if (success) {
-                        alert("Enviado via QZ Tray com sucesso!");
-                        return;
-                    }
-                } catch (e) {
-                    console.error("QZ Tray error:", e);
-                }
-            }
+        setTimeout(() => {
             window.print();
         }, 300);
     };
@@ -632,52 +601,7 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                         <span>🖨️</span> Imprimir Cupom de Teste
                     </button>
                     
-                    <div className="mt-6 pt-6 border-t border-orange-200">
-                        <h4 className="text-xs font-black text-orange-900 mb-3">Configuração QZ Tray (Impressão Profissional)</h4>
-                        <button 
-                            type="button"
-                            onClick={async () => {
-                                try {
-                                    const printers = await PrintService.getPrinters();
-                                    setAvailablePrinters(printers);
-                                    if (printers.length === 0) {
-                                        alert('Nenhuma impressora encontrada.');
-                                    }
-                                } catch (e: any) {
-                                    alert('Erro ao buscar impressoras: ' + e.message);
-                                }
-                            }}
-                            className="w-full py-2 text-[10px] font-black uppercase bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-all shadow-sm"
-                        >
-                            Buscar Impressoras QZ Tray
-                        </button>
-                        {availablePrinters.length > 0 && (
-                            <div className="mt-4">
-                                <label className="block text-[10px] font-black text-orange-900 uppercase tracking-widest mb-1">Selecionar Impressora</label>
-                                <select 
-                                    value={printerName} 
-                                    onChange={e => setPrinterName(e.target.value)}
-                                    className="w-full p-2 border rounded-lg text-sm bg-white"
-                                >
-                                    <option value="">Selecione uma impressora</option>
-                                    {availablePrinters.map(p => <option key={p} value={p}>{p}</option>)}
-                                </select>
-                            </div>
-                        )}
-                    </div>
 
-                    <div className="mt-6 pt-6 border-t border-orange-200">
-                        <label className="flex items-center justify-between cursor-pointer">
-                            <div>
-                                <span className="font-bold text-orange-900 block">Modo Servidor de Impressão</span>
-                                <span className="text-xs text-orange-700">Ative APENAS no computador que está conectado fisicamente ao cabo da impressora.</span>
-                            </div>
-                            <div className="relative">
-                                <input type="checkbox" className="sr-only peer" checked={isPrintServer} onChange={e => setIsPrintServer(e.target.checked)} />
-                                <div className="w-11 h-6 bg-orange-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
-                            </div>
-                        </label>
-                    </div>
 
                     {/* Guia Rápido Chrome Kiosk */}
                     <div className="mt-4 p-4 bg-white rounded-xl border border-orange-200 text-xs text-gray-700 space-y-2">

@@ -447,45 +447,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         printedOrderIdsRef.current.add(printJob.order.id);
                     }
                     
-                    const printableElement = document.getElementById('printable-order');
-                    if (restaurant.printerName && printableElement) {
-                        try {
-                            const { PrintService } = await import('../services/printService');
-                            const html = printableElement.outerHTML;
-                            
-                            // Injecting critical CSS to ensure proper rendering in QZ Tray's HTML engine
-                            const qzHtml = `
-                              <html>
-                                <head>
-                                  <meta charset="utf-8">
-                                  <style>
-                                    body { margin: 0; padding: 0; font-family: monospace, sans-serif; background: #fff; color: #000; }
-                                    .printable-order { width: 100%; box-sizing: border-box; }
-                                    .section-divider { border-top: 1px dashed #000; margin: 4px 0; width: 100%; }
-                                    .item-row { display: flex; justify-content: space-between; width: 100%; }
-                                    .label-center { text-align: center; font-weight: bold; width: 100%; }
-                                    .mode-indicator { font-weight: 900; font-size: 16px; text-align: center; border: 2px dashed #000; padding: 4px; margin: 8px 0; }
-                                    .condiments-box { border: 2px solid #000; padding: 6px; text-align: center; margin-bottom: 8px; }
-                                    .payment-box { border: 1px solid #000; padding: 6px; margin-top: 8px; }
-                                    .item-price-col { font-weight: bold; white-space: nowrap; }
-                                  </style>
-                                </head>
-                                <body>${html}</body>
-                              </html>
-                            `;
-                            
-                            const success = await PrintService.printHtml(restaurant.printerName, qzHtml);
-                            if (!success) {
-                                // Fallback for failure
-                                window.print();
-                            }
-                        } catch (e) {
-                            console.error("QZ Tray fail:", e);
-                            window.print();
-                        }
-                    } else {
-                        window.print();
-                    }
+                    window.print();
 
                     // Se era um trabalho da fila remota (jobId), marcamos como feito no banco
                     if (printJobId) {
