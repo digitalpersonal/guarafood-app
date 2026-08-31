@@ -60,8 +60,19 @@ const AiMenuImporter: React.FC<AiMenuImporterProps> = ({ restaurantId, onImportC
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Erro ao processar arquivos');
+        let errorMsg = 'Erro ao processar arquivos';
+        try {
+          const errorData = await response.json();
+          errorMsg = errorData.error || errorMsg;
+        } catch {
+          const text = await response.text().catch(() => '');
+          if (text.includes('The page') || response.status === 504 || response.status === 502) {
+            errorMsg = 'Tempo limite excedido ou serviço temporariamente indisponível. Tente com menos arquivos.';
+          } else {
+            errorMsg = `Erro no servidor (${response.status}): ${text.slice(0, 100) || response.statusText}`;
+          }
+        }
+        throw new Error(errorMsg);
       }
 
       const data = await response.json();
