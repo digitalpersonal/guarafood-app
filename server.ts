@@ -21,28 +21,28 @@ async function startServer() {
   app.use(express.json());
 
   // API route for menu import
-  app.post("/api/menu/import", upload.single("menuFile"), async (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
+  app.post("/api/menu/import", upload.array("menuFiles", 10), async (req, res) => {
+    const files = req.files as Express.Multer.File[];
+    if (!files || files.length === 0) {
+      return res.status(400).json({ error: "No files uploaded" });
     }
 
     try {
-      const base64Data = req.file.buffer.toString("base64");
+      const parts: any[] = files.map(file => ({
+        inlineData: {
+          mimeType: file.mimetype,
+          data: file.buffer.toString("base64"),
+        },
+      }));
       
+      parts.push({
+        text: "Extraia os itens do cardápio destes arquivos (fotos ou páginas). Eles compõem um cardápio unificado. Retorne um array JSON com todos os itens, cada item deve ter: categoria, nome, descricao, preco (number).",
+      });
+
       const response = await ai.models.generateContent({
         model: "gemini-3.7-flash",
         contents: {
-          parts: [
-            {
-              inlineData: {
-                mimeType: req.file.mimetype,
-                data: base64Data,
-              },
-            },
-            {
-              text: "Extraia os itens do cardápio deste arquivo. Retorne um array JSON com os itens, cada item deve ter: categoria, nome, descricao, preco (number).",
-            },
-          ],
+          parts: parts,
         },
         config: {
           responseMimeType: "application/json",

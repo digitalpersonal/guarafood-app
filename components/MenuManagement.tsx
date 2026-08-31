@@ -35,6 +35,7 @@ import MenuItemEditorModal from './MenuItemEditorModal';
 import PromotionEditorModal from './PromotionEditorModal';
 import CouponEditorModal from './CouponEditorModal';
 import AddonEditorModal from './AddonEditorModal';
+import MenuImporter from './MenuImporter';
 import { getErrorMessage, supabase } from '../services/api';
 import { seedRestaurantMenu, TOKA_DO_PASTEL_MENU, PASTELARIA_RENOVACAO_MENU } from '../utils/menuSeeds';
 
@@ -921,6 +922,16 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                             {isReorderingMode ? 'Sair da Reordenação' : 'Reordenar Categorias'}
                         </button>
                     </div>
+                </div>
+
+                <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg mb-6">
+                    <h3 className="font-bold text-orange-900 mb-2 flex items-center gap-2">
+                        <span>✨</span> Importação Inteligente (Gemini AI)
+                    </h3>
+                    <p className="text-xs text-orange-700 mb-4">
+                        Envie uma foto ou PDF do seu cardápio. Nossa IA vai ler o arquivo, extrair as categorias e itens, e cadastrá-los automaticamente para você.
+                    </p>
+                    <MenuImporter />
                 </div>
 
                 {isReorderingMode && (

@@ -11,13 +11,15 @@ const MenuImporter: React.FC = () => {
     const [menuData, setMenuData] = useState<any[]>([]);
 
     const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
+        const files = event.target.files;
+        if (!files || files.length === 0) return;
 
         setIsImporting(true);
         setProgress(10);
         const formData = new FormData();
-        formData.append("menuFile", file);
+        Array.from(files).forEach((file: File) => {
+            formData.append("menuFiles", file);
+        });
 
         try {
             setProgress(30);
@@ -85,7 +87,7 @@ const MenuImporter: React.FC = () => {
 
     return (
         <div className="space-y-4">
-            <input type="file" accept="image/*,.pdf" onChange={handleFileUpload} disabled={isImporting} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100" />
+            <input type="file" multiple accept="image/*,.pdf" onChange={handleFileUpload} disabled={isImporting} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100" />
             
             {isImporting && progress > 0 && (
                 <div className="w-full bg-gray-200 rounded-full h-2.5">
