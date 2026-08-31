@@ -35,9 +35,8 @@ import MenuItemEditorModal from './MenuItemEditorModal';
 import PromotionEditorModal from './PromotionEditorModal';
 import CouponEditorModal from './CouponEditorModal';
 import AddonEditorModal from './AddonEditorModal';
-import MenuImporter from './MenuImporter';
+import AiMenuImporter from './AiMenuImporter';
 import { getErrorMessage, supabase } from '../services/api';
-import { seedRestaurantMenu, TOKA_DO_PASTEL_MENU, PASTELARIA_RENOVACAO_MENU } from '../utils/menuSeeds';
 
 const EditIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
@@ -108,7 +107,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
     // Category editing state
     const [editingCategory, setEditingCategory] = useState<{ id: number; oldName: string; newName: string; newIconUrl: string | null; newAvailableStartTime: string | null; newAvailableEndTime: string | null } | null>(null);
     const [restaurantName, setRestaurantName] = useState<string | null>(null);
-    const [isSeeding, setIsSeeding] = useState(false);
+    const [showAiImporter, setShowAiImporter] = useState(false);
 
     const restaurantId = propRestaurantId || currentUser?.restaurantId;
 
@@ -674,35 +673,35 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
         }
     };
 
-
-    const handleSeedMenu = async () => {
-        if (!restaurantId || !restaurantName) return;
-        
-        let seedData = null;
-        if (restaurantName.toLowerCase().includes('toka')) {
-            seedData = TOKA_DO_PASTEL_MENU;
-        } else if (restaurantName.toLowerCase().includes('renovação')) {
-            seedData = PASTELARIA_RENOVACAO_MENU;
-        }
-
-        if (!seedData) {
-            addToast({ message: 'Nenhum backup encontrado para este restaurante.', type: 'error' });
-            return;
-        }
-
-        if (!window.confirm(`Deseja restaurar o cardápio original de "${restaurantName}"? Isso adicionará as categorias e itens padrão.`)) {
-            return;
-        }
-
-        setIsSeeding(true);
-        const result = await seedRestaurantMenu(restaurantId, seedData);
-        setIsSeeding(false);
-
-        if (result.success) {
-            addToast({ message: 'Cardápio restaurado com sucesso!', type: 'success' });
-            loadData();
-        } else {
-            addToast({ message: 'Erro ao restaurar cardápio.', type: 'error' });
+    const handleAiImportComplete = async (importedData: any[]) => {
+        if (!restaurantId) return;
+        setIsLoading(true);
+        setShowAiImporter(false);
+        try {
+            for (const category of importedData) {
+                // Determine order for category
+                const newCat = await createCategory(restaurantId, category.name);
+                if (newCat && category.items) {
+                    for (let i = 0; i < category.items.length; i++) {
+                        const item = category.items[i];
+                        await createMenuItem(restaurantId, {
+                            category: category.name,
+                            name: item.name,
+                            description: item.description || '',
+                            price: item.price || 0,
+                            imageUrl: '',
+                            available: true,
+                            displayOrder: i
+                        });
+                    }
+                }
+            }
+            addToast({ message: "Cardápio importado com sucesso!", type: 'success' });
+            await loadData();
+        } catch (error: any) {
+            console.error("Error importing menu", error);
+            addToast({ message: "Erro ao importar alguns itens.", type: 'error' });
+            await loadData();
         }
     };
 
@@ -728,6 +727,13 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
 
     return (
         <main className="p-4 space-y-8">
+            {showAiImporter && restaurantId && (
+                <AiMenuImporter
+                    restaurantId={restaurantId}
+                    onImportComplete={handleAiImportComplete}
+                    onCancel={() => setShowAiImporter(false)}
+                />
+            )}
             {onBack && (
                 <div className="flex items-center space-x-2 mb-4">
                     <button onClick={onBack} className="bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition-colors">
@@ -742,15 +748,6 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
                     <div className="flex items-center gap-3">
                         <h2 className="text-2xl font-bold text-gray-800">Promoções de Itens</h2>
-                        {menuCategories.length === 0 && (restaurantName?.toLowerCase().includes('toka') || restaurantName?.toLowerCase().includes('renovação')) && (
-                            <button
-                                onClick={handleSeedMenu}
-                                disabled={isSeeding}
-                                className="flex items-center gap-2 px-3 py-1 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-all font-bold text-xs"
-                            >
-                                {isSeeding ? 'Restaurando...' : 'Restaurar Cardápio Original'}
-                            </button>
-                        )}
                     </div>
                     <button onClick={() => handleOpenPromoModal()} className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 w-full sm:w-auto">
                         Criar Promoção
@@ -914,6 +911,9 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                         <button onClick={handleCreateCategory} className="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 w-full sm:w-auto">
                             Criar Categoria
                         </button>
+                        <button onClick={() => setShowAiImporter(true)} className="bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-700 w-full sm:w-auto flex items-center gap-2 justify-center">
+                            <span>✨</span> Importar PDF/Imagem
+                        </button>
                         <button 
                             onClick={() => setIsReorderingMode(!isReorderingMode)} 
                             className={`${isReorderingMode ? 'bg-orange-600' : 'bg-gray-700'} text-white font-bold py-2 px-4 rounded-lg hover:opacity-90 w-full sm:w-auto flex items-center justify-center gap-2`}
@@ -922,16 +922,6 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                             {isReorderingMode ? 'Sair da Reordenação' : 'Reordenar Categorias'}
                         </button>
                     </div>
-                </div>
-
-                <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg mb-6">
-                    <h3 className="font-bold text-orange-900 mb-2 flex items-center gap-2">
-                        <span>✨</span> Importação Inteligente (Gemini AI)
-                    </h3>
-                    <p className="text-xs text-orange-700 mb-4">
-                        Envie uma foto ou PDF do seu cardápio. Nossa IA vai ler o arquivo, extrair as categorias e itens, e cadastrá-los automaticamente para você.
-                    </p>
-                    <MenuImporter />
                 </div>
 
                 {isReorderingMode && (
