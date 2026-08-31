@@ -36,8 +36,18 @@ const MenuImporter: React.FC = () => {
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || "Falha na extração do cardápio.");
+                if (response.status === 413) {
+                    throw new Error("Os arquivos são muito grandes. Tente enviar menos arquivos por vez (ex: 3 a 5 fotos).");
+                }
+                const errorText = await response.text();
+                let errorMessage = "Falha na extração do cardápio.";
+                try {
+                    const errorData = JSON.parse(errorText);
+                    errorMessage = errorData.error || errorMessage;
+                } catch (e) {
+                    errorMessage = `Erro ${response.status}: falha no servidor.`;
+                }
+                throw new Error(errorMessage);
             }
 
             setProgress(80);

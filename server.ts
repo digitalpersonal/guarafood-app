@@ -43,7 +43,7 @@ async function startServer() {
       });
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.7-flash",
+        model: "gemini-2.5-flash",
         contents: {
           parts: parts,
         },
@@ -65,11 +65,13 @@ async function startServer() {
         },
       });
 
-      const menuItems = JSON.parse(response.text || "[]");
+      let responseText = response.text || "[]";
+      responseText = responseText.replace(/^```json/m, '').replace(/```$/m, '').trim();
+      const menuItems = JSON.parse(responseText);
       res.json(menuItems);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error processing menu:", error);
-      res.status(500).json({ error: "Failed to process menu" });
+      res.status(500).json({ error: error.message || "Falha interna ao processar imagens." });
     }
   });
 
