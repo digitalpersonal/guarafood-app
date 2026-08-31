@@ -7,7 +7,10 @@ import { GoogleGenAI, Type } from "@google/genai";
 async function startServer() {
   const app = express();
   const PORT = 3000;
-  const upload = multer({ storage: multer.memoryStorage() });
+  const upload = multer({ 
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 20 * 1024 * 1024 } // 20MB per file limit
+  });
 
   const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY,
@@ -21,7 +24,7 @@ async function startServer() {
   app.use(express.json());
 
   // API route for menu import
-  app.post("/api/menu/import", upload.array("menuFiles", 10), async (req, res) => {
+  app.post("/api/menu/import", upload.array("menuFiles", 50), async (req, res) => {
     const files = req.files as Express.Multer.File[];
     if (!files || files.length === 0) {
       return res.status(400).json({ error: "No files uploaded" });

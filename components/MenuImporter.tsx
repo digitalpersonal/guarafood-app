@@ -9,10 +9,17 @@ const MenuImporter: React.FC = () => {
     const [isImporting, setIsImporting] = useState(false);
     const [progress, setProgress] = useState(0);
     const [menuData, setMenuData] = useState<any[]>([]);
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
 
     const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const files = event.target.files;
         if (!files || files.length === 0) return;
+
+        if (files.length > 30) {
+            addToast({ message: 'Por favor, envie no máximo 30 arquivos por vez.', type: 'error' });
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            return;
+        }
 
         setIsImporting(true);
         setProgress(10);
@@ -28,17 +35,22 @@ const MenuImporter: React.FC = () => {
                 body: formData,
             });
 
-            if (!response.ok) throw new Error("Falha na extração do cardápio.");
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || "Falha na extração do cardápio.");
+            }
 
             setProgress(80);
             const data = await response.json();
             setMenuData(data);
             setProgress(100);
             addToast({ message: "Cardápio extraído com sucesso! Revise os itens abaixo.", type: 'success' });
-        } catch (error) {
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        } catch (error: any) {
             console.error(error);
-            addToast({ message: 'Erro ao extrair cardápio.', type: 'error' });
+            addToast({ message: error.message || 'Erro ao extrair cardápio. Tente com menos imagens.', type: 'error' });
             setProgress(0);
+            if (fileInputRef.current) fileInputRef.current.value = '';
         } finally {
             setIsImporting(false);
         }
@@ -87,7 +99,7 @@ const MenuImporter: React.FC = () => {
 
     return (
         <div className="space-y-4">
-            <input type="file" multiple accept="image/*,.pdf" onChange={handleFileUpload} disabled={isImporting} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100" />
+            <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf" onChange={handleFileUpload} disabled={isImporting} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100" />
             
             {isImporting && progress > 0 && (
                 <div className="w-full bg-gray-200 rounded-full h-2.5">
