@@ -35,6 +35,7 @@ import MenuItemEditorModal from './MenuItemEditorModal';
 import PromotionEditorModal from './PromotionEditorModal';
 import CouponEditorModal from './CouponEditorModal';
 import AddonEditorModal from './AddonEditorModal';
+import AiMenuImporter from './AiMenuImporter';
 import { getErrorMessage, supabase } from '../services/api';
 
 const EditIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -106,6 +107,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
     // Category editing state
     const [editingCategory, setEditingCategory] = useState<{ id: number; oldName: string; newName: string; newIconUrl: string | null; newAvailableStartTime: string | null; newAvailableEndTime: string | null } | null>(null);
     const [restaurantName, setRestaurantName] = useState<string | null>(null);
+    const [showAiImporter, setShowAiImporter] = useState(false);
 
     const restaurantId = propRestaurantId || currentUser?.restaurantId;
 
@@ -671,6 +673,38 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
         }
     };
 
+    const handleAiImportComplete = async (importedData: any[]) => {
+        if (!restaurantId) return;
+        setIsLoading(true);
+        setShowAiImporter(false);
+        try {
+            for (const category of importedData) {
+                // Determine order for category
+                const newCat = await createCategory(restaurantId, category.name);
+                if (newCat && category.items) {
+                    for (let i = 0; i < category.items.length; i++) {
+                        const item = category.items[i];
+                        await createMenuItem(restaurantId, {
+                            category: category.name,
+                            name: item.name,
+                            description: item.description || '',
+                            price: item.price || 0,
+                            imageUrl: '',
+                            available: true,
+                            displayOrder: i
+                        });
+                    }
+                }
+            }
+            addToast({ message: "Cardápio importado com sucesso!", type: 'success' });
+            await loadData();
+        } catch (error: any) {
+            console.error("Error importing menu", error);
+            addToast({ message: "Erro ao importar alguns itens.", type: 'error' });
+            await loadData();
+        }
+    };
+
     if (isLoading) return <Spinner message="Carregando cardápio..." />;
     if (error) return <div className="p-4 text-red-500 text-center">{error}</div>;
 
@@ -693,6 +727,13 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
 
     return (
         <main className="p-4 space-y-8">
+            {showAiImporter && restaurantId && (
+                <AiMenuImporter
+                    restaurantId={restaurantId}
+                    onImportComplete={handleAiImportComplete}
+                    onCancel={() => setShowAiImporter(false)}
+                />
+            )}
             {onBack && (
                 <div className="flex items-center space-x-2 mb-4">
                     <button onClick={onBack} className="bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition-colors">
@@ -869,6 +910,9 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                         </button>
                         <button onClick={handleCreateCategory} className="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 w-full sm:w-auto">
                             Criar Categoria
+                        </button>
+                        <button onClick={() => setShowAiImporter(true)} className="bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-700 w-full sm:w-auto flex items-center gap-2 justify-center">
+                            <span>✨</span> Importar PDF/Imagem
                         </button>
                         <button 
                             onClick={() => setIsReorderingMode(!isReorderingMode)} 
