@@ -143,27 +143,21 @@ async function startServer() {
         return res.status(400).json({ error: "Nenhum dos arquivos enviados pôde ser lido." });
       }
 
-      const allExtractedData: any[] = [];
-      const BATCH_SIZE = 4; // Process in chunks to prevent timeouts and optimize token usage
-
+      // Process batches concurrently in parallel using Promise.all
+      const BATCH_SIZE = 2;
+      const batches: typeof validParts[] = [];
       for (let i = 0; i < validParts.length; i += BATCH_SIZE) {
-        const currentBatch = validParts.slice(i, i + BATCH_SIZE);
+        batches.push(validParts.slice(i, i + BATCH_SIZE));
+      }
+
+      const prompt = `Extraia itens e categorias deste cardápio em JSON.
+Regras:
+1. Identifique categorias (ex: Lanches, Pizzas, Bebidas).
+2. Para cada item: "name", "description" (se houver) e "price" (número em reais).
+3. Não invente produtos.`;
+
+      const batchPromises = batches.map(async (currentBatch) => {
         const batchParts = currentBatch.map(b => b.part);
-
-        const prompt = `Você é um assistente especializado em digitalizar cardápios de restaurantes a partir de imagens e arquivos PDF.
-Analise todas as páginas e imagens enviadas neste lote.
-Elas fazem parte de um cardápio de restaurante.
-
-Instruções fundamentais:
-1. Identifique e extraia todas as categorias de produtos (ex: "Lanches", "Pizzas Tradicionais", "Pastéis Doces", "Bebidas", "Porções", "Combos").
-2. Se uma categoria começa em uma página/imagem e continua na seguinte, agrupe todos os itens na mesma categoria.
-3. Para cada produto, extraia:
-   - "name": Nome claro do produto (ex: "X-Salada Especial").
-   - "description": Ingredientes, acompanhamentos ou detalhes (se houver).
-   - "price": Preço numérico em Reais (ex: 28.50). Se houver vários tamanhos, use o preço base/inicial.
-4. Não invente produtos nem adicione informações não presentes no cardápio.
-5. Retorne a lista de categorias em formato JSON padronizado.`;
-
         try {
           const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
@@ -193,11 +187,11 @@ Instruções fundamentais:
                           },
                           description: {
                             type: Type.STRING,
-                            description: "Descrição ou ingredientes",
+                            description: "Descrição",
                           },
                           price: {
                             type: Type.NUMBER,
-                            description: "Preço em formato numérico (ex: 25.00)",
+                            description: "Preço numérico",
                           },
                         },
                         required: ["name", "price"],
@@ -214,12 +208,24 @@ Instruções fundamentais:
           if (responseText) {
             const parsed = JSON.parse(responseText);
             if (Array.isArray(parsed)) {
-              allExtractedData.push(...parsed);
+              return { success: true, data: parsed, files: currentBatch.map(b => b.originalname) };
             }
           }
+          return { success: false, data: [], files: currentBatch.map(b => b.originalname) };
         } catch (batchErr: any) {
-          console.error(`Error processing batch starting at index ${i}:`, batchErr);
-          currentBatch.forEach(b => failedFiles.push(b.originalname));
+          console.error("Batch extraction error:", batchErr);
+          return { success: false, data: [], files: currentBatch.map(b => b.originalname) };
+        }
+      });
+
+      const results = await Promise.all(batchPromises);
+      const allExtractedData: any[] = [];
+
+      for (const res of results) {
+        if (res.success && res.data.length > 0) {
+          allExtractedData.push(...res.data);
+        } else {
+          failedFiles.push(...res.files);
         }
       }
 

@@ -18,7 +18,7 @@ async function optimizeImageForUpload(file: File): Promise<File> {
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
-        const MAX_DIMENSION = 1800;
+        const MAX_DIMENSION = 1400;
         let width = img.width;
         let height = img.height;
 
@@ -52,7 +52,7 @@ async function optimizeImageForUpload(file: File): Promise<File> {
             resolve(optimizedFile);
           },
           'image/jpeg',
-          0.85
+          0.80
         );
       };
       img.onerror = () => resolve(file);
