@@ -1,312 +1,280 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
-import type { MenuItem, Addon, CartItem, SizeOption, OptionGroup } from '../types';
-import OptimizedImage from './OptimizedImage';
+import React, { useState, useEffect, useMemo } from 'react';
+import type { Order } from '../types';
+import { fetchAllOrdersAdmin } from '../services/databaseService';
+import Spinner from './Spinner';
 
-interface GenericCustomizationModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    onAddToCart: (customizedItem: CartItem) => void;
-    initialItem: MenuItem;
-    allAddons: Addon[];
+const SearchIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5(0) 105.196 5.196a7.5 7.5(0) 0010.607 10.607z" />
+    </svg>
+);
+
+const WhatsAppIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+        <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.894 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01s-.521.074-.792.372c-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.626.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
+    </svg>
+);
+
+const ExportIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+    </svg>
+);
+
+interface GlobalCustomerData {
+    name: string;
+    phone: string;
+    totalOrders: number;
+    totalSpent: number;
+    lastOrderDate: Date;
+    lastAddress: string;
+    mostOrderedFrom: string;
+    restaurantsSet: Set<string>;
 }
 
-const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
-    isOpen,
-    onClose,
-    onAddToCart,
-    initialItem,
-    allAddons,
-}) => {
-    const [selectedSize, setSelectedSize] = useState<SizeOption | null>(null);
-    const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
-    const [selectedOptions, setSelectedOptions] = useState<{ [groupId: string]: string[] }>({});
-    const [notes, setNotes] = useState('');
-
-    const [isAdding, setIsAdding] = useState(false);
+const GlobalCustomerList: React.FC = () => {
+    const [orders, setOrders] = useState<Order[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
-        if (initialItem.sizes && initialItem.sizes.length > 0) {
-            setSelectedSize(initialItem.sizes[0]);
-        } else {
-            setSelectedSize({ name: 'Único', price: initialItem.price });
-        }
-        setSelectedAddonIds(new Set());
-        
-        // Initialize options with defaults if any
-        const initialOptions: { [groupId: string]: string[] } = {};
-        initialItem.optionGroups?.forEach(group => {
-            const defaults = group.options.filter(o => o.default).map(o => o.name);
-            initialOptions[group.id] = defaults;
-        });
-        setSelectedOptions(initialOptions);
-        
-        setNotes('');
-        setIsAdding(false);
-    }, [initialItem, isOpen]);
-
-    const availableAddons = useMemo(() => {
-        return allAddons.filter(addon => initialItem.availableAddonIds?.includes(addon.id));
-    }, [allAddons, initialItem]);
-    
-    const totalPrice = useMemo(() => {
-        const basePrice = Number(selectedSize?.price || initialItem.price);
-        const addonsPrice = availableAddons
-            .filter(a => selectedAddonIds.has(a.id))
-            .reduce((total, addon) => total + Number(addon.price || 0), 0);
-        
-        // Add options price
-        let optionsPrice = 0;
-        initialItem.optionGroups?.forEach(group => {
-            const selectedInGroup = selectedOptions[group.id] || [];
-            selectedInGroup.forEach(optName => {
-                const opt = group.options.find(o => o.name === optName);
-                if (opt) optionsPrice += Number(opt.price || 0);
-            });
-        });
-
-        return basePrice + addonsPrice + optionsPrice;
-    }, [initialItem, selectedSize, selectedAddonIds, availableAddons, selectedOptions]);
-    
-    const handleAddonToggle = (addonId: number) => {
-        setSelectedAddonIds(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(addonId)) {
-                newSet.delete(addonId);
-            } else {
-                newSet.add(addonId);
+        const load = async () => {
+            try {
+                const data = await fetchAllOrdersAdmin();
+                setOrders(data);
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setIsLoading(false);
             }
-            return newSet;
-        });
-    };
-
-    const handleOptionToggle = (groupId: string, optionName: string, max: number) => {
-        setSelectedOptions(prev => {
-            const current = prev[groupId] || [];
-            const isSelected = current.includes(optionName);
-            
-            if (isSelected) {
-                return { ...prev, [groupId]: current.filter(o => o !== optionName) };
-            } else {
-                if (max === 1) {
-                    return { ...prev, [groupId]: [optionName] };
-                }
-                if (current.length < max) {
-                    return { ...prev, [groupId]: [...current, optionName] };
-                }
-                // Se atingiu o limite, remove a primeira opção escolhida e adiciona a nova (FIFO)
-                // permitindo escolher e mudar de ideia com facilidade
-                return { ...prev, [groupId]: [...current.slice(1), optionName] };
-            }
-        });
-    };
-
-    const isGroupValid = (group: OptionGroup) => {
-        const selectedCount = (selectedOptions[group.id] || []).length;
-        return selectedCount >= group.minSelections && selectedCount <= group.maxSelections;
-    };
-
-    const isAllValid = () => {
-        if (!initialItem.optionGroups) return true;
-        return initialItem.optionGroups.every(isGroupValid);
-    };
-    
-    const handleAddToCartClick = () => {
-        if (!selectedSize || !isAllValid()) return;
-
-        setIsAdding(true);
-
-        const selectedAddons = availableAddons.filter(a => selectedAddonIds.has(a.id));
-        
-        const cartSelectedOptions: { groupTitle: string; optionName: string; price: number }[] = [];
-        initialItem.optionGroups?.forEach(group => {
-            const selectedInGroup = selectedOptions[group.id] || [];
-            selectedInGroup.forEach(optName => {
-                const opt = group.options.find(o => o.name === optName);
-                if (opt) {
-                    cartSelectedOptions.push({
-                        groupTitle: group.title,
-                        optionName: optName,
-                        price: opt.price
-                    });
-                }
-            });
-        });
-
-        const topAddons = selectedAddons.slice(0, 2).map(a => a.name).join(', ');
-        const remainingCount = selectedAddons.length - 2;
-        const name = `${initialItem.name}${selectedAddons.length > 0 ? ` (com ${topAddons}` : ''}${remainingCount > 0 ? ` e mais ${remainingCount}` : ''}${selectedAddons.length > 0 ? ')' : ''}`;
-
-        const optionKey = cartSelectedOptions.map(o => `${o.groupTitle}:${o.optionName}`).sort().join('|');
-        const addonIds = Array.from(selectedAddonIds).sort().join('-');
-        const cartId = `item-${initialItem.id}_size-${selectedSize.name}_addons-${addonIds}_options-${optionKey}`;
-        
-        const customizedItem: CartItem = {
-            id: cartId,
-            restaurantId: initialItem.restaurantId,
-            name: name,
-            price: totalPrice,
-            basePrice: Number(selectedSize.price),
-            imageUrl: initialItem.imageUrl,
-            quantity: 1,
-            description: cartSelectedOptions.length > 0 
-                ? cartSelectedOptions.map(o => o.optionName).join(', ')
-                : `${selectedAddons.length} adicionais selecionados`,
-            selectedAddons: selectedAddons,
-            selectedOptions: cartSelectedOptions,
-            sizeName: selectedSize.name !== 'Único' ? selectedSize.name : undefined,
-            notes: notes.trim() || undefined,
         };
-        
-        setTimeout(() => {
-            onAddToCart(customizedItem);
-        }, 300);
+        load();
+    }, []);
+
+    const customers = useMemo(() => {
+        const customerMap = orders.reduce((acc, order) => {
+            // EXCLUDE TABLE ORDERS FROM CUSTOMER LIST (Only delivery/pickup enter the base)
+            if (order.tableNumber) return acc;
+
+            const phone = (order.customerPhone || '').replace(/\D/g, ''); 
+            if (!phone) return acc;
+
+            if (!acc[phone]) {
+                acc[phone] = {
+                    name: order.customerName,
+                    phone: order.customerPhone,
+                    totalOrders: 0,
+                    totalSpent: 0,
+                    lastOrderDate: new Date(order.timestamp),
+                    lastAddress: order.customerAddress ? `${order.customerAddress.street}, ${order.customerAddress.number} - ${order.customerAddress.neighborhood}` : 'N/A',
+                    mostOrderedFrom: order.restaurantName,
+                    restaurantsSet: new Set([order.restaurantName]),
+                    _restaurantCounts: { [order.restaurantName]: 1 }
+                };
+            } else {
+                const c = acc[phone];
+                c.restaurantsSet.add(order.restaurantName);
+                c._restaurantCounts[order.restaurantName] = (c._restaurantCounts[order.restaurantName] || 0) + 1;
+                
+                const orderDate = new Date(order.timestamp);
+                if (orderDate > c.lastOrderDate) {
+                    c.lastOrderDate = orderDate;
+                    c.name = order.customerName; 
+                    if (order.customerAddress) {
+                        c.lastAddress = `${order.customerAddress.street}, ${order.customerAddress.number} - ${order.customerAddress.neighborhood}`;
+                    }
+                }
+            }
+
+            const current = acc[phone];
+            current.totalOrders += 1;
+            if (order.status !== 'Cancelado') {
+                current.totalSpent += Number(order.totalPrice || 0);
+            }
+
+            return acc;
+        }, {} as Record<string, any>);
+
+        Object.values(customerMap).forEach((c: any) => {
+            const counts = c._restaurantCounts;
+            c.mostOrderedFrom = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
+        });
+
+        return (Object.values(customerMap) as GlobalCustomerData[]).sort((a, b) => b.lastOrderDate.getTime() - a.lastOrderDate.getTime());
+    }, [orders]);
+
+    const filteredCustomers = useMemo(() => {
+        if (!searchTerm) return customers;
+        const lowerSearch = searchTerm.toLowerCase();
+        return customers.filter(c => 
+            c.name.toLowerCase().includes(lowerSearch) || 
+            c.phone.includes(lowerSearch) ||
+            c.mostOrderedFrom.toLowerCase().includes(lowerSearch)
+        );
+    }, [customers, searchTerm]);
+
+    const realStats = useMemo(() => {
+        const validOrders = orders.filter(o => o.status !== 'Cancelado');
+        const totalRevenue = validOrders.reduce((acc, o) => acc + Number(o.totalPrice || 0), 0);
+        return {
+            totalRevenue,
+            totalOrders: orders.length,
+            validOrdersCount: validOrders.length,
+            averageTicket: validOrders.length > 0 ? totalRevenue / validOrders.length : 0
+        };
+    }, [orders]);
+
+    const handleExportCSV = () => {
+        const headers = ["Nome", "Telefone", "Total Pedidos", "Total Gasto", "Ultimo Endereco", "Ultima Compra", "Restaurante Principal", "Lojas Frequentadas"];
+        const csvContent = [
+            headers.join(","),
+            ...filteredCustomers.map(c => [
+                `"${c.name}"`,
+                `"${c.phone}"`,
+                c.totalOrders,
+                c.totalSpent.toFixed(2),
+                `"${c.lastAddress}"`,
+                c.lastOrderDate.toLocaleDateString(),
+                `"${c.mostOrderedFrom}"`,
+                `"${Array.from(c.restaurantsSet).join(' | ')}"`
+            ].join(","))
+        ].join("\n");
+
+        const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `clientes_guarafood_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
-    if (!isOpen) return null;
+    const handleWhatsAppContact = (phone: string) => {
+        // SMART LINK + REUSO DE ABA:
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const baseUrl = isMobile ? 'https://api.whatsapp.com/send' : 'https://web.whatsapp.com/send';
+        
+        const url = `${baseUrl}?phone=55${(phone || '').replace(/\D/g, '')}`;
+        // No desktop, o target fixo 'whatsapp_guarafood' reutiliza a janela se ela já existir
+        window.open(url, isMobile ? '_blank' : 'whatsapp_guarafood');
+    };
+
+    if (isLoading) return <Spinner message="Compilando base de clientes..." />;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-[120] flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="generic-modal-title">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                <div className="p-4 border-b flex justify-between items-center">
-                    <h2 id="generic-modal-title" className="text-xl font-bold text-gray-800">Personalize seu Item</h2>
-                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl font-bold" aria-label="Fechar">&times;</button>
+        <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+                <div>
+                    <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tight">Base Global de Clientes</h2>
+                    <p className="text-sm text-gray-500 font-medium">Dados agregados de todos os restaurantes do sistema.</p>
                 </div>
+                <button 
+                    onClick={handleExportCSV}
+                    className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 transition-all shadow-md active:scale-95 uppercase text-xs tracking-widest"
+                >
+                    <ExportIcon className="w-5 h-5" />
+                    Exportar para Excel/CSV
+                </button>
+            </div>
 
-                <div className="overflow-y-auto p-4 space-y-4">
-                    {initialItem.sizes && initialItem.sizes.length > 0 && (
-                        <div>
-                            <h3 className="font-bold mb-2">1. Escolha o Tamanho</h3>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {initialItem.sizes.map(size => (
-                                    <label key={size.name} className="flex flex-col items-center p-3 border rounded-lg cursor-pointer has-[:checked]:bg-orange-50 has-[:checked]:border-orange-500">
-                                        <input
-                                            type="radio"
-                                            name="item-size"
-                                            value={size.name}
-                                            checked={selectedSize?.name === size.name}
-                                            onChange={() => setSelectedSize(size)}
-                                            className="sr-only"
-                                        />
-                                        <span className="font-bold text-gray-800">{size.name}</span>
-                                        <span className="text-sm text-gray-600">R$ {Number(size.price).toFixed(2)}</span>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                    
-                    <div className="border rounded-lg p-3 flex items-center space-x-3 bg-gray-50">
-                        <OptimizedImage src={initialItem.imageUrl || ''} alt={initialItem.name} className="w-14 h-14 rounded-md object-cover flex-shrink-0" />
-                        <div>
-                            <p className="font-bold text-lg">{initialItem.name} {selectedSize && selectedSize.name !== 'Único' ? `(${selectedSize.name})` : ''}</p>
-                            <p className="text-md text-gray-700">R$ {(selectedSize?.price || initialItem.price).toFixed(2)}</p>
-                        </div>
-                    </div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Base de Marketing</p>
+                    <p className="text-2xl font-black text-gray-800">{customers.length}</p>
+                    <p className="text-[9px] text-gray-400 font-bold">Clientes com contato</p>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Volume Global Real</p>
+                    <p className="text-2xl font-black text-green-600">R$ {realStats.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-[9px] text-green-600 font-bold">Total de todos os pedidos</p>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total de Pedidos</p>
+                    <p className="text-2xl font-black text-blue-600">{realStats.totalOrders}</p>
+                    <p className="text-[9px] text-blue-400 font-bold">Incluindo mesas e balcão</p>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Ticket Médio Real</p>
+                    <p className="text-2xl font-black text-orange-600">R$ {realStats.averageTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-[9px] text-orange-400 font-bold">Baseado em vendas válidas</p>
+                </div>
+            </div>
+            
+            <div className="mb-6 relative">
+                <input 
+                    type="text" 
+                    placeholder="Buscar por nome, telefone ou restaurante principal..." 
+                    value={searchTerm} 
+                    onChange={e => setSearchTerm(e.target.value)} 
+                    className="w-full p-4 pl-12 border-2 border-gray-100 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-orange-400 focus:border-orange-400 outline-none transition-all font-medium text-gray-700"
+                />
+                <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" />
+            </div>
 
-                    {initialItem.optionGroups?.map((group, gIdx) => {
-                        const isValid = isGroupValid(group);
-                        const selectedCount = (selectedOptions[group.id] || []).length;
-                        
-                        return (
-                            <div key={group.id} className="p-4 bg-white rounded-xl shadow-sm border border-gray-100">
-                                <div className="flex justify-between items-center mb-3">
-                                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                                        {group.title}
-                                        {group.minSelections > 0 && (
-                                            <span className="bg-red-100 text-red-600 text-[10px] px-2 py-0.5 rounded-full font-black uppercase">Obrigatório</span>
-                                        )}
-                                    </h3>
-                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${isValid ? 'bg-green-50 text-green-600 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200 animate-pulse'}`}>
-                                        {selectedCount} / {group.maxSelections}
+            <div className="overflow-x-auto -mx-6">
+                <table className="w-full text-sm text-left text-gray-600">
+                    <thead className="text-[10px] text-gray-700 uppercase bg-gray-50 font-black tracking-widest">
+                        <tr>
+                            <th className="px-6 py-4">Cliente</th>
+                            <th className="px-6 py-4">Contato</th>
+                            <th className="px-6 py-4">Restaurante Principal</th>
+                            <th className="px-6 py-4 text-center">Frequência</th>
+                            <th className="px-6 py-4 text-right">Valor Vitalício</th>
+                            <th className="px-6 py-4">Última Atividade</th>
+                            <th className="px-6 py-4 text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {filteredCustomers.length > 0 ? filteredCustomers.map((customer) => (
+                            <tr key={customer.phone} className="bg-white hover:bg-orange-50/30 transition-colors group">
+                                <td className="px-6 py-4">
+                                    <div className="font-bold text-gray-900">{customer.name}</div>
+                                    <div className="text-[10px] text-gray-400 truncate max-w-[200px]" title={customer.lastAddress}>
+                                        {customer.lastAddress}
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4 font-mono text-xs">{customer.phone}</td>
+                                <td className="px-6 py-4">
+                                    <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-[10px] font-bold">
+                                        {customer.mostOrderedFrom}
                                     </span>
-                                </div>
-
-                                <div className="space-y-2">
-                                    {group.options.map(option => {
-                                        const isSelected = (selectedOptions[group.id] || []).includes(option.name);
-                                        
-                                        return (
-                                            <label key={option.name} className={`flex items-center justify-between p-3 border rounded-lg transition-all cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-orange-50 border-orange-400 ring-1 ring-orange-400' : 'border-gray-200'}`}>
-                                                <div className="flex items-center gap-3">
-                                                    <input 
-                                                        type={group.maxSelections === 1 ? "radio" : "checkbox"}
-                                                        checked={isSelected}
-                                                        onChange={() => handleOptionToggle(group.id, option.name, group.maxSelections)}
-                                                        className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
-                                                    />
-                                                    <span className={`font-semibold ${isSelected ? 'text-orange-900' : 'text-gray-700'}`}>{option.name}</span>
-                                                </div>
-                                                {option.price > 0 && (
-                                                    <span className="text-sm font-bold text-gray-500">+ R$ {option.price.toFixed(2)}</span>
-                                                )}
-                                            </label>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        );
-                    })}
-
-                    {availableAddons.length > 0 && (
-                        <div>
-                            <h3 className="font-bold mb-2">Selecione os adicionais</h3>
-                            <div className="space-y-2">
-                                {availableAddons.map(addon => (
-                                     <label key={addon.id} className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:bg-orange-50 has-[:checked]:border-orange-400">
-                                        <div className="flex items-center">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedAddonIds.has(addon.id)}
-                                                onChange={() => handleAddonToggle(addon.id)}
-                                                className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
-                                            />
-                                            <span className="ml-3 font-semibold text-gray-700">{addon.name}</span>
-                                        </div>
-                                        {addon.price > 0 && <span className="font-semibold text-gray-600">+ R$ {Number(addon.price).toFixed(2)}</span>}
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="mt-4">
-                        <label className="block text-sm font-bold text-gray-700 mb-2">Observações</label>
-                        <textarea
-                            value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
-                            placeholder="Ex: Sem cebola, bem passado, etc."
-                            className="w-full p-3 border rounded-lg bg-gray-50 focus:ring-2 focus:ring-orange-400 focus:outline-none text-sm"
-                            rows={2}
-                        />
-                    </div>
-                </div>
-
-                <div className="p-4 border-t bg-gray-50 flex justify-between items-center mt-auto">
-                    <div className="text-lg font-bold">
-                        <span>Total: </span>
-                        <span className="text-orange-600">R$ {totalPrice.toFixed(2)}</span>
-                    </div>
-                    <button 
-                        onClick={handleAddToCartClick}
-                        disabled={isAdding || !isAllValid()}
-                        className={`font-bold py-3 px-6 rounded-lg transition-all flex items-center gap-2 ${!isAllValid() ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : (isAdding ? 'bg-green-600 text-white scale-105' : 'bg-orange-600 text-white hover:bg-orange-700')}`}
-                    >
-                        {isAdding ? (
-                            <>
-                                <span>Adicionado!</span>
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-5 h-5">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                                </svg>
-                            </>
-                        ) : (
-                            !isAllValid() ? 'Conclua a Seleção' : 'Adicionar ao Carrinho'
+                                </td>
+                                <td className="px-6 py-4 text-center">
+                                    <span className="bg-blue-100 text-blue-800 text-xs font-black px-2.5 py-1 rounded-full">
+                                        {customer.totalOrders}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                    <div className="font-black text-emerald-600">R$ {customer.totalSpent.toFixed(2)}</div>
+                                </td>
+                                <td className="px-6 py-4 text-xs font-medium text-gray-500">
+                                    {customer.lastOrderDate.toLocaleDateString()}
+                                </td>
+                                <td className="px-6 py-4 text-center">
+                                    <button 
+                                        onClick={() => handleWhatsAppContact(customer.phone)} 
+                                        className="text-green-600 hover:text-green-800 p-2 rounded-full hover:bg-green-50 transition-all active:scale-90"
+                                        title="Marketing Direto"
+                                    >
+                                        <WhatsAppIcon className="w-5 h-5" />
+                                    </button>
+                                </td>
+                            </tr>
+                        )) : (
+                            <tr>
+                                <td colSpan={7} className="text-center py-20 text-gray-400">
+                                    <p className="font-bold">Nenhum cliente encontrado na base.</p>
+                                    <p className="text-xs">Tente ajustar sua busca ou aguarde novos pedidos.</p>
+                                </td>
+                            </tr>
                         )}
-                    </button>
-                </div>
+                    </tbody>
+                </table>
             </div>
         </div>
     );
 };
 
-export default GenericCustomizationModal;
+export default GlobalCustomerList;

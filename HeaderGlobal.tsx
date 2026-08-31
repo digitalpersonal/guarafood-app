@@ -1,98 +1,79 @@
-import React, { useState, useEffect } from 'react';
-import type { Banner } from '../types';
-import { fetchActiveBanners } from '../services/databaseService';
-import OptimizedImage from './OptimizedImage';
+import React from 'react';
+import { Logo } from './Logo';
 
-interface HomePromotionalBannerProps {
-    onBannerClick: (targetType: 'restaurant' | 'category', targetValue: string) => void;
+interface HeaderGlobalProps {
+  onOrdersClick?: () => void;
+  onHomeClick?: () => void;
+  onBack?: () => void;
+  canGoBack?: boolean;
+  backLabel?: string;
 }
 
-const HomePromotionalBanner: React.FC<HomePromotionalBannerProps> = ({ onBannerClick }) => {
-    const [banners, setBanners] = useState<Banner[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+const ChevronLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+    </svg>
+);
 
-    useEffect(() => {
-        const loadBanners = async () => {
-            try {
-                const activeBanners = await fetchActiveBanners();
-                setBanners(activeBanners);
-            } catch (err) {
-                console.error('Erro ao carregar banners:', err);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        loadBanners();
-    }, []);
+const ClockIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+);
 
-    if (isLoading) {
-        return (
-            <div className="w-full h-56 sm:h-64 bg-gray-200 animate-pulse"></div>
-        );
-    }
-
-    // Banner de Fallback - Este é o banner fixo solicitado
-    const defaultBanner: Banner = {
-        id: 0,
-        title: "Sua fome pede,\nGuaraFood entrega.",
-        description: "Uma praça de alimentação completa de Guaranésia na palma de sua mão!",
-        imageUrl: "https://images.pexels.com/photos/1639562/pexels-photo-1639562.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1",
-        ctaText: "", // Sem botão
-        targetType: 'category',
-        targetValue: 'Todos'
-    };
-
-    // Usamos o banner fixo como prioridade visual no topo
-    const banner = defaultBanner;
-
-    // Função para renderizar o título com "Food" em destaque
-    const renderStyledTitle = (title: string) => {
-        if (title.includes('GuaraFood')) {
-            const parts = title.split('GuaraFood');
-            return (
-                <>
-                    {parts[0]}
-                    Guara<span className="text-orange-600">Food</span>
-                    {parts[1]}
-                </>
-            );
-        }
-        return title;
-    };
-
-    return (
-        <div className="w-full overflow-hidden border-b border-gray-100">
-            <div
-                onClick={() => onBannerClick(banner.targetType, banner.targetValue)}
-                className="relative cursor-pointer group bg-gray-900 min-h-[16rem] sm:min-h-[22rem] flex items-center justify-center overflow-hidden"
+const HeaderGlobal: React.FC<HeaderGlobalProps> = ({ 
+  onOrdersClick, 
+  onHomeClick, 
+  onBack, 
+  canGoBack, 
+  backLabel = "Voltar" 
+}) => {
+  return (
+    <header className="bg-orange-600 shadow-md fixed top-0 left-0 right-0 z-50 h-[64px] flex items-center">
+      <div className="w-full max-w-7xl mx-auto px-3 sm:px-4 flex items-center justify-between">
+        
+        {/* Lado Esquerdo: Botão Voltar discreto quando aplicável */}
+        <div className="w-10 sm:w-16 flex items-center justify-start flex-shrink-0">
+          {canGoBack && onBack ? (
+            <button 
+              onClick={onBack}
+              className="w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-orange-700 active:bg-orange-800 active:scale-90 transition-all border border-orange-500/30 shadow-sm"
+              title={backLabel}
+              aria-label={backLabel}
             >
-                <div className="absolute inset-0">
-                    <OptimizedImage 
-                        src={banner.imageUrl} 
-                        alt={banner.title} 
-                        priority={true}
-                        className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
-                    />
-                    {/* Overlay escuro centralizado para garantir leitura do texto branco */}
-                    <div className="absolute inset-0 bg-black/50 z-10"></div>
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20 z-10"></div>
-                </div>
-
-                <div className="relative p-6 sm:p-12 text-white z-20 flex flex-col items-center text-center max-w-3xl">
-                    <div className="transform transition-all duration-500">
-                        {/* whitespace-pre-line processa o \n para quebrar a linha conforme solicitado */}
-                        <h2 className="text-4xl sm:text-6xl font-black leading-tight drop-shadow-2xl tracking-tighter whitespace-pre-line mb-4">
-                            {renderStyledTitle(banner.title)}
-                        </h2>
-                        <div className="h-1 w-20 bg-orange-600 mb-6 rounded-full mx-auto"></div>
-                        <p className="text-base sm:text-xl text-gray-100 font-bold drop-shadow-lg opacity-95 max-w-xl leading-relaxed">
-                            {banner.description}
-                        </p>
-                    </div>
-                </div>
-            </div>
+              <ChevronLeftIcon className="w-6 h-6 text-white" />
+            </button>
+          ) : null}
         </div>
-    );
+
+        {/* Centro: Logo GuaraFood - Totalmente livre e sem obstruções */}
+        <div className="flex-1 flex justify-center items-center px-2">
+          <button 
+            onClick={onHomeClick} 
+            className={`focus:outline-none transition-transform active:scale-95 flex items-center ${onHomeClick ? 'cursor-pointer hover:opacity-95' : 'cursor-default'}`}
+            disabled={!onHomeClick}
+            title="GuaraFood - Início"
+          >
+            <Logo />
+          </button>
+        </div>
+        
+        {/* Lado Direito: Meus Pedidos (ícone limpo e circular) */}
+        <div className="w-10 sm:w-16 flex items-center justify-end flex-shrink-0">
+          {onOrdersClick ? (
+            <button 
+              onClick={onOrdersClick}
+              className="w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-orange-700 active:bg-orange-800 active:scale-90 transition-all border border-orange-500/30 shadow-sm"
+              title="Meus Pedidos"
+              aria-label="Meus Pedidos"
+            >
+              <ClockIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </header>
+  );
 };
 
-export default HomePromotionalBanner;
+export default HeaderGlobal;

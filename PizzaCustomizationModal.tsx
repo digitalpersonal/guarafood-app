@@ -1,392 +1,422 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '../services/api';
-import { useSound } from '../hooks/useSound';
-import { useNotification } from '../hooks/useNotification';
+import React, { useState, useMemo, useEffect } from 'react';
+import type { MenuItem, Addon, CartItem, SizeOption, OptionGroup } from '../types';
+import OptimizedImage from './OptimizedImage';
 
-const ChevronUpIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 15.75 7.5-7.5 7.5 7.5" /></svg>
-);
-const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
-);
-const ShoppingBagIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.658-.463 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
-    </svg>
-);
-const MotorcycleIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 110-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253.962.584 1.892.985 2.783.247.55.06 1.21-.463 1.511l-.657.38c-.551.318-1.26.117-1.527-.461a20.845 20.845 0 01-1.44-4.282m3.102.069a18.03 18.03 0 01-.59-4.59c0-1.586.205-3.124.59-4.59m0 9.18a23.848 23.848 0 018.835 2.535M10.34 6.66a23.847 23.847 0 008.835-2.535m0 0A23.74 23.74 0 0018.795 3m.38 1.125a23.91 23.91 0 011.014 5.395m-1.014 8.855c-.118.38-.245.754-.38 1.125m.38-1.125a23.91 23.91 0 001.014-5.395m0-3.46c.495.413.811 1.035.811 1.73 0 .695-.316 1.317-.811 1.73m0-3.46a24.42 24.42 0 010 3.46" />
-    </svg>
-);
-const ClockIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-);
-const XMarkIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-    </svg>
-);
-const RefreshIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-    </svg>
-);
-const InformationCircleIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
-    </svg>
-);
+interface PizzaCustomizationModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onAddToCart: (customizedPizza: CartItem) => void;
+    initialPizza: MenuItem;
+    allPizzas: MenuItem[];
+    allAddons: Addon[];
+}
 
+const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
+    isOpen,
+    onClose,
+    onAddToCart,
+    initialPizza,
+    allPizzas,
+    allAddons,
+}) => {
+    const [selectedSize, setSelectedSize] = useState<SizeOption | null>(null);
+    const [firstHalf, setFirstHalf] = useState<MenuItem>(initialPizza);
+    const [secondHalf, setSecondHalf] = useState<MenuItem | null>(null);
+    const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
+    const [selectedOptions, setSelectedOptions] = useState<{ [groupId: string]: string[] }>({});
+    const [showSecondHalfSelector, setShowSecondHalfSelector] = useState(false);
+    const [notes, setNotes] = useState('');
 
-const statusSteps: Record<string, number> = {
-    'Aguardando Pagamento': 0,
-    'Novo Pedido': 1,
-    'Preparando': 2,
-    'A Caminho': 3,
-    'Entregue': 4,
-    'Cancelado': 0
-};
+    const [isAdding, setIsAdding] = useState(false);
 
-const statusLabels: Record<string, string> = {
-    'Aguardando Pagamento': 'Aguardando Pagamento',
-    'Novo Pedido': 'Pedido Recebido',
-    'Preparando': 'Sendo Preparado',
-    'A Caminho': 'Saiu para Entrega',
-    'Entregue': 'Pedido Entregue',
-    'Cancelado': 'Cancelado'
-};
-
-const OrderTracker: React.FC = () => {
-    const [activeOrders, setActiveOrders] = useState<any[]>([]);
-    const [isExpanded, setIsExpanded] = useState(false);
-    const [showTooltip, setShowTooltip] = useState(false);
-    const [isRefreshing, setIsRefreshing] = useState(false);
-    const previousOrderCountRef = useRef(0);
-    const activeOrdersRef = useRef<any[]>([]); // Ref para evitar clausuras estagnadas nas notificações
-    const pollingIntervalRef = useRef<number | null>(null);
-    
-    const { playNotification, initAudioContext } = useSound();
-    const { confirm, addToast } = useNotification();
-
-    const loadOrders = useCallback(async (isManual = false) => {
-        if (isManual) setIsRefreshing(true);
-        try {
-            const storedOrderIds = JSON.parse(localStorage.getItem('guarafood-active-orders') || '[]');
-            if (storedOrderIds.length === 0) {
-                setActiveOrders([]);
-                activeOrdersRef.current = [];
-                previousOrderCountRef.current = 0;
-                return;
-            }
-
-            const { data, error } = await supabase
-                .from('orders')
-                .select('id, order_number, status, restaurant_name, total_price, timestamp, customer_address')
-                .in('id', storedOrderIds)
-                .order('timestamp', { ascending: false });
-
-            if (error) throw error;
-
-            if (data) {
-                const ongoing = data.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado');
-                
-                if (ongoing.length > 0) {
-                    // Verificar se o status de algum pedido mudou em relação à referência
-                    const hasStatusChanged = ongoing.some(current => {
-                        const prev = activeOrdersRef.current.find(o => o.id === current.id);
-                        return prev && prev.status !== current.status;
-                    });
-
-                    // Notificar se houver mudança de status ou novos pedidos
-                    if (hasStatusChanged || (ongoing.length > previousOrderCountRef.current)) {
-                        playNotification();
-                        if (hasStatusChanged) {
-                             addToast({ message: 'Status do pedido atualizado!', type: 'info', duration: 3000 });
-                        }
-                    }
-                }
-
-                setActiveOrders(ongoing);
-                activeOrdersRef.current = ongoing; // Sincroniza a ref
-                previousOrderCountRef.current = ongoing.length;
-            }
-        } catch (err) {
-            console.error("Tracker Load Error:", err);
-        } finally {
-            if (isManual) setTimeout(() => setIsRefreshing(false), 500);
+    useEffect(() => {
+        setFirstHalf(initialPizza);
+        if (initialPizza.sizes && initialPizza.sizes.length > 0) {
+            setSelectedSize(initialPizza.sizes[0]);
+        } else {
+            setSelectedSize({ name: 'Único', price: initialPizza.price });
         }
-    }, [playNotification, addToast]);
+        setSecondHalf(null);
+        setSelectedAddonIds(new Set());
+        
+        const initialOptions: { [groupId: string]: string[] } = {};
+        initialPizza.optionGroups?.forEach(group => {
+            const defaults = group.options.filter(o => o.default).map(o => o.name);
+            initialOptions[group.id] = defaults;
+        });
+        setSelectedOptions(initialOptions);
+
+        setShowSecondHalfSelector(false);
+        setNotes('');
+        setIsAdding(false);
+    }, [initialPizza, isOpen]);
+
+    const allowsMultipleFlavors = useMemo(() => {
+        if (!selectedSize) return true;
+        const name = selectedSize.name.toLowerCase().trim();
+        if (
+            name.includes('méd') ||
+            name.includes('med') ||
+            name === 'm' ||
+            name.includes('peque') ||
+            name.includes('peq') ||
+            name === 'p' ||
+            name.includes('broto') ||
+            name.includes('individual')
+        ) {
+            return false;
+        }
+        return true;
+    }, [selectedSize]);
 
     useEffect(() => {
-        loadOrders();
+        if (!allowsMultipleFlavors) {
+            setSecondHalf(null);
+            setShowSecondHalfSelector(false);
+        }
+    }, [allowsMultipleFlavors]);
+
+    const availableAddons = useMemo(() => {
+        return allAddons.filter(addon => firstHalf.availableAddonIds?.includes(addon.id));
+    }, [allAddons, firstHalf]);
+
+    const { totalPrice, basePrice } = useMemo(() => {
+        if (!selectedSize) return { basePrice: 0, totalPrice: 0 };
         
-        const handleHandshake = () => {
-            loadOrders(); 
-            setIsExpanded(true); 
-            setShowTooltip(true); 
-            setTimeout(() => setShowTooltip(false), 12000); 
+        const getPriceForSize = (pizza: MenuItem, sizeName: string): number => {
+            const sizeOption = pizza.sizes?.find(s => s.name === sizeName);
+            return Number(sizeOption ? sizeOption.price : pizza.price);
         };
 
-        const handleFocus = () => {
-            // Quando o cliente volta para o app, força um refresh
-            loadOrders();
-        };
-
-        const handleUpdateOrders = () => {
-            loadOrders();
-        };
-
-        window.addEventListener('guarafood:update-orders', handleUpdateOrders);
-        window.addEventListener('guarafood:open-tracker', handleHandshake);
-        window.addEventListener('focus', handleFocus);
+        const firstHalfPrice = getPriceForSize(firstHalf, selectedSize.name);
+        const secondHalfPrice = secondHalf ? getPriceForSize(secondHalf, selectedSize.name) : 0;
         
-        // Polling dinâmico: se houver pedidos aguardando pagamento, checa mais rápido (10s)
-        const checkInterval = activeOrders.some(o => o.status === 'Aguardando Pagamento') ? 10000 : 30000;
-        pollingIntervalRef.current = window.setInterval(() => loadOrders(), checkInterval);
+        const pizzaPrice = secondHalf ? Math.max(firstHalfPrice, secondHalfPrice) : firstHalfPrice;
+        
+        const addonsPrice = allAddons
+            .filter(addon => selectedAddonIds.has(addon.id))
+            .reduce((total, addon) => total + Number(addon.price || 0), 0);
 
-        return () => {
-            window.removeEventListener('guarafood:update-orders', handleUpdateOrders);
-            window.removeEventListener('guarafood:open-tracker', handleHandshake);
-            window.removeEventListener('focus', handleFocus);
-            if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
-        };
-    }, [loadOrders, activeOrders.some(o => o.status === 'Aguardando Pagamento')]); // Re-executa apenas se mudar o status de aguardando pagamento
-
-    // SENIOR RESILIENCE FIRST: O canal de Realtime fica em um useEffect isolado de ciclo único (Mount)
-    // Isso evita completamente o churn de conexões (rapid disconnect/connect) e erros de subscribe no Supabase.
-    useEffect(() => {
-        const uniqueChannelName = `customer_tracker_realtime_${Math.random().toString(36).substring(2, 10)}`;
-        const subscription = supabase
-            .channel(uniqueChannelName)
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (payload) => {
-                const updatedOrder = payload.new;
-                const storedOrderIds = JSON.parse(localStorage.getItem('guarafood-active-orders') || '[]');
-                
-                if (storedOrderIds.includes(updatedOrder.id)) {
-                    loadOrders(); 
-                }
-            })
-            .subscribe();
-
-        return () => {
-            try {
-                supabase.removeChannel(subscription);
-            } catch (err) {
-                console.error("Error removing realtime channel:", err);
-            }
-        };
-    }, [loadOrders]);
-
-    const handleRemoveFromTracker = async (orderId: string) => {
-        const confirmed = await confirm({
-            title: 'Remover pedido?',
-            message: 'Se o seu pedido já chegou ou se você deseja parar de rastreá-lo, clique em confirmar.',
-            confirmText: 'Remover',
-            isDestructive: true
+        let optionsPrice = 0;
+        initialPizza.optionGroups?.forEach(group => {
+            const selectedInGroup = selectedOptions[group.id] || [];
+            selectedInGroup.forEach(optName => {
+                const opt = group.options.find(o => o.name === optName);
+                if (opt) optionsPrice += Number(opt.price || 0);
+            });
         });
 
-        if (confirmed) {
-            try {
-                const storedOrderIds = JSON.parse(localStorage.getItem('guarafood-active-orders') || '[]');
-                const newIds = storedOrderIds.filter((id: string) => id !== orderId);
-                localStorage.setItem('guarafood-active-orders', JSON.stringify(newIds));
-                
-                setActiveOrders(prev => prev.filter(o => o.id !== orderId));
-                addToast({ message: 'Pedido removido do rastreamento.', type: 'info' });
-                
-                if (newIds.length === 0) {
-                    setIsExpanded(false);
-                }
-            } catch (e) {
-                console.error("Error removing from tracker", e);
-            }
-        }
-    };
-
-    if (activeOrders.length === 0) return null;
-
-    const mainOrder = activeOrders[0];
-    const isPickup = mainOrder.customer_address?.street === 'Retirada no Local';
+        return { 
+            basePrice: pizzaPrice, 
+            totalPrice: pizzaPrice + addonsPrice + optionsPrice
+        };
+    }, [firstHalf, secondHalf, selectedAddonIds, allAddons, selectedSize, selectedOptions, initialPizza.optionGroups]);
     
-    const currentStep = statusSteps[mainOrder.status] ?? 1;
-    const progress = currentStep === 0 ? 8 : (currentStep / 4) * 100;
-    const isPending = mainOrder.status === 'Aguardando Pagamento';
-
-    const getStatusLabel = (status: string) => {
-        if (status === 'A Caminho') {
-            return isPickup ? 'Pronto para Retirada' : 'Saiu para Entrega';
-        }
-        return statusLabels[status] || status;
+    const handleAddonToggle = (addonId: number) => {
+        setSelectedAddonIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(addonId)) {
+                newSet.delete(addonId);
+            } else {
+                newSet.add(addonId);
+            }
+            return newSet;
+        });
     };
 
-    const displayOrderNum = mainOrder.order_number 
-        ? `#${String(mainOrder.order_number).padStart(3, '0')}`
-        : `#${mainOrder.id.substring(mainOrder.id.length - 4).toUpperCase()}`;
+    const handleSelectSecondHalf = (pizza: MenuItem) => {
+        setSecondHalf(pizza);
+        setShowSecondHalfSelector(false);
+    };
+
+    const handleOptionToggle = (groupId: string, optionName: string, max: number) => {
+        setSelectedOptions(prev => {
+            const current = prev[groupId] || [];
+            const isSelected = current.includes(optionName);
+            
+            if (isSelected) {
+                return { ...prev, [groupId]: current.filter(o => o !== optionName) };
+            } else {
+                if (max === 1) {
+                    return { ...prev, [groupId]: [optionName] };
+                }
+                if (current.length < max) {
+                    return { ...prev, [groupId]: [...current, optionName] };
+                }
+                return { ...prev, [groupId]: [...current.slice(1), optionName] };
+            }
+        });
+    };
+
+    const isGroupValid = (group: OptionGroup) => {
+        const count = (selectedOptions[group.id] || []).length;
+        return count >= group.minSelections;
+    };
+
+    const allGroupsValid = initialPizza.optionGroups 
+        ? initialPizza.optionGroups.every(isGroupValid) 
+        : true;
+    
+    const handleAddToCartClick = () => {
+        if (!selectedSize) return;
+
+        setIsAdding(true);
+
+        const halves = secondHalf ? [
+            { name: firstHalf.name, price: firstHalf.price },
+            { name: secondHalf.name, price: secondHalf.price }
+        ] : [{ name: firstHalf.name, price: firstHalf.price }];
+
+        const selectedAddons = allAddons.filter(a => selectedAddonIds.has(a.id));
+        
+        const name = secondHalf
+            ? `Pizza Meia ${firstHalf.name} / Meia ${secondHalf.name}`
+            : `Pizza ${firstHalf.name}`;
+
+        const sortedHalfIds = secondHalf ? [firstHalf.id, secondHalf.id].sort() : [firstHalf.id];
+        const sortedAddonIds = Array.from(selectedAddonIds).sort();
+        const cartId = `pizza-${sortedHalfIds.join('-')}_size-${selectedSize.name}_addons-${sortedAddonIds.join('-')}`;
+        
+        const cartSelectedOptions: { groupTitle: string, optionName: string, price: number }[] = [];
+        initialPizza.optionGroups?.forEach(group => {
+            const selected = selectedOptions[group.id] || [];
+            selected.forEach(optName => {
+                const opt = group.options.find(o => o.name === optName);
+                if (opt) {
+                    cartSelectedOptions.push({
+                        groupTitle: group.title,
+                        optionName: opt.name,
+                        price: Number(opt.price) || 0
+                    });
+                }
+            });
+        });
+
+        const customizedPizza: CartItem = {
+            id: cartId,
+            restaurantId: initialPizza.restaurantId,
+            name,
+            price: totalPrice,
+            basePrice,
+            imageUrl: firstHalf.imageUrl,
+            quantity: 1,
+            description: secondHalf ? 'Pizza com dois sabores' : firstHalf.description,
+            halves,
+            selectedAddons,
+            selectedOptions: cartSelectedOptions.length > 0 ? cartSelectedOptions : undefined,
+            sizeName: selectedSize.name,
+            notes: notes.trim() || undefined,
+        };
+        
+        setTimeout(() => {
+            onAddToCart(customizedPizza);
+        }, 300);
+    };
+
+    if (!isOpen) return null;
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 z-[100] px-4 pb-4 pb-safe pointer-events-none">
-            <div 
-                className="relative max-w-md mx-auto pointer-events-auto"
-                onClick={initAudioContext}
-            >
-                {showTooltip && (
-                    <div className="absolute -top-16 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white text-[10px] font-black py-2.5 px-5 rounded-2xl shadow-2xl animate-bounce z-20 whitespace-nowrap border-2 border-white">
-                        <span className="mr-1">📱</span> Rastreie o seu pedido por aqui!
-                        <div className="absolute -bottom-1.5 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-blue-600 rotate-45 border-r-2 border-b-2 border-white"></div>
-                    </div>
-                )}
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-[120] flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="pizza-modal-title">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                <div className="p-4 border-b flex justify-between items-center">
+                    <h2 id="pizza-modal-title" className="text-xl font-bold text-gray-800">Monte sua Pizza</h2>
+                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl font-bold" aria-label="Fechar">&times;</button>
+                </div>
 
-                <div className="bg-white rounded-3xl shadow-[0_-10px_50px_-5px_rgba(0,0,0,0.4)] border border-orange-100 overflow-hidden transition-all duration-500 ease-in-out">
-                    <div 
-                        className={`p-4 flex items-center justify-between cursor-pointer ${isPending ? 'bg-yellow-50' : 'bg-orange-50'} hover:bg-white active:scale-[0.98] transition-all`}
-                        onClick={() => setIsExpanded(!isExpanded)}
-                    >
-                        <div className="flex items-center gap-4">
-                            <div className={`p-3 rounded-2xl ${isPending ? 'bg-yellow-200 text-yellow-700' : 'bg-orange-100 text-orange-600'} shadow-inner border border-white`}>
-                                {isPending ? (
-                                    <ClockIcon className="w-6 h-6 animate-pulse" />
-                                ) : (
-                                    isPickup && mainOrder.status === 'A Caminho' ? (
-                                        <ShoppingBagIcon className="w-6 h-6 animate-bounce" />
-                                    ) : (
-                                        <MotorcycleIcon className="w-6 h-6 animate-pulse" />
-                                    )
-                                )}
-                            </div>
-                            <div>
-                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1.5">Rastreamento Ativo</p>
-                                <p className={`text-sm font-black uppercase tracking-tight ${isPending ? 'text-yellow-700' : 'text-orange-600'}`}>
-                                    {getStatusLabel(mainOrder.status)}
-                                </p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                             {!isExpanded && (
-                                <span className="text-[9px] font-black text-orange-600 bg-orange-100 px-2 py-1 rounded-full uppercase tracking-tighter animate-pulse">
-                                    Ver Detalhes
-                                </span>
-                             )}
-                             <button className="text-gray-400 p-1 bg-gray-50 rounded-full border">
-                                {isExpanded ? <ChevronDownIcon className="w-5 h-5"/> : <ChevronUpIcon className="w-5 h-5"/>}
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="h-2 w-full bg-gray-200 relative">
-                        <div 
-                            className={`h-full transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(234,88,12,0.4)] ${isPending ? 'bg-yellow-500' : 'bg-orange-600'}`}
-                            style={{ width: `${progress}%` }}
-                        ></div>
-                    </div>
-
-                    {isExpanded && (
-                        <div className="p-6 bg-white space-y-6 animate-fadeIn relative">
-                            {/* BOTÃO DE REFRESH MANUAL */}
-                            <button 
-                                onClick={(e) => { e.stopPropagation(); loadOrders(true); }}
-                                className={`absolute top-4 right-14 p-2 text-gray-400 hover:text-orange-600 transition-all ${isRefreshing ? 'animate-spin text-orange-600' : ''}`}
-                                title="Atualizar status agora"
-                                disabled={isRefreshing}
-                            >
-                                <RefreshIcon className="w-5 h-5" />
-                            </button>
-
-                            {/* BOTÃO DE FECHAR (LIMPAR) */}
-                            <button 
-                                onClick={(e) => { e.stopPropagation(); handleRemoveFromTracker(mainOrder.id); }}
-                                className="absolute top-4 right-4 p-2 text-gray-300 hover:text-red-500 transition-colors"
-                                title="Remover este pedido do rastreio"
-                            >
-                                <XMarkIcon className="w-6 h-6" />
-                            </button>
-
-                            <div className="flex justify-between items-center text-sm text-gray-600 border-b pb-4 pr-8">
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Restaurante</span>
-                                    <span className="font-black text-gray-900 uppercase tracking-tight truncate max-w-[200px]">{mainOrder.restaurant_name}</span>
-                                </div>
-                                <span className="font-mono bg-gray-900 text-white font-black px-3 py-1.5 rounded-xl shadow-lg text-xs">{displayOrderNum}</span>
-                            </div>
-                            
-                            <div className="px-1">
-                                <div className="flex justify-between items-center relative">
-                                    <div className="absolute top-1/2 left-0 w-full h-1 bg-gray-100 -z-10 -translate-y-1/2"></div>
-                                    {[1, 2, 3, 4].map((step) => {
-                                        const isCompleted = step <= currentStep && !isPending;
-                                        const isCurrent = step === currentStep && !isPending;
-                                        return (
-                                            <div key={step} className="flex flex-col items-center gap-1 bg-white px-2 relative">
-                                                <div className={`w-5 h-5 rounded-full border-2 transition-all duration-500 flex items-center justify-center ${isCompleted ? 'bg-orange-600 border-orange-600 scale-110 shadow-md' : 'bg-white border-gray-200'} ${isCurrent ? 'ring-4 ring-orange-100' : ''}`}>
-                                                    {isCompleted && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                <div className="flex justify-between text-[9px] text-gray-400 font-black mt-4 uppercase tracking-widest">
-                                    <span className={currentStep >= 1 ? 'text-orange-600' : ''}>Recebido</span>
-                                    <span className={currentStep >= 2 ? 'text-orange-600' : ''}>Preparo</span>
-                                    <span className={currentStep >= 3 ? 'text-orange-600' : ''}>{isPickup ? 'Pronto' : 'Entrega'}</span>
-                                    <span className={currentStep >= 4 ? 'text-orange-600' : ''}>Fim</span>
-                                </div>
-                            </div>
-                            
-                            {isPending ? (
-                                <div className="text-center text-[10px] text-yellow-800 bg-yellow-100/50 p-4 rounded-2xl border border-yellow-200 font-bold animate-pulse">
-                                    ⏳ Aguardando confirmação do pagamento pelo banco...
-                                    <br/>
-                                    <span className="text-[9px] opacity-70">Assim que você pagar, o pedido aparecerá aqui como recebido.</span>
-                                </div>
-                            ) : (
-                                <div className="text-center text-[9px] text-emerald-700 bg-emerald-50 p-3 rounded-2xl border border-emerald-100 font-black uppercase tracking-widest flex items-center justify-center gap-2">
-                                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></div>
-                                    Acompanhando em Tempo Real
-                                </div>
-                            )}
-
-                            {/* NEW: Information for the user on how tracking works */}
-                            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-xl text-blue-900 shadow-sm animate-fadeIn">
-                                <p className="font-bold text-lg mb-1 flex items-center gap-2">
-                                    <InformationCircleIcon className="w-5 h-5" />
-                                    Como funciona?
-                                </p>
-                                <p className="text-sm leading-relaxed mb-2">
-                                    Seu pedido é atualizado em tempo real aqui! Você não precisa de WhatsApp para saber o status.
-                                </p>
-                                <p className="text-xs text-blue-700 leading-snug">
-                                    Mantenha esta janela (ou o app instalado na sua tela inicial) aberta para ver as mudanças instantaneamente. Dispositivos móveis podem pausar atualizações em segundo plano para economizar bateria. Basta abrir o GuaraFood novamente para sincronizar!
-                                </p>
-                            </div>
-                            
-                            <div className="flex justify-between items-center text-xs pt-4 border-t border-gray-50 text-gray-500 font-bold">
-                                <span>Total do Pedido</span>
-                                <span className="font-black text-gray-900 text-lg">R$ {Number(mainOrder.total_price).toFixed(2)}</span>
-                            </div>
-                            
-                            <div className="grid grid-cols-1 gap-2">
-                                <button 
-                                    onClick={() => setIsExpanded(false)}
-                                    className="w-full py-3 text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-gray-600 transition-colors bg-gray-50 rounded-xl"
-                                >
-                                    Minimizar Painel
-                                </button>
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); handleRemoveFromTracker(mainOrder.id); }}
-                                    className="w-full py-2 text-[8px] font-black text-red-300 uppercase tracking-tighter hover:text-red-500 transition-colors"
-                                >
-                                    Parar de rastrear este pedido
-                                </button>
+                <div className="overflow-y-auto p-4 space-y-4">
+                    {initialPizza.sizes && initialPizza.sizes.length > 0 && (
+                        <div>
+                            <h3 className="font-bold mb-2">1. Escolha o Tamanho</h3>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                {initialPizza.sizes.map(size => (
+                                    <label key={size.name} className="flex flex-col items-center p-3 border rounded-lg cursor-pointer has-[:checked]:bg-orange-50 has-[:checked]:border-orange-500">
+                                        <input
+                                            type="radio"
+                                            name="pizza-size"
+                                            value={size.name}
+                                            checked={selectedSize?.name === size.name}
+                                            onChange={() => setSelectedSize(size)}
+                                            className="sr-only"
+                                        />
+                                        <span className="font-bold text-gray-800">{size.name}</span>
+                                        <span className="text-sm text-gray-600">R$ {Number(size.price).toFixed(2)}</span>
+                                    </label>
+                                ))}
                             </div>
                         </div>
                     )}
+                    
+                     <div>
+                        <div className="flex justify-between items-center mb-2">
+                            <h3 className="font-bold">2. Escolha o(s) Sabor(es)</h3>
+                            {!allowsMultipleFlavors && (
+                                <span className="text-xs font-semibold text-amber-800 bg-amber-100 px-2.5 py-1 rounded-full border border-amber-200">
+                                    Sabor único ({selectedSize?.name || 'Média'})
+                                </span>
+                            )}
+                        </div>
+
+                        {allowsMultipleFlavors ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="border rounded-lg p-3">
+                                    <h3 className="font-bold text-center text-gray-600 text-sm mb-2">1ª Metade</h3>
+                                    <div className="flex items-center space-x-3">
+                                        <OptimizedImage src={firstHalf.imageUrl || ''} alt={firstHalf.name} className="w-14 h-14 rounded-md object-cover flex-shrink-0" />
+                                        <div>
+                                            <p className="font-semibold">{firstHalf.name}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="border rounded-lg p-3 flex flex-col justify-center items-center">
+                                    <h3 className="font-bold text-center text-gray-600 text-sm mb-2">2ª Metade</h3>
+                                    {secondHalf ? (
+                                        <div className="w-full">
+                                            <div className="flex items-center space-x-3">
+                                                <OptimizedImage src={secondHalf.imageUrl || ''} alt={secondHalf.name} className="w-14 h-14 rounded-md object-cover flex-shrink-0" />
+                                                <div className="flex-grow">
+                                                    <p className="font-semibold">{secondHalf.name}</p>
+                                                </div>
+                                                <button onClick={() => setSecondHalf(null)} className="text-red-500 hover:text-red-700 text-xl font-bold p-1">&times;</button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <button onClick={() => setShowSecondHalfSelector(true)} className="w-full text-center text-orange-600 font-semibold border-2 border-dashed border-gray-300 rounded-lg py-4 hover:bg-orange-50">
+                                            + Escolher outro sabor
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="border rounded-lg p-3 bg-gray-50 flex items-center space-x-3">
+                                <OptimizedImage src={firstHalf.imageUrl || ''} alt={firstHalf.name} className="w-14 h-14 rounded-md object-cover flex-shrink-0" />
+                                <div>
+                                    <p className="font-semibold text-gray-800">{firstHalf.name}</p>
+                                    <p className="text-xs text-amber-700 font-medium mt-0.5">
+                                        Pizzas tamanho {selectedSize?.name || 'Média'} possuem sabor único. Para dividir em 2 sabores (meia-meia), selecione o tamanho Grande.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+                     </div>
+                    
+                    {allowsMultipleFlavors && showSecondHalfSelector && (
+                        <div>
+                            <h3 className="font-bold mb-2">Escolha o segundo sabor:</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border rounded-lg bg-gray-50">
+                                {allPizzas.filter(p => p.id !== firstHalf.id).map(pizza => (
+                                    <div key={pizza.id} onClick={() => handleSelectSecondHalf(pizza)} className="p-2 flex items-center space-x-3 rounded-md hover:bg-gray-200 cursor-pointer">
+                                        <OptimizedImage src={pizza.imageUrl || ''} alt={pizza.name} className="w-10 h-10 rounded-md object-cover flex-shrink-0" />
+                                        <span className="font-semibold text-sm">{pizza.name}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    
+                    {initialPizza.optionGroups?.map((group, gIdx) => {
+                        const isValid = isGroupValid(group);
+                        const selectedCount = (selectedOptions[group.id] || []).length;
+                        
+                        return (
+                            <div key={group.id} className="p-4 bg-white rounded-xl shadow-sm border border-gray-100">
+                                <div className="flex justify-between items-center mb-3">
+                                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                                        {group.title}
+                                        {group.minSelections > 0 && (
+                                            <span className="bg-red-100 text-red-600 text-[10px] px-2 py-0.5 rounded-full font-black uppercase">Obrigatório</span>
+                                        )}
+                                    </h3>
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${isValid ? 'bg-green-50 text-green-600 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200 animate-pulse'}`}>
+                                        {selectedCount} / {group.maxSelections}
+                                    </span>
+                                </div>
+
+                                <div className="space-y-2">
+                                    {group.options.map(option => {
+                                        const isSelected = (selectedOptions[group.id] || []).includes(option.name);
+                                        
+                                        return (
+                                            <label key={option.name} className={`flex items-center justify-between p-3 border rounded-lg transition-all cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-orange-50 border-orange-400 ring-1 ring-orange-400' : 'border-gray-200'}`}>
+                                                <div className="flex items-center gap-3">
+                                                    <input 
+                                                        type={group.maxSelections === 1 ? "radio" : "checkbox"}
+                                                        checked={isSelected}
+                                                        onChange={() => handleOptionToggle(group.id, option.name, group.maxSelections)}
+                                                        className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                                                    />
+                                                    <span className={`font-semibold ${isSelected ? 'text-orange-900' : 'text-gray-700'}`}>{option.name}</span>
+                                                </div>
+                                                {option.price > 0 && (
+                                                    <span className="text-sm font-bold text-gray-500">+ R$ {option.price.toFixed(2)}</span>
+                                                )}
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        );
+                    })}
+
+                    {availableAddons.length > 0 && (
+                        <div>
+                            <h3 className="font-bold mb-2">3. Adicionais (Opcional)</h3>
+                            <div className="space-y-2">
+                                {availableAddons.map(addon => (
+                                     <label key={addon.id} className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:bg-orange-50 has-[:checked]:border-orange-400">
+                                        <div className="flex items-center">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedAddonIds.has(addon.id)}
+                                                onChange={() => handleAddonToggle(addon.id)}
+                                                className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                                            />
+                                            <span className="ml-3 font-semibold text-gray-700">{addon.name}</span>
+                                        </div>
+                                        {addon.price > 0 && <span className="font-semibold text-gray-600">+ R$ {Number(addon.price).toFixed(2)}</span>}
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="mt-4">
+                        <label className="block text-sm font-bold text-gray-700 mb-2">Observações</label>
+                        <textarea
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            placeholder="Ex: Tirar cebola, borda recheada, etc."
+                            className="w-full p-3 border rounded-lg bg-gray-50 focus:ring-2 focus:ring-orange-400 focus:outline-none text-sm"
+                            rows={2}
+                        />
+                    </div>
+                </div>
+
+                <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
+                    <div className="text-lg font-bold">
+                        <span>Total: </span>
+                        <span className="text-orange-600">R$ {totalPrice.toFixed(2)}</span>
+                    </div>
+                    <button 
+                        onClick={handleAddToCartClick}
+                        disabled={isAdding || !allGroupsValid}
+                        className={`font-bold py-3 px-6 rounded-lg transition-all flex items-center gap-2 ${isAdding ? 'bg-green-600 text-white scale-105' : (!allGroupsValid ? 'bg-gray-400 text-gray-200 cursor-not-allowed' : 'bg-orange-600 text-white hover:bg-orange-700')}`}
+                    >
+                        {isAdding ? (
+                            <>
+                                <span>Adicionado!</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-5 h-5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                                </svg>
+                            </>
+                        ) : (
+                            'Adicionar ao Carrinho'
+                        )}
+                    </button>
                 </div>
             </div>
         </div>
     );
 };
 
-export default OrderTracker;
+export default PizzaCustomizationModal;

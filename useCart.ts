@@ -1,112 +1,141 @@
-import React, { createContext, useState, useContext, useCallback, useRef, ReactNode, useEffect } from 'react';
 
-interface FlyingItem {
-    id: number;
-    imageUrl: string;
-    startRect: DOMRect;
+import React, { createContext, useState, useContext, useMemo, useCallback, useEffect } from 'react';
+import type { CartItem, MenuItem, Combo } from '../types';
+import { useNotification } from './useNotification';
+
+interface CartContextType {
+  cartItems: CartItem[];
+  addToCart: (item: MenuItem | Combo | CartItem) => boolean;
+  removeFromCart: (itemId: string) => void;
+  updateQuantity: (itemId: string, quantity: number) => void;
+  updateItemNotes: (itemId: string, notes: string) => void;
+  clearCart: () => void;
+  totalPrice: number;
+  totalItems: number;
 }
 
-interface AnimationContextType {
-    addFlyingItem: (imageUrl: string, startRect: DOMRect) => void;
-    setCartElement: (element: HTMLElement | null) => void;
-}
+const CartContext = createContext<CartContextType | undefined>(undefined);
 
-const AnimationContext = createContext<AnimationContextType | undefined>(undefined);
+const CART_STORAGE_KEY = 'guara-food-cart-v2';
 
-const FlyToCartAnimation: React.FC<{
-    item: FlyingItem;
-    cartElement: HTMLElement | null;
-    onComplete: (id: number) => void;
-}> = ({ item, cartElement, onComplete }) => {
-    const elRef = useRef<HTMLImageElement>(null);
+export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { addToast } = useNotification();
+  const [cartItems, setCartItems] = useState<CartItem[]>(() => {
+    try {
+      const storedCart = window.localStorage.getItem(CART_STORAGE_KEY);
+      return storedCart ? JSON.parse(storedCart) : [];
+    } catch (error) {
+      return [];
+    }
+  });
 
-    useEffect(() => {
-        const el = elRef.current;
-        if (!el || !cartElement) {
-            // If cart is not visible, end animation immediately
-            onComplete(item.id);
-            return;
+  useEffect(() => {
+    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
+  }, [cartItems]);
+
+  const addToCart = useCallback((item: MenuItem | Combo | CartItem) => {
+    const itemRestaurantId = ('restaurantId' in item) ? item.restaurantId : undefined;
+
+    if (itemRestaurantId !== undefined && cartItems.length > 0) {
+        const hasDifferentRestaurant = cartItems.some(i => i.restaurantId !== undefined && i.restaurantId !== itemRestaurantId);
+        if (hasDifferentRestaurant) {
+            addToast({ message: 'Não é possível adicionar produtos de restaurantes diferentes no mesmo carrinho. Limpe o carrinho atual para pedir deste restaurante.', type: 'error' });
+            return false;
+        }
+    }
+
+    setCartItems(prevItems => {
+        if ('basePrice' in item) {
+            const customItem = item as CartItem;
+            const existingItem = prevItems.find(cartItem => cartItem.id === customItem.id);
+            if (existingItem) {
+                return prevItems.map(cartItem =>
+                    cartItem.id === customItem.id ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
+                );
+            }
+            return [...prevItems, { ...customItem, quantity: 1 }];
+        }
+
+        const isCombo = 'menuItemIds' in item;
+        const cartId = isCombo ? `combo-${item.id}` : `item-${item.id}`;
+
+        const existingItem = prevItems.find(cartItem => cartItem.id === cartId);
+        if (existingItem) {
+            return prevItems.map(cartItem =>
+              cartItem.id === cartId ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
+            );
+        }
+        const newCartItem: CartItem = {
+            id: cartId,
+            restaurantId: itemRestaurantId,
+            name: item.name,
+            price: Number(item.price),
+            basePrice: Number(item.price),
+            imageUrl: item.imageUrl,
+            quantity: 1,
+            description: item.description,
+            originalPrice: item.activePromotion?.name ? Number(item.price) : (item.originalPrice ? Number(item.originalPrice) : undefined),
+            promotionName: item.activePromotion?.name,
         };
-
-        const { top: startTop, left: startLeft, width, height } = item.startRect;
-        
-        el.style.left = `${startLeft}px`;
-        el.style.top = `${startTop}px`;
-        el.style.width = `${width}px`;
-        el.style.height = `${height}px`;
-
-        const cartRect = cartElement.getBoundingClientRect();
-        const endLeft = cartRect.left + cartRect.width / 2;
-        const endTop = cartRect.top + cartRect.height / 2;
-
-        requestAnimationFrame(() => {
-            el.style.transform = `translate(${endLeft - startLeft}px, ${endTop - startTop}px) scale(0.1)`;
-            el.style.opacity = '0';
-        });
-
-        const handleAnimationEnd = () => {
-            onComplete(item.id);
-        };
-
-        el.addEventListener('transitionend', handleAnimationEnd);
-
-        return () => {
-            el.removeEventListener('transitionend', handleAnimationEnd);
-        };
-    }, [item, cartElement, onComplete]);
-
-    // FIX: Replaced JSX with React.createElement to fix parsing errors in a .ts file.
-    return React.createElement('img', {
-        ref: elRef,
-        src: item.imageUrl,
-        alt: "",
-        'aria-hidden': "true",
-        className: "fixed z-[100] rounded-md object-cover transition-all duration-700 ease-in-out pointer-events-none",
-        style: {
-            transform: 'translate(0, 0) scale(1)',
-            opacity: '1',
-        },
+        return [...prevItems, newCartItem];
     });
-};
+    return true;
+  }, [cartItems, addToast]);
 
-export const AnimationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const [flyingItems, setFlyingItems] = useState<FlyingItem[]>([]);
-    const cartElementRef = useRef<HTMLElement | null>(null);
+  const removeFromCart = useCallback((itemId: string) => {
+    setCartItems(prevItems => prevItems.filter(item => item.id !== itemId));
+  }, []);
 
-    const addFlyingItem = useCallback((imageUrl: string, startRect: DOMRect) => {
-        setFlyingItems(prev => [...prev, { id: Date.now(), imageUrl, startRect }]);
-    }, []);
+  const updateQuantity = useCallback((itemId: string, quantity: number) => {
+    if (quantity <= 0) {
+      removeFromCart(itemId);
+    } else {
+      setCartItems(prevItems =>
+        prevItems.map(item =>
+          item.id === itemId ? { ...item, quantity } : item
+        )
+      );
+    }
+  }, [removeFromCart]);
 
-    const removeFlyingItem = useCallback((id: number) => {
-        setFlyingItems(prev => prev.filter(item => item.id !== id));
-    }, []);
-    
-    const setCartElement = useCallback((element: HTMLElement | null) => {
-        cartElementRef.current = element;
-    }, []);
-
-    const value = { addFlyingItem, setCartElement };
-
-    // FIX: Replaced JSX with React.createElement to fix parsing errors in a .ts file.
-    return React.createElement(
-        AnimationContext.Provider,
-        { value: value },
-        children,
-        ...flyingItems.map(item =>
-            React.createElement(FlyToCartAnimation, {
-                key: item.id,
-                item: item,
-                cartElement: cartElementRef.current,
-                onComplete: removeFlyingItem,
-            })
+  const updateItemNotes = useCallback((itemId: string, notes: string) => {
+    setCartItems(prevItems =>
+        prevItems.map(item =>
+            item.id === itemId ? { ...item, notes } : item
         )
     );
+  }, []);
+
+  const clearCart = useCallback(() => {
+    setCartItems([]);
+  }, []);
+
+  const totalPrice = useMemo(() => {
+    return cartItems.reduce((total, item) => total + (Number(item.price) * item.quantity), 0);
+  }, [cartItems]);
+
+  const totalItems = useMemo(() => {
+    return cartItems.reduce((total, item) => total + item.quantity, 0);
+  }, [cartItems]);
+
+  const value = {
+    cartItems,
+    addToCart,
+    removeFromCart,
+    updateQuantity,
+    updateItemNotes,
+    clearCart,
+    totalPrice,
+    totalItems,
+  };
+
+  return React.createElement(CartContext.Provider, { value }, children);
 };
 
-export const useAnimation = (): AnimationContextType => {
-    const context = useContext(AnimationContext);
-    if (context === undefined) {
-        throw new Error('useAnimation must be used within an AnimationProvider');
-    }
-    return context;
+export const useCart = (): CartContextType => {
+  const context = useContext(CartContext);
+  if (context === undefined) {
+    throw new Error('useCart must be used within a CartProvider');
+  }
+  return context;
 };

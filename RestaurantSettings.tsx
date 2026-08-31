@@ -1,163 +1,818 @@
 
-import React from 'react';
-import type { Restaurant } from '../types';
-import OptimizedImage from './OptimizedImage';
-import { timeToMinutes } from '../utils/restaurantUtils';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../services/authService';
+import { useNotification } from '../hooks/useNotification';
+import { useSound } from '../hooks/useSound';
+import { supabase } from '../services/api';
+import { fetchRestaurantByIdSecure, updateRestaurant } from '../services/databaseService';
+import { clearTodayTableOrders } from '../services/orderService';
+import type { Restaurant, OperatingHours, Order } from '../types';
+import Spinner from './Spinner';
+import PrintableOrder from './PrintableOrder';
+import MensalistasManager from './MensalistasManager';
+import MercadoPagoGuide from './MercadoPagoGuide';
+import { getErrorMessage } from '../services/api';
+import ChromeMemorySaverGuide from './ChromeMemorySaverGuide';
+import { KNOWN_CITIES } from '../utils/locationService';
 
-interface RestaurantCardProps {
-  restaurant: Restaurant;
-  onClick: (restaurant: Restaurant) => void;
-  isOpen: boolean;
-}
+const NotificationSettings: React.FC = () => {
+    const { addToast } = useNotification();
+    const { playNotification, initAudioContext } = useSound();
+    const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+    const [permissionStatus, setPermissionStatus] = useState(Notification.permission);
 
-const WhatsAppIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
-    <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.894 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01s-.521.074-.792.372c-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.626.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
-  </svg>
-);
+    useEffect(() => {
+        const savedPref = localStorage.getItem('guarafood-notifications-enabled') === 'true';
+        if (savedPref) {
+            setNotificationsEnabled(true);
+        }
+    }, []);
 
-const ClockIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-);
-
-const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, isOpen }) => {
-  const todayIndex = new Date().getDay();
-  const yesterdayIndex = todayIndex === 0 ? 6 : todayIndex - 1;
-  
-  const todayHours = restaurant.operatingHours?.find(h => h.dayOfWeek === todayIndex);
-  const yesterdayHours = restaurant.operatingHours?.find(h => h.dayOfWeek === yesterdayIndex);
-  
-  const now = new Date();
-  const currentTimeMins = now.getHours() * 60 + now.getMinutes();
-
-  const cleanedPhone = (restaurant.phone || '').replace(/\D/g, '');
-  const whatsappUrl = `https://api.whatsapp.com/send?phone=55${cleanedPhone}`;
-  
-  let hoursDisplay = "";
-  let statusMessage = isOpen ? "Aberto" : "Fechado";
-
-  // LOGICA PARA TURNO QUE VIRA A MADRUGADA (CASO ATUAL DO USUÁRIO)
-  if (isOpen) {
-      // Se está aberto mas hoje está "fechado" ou ainda não abriu turno de hoje, 
-      // então o motivo de estar aberto é o turno de ONTEM que ainda não acabou.
-      const isShiftFromYesterday = !todayHours?.isOpen || (currentTimeMins < timeToMinutes(todayHours.opens));
-      
-      if (isShiftFromYesterday && yesterdayHours?.isOpen) {
-          // Verifica qual turno de ontem virou a madrugada
-          const close1 = timeToMinutes(yesterdayHours.closes);
-          const close2 = yesterdayHours.closes2 ? timeToMinutes(yesterdayHours.closes2) : 0;
-          
-          if (close1 < timeToMinutes(yesterdayHours.opens)) {
-              hoursDisplay = `Até às ${yesterdayHours.closes}`;
-          } else if (yesterdayHours.opens2 && close2 < timeToMinutes(yesterdayHours.opens2)) {
-              hoursDisplay = `Até às ${yesterdayHours.closes2}`;
-          } else {
-              hoursDisplay = "Aberto";
-          }
-      } else if (todayHours?.isOpen) {
-          // Caso padrão: Aberto hoje
-          hoursDisplay = `${todayHours.opens} às ${todayHours.closes}`;
-          if (todayHours.opens2 && todayHours.closes2) {
-              hoursDisplay += ` e ${todayHours.opens2} às ${todayHours.closes2}`;
-          }
-      } else {
-          hoursDisplay = "Aberto";
-      }
-  } else {
-      // LOGICA PARA QUANDO ESTÁ FECHADO
-      if (todayHours && todayHours.isOpen) {
-          const open1 = timeToMinutes(todayHours.opens);
-          const open2 = todayHours.opens2 ? timeToMinutes(todayHours.opens2) : null;
-          
-          if (currentTimeMins < open1) {
-              statusMessage = `Abre às ${todayHours.opens}`;
-              hoursDisplay = `Hoje: ${todayHours.opens} às ${todayHours.closes}`;
-          } else if (open2 && currentTimeMins < open2) {
-              statusMessage = `Abre às ${todayHours.opens2}`;
-              hoursDisplay = `Hoje: ${todayHours.opens2} às ${todayHours.closes2}`;
-          } else {
-              statusMessage = "Fechado por hoje";
-              hoursDisplay = "Fechado por hoje";
-          }
-      } else if (restaurant.openingHours && restaurant.closingHours) {
-          statusMessage = `Abre às ${restaurant.openingHours}`;
-          hoursDisplay = `${restaurant.openingHours} às ${restaurant.closingHours}`;
-      } else if (todayHours && !todayHours.isOpen) {
-          statusMessage = "Fechado hoje";
-          hoursDisplay = "Fechado hoje";
-      } else {
-          statusMessage = "Fechado";
-          hoursDisplay = "Horário não disponível";
-      }
-  }
-
-  return (
-    <div 
-      className={`bg-white rounded-2xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col relative border border-gray-100 ${!isOpen ? 'grayscale opacity-70' : ''}`}
-      onClick={() => onClick(restaurant)}
-    >
-      {/* Badge de Status Superior */}
-      {!isOpen && (
-        <div className="absolute top-0 right-0 bg-gray-900/90 backdrop-blur-sm text-white text-[10px] font-black px-3 py-1 rounded-bl-xl z-20 uppercase tracking-widest shadow-lg">
-            {statusMessage}
+    const handleToggleNotifications = async () => {
+        initAudioContext();
+        if (!notificationsEnabled) {
+            // Se já está garantido, apenas ativa
+            if (permissionStatus === 'granted') {
+                setNotificationsEnabled(true);
+                localStorage.setItem('guarafood-notifications-enabled', 'true');
+                addToast({ message: 'Alertas sonoros ativados!', type: 'success' });
+                playNotification();
+            } else {
+                // Se não está negado, tenta pedir permissão para notificações visuais também
+                if (permissionStatus !== 'denied' && typeof Notification !== 'undefined') {
+                    try {
+                        const result = await Notification.requestPermission();
+                        setPermissionStatus(result);
+                    } catch (e) {
+                        console.error("Erro ao pedir permissão de notificação", e);
+                    }
+                }
+                
+                // Ativa o alerta sonoro de qualquer forma (pois som via Web Audio não depende da permissão de notificação)
+                setNotificationsEnabled(true);
+                localStorage.setItem('guarafood-notifications-enabled', 'true');
+                
+                if (permissionStatus === 'denied') {
+                    addToast({ 
+                        message: 'Alerta sonoro ativado! (Notificações visuais bloqueadas no navegador)', 
+                        type: 'warning' 
+                    });
+                } else {
+                    addToast({ message: 'Alertas sonoros ativados!', type: 'success' });
+                }
+                playNotification();
+            }
+        } else {
+            setNotificationsEnabled(false);
+            localStorage.setItem('guarafood-notifications-enabled', 'false');
+        }
+    };
+    
+    return (
+        <div className="mb-8">
+            <h3 className="text-lg font-bold text-gray-800 mb-2">Alertas Sonoros</h3>
+            <div className="space-y-3">
+                <div className="flex items-center justify-between p-4 border rounded-xl bg-orange-50 border-orange-100 shadow-sm">
+                    <div>
+                        <span className="font-bold block">Tocar Campainha</span>
+                        <span className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Status: {permissionStatus === 'granted' ? 'Ativo' : 'Pendente'}</span>
+                    </div>
+                    <label className="flex items-center cursor-pointer">
+                        <div className="relative">
+                            <input type="checkbox" className="sr-only peer" checked={notificationsEnabled} onChange={handleToggleNotifications} />
+                            <div className="w-14 h-7 bg-gray-300 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-1 after:left-[4px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600 shadow-inner"></div>
+                        </div>
+                    </label>
+                </div>
+                
+                {notificationsEnabled && (
+                    <button 
+                        onClick={() => { initAudioContext(); playNotification(); }}
+                        className="w-full py-2 text-[10px] font-black uppercase bg-white border border-orange-200 text-orange-600 rounded-lg hover:bg-orange-50 transition-all"
+                    >
+                        Testar Som da Campainha
+                    </button>
+                )}
+            </div>
         </div>
-      )}
-      
-      <div className="flex items-center gap-4 p-4 flex-grow">
-        <OptimizedImage 
-          src={restaurant.imageUrl} 
-          alt={restaurant.name} 
-          className="w-20 h-20 rounded-2xl flex-shrink-0 shadow-sm border border-gray-50"
-        />
-        <div className="flex-grow min-w-0">
-          <h3 className="text-lg font-black text-gray-800 truncate leading-tight mb-0.5">{restaurant.name}</h3>
-          
-          {restaurant.description && (
-             <p className="text-xs text-gray-500 line-clamp-1 mb-2 font-medium">{restaurant.description}</p>
-          )}
-
-          {/* Exibição do horário dinâmico */}
-          <div className="flex items-center gap-1.5 mb-2">
-            <ClockIcon className={`w-3.5 h-3.5 ${isOpen ? 'text-green-600' : 'text-gray-400'}`} />
-            <span className={`text-[11px] font-bold ${isOpen ? 'text-green-600' : 'text-gray-500'}`}>
-                {isOpen ? hoursDisplay : statusMessage}
-            </span>
-          </div>
-
-          <div className="flex items-center text-[11px] font-bold text-gray-400 gap-2 flex-wrap">
-            <span className="text-orange-600">★ {restaurant.rating || 'Novo'}</span>
-            <span className="text-gray-300">•</span>
-            <span>{(restaurant.category || '').split(',')[0]}</span>
-            <span className="text-gray-300">•</span>
-            <span>{restaurant.deliveryTime}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="px-4 py-3 bg-gray-50/50 border-t border-gray-100 flex justify-between items-center">
-        <div className="flex items-center gap-1.5">
-            <span className={`text-xs font-black ${restaurant.deliveryFee === 0 ? 'text-emerald-600' : 'text-gray-700'}`}>
-                {restaurant.deliveryFee > 0 ? `Entrega R$ ${restaurant.deliveryFee.toFixed(2)}` : 'Entrega Grátis'}
-            </span>
-        </div>
-        
-        {restaurant.phone && (
-            <a
-                href={whatsappUrl}
-                target="whatsapp_guarafood"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="flex items-center gap-1 text-[10px] font-black text-green-600 uppercase tracking-wider"
-            >
-                <WhatsAppIcon className="w-3.5 h-3.5" />
-                Contato
-            </a>
-        )}
-      </div>
-    </div>
-  );
+    );
 };
 
-export default RestaurantCard;
+const BannerSettings: React.FC<{ restaurantId: number, currentBanner: string | undefined, onUpdate: (url: string) => void }> = ({ restaurantId, currentBanner, onUpdate }) => {
+    const { addToast } = useNotification();
+    const [isUploading, setIsUploading] = useState(false);
+    const [preview, setPreview] = useState(currentBanner || '');
+
+    const compressImage = async (file: File): Promise<File> => {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.src = URL.createObjectURL(file);
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    URL.revokeObjectURL(img.src);
+                    reject(new Error("Não foi possível processar a imagem."));
+                    return;
+                }
+                const MAX_WIDTH = 1200; 
+                const MAX_HEIGHT = 600;
+                let width = img.width;
+                let height = img.height;
+                if (width > height) {
+                    if (width > MAX_WIDTH) {
+                        height *= MAX_WIDTH / width;
+                        width = MAX_WIDTH;
+                    }
+                } else {
+                    if (height > MAX_HEIGHT) {
+                        width *= MAX_HEIGHT / height;
+                        height = MAX_HEIGHT;
+                    }
+                }
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+                canvas.toBlob((blob) => {
+                    URL.revokeObjectURL(img.src);
+                    if (blob) {
+                        const compressedFile = new File([blob], "banner.jpg", { type: 'image/jpeg' });
+                        resolve(compressedFile);
+                    } else {
+                        reject(new Error("Falha na compressão."));
+                    }
+                }, 'image/jpeg', 0.7); 
+            };
+        });
+    };
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setIsUploading(true);
+            try {
+                const compressed = await compressImage(file);
+                const fileName = `banner-${Date.now()}.jpg`;
+                const filePath = `${restaurantId}/${fileName}`;
+
+                const { error: uploadError } = await supabase.storage
+                    .from('product-images')
+                    .upload(filePath, compressed);
+
+                if (uploadError) throw uploadError;
+
+                const { data } = supabase.storage
+                    .from('product-images')
+                    .getPublicUrl(filePath);
+
+                setPreview(data.publicUrl);
+                onUpdate(data.publicUrl);
+                addToast({ message: 'Imagem de capa atualizada!', type: 'success' });
+            } catch (err: any) {
+                console.error(err);
+                addToast({ message: 'Erro ao enviar imagem.', type: 'error' });
+            } finally {
+                setIsUploading(false);
+            }
+        }
+    };
+
+    return (
+        <div className="mb-8">
+            <h3 className="text-lg font-bold text-gray-800 mb-2">Capa do Cardápio</h3>
+            <div className="p-4 border rounded-xl bg-gray-50 border-gray-200 shadow-sm">
+                <div className="relative h-32 w-full bg-gray-200 rounded-lg overflow-hidden mb-4">
+                    {preview ? (
+                        <img src={preview} alt="Banner Preview" className="w-full h-full object-cover" />
+                    ) : (
+                        <div className="flex items-center justify-center h-full text-gray-400 text-xs font-bold uppercase">Sem imagem personalizada</div>
+                    )}
+                    {isUploading && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                        </div>
+                    )}
+                </div>
+                <label className="block">
+                    <span className="sr-only">Escolher foto de capa</span>
+                    <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleFileChange}
+                        disabled={isUploading}
+                        className="block w-full text-sm text-gray-500
+                            file:mr-4 file:py-2 file:px-4
+                            file:rounded-full file:border-0
+                            file:text-sm file:font-semibold
+                            file:bg-orange-50 file:text-orange-700
+                            hover:file:bg-orange-100 cursor-pointer disabled:opacity-50"
+                    />
+                </label>
+                <p className="text-[10px] text-gray-500 mt-2 font-bold uppercase">Recomendado: 1200x600px. Deixe em branco para usar o padrão da categoria.</p>
+            </div>
+        </div>
+    );
+};
+
+const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+const getDefaultOperatingHours = (): OperatingHours[] =>
+    daysOfWeek.map((_, index) => ({
+        dayOfWeek: index,
+        opens: '18:00',
+        closes: '23:00',
+        isOpen: false,
+    }));
+
+const LoyaltyProgramSettings: React.FC<{
+    loyaltyProgram: Restaurant['loyaltyProgram'];
+    onChange: (loyaltyProgram: Restaurant['loyaltyProgram']) => void;
+}> = ({ loyaltyProgram, onChange }) => {
+    const config = loyaltyProgram || {
+        active: false,
+        pointsPerReal: 1,
+        rewardThreshold: 100,
+        rewardType: 'FIXED_DISCOUNT',
+        rewardValue: 10
+    };
+
+    return (
+        <div className="border-t pt-8">
+            <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest text-indigo-600 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                </svg>
+                Clube de Fidelidade
+            </h3>
+            
+            <div className="space-y-4">
+                <label className="flex items-center gap-3 p-4 bg-indigo-50 border border-indigo-100 rounded-xl cursor-pointer hover:bg-indigo-100 transition-colors">
+                    <div className="relative">
+                        <input type="checkbox" className="sr-only peer" checked={config.active} onChange={e => onChange({ ...config, active: e.target.checked })} />
+                        <div className="w-11 h-6 bg-indigo-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                    </div>
+                    <div>
+                        <span className="font-bold text-indigo-900 block">Ativar Clube de Pontos</span>
+                        <span className="text-xs text-indigo-700">Recompense clientes que compram frequentemente com você.</span>
+                    </div>
+                </label>
+
+                {config.active && (
+                    <div className="p-4 bg-white border border-indigo-100 rounded-xl space-y-4 animate-in fade-in slide-in-from-top-2">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 ml-1">Pontos por cada 1 Real</label>
+                                <input type="number" value={config.pointsPerReal} onChange={e => onChange({ ...config, pointsPerReal: parseFloat(e.target.value) || 0 })} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50 focus:ring-2 focus:ring-indigo-500" />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 ml-1">Pontos para Recompensa</label>
+                                <input type="number" value={config.rewardThreshold} onChange={e => onChange({ ...config, rewardThreshold: parseInt(e.target.value) || 0 })} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50 focus:ring-2 focus:ring-indigo-500" />
+                            </div>
+                        </div>
+
+                        <div className="border-t border-indigo-50 pt-4">
+                            <label className="block text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 ml-1">Tipo de Recompensa</label>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                <label className={`p-3 border rounded-xl cursor-pointer text-sm font-bold text-center transition-colors ${config.rewardType === 'FIXED_DISCOUNT' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
+                                    <input type="radio" className="hidden" checked={config.rewardType === 'FIXED_DISCOUNT'} onChange={() => onChange({ ...config, rewardType: 'FIXED_DISCOUNT' })} />
+                                    Desconto Fixo (R$)
+                                </label>
+                                <label className={`p-3 border rounded-xl cursor-pointer text-sm font-bold text-center transition-colors ${config.rewardType === 'PERCENTAGE_DISCOUNT' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
+                                    <input type="radio" className="hidden" checked={config.rewardType === 'PERCENTAGE_DISCOUNT'} onChange={() => onChange({ ...config, rewardType: 'PERCENTAGE_DISCOUNT' })} />
+                                    % de Desconto
+                                </label>
+                                <label className={`p-3 border rounded-xl cursor-pointer text-sm font-bold text-center transition-colors ${config.rewardType === 'FREE_ITEM' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
+                                    <input type="radio" className="hidden" checked={config.rewardType === 'FREE_ITEM'} onChange={() => onChange({ ...config, rewardType: 'FREE_ITEM' })} />
+                                    Prêmio Físico
+                                </label>
+                            </div>
+                        </div>
+
+                        {config.rewardType !== 'FREE_ITEM' ? (
+                            <div>
+                                <label className="block text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 ml-1">Valor do Desconto</label>
+                                <div className="relative">
+                                    {config.rewardType === 'FIXED_DISCOUNT' && <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-400">R$</span>}
+                                    <input type="number" step="0.01" value={config.rewardValue} onChange={e => onChange({ ...config, rewardValue: parseFloat(e.target.value) || 0 })} className={`w-full p-3 ${config.rewardType === 'FIXED_DISCOUNT' ? 'pl-12' : ''} border rounded-xl font-mono text-sm bg-gray-50 focus:ring-2 focus:ring-indigo-500`} />
+                                    {config.rewardType === 'PERCENTAGE_DISCOUNT' && <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-gray-400">%</span>}
+                                </div>
+                            </div>
+                        ) : (
+                            <div>
+                                <label className="block text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 ml-1">Item de Recompensa</label>
+                                <input type="text" placeholder="Ex: 1 Refrigerante 2L / 1 X-Tudo" value={config.rewardItemName || ''} onChange={e => onChange({ ...config, rewardItemName: e.target.value })} className="w-full p-3 border rounded-xl text-sm bg-gray-50 focus:ring-2 focus:ring-indigo-500" />
+                            </div>
+                        )}
+                        
+                        <div className="bg-indigo-50 rounded-lg p-3 text-xs text-indigo-800">
+                            <strong>Resumo:</strong> A cada R$ 1,00 gasto o cliente ganha {config.pointsPerReal} ponto(s). Ao acumular {config.rewardThreshold} pontos, ele recebe {
+                                config.rewardType === 'FIXED_DISCOUNT' ? `R$ ${config.rewardValue.toFixed(2)} de desconto` :
+                                config.rewardType === 'PERCENTAGE_DISCOUNT' ? `${config.rewardValue}% de desconto` :
+                                `o item "${config.rewardItemName || 'a definir'}" gratuitamente`
+                            } na próxima compra.
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () => void }> = ({ restaurantIdOverride, onBack }) => {
+    const { currentUser } = useAuth();
+    const { addToast, confirm } = useNotification();
+    const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+    const [city, setCity] = useState('Guaranésia');
+    const [mercadoPagoToken, setMercadoPagoToken] = useState('');
+    const [asaasApiKey, setAsaasApiKey] = useState('');
+    const [selectedPaymentGateway, setSelectedPaymentGateway] = useState<'mercadopago' | 'asaas'>('mercadopago');
+    const [manualPixKey, setManualPixKey] = useState('');
+    const [bannerImageUrl, setBannerImageUrl] = useState('');
+    const [hasMensalistas, setHasMensalistas] = useState(false);
+    const [hasKiloService, setHasKiloService] = useState(false);
+    const [pricePerKilo, setPricePerKilo] = useState(0);
+    const [disableDelivery, setDisableDelivery] = useState(false);
+    const [enableFiscal, setEnableFiscal] = useState(false);
+    const [printerWidth, setPrinterWidth] = useState(80);
+    const [isPrintServer, setIsPrintServer] = useState(false);
+    const [operatingHours, setOperatingHours] = useState<OperatingHours[]>(getDefaultOperatingHours());
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [testOrder, setTestOrder] = useState<Order | null>(null);
+
+    const restaurantId = restaurantIdOverride || currentUser?.restaurantId;
+
+    const loadData = useCallback(async () => {
+        if (!restaurantId) {
+            setIsLoading(false);
+            addToast({ message: 'Erro: ID do restaurante não encontrado no perfil do usuário.', type: 'error' });
+            return;
+        }
+        try {
+            setIsLoading(true);
+            
+            // Promise.race timeout for premium offline resiliency
+            const data = await Promise.race([
+                fetchRestaurantByIdSecure(restaurantId),
+                new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Fetch timeout')), 3500))
+            ]).catch(err => {
+                console.warn("[GuaraFood Offline Mode] Settings fetch timed out or failed. Pulling from local cache.", err);
+                const cachedRestaurant = localStorage.getItem('guarafood-cached-restaurant');
+                return cachedRestaurant ? JSON.parse(cachedRestaurant) : null;
+            });
+
+            if (data) {
+                setRestaurant(data);
+                localStorage.setItem('guarafood-cached-restaurant', JSON.stringify(data));
+                setCity(data.city || 'Guaranésia');
+                setMercadoPagoToken(data.mercado_pago_credentials?.accessToken || '');
+                setAsaasApiKey(data.asaas_credentials?.apiKey || '');
+                setSelectedPaymentGateway(data.selectedPaymentGateway || 'mercadopago');
+                setManualPixKey(data.manualPixKey || '');
+                setBannerImageUrl(data.bannerImageUrl || '');
+                setHasMensalistas(data.hasMensalistas || false);
+                setHasKiloService(data.hasKiloService || false);
+                setPricePerKilo(data.pricePerKilo || 0);
+                setDisableDelivery(data.disableDelivery || false);
+                setEnableFiscal(data.enableFiscal || false);
+                setOperatingHours(data.operatingHours || getDefaultOperatingHours());
+                
+                // Força o estado da impressora a partir do banco e sincroniza LocalStorage
+                const savedWidth = data.printerWidth || 80;
+                setPrinterWidth(savedWidth);
+                localStorage.setItem('guarafood-printer-width', savedWidth.toString());
+                
+                const savedIsPrintServer = localStorage.getItem('guarafood-is-print-server') === 'true';
+                setIsPrintServer(savedIsPrintServer);
+            }
+        } catch (err) { 
+            console.error(err); 
+            addToast({ message: 'Erro ao carregar dados. Usando dados locais.', type: 'warning' });
+        } finally { 
+            setIsLoading(false); 
+        }
+    }, [restaurantId, addToast]);
+
+    useEffect(() => { loadData(); }, [loadData]);
+    
+    const handleOperatingHoursChange = (dayIndex: number, field: any, value: any) => {
+        setOperatingHours(prev => {
+            const newHours = [...prev];
+            newHours[dayIndex] = { ...newHours[dayIndex], [field]: value };
+            return newHours;
+        });
+    };
+
+    const handleSaveChanges = async () => {
+        if (!restaurantId || !restaurant) return;
+        setIsSaving(true);
+        try {
+            await updateRestaurant(restaurantId, {
+                city: city,
+                mercado_pago_credentials: { accessToken: mercadoPagoToken },
+                asaas_credentials: { apiKey: asaasApiKey },
+                selectedPaymentGateway: selectedPaymentGateway,
+                operatingHours: operatingHours,
+                marmitaStartTime: restaurant.marmitaStartTime,
+                marmitaEndTime: restaurant.marmitaEndTime,
+                manualPixKey: manualPixKey,
+                printerWidth: printerWidth,
+                bannerImageUrl: bannerImageUrl,
+                hasMensalistas: hasMensalistas,
+                hasKiloService: hasKiloService,
+                pricePerKilo: pricePerKilo,
+                disableDelivery: disableDelivery,
+                enableFiscal: enableFiscal
+            });
+            localStorage.setItem('guarafood-printer-width', printerWidth.toString());
+            localStorage.setItem('guarafood-is-print-server', isPrintServer.toString());
+            addToast({ message: 'Configurações salvas e sincronizadas!', type: 'success' });
+        } catch (err: any) {
+            console.error("Save Error:", err);
+            addToast({ message: `Erro ao salvar: ${getErrorMessage(err)}`, type: 'error' });
+        } finally { setIsSaving(false); }
+    };
+    
+    const handleCleanupTableOrders = async () => {
+        if (!restaurantId) return;
+        
+        const confirmed = await confirm({
+            title: 'Limpar Pedidos de Mesa',
+            message: 'Tem certeza que deseja apagar TODOS os pedidos de mesa feitos HOJE? Essa ação não pode ser desfeita e removerá os dados do financeiro e histórico.',
+            confirmText: 'Sim, Limpar',
+            cancelText: 'Cancelar'
+        });
+
+        if (confirmed) {
+            setIsSaving(true);
+            try {
+                await clearTodayTableOrders(restaurantId);
+                addToast({ message: 'Pedidos de mesa de hoje foram removidos com sucesso.', type: 'success' });
+            } catch (err: any) {
+                console.error("Cleanup Error:", err);
+                addToast({ message: `Erro ao limpar pedidos: ${getErrorMessage(err)}`, type: 'error' });
+            } finally {
+                setIsSaving(false);
+            }
+        }
+    };
+    
+    const handleTestPrint = async (width: number) => {
+        if (!restaurant) return;
+        const dummyOrder: Order = {
+            id: 'TESTE-01', timestamp: new Date().toISOString(), status: 'Novo Pedido',
+            customerName: 'Teste Layout', customerPhone: '(35) 99999-9999',
+            items: [{ 
+                id: '1', name: 'Pastel Especial', price: 15.00, basePrice: 15.00, quantity: 2, imageUrl: '', description: '',
+                selectedOptions: [{ groupTitle: 'Massa', optionName: 'Integral', price: 0 }],
+                selectedAddons: [], notes: 'Bem assado e crocante'
+            }],
+            totalPrice: 30.00, subtotal: 30.00, deliveryFee: 0.00,
+            restaurantId: restaurant.id, restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone,
+            paymentMethod: 'Dinheiro',
+        };
+        
+        setTestOrder(dummyOrder);
+        
+        setTimeout(() => {
+            window.print();
+        }, 300);
+    };
+
+    if (isLoading) return <div className="p-8 flex justify-center"><Spinner message="Carregando painel de ajustes..." /></div>;
+    if (!restaurant) return null;
+
+    return (
+        <main className="p-4 max-w-2xl mx-auto space-y-6 pb-32">
+            {onBack && (
+                <button onClick={onBack} className="mb-4 flex items-center text-gray-500 hover:text-gray-800 font-bold text-sm bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-xl transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 mr-2"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>
+                    Voltar para Administração
+                </button>
+            )}
+            
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
+                <h2 className="text-xl font-black text-gray-800 border-b pb-4 mb-6 uppercase tracking-widest">Painel de Configuração</h2>
+                
+                <NotificationSettings />
+
+                <div className="mb-10 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+                    <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Configuração de Pagamento (Pix)</h3>
+                    
+                    <div className="mb-6">
+                        <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">Gateway Ativo</label>
+                        <div className="grid grid-cols-2 gap-4">
+                            <label className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedPaymentGateway === 'mercadopago' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'}`}>
+                                <input type="radio" className="sr-only" checked={selectedPaymentGateway === 'mercadopago'} onChange={() => setSelectedPaymentGateway('mercadopago')} />
+                                <span className="font-bold text-gray-800">Mercado Pago</span>
+                            </label>
+                            <label className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedPaymentGateway === 'asaas' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'}`}>
+                                <input type="radio" className="sr-only" checked={selectedPaymentGateway === 'asaas'} onChange={() => setSelectedPaymentGateway('asaas')} />
+                                <span className="font-bold text-gray-800">Asaas</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    {selectedPaymentGateway === 'mercadopago' ? (
+                        <div>
+                            <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1 ml-1">Token de Acesso (Mercado Pago)</label>
+                            <input type="password" value={mercadoPagoToken} onChange={e => setMercadoPagoToken(e.target.value)} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50" />
+                        </div>
+                    ) : (
+                        <div>
+                            <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1 ml-1">API Key (Asaas)</label>
+                            <input type="password" value={asaasApiKey} onChange={e => setAsaasApiKey(e.target.value)} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50" />
+                        </div>
+                    )}
+                </div>
+
+                <ChromeMemorySaverGuide />
+
+                {restaurantId && (
+                    <BannerSettings 
+                        restaurantId={restaurantId} 
+                        currentBanner={bannerImageUrl} 
+                        onUpdate={setBannerImageUrl} 
+                    />
+                )}
+
+                {/* --- CIDADE ATENDIDA (MULTI-CIDADES) --- */}
+                <div className="mb-10 bg-gradient-to-r from-orange-50 to-amber-50 p-6 rounded-2xl border-2 border-orange-200 shadow-sm">
+                    <div className="flex items-center gap-3 mb-2">
+                        <span className="text-2xl">📍</span>
+                        <div>
+                            <h3 className="text-md font-black text-orange-900 uppercase tracking-tight">Cidade de Atendimento</h3>
+                            <p className="text-xs text-orange-700 font-medium">Os clientes com GPS nesta cidade verão seu cardápio no aplicativo.</p>
+                        </div>
+                    </div>
+                    <div className="mt-3">
+                        <input 
+                            type="text"
+                            list="settings-cities-list"
+                            value={city}
+                            onChange={e => setCity(e.target.value)}
+                            placeholder="Ex: Guaranésia, Guaxupé..."
+                            className="w-full p-3.5 border-2 border-orange-300 rounded-xl font-bold text-gray-900 bg-white focus:ring-2 focus:ring-orange-500 outline-none shadow-inner text-base"
+                        />
+                        <datalist id="settings-cities-list">
+                            {KNOWN_CITIES.map(c => (
+                                <option key={c.name} value={c.name}>{c.name} - {c.state}</option>
+                            ))}
+                        </datalist>
+                    </div>
+                </div>
+
+                {/* --- SELETOR DE IMPRESSORA - DESTAQUE NO TOPO --- */}
+                <div className="mb-10 bg-orange-50 p-6 rounded-2xl border-2 border-orange-100 shadow-sm">
+                    <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-md font-black text-orange-800 uppercase tracking-tight flex items-center gap-2">
+                            <span>🖨️</span> Configuração da Impressora Térmica
+                        </h3>
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-orange-200 text-orange-800 rounded-md">
+                            Chrome Kiosk Printing
+                        </span>
+                    </div>
+                    <p className="text-xs text-orange-700/80 mb-4 font-medium">
+                        Selecione o tamanho da bobina para ajustar o layout de impressão dos cupons e comandas:
+                    </p>
+                    <div className="grid grid-cols-2 gap-4">
+                        <button 
+                            type="button"
+                            onClick={() => setPrinterWidth(80)}
+                            className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-1 ${printerWidth === 80 ? 'bg-white border-orange-600 shadow-md scale-105' : 'bg-transparent border-orange-100 text-orange-300'}`}
+                        >
+                            <span className="font-black text-lg">80mm</span>
+                            <span className="text-[9px] font-black uppercase">Padrão (Mesa/USB)</span>
+                        </button>
+                        <button 
+                            type="button"
+                            onClick={() => setPrinterWidth(58)}
+                            className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-1 ${printerWidth === 58 ? 'bg-white border-orange-600 shadow-md scale-105' : 'bg-transparent border-orange-100 text-orange-300'}`}
+                        >
+                            <span className="font-black text-lg">58mm</span>
+                            <span className="text-[9px] font-black uppercase">Portátil (Bluetooth)</span>
+                        </button>
+                    </div>
+                    <button 
+                        type="button"
+                        onClick={() => handleTestPrint(printerWidth)} 
+                        className="w-full mt-4 py-3 text-[10px] font-black uppercase bg-gray-800 text-white rounded-xl hover:bg-black transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2"
+                    >
+                        <span>🖨️</span> Imprimir Cupom de Teste
+                    </button>
+                    
+
+
+                    {/* Guia Rápido Chrome Kiosk */}
+                    <div className="mt-4 p-4 bg-white rounded-xl border border-orange-200 text-xs text-gray-700 space-y-2">
+                        <div className="flex items-center gap-1.5 font-black text-orange-800">
+                            <span>⚡</span>
+                            <span>Como ativar a Impressão Silenciosa e 100% Automática:</span>
+                        </div>
+                        <p className="text-[11px] text-gray-600 leading-relaxed">
+                            No atalho do Google Chrome na Área de Trabalho do Windows, clique com o botão direito &rarr; <strong>Propriedades</strong> &rarr; no campo <strong>Destino</strong> adicione ao final:
+                        </p>
+                        <code className="block p-2 bg-gray-900 text-orange-400 rounded-lg font-mono text-[11px]">
+                            --kiosk-printing
+                        </code>
+                        <p className="text-[11px] text-gray-500">
+                            Assim, todos os novos pedidos e impressões de cozinha saem instantaneamente sem abrir janelas de confirmação. Mais detalhes na <strong>Central de Ajuda</strong>.
+                        </p>
+                    </div>
+                </div>
+
+                <div className="space-y-8">
+                    <div>
+                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Horário de Funcionamento</h3>
+                        <div className="space-y-2">
+                            {operatingHours.map((day, index) => (
+                                <div key={index} className="space-y-2">
+                                    <div className="grid grid-cols-12 gap-2 items-center p-3 rounded-xl bg-gray-50 border border-gray-100">
+                                        <div className="col-span-5 flex items-center">
+                                            <input type="checkbox" checked={!!day.isOpen} onChange={e => handleOperatingHoursChange(index, 'isOpen', e.target.checked)} className="h-5 w-5 mr-3" />
+                                            <span className="font-bold text-xs text-gray-700">{daysOfWeek[index]}</span>
+                                        </div>
+                                        <div className="col-span-3">
+                                            <input type="time" value={day.opens || ''} onChange={e => handleOperatingHoursChange(index, 'opens', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
+                                        </div>
+                                        <div className="col-span-1 text-center text-gray-400 font-bold text-xs">às</div>
+                                        <div className="col-span-3">
+                                            <input type="time" value={day.closes || ''} onChange={e => handleOperatingHoursChange(index, 'closes', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-12 gap-2 items-center p-3 rounded-xl bg-gray-50 border border-gray-100">
+                                        <div className="col-span-5 flex items-center">
+                                            <span className="font-bold text-[10px] text-gray-400 uppercase ml-8">2º Turno</span>
+                                        </div>
+                                        <div className="col-span-3">
+                                            <input type="time" value={day.opens2 || ''} onChange={e => handleOperatingHoursChange(index, 'opens2', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
+                                        </div>
+                                        <div className="col-span-1 text-center text-gray-400 font-bold text-xs">às</div>
+                                        <div className="col-span-3">
+                                            <input type="time" value={day.closes2 || ''} onChange={e => handleOperatingHoursChange(index, 'closes2', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* --- CONFIGURAÇÃO DE MARMITAS --- */}
+                    <div className="border-t pt-8">
+                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Gerenciamento de Mensalistas</h3>
+                        <div className="mb-4">
+                            <label className="flex items-center justify-between cursor-pointer p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                <div>
+                                    <span className="font-bold text-gray-800 block">Ativar Mensalistas</span>
+                                    <span className="text-xs text-gray-500">Exibir o módulo de mensalistas no painel financeiro.</span>
+                                </div>
+                                <div className="relative">
+                                    <input type="checkbox" className="sr-only peer" checked={hasMensalistas} onChange={e => setHasMensalistas(e.target.checked)} />
+                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                </div>
+                            </label>
+                        </div>
+                        <MensalistasManager />
+                    </div>
+
+                    {/* --- CONFIGURAÇÃO DE COMIDA POR KILO --- */}
+                    <div className="border-t pt-8">
+                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Disponibilidade de Entregas</h3>
+                        <div className="space-y-4">
+                            <label className="flex items-center justify-between cursor-pointer p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                <div>
+                                    <span className="font-bold text-gray-800 block">Desativar Entregas (Apenas Retirada)</span>
+                                    <span className="text-xs text-gray-500">Útil para dias sem entregador. Clientes só poderão fazer pedidos para retirar no balcão.</span>
+                                </div>
+                                <div className="relative">
+                                    <input type="checkbox" className="sr-only peer" checked={disableDelivery} onChange={e => setDisableDelivery(e.target.checked)} />
+                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    {/* --- CONFIGURAÇÃO DE COMIDA POR KILO --- */}
+                    <div className="border-t pt-8">
+                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Serviço de Comida por Kilo</h3>
+                        <div className="space-y-4">
+                            <label className="flex items-center justify-between cursor-pointer p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                <div>
+                                    <span className="font-bold text-gray-800 block">Ativar Venda por Peso</span>
+                                    <span className="text-xs text-gray-500">Permite adicionar itens ao pedido informando apenas o peso.</span>
+                                </div>
+                                <div className="relative">
+                                    <input type="checkbox" className="sr-only peer" checked={hasKiloService} onChange={e => setHasKiloService(e.target.checked)} />
+                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                                </div>
+                            </label>
+
+                            {hasKiloService && (
+                                <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <label className="block text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-1 ml-1">Valor do Quilo (R$)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-emerald-600">R$</span>
+                                        <input 
+                                            type="number" 
+                                            step="0.01"
+                                            value={pricePerKilo} 
+                                            onChange={e => setPricePerKilo(parseFloat(e.target.value) || 0)} 
+                                            className="w-full p-3 pl-12 border border-emerald-200 rounded-xl font-mono text-lg bg-white text-emerald-900 focus:ring-2 focus:ring-emerald-500 outline-none" 
+                                            placeholder="0,00" 
+                                        />
+                                    </div>
+                                    <p className="text-[10px] text-emerald-600 mt-2 font-bold uppercase italic">
+                                        * O sistema calculará automaticamente: Peso (kg) x Valor do Quilo
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* --- CONFIGURAÇÃO FISCAL --- */}
+                    <div className="border-t pt-8">
+                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Integração Fiscal</h3>
+                        <div className="space-y-4">
+                            <label className="flex items-center justify-between cursor-pointer p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                <div>
+                                    <span className="font-bold text-gray-800 block">Ativar Emissão de Notas Fiscais</span>
+                                    <span className="text-xs text-gray-500">Habilita a exportação e a seleção de pedidos para emissão fiscal.</span>
+                                </div>
+                                <div className="relative">
+                                    <input type="checkbox" className="sr-only peer" checked={enableFiscal} onChange={e => setEnableFiscal(e.target.checked)} />
+                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <LoyaltyProgramSettings 
+                        loyaltyProgram={restaurant.loyaltyProgram} 
+                        onChange={(loyaltyProgram) => setRestaurant({ ...restaurant, loyaltyProgram })} 
+                    />
+
+                    <div className="border-t pt-8">
+                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Configuração de Marmitas</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Início (Almoço)</label>
+                                <input type="time" value={restaurant.marmitaStartTime || '10:00'} onChange={e => setRestaurant({...restaurant, marmitaStartTime: e.target.value})} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50" />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Fim (Almoço)</label>
+                                <input type="time" value={restaurant.marmitaEndTime || '15:30'} onChange={e => setRestaurant({...restaurant, marmitaEndTime: e.target.value})} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="border-t pt-8">
+                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Manutenção de Dados</h3>
+                        <div className="bg-red-50 border border-red-100 rounded-xl p-4">
+                            <h4 className="font-bold text-red-800 mb-2 text-sm">Zona de Perigo</h4>
+                            <p className="text-xs text-red-600 mb-4">Ações irreversíveis para correção de dados.</p>
+                            <button 
+                                onClick={handleCleanupTableOrders}
+                                className="w-full py-3 bg-white border border-red-200 text-red-600 font-bold rounded-lg text-xs uppercase hover:bg-red-600 hover:text-white transition-colors shadow-sm"
+                            >
+                                Limpar Pedidos de Mesa (Hoje)
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="border-t pt-8">
+                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Recebimento de Pagamentos</h3>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Chave Pix para Visualização</label>
+                                <input type="text" value={manualPixKey} onChange={e => setManualPixKey(e.target.value)} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50" placeholder="Ex: CNPJ ou E-mail" />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Token Mercado Pago (Opcional)</label>
+                                <input type="password" value={mercadoPagoToken} onChange={e => setMercadoPagoToken(e.target.value)} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50" placeholder="APP_USR-..." />
+                            </div>
+                        </div>
+                        {restaurantId && <MercadoPagoGuide restaurantId={restaurantId} />}
+                    </div>
+                </div>
+
+                <div className="mt-12 pt-6 border-t">
+                    <button 
+                        onClick={handleSaveChanges} 
+                        disabled={isSaving} 
+                        className="w-full bg-orange-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-orange-100 active:scale-95 transition-all text-lg uppercase tracking-widest"
+                    >
+                        {isSaving ? 'Salvando...' : 'Sincronizar Lojas'}
+                    </button>
+                </div>
+            </div>
+
+            <div className="hidden print:block">
+                <div id="printable-order">
+                    {testOrder && <PrintableOrder order={testOrder} printerWidth={printerWidth} />}
+                </div>
+            </div>
+        </main>
+    );
+};
+
+export default RestaurantSettings;

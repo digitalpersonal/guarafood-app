@@ -1,53 +1,82 @@
 
-import { useCallback, useRef } from 'react';
+import React, { useState, useCallback, useContext, createContext, ReactNode, useMemo } from 'react';
+import Notifications from '../components/Notifications';
+import type { ToastOptions, ConfirmOptions, PromptOptions } from '../types';
 
-export const useSound = () => {
-    const audioCtxRef = useRef<AudioContext | null>(null);
+interface NotificationContextType {
+    addToast: (options: ToastOptions) => void;
+    confirm: (options: Omit<ConfirmOptions, 'onConfirm' | 'onCancel'>) => Promise<boolean>;
+    prompt: (options: Omit<PromptOptions, 'onSubmit' | 'onCancel'>) => Promise<string | null>;
+}
 
-    const initAudioContext = useCallback(() => {
-        if (!audioCtxRef.current) {
-            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-            if (AudioContextClass) {
-                audioCtxRef.current = new AudioContextClass();
-            }
-        }
-        if (audioCtxRef.current?.state === 'suspended') {
-            audioCtxRef.current.resume().catch(err => console.warn("Audio resume failed", err));
-        }
+const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
+
+export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+    const [toasts, setToasts] = useState<ToastOptions[]>([]);
+    const [confirmOptions, setConfirmOptions] = useState<ConfirmOptions | null>(null);
+    const [promptOptions, setPromptOptions] = useState<PromptOptions | null>(null);
+
+    const removeToast = useCallback((id: number) => {
+        setToasts(prev => prev.filter(toast => toast.id !== id));
     }, []);
 
-    const playNotification = useCallback(() => {
-        try {
-            initAudioContext();
-            const audioCtx = audioCtxRef.current;
-            
-            if (!audioCtx) return;
+    const addToast = useCallback((options: ToastOptions) => {
+        const id = Date.now() + Math.random();
+        setToasts(prev => [...prev, { ...options, id }]);
+    }, []);
 
-            const oscillator = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
+    const confirm = useCallback((options: Omit<ConfirmOptions, 'onConfirm' | 'onCancel'>): Promise<boolean> => {
+        return new Promise((resolve) => {
+            setConfirmOptions({
+                ...options,
+                onConfirm: () => {
+                    setConfirmOptions(null);
+                    resolve(true);
+                },
+                onCancel: () => {
+                    setConfirmOptions(null);
+                    resolve(false);
+                },
+            });
+        });
+    }, []);
+    
+    const prompt = useCallback((options: Omit<PromptOptions, 'onSubmit' | 'onCancel'>): Promise<string | null> => {
+         return new Promise((resolve) => {
+            setPromptOptions({
+                ...options,
+                onSubmit: (value: string) => {
+                    setPromptOptions(null);
+                    resolve(value);
+                },
+                onCancel: () => {
+                    setPromptOptions(null);
+                    resolve(null);
+                },
+            });
+        });
+    }, []);
+    
 
-            oscillator.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
+    const value = useMemo(() => ({ addToast, confirm, prompt }), [addToast, confirm, prompt]);
 
-            // Efeito "Ding-Dong" (Campainha)
-            const now = audioCtx.currentTime;
+    return (
+        <NotificationContext.Provider value={value}>
+            {children}
+            <Notifications
+                toasts={toasts}
+                removeToast={removeToast}
+                confirmOptions={confirmOptions}
+                promptOptions={promptOptions}
+            />
+        </NotificationContext.Provider>
+    );
+};
 
-            // Primeiro tom (Ding) - Mais agudo
-            oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(660, now);
-            oscillator.frequency.exponentialRampToValueAtTime(880, now + 0.1);
-
-            // Controle de volume e duração
-            gainNode.gain.setValueAtTime(0.5, now);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 1.5);
-
-            oscillator.start(now);
-            oscillator.stop(now + 1.5);
-
-        } catch (e) {
-            console.error("Falha ao tocar som via código:", e);
-        }
-    }, [initAudioContext]);
-
-    return { playNotification, initAudioContext };
+export const useNotification = (): NotificationContextType => {
+    const context = useContext(NotificationContext);
+    if (!context) {
+        throw new Error('useNotification must be used within a NotificationProvider');
+    }
+    return context;
 };

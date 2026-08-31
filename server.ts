@@ -7,10 +7,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 async function startServer() {
   const app = express();
   const PORT = 3000;
-  const upload = multer({ 
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 20 * 1024 * 1024 } // 20MB per file limit
-  });
+  const upload = multer({ storage: multer.memoryStorage() });
 
   const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY,
@@ -24,28 +21,28 @@ async function startServer() {
   app.use(express.json());
 
   // API route for menu import
-  app.post("/api/menu/import", upload.array("menuFiles", 50), async (req, res) => {
-    const files = req.files as Express.Multer.File[];
-    if (!files || files.length === 0) {
-      return res.status(400).json({ error: "No files uploaded" });
+  app.post("/api/menu/import", upload.single("menuFile"), async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
     }
 
     try {
-      const parts: any[] = files.map(file => ({
-        inlineData: {
-          mimeType: file.mimetype,
-          data: file.buffer.toString("base64"),
-        },
-      }));
+      const base64Data = req.file.buffer.toString("base64");
       
-      parts.push({
-        text: "Extraia os itens do cardápio destes arquivos (fotos ou páginas). Eles compõem um cardápio unificado. Retorne um array JSON com todos os itens, cada item deve ter: categoria, nome, descricao, preco (number).",
-      });
-
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.7-flash",
         contents: {
-          parts: parts,
+          parts: [
+            {
+              inlineData: {
+                mimeType: req.file.mimetype,
+                data: base64Data,
+              },
+            },
+            {
+              text: "Extraia os itens do cardápio deste arquivo. Retorne um array JSON com os itens, cada item deve ter: categoria, nome, descricao, preco (number).",
+            },
+          ],
         },
         config: {
           responseMimeType: "application/json",
@@ -65,13 +62,11 @@ async function startServer() {
         },
       });
 
-      let responseText = response.text || "[]";
-      responseText = responseText.replace(/^```json/m, '').replace(/```$/m, '').trim();
-      const menuItems = JSON.parse(responseText);
+      const menuItems = JSON.parse(response.text || "[]");
       res.json(menuItems);
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error processing menu:", error);
-      res.status(500).json({ error: error.message || "Falha interna ao processar imagens." });
+      res.status(500).json({ error: "Failed to process menu" });
     }
   });
 

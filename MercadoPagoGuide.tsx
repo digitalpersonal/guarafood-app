@@ -1,239 +1,102 @@
-import React, { useState, useEffect } from 'react';
-import { useNotification } from '../hooks/useNotification';
+import React, { useState } from 'react';
+import { SUPABASE_URL } from '../config';
 
-const ChromeMemorySaverGuide: React.FC = () => {
-    const { addToast } = useNotification();
-    const [copied, setCopied] = useState(false);
-    const [isOpen, setIsOpen] = useState(true);
-    const [isChrome, setIsChrome] = useState(false);
-    const [wakeLockSupported, setWakeLockSupported] = useState(false);
-    const [wakeLockActive, setWakeLockActive] = useState(false);
+const MercadoPagoGuide: React.FC<{ restaurantId: number }> = ({ restaurantId }) => {
+    const [currentStep, setCurrentStep] = useState(1);
+    
+    // Fallback to a placeholder if the restaurant id isn't valid or we are still loading, though it should be
+    const webhookUrl = restaurantId ? `${SUPABASE_URL}/functions/v1/payment-webhook?restaurantId=${restaurantId}` : 'Carregando URL...';
 
-    // Detect if browser is Chrome and if Wake Lock is supported
-    useEffect(() => {
-        const isChromium = (window as any).chrome;
-        const winNav = window.navigator;
-        const vendorName = winNav.vendor;
-        const isOpera = typeof (window as any).opr !== "undefined";
-        const isIEedge = winNav.userAgent.indexOf("Edg") > -1;
-        
-        const isIndeedChrome = isChromium !== null && 
-                               typeof isChromium !== "undefined" && 
-                               vendorName === "Google Inc." && 
-                               isOpera === false && 
-                               isIEedge === false;
-        
-        setIsChrome(isIndeedChrome);
-        setWakeLockSupported('wakeLock' in navigator);
-    }, []);
-
-    // Try to request a screen wake lock to keep the tab active programmatically as a safeguard
-    useEffect(() => {
-        if (!wakeLockSupported) return;
-
-        let wakeLock: any = null;
-        async function requestWakeLock() {
-            try {
-                wakeLock = await (navigator as any).wakeLock.request('screen');
-                setWakeLockActive(true);
-                
-                // If it's released, update state
-                wakeLock.addEventListener('release', () => {
-                    setWakeLockActive(false);
-                });
-            } catch (err) {
-                console.warn('Wake Lock request failed:', err);
-                setWakeLockActive(false);
-            }
-        }
-
-        requestWakeLock();
-
-        // Re-request when tab becomes visible again
-        const handleVisibilityChange = () => {
-            if (document.visibilityState === 'visible' && !wakeLockActive) {
-                requestWakeLock();
-            }
-        };
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-            if (wakeLock) {
-                try {
-                    wakeLock.release();
-                } catch (e) {}
-            }
-        };
-    }, [wakeLockSupported]);
-
-    const handleCopyUrl = () => {
-        const currentUrl = window.location.origin;
-        navigator.clipboard.writeText(currentUrl).then(() => {
-            setCopied(true);
-            addToast({ message: 'Link do GuaraFood copiado com sucesso!', type: 'success' });
-            setTimeout(() => setCopied(false), 3000);
-        }).catch(() => {
-            addToast({ message: 'Não foi possível copiar automaticamente. Selecione e copie o link na barra de endereços.', type: 'error' });
-        });
-    };
-
-    const handleCopyConfigUrl = () => {
-        navigator.clipboard.writeText('chrome://settings/performance').then(() => {
-            addToast({ message: 'Endereço de configuração copiado! Cole na barra do Chrome.', type: 'success' });
-        });
+    const handleCopyWebhook = () => {
+        navigator.clipboard.writeText(webhookUrl);
+        alert('URL copiada para a área de transferência!');
     };
 
     return (
-        <div className="mb-8 overflow-hidden rounded-2xl border border-amber-200 bg-amber-50 shadow-sm transition-all duration-300">
-            {/* Header Accordion */}
-            <button 
-                onClick={() => setIsOpen(!isOpen)}
-                className="flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-amber-100/50"
-            >
-                <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white shadow-sm">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="h-6 w-6">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                        </svg>
-                    </div>
-                    <div>
-                        <h3 className="font-extrabold text-[15px] text-amber-900 uppercase tracking-tight">
-                            Garantia de Novos Pedidos (Chrome)
-                        </h3>
-                        <p className="text-xs text-amber-800/80 font-semibold">
-                            Evite conflitos com o "Economizador de Memória" do Google Chrome.
-                        </p>
-                    </div>
-                </div>
-                <div className="text-amber-800 hover:text-amber-950 transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={`h-5 w-5 transform transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+        <div className="mt-6 bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="bg-gray-50 border-b border-gray-200 p-4">
+                <h4 className="font-black text-gray-800 text-sm uppercase tracking-wider flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
                     </svg>
-                </div>
-            </button>
-
-            {/* Content Body */}
-            {isOpen && (
-                <div className="border-t border-amber-200 bg-white p-5 space-y-4 text-sm text-gray-700 animate-fadeIn">
-                    <p className="leading-relaxed text-gray-600 font-medium">
-                        O navegador <strong className="text-gray-900">Google Chrome</strong> possui um recurso de segurança chamado <strong className="text-amber-900">"Economizador de Memória" (Memory Saver)</strong> que <span className="font-bold underline decoration-amber-500">congela e desconecta do painel</span> as abas que ficam abertas em segundo plano ou sem cliques por mais de uma hora. 
-                    </p>
-
-                    <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-100 flex items-start gap-2 text-xs">
-                        <svg className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
+                    Guia de Configuração do Pix (Mercado Pago)
+                </h4>
+                <p className="text-xs text-gray-500 mb-0 mt-1">Conclua estes 3 passos simples para o seu PIX funcionar de forma automática via Mercado Pago.</p>
+            </div>
+            
+            <div className="p-5">
+                <div className="relative border-l-2 border-orange-200 ml-3 pl-6 space-y-8">
+                    
+                    {/* Passo 1 - Gerar Token */}
+                    <div className={`relative transition-all duration-300 ${currentStep === 1 ? 'opacity-100' : 'opacity-60 hover:opacity-100'}`}>
+                        <div className={`absolute -left-[35px] flex items-center justify-center w-6 h-6 rounded-full border-2 text-xs font-bold bg-white cursor-pointer ${currentStep === 1 ? 'border-orange-500 text-orange-500' : currentStep > 1 ? 'border-green-500 text-green-500' : 'border-gray-300 text-gray-400'}`} onClick={() => setCurrentStep(1)}>
+                            {currentStep > 1 ? '✓' : '1'}
+                        </div>
                         <div>
-                            <span className="font-bold text-amber-900 uppercase tracking-wider block mb-1">Por que isso não é automático?</span>
-                            <span className="text-[11px] text-amber-800 font-semibold leading-normal">
-                                Por questões de <strong>segurança e privacidade de dados</strong>, o Google Chrome impede estritamente que qualquer site altere as configurações internas do navegador ou adicione exceções de forma automática nas atualizações. A configuração precisa ser feita uma única vez manualmente no computador de vendas.
-                            </span>
+                            <h5 className={`font-bold text-sm ${currentStep === 1 ? 'text-gray-900' : 'text-gray-600'}`}>Gerar credenciais de produção</h5>
+                            <ol className="list-decimal ml-4 mt-2 text-xs text-gray-600 space-y-1">
+                                <li>Acesse o painel para desenvolvedores do Mercado Pago.</li>
+                                <li>Crie uma nova aplicação (ou abra uma existente).</li>
+                                <li>No menu à esquerda, vá em <strong>Credenciais de produção</strong>.</li>
+                                <li>Copie o <strong>Access Token</strong> e cole no campo "Token Mercado Pago" acima.</li>
+                            </ol>
+                            {currentStep === 1 && (
+                                <button onClick={() => setCurrentStep(2)} className="mt-3 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold py-1.5 px-4 rounded-lg">Próximo Passo</button>
+                            )}
                         </div>
                     </div>
 
-                    <div className="pt-2">
-                        <span className="font-bold text-xs uppercase tracking-wider text-gray-400 block mb-3">PASSO A PASSO PARA CONFIGURAR (Leva 1 Minuto)</span>
-                        
-                        <div className="space-y-4">
-                            {/* Step 1 */}
-                            <div className="flex gap-3">
-                                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 font-black text-amber-800 text-xs shadow-inner">
-                                    1
-                                </div>
-                                <div className="flex-grow space-y-2">
-                                    <p className="font-bold text-gray-800">Copie o link exclusivo do seu GuaraFood:</p>
-                                    <div className="flex flex-col sm:flex-row gap-2">
-                                        <div className="bg-gray-100 font-mono text-xs px-3 py-2 rounded-lg truncate flex-grow border flex items-center text-gray-600">
-                                            {window.location.origin}
-                                        </div>
-                                        <button 
-                                            onClick={handleCopyUrl}
-                                            className="px-4 py-2 shrink-0 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 shadow-sm"
-                                        >
-                                            {copied ? (
-                                                <>
-                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                                    </svg>
-                                                    Copiado!
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                                                    </svg>
-                                                    Copiar Link
-                                                </>
-                                            )}
-                                        </button>
+                    {/* Passo 2 - Webhooks */}
+                    <div className={`relative transition-all duration-300 ${currentStep === 2 ? 'opacity-100' : 'opacity-60 hover:opacity-100'}`}>
+                        <div className={`absolute -left-[35px] flex items-center justify-center w-6 h-6 rounded-full border-2 text-xs font-bold bg-white cursor-pointer ${currentStep === 2 ? 'border-orange-500 text-orange-500' : currentStep > 2 ? 'border-green-500 text-green-500' : 'border-gray-300 text-gray-400'}`} onClick={() => setCurrentStep(2)}>
+                            {currentStep > 2 ? '✓' : '2'}
+                        </div>
+                        <div>
+                            <h5 className={`font-bold text-sm ${currentStep === 2 ? 'text-gray-900' : 'text-gray-600'}`}>Configurar Webhooks (Notificações)</h5>
+                            <p className="text-xs text-gray-600 mt-1">Isso avisa o sistema automaticamente quando o cliente pagar o PIX.</p>
+                            <ol className="list-decimal ml-4 mt-2 text-xs text-gray-600 space-y-1">
+                                <li>Ainda no painel da sua aplicação no Mercado Pago, clique em <strong>Notificações Webhooks</strong>.</li>
+                                <li>Cole a URL exclusiva do seu restaurante:</li>
+                                <li className="list-none mt-2">
+                                    <div className="flex items-center gap-2 bg-gray-100 p-2 rounded border">
+                                        <code className="text-[10px] text-gray-800 break-all flex-1">{webhookUrl}</code>
+                                        <button onClick={handleCopyWebhook} className="bg-white border rounded px-2 py-1 text-xs hover:bg-gray-50 uppercase font-bold text-gray-600 shrink-0">Copiar</button>
                                     </div>
-                                </div>
-                            </div>
-
-                            {/* Step 2 */}
-                            <div className="flex gap-3">
-                                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 font-black text-amber-800 text-xs shadow-inner">
-                                    2
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="font-bold text-gray-800">Abra as configurações de desempenho do Chrome:</p>
-                                    <p className="text-xs text-gray-500 leading-relaxed">
-                                        Abra uma nova aba em seu navegador Chrome, copie o endereço abaixo, cole-o na barra de endereços superior e aperte <kbd className="bg-gray-100 px-1 py-0.5 rounded border text-[10px] font-bold shadow-sm">Enter</kbd>:
-                                    </p>
-                                    <div className="flex flex-col sm:flex-row gap-2 mt-1">
-                                        <div className="bg-gray-100 font-mono text-xs px-3 py-2 rounded-lg truncate flex-grow border flex items-center text-gray-500 select-all">
-                                            chrome://settings/performance
-                                        </div>
-                                        <button 
-                                            onClick={handleCopyConfigUrl}
-                                            className="px-3 py-2 shrink-0 bg-gray-200 hover:bg-gray-300 active:scale-95 text-gray-700 rounded-lg text-xs font-bold transition-all"
-                                        >
-                                            Copiar Atalho
-                                        </button>
-                                    </div>
-                                    <p className="text-[11px] text-gray-400 italic">
-                                        Alternativo: Clique nos três pontinhos no topo direito do Chrome &rarr; <strong>Configurações</strong> &rarr; aba <strong>Desempenho</strong> à esquerda.
-                                    </p>
-                                </div>
-                            </div>
-
-                            {/* Step 3 */}
-                            <div className="flex gap-3">
-                                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 font-black text-amber-800 text-xs shadow-inner">
-                                    3
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="font-bold text-gray-800">Adicione o GuaraFood como exceção permanente:</p>
-                                    <p className="text-xs text-gray-600 leading-relaxed">
-                                        Na seção de <strong className="text-gray-800">Economizador de Memória</strong>, procure pelo campo <strong className="text-gray-800">"Sempre manter estes sites ativos"</strong> (ou "Always keep these sites active"), clique em <strong className="text-orange-600 font-black uppercase text-[10px] border border-orange-200 px-1.5 py-0.5 rounded bg-orange-50">Adicionar</strong>, cole o link que copiou no Passo 1 e clique em salvar.
-                                    </p>
-                                </div>
-                            </div>
+                                </li>
+                                <li>Na seção <strong>Eventos</strong>, marque APENAS a opção <strong>Pagamentos (payments)</strong>.</li>
+                                <li>Salve as configurações.</li>
+                            </ol>
+                            {currentStep === 2 && (
+                                <button onClick={() => setCurrentStep(3)} className="mt-3 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold py-1.5 px-4 rounded-lg">Próximo Passo</button>
+                            )}
                         </div>
                     </div>
 
-                    {/* Automatic background safeguards */}
-                    <div className="pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3 text-[11px] font-bold text-gray-400">
-                        <div className="flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                            <span>Sistemas integrados de segurança GuaraFood ativos</span>
+                    {/* Passo 3 - Chave Pix */}
+                    <div className={`relative transition-all duration-300 ${currentStep === 3 ? 'opacity-100' : 'opacity-60 hover:opacity-100'}`}>
+                        <div className={`absolute -left-[35px] flex items-center justify-center w-6 h-6 rounded-full border-2 text-xs font-bold bg-white cursor-pointer ${currentStep === 3 ? 'border-orange-500 text-orange-500' : 'border-gray-300 text-gray-400'}`} onClick={() => setCurrentStep(3)}>
+                            3
                         </div>
-                        <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-1" title="Previne que a tela ou computador entrem em repouso se a aba estiver em foco">
-                                <span className={`w-1.5 h-1.5 rounded-full ${wakeLockActive ? 'bg-green-500' : 'bg-gray-300'}`}></span>
-                                <span>WakeLock: {wakeLockActive ? 'Ativo' : 'Inativo ou sem Foco'}</span>
-                            </div>
-                            <div className="flex items-center gap-1" title="Canal inteligente contra congelamento de processos em segundo plano">
-                                <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                                <span>Canal de Som: Ativo</span>
-                            </div>
+                        <div>
+                            <h5 className={`font-bold text-sm ${currentStep === 3 ? 'text-gray-900' : 'text-gray-600'}`}>Habilitar a Chave PIX (Importante!)</h5>
+                            <p className="text-xs text-gray-600 mt-1">Sem isso, o Mercado Pago vai recusar a geração dos pagamentos.</p>
+                            <ol className="list-decimal ml-4 mt-2 text-xs text-gray-600 space-y-1">
+                                <li>Abra o <strong>aplicativo do Mercado Pago</strong> no celular ou acesse sua conta pelo site principal (não o painel de desenvolvedores).</li>
+                                <li>Acesse a área de <strong>Seu Negócio</strong>  &gt; <strong>Configurações</strong> &gt; <strong>Recebimentos com Pix</strong> (pode variar de acordo com a conta).</li>
+                                <li>Ou vá em <strong>Pix</strong> e certifique-se de que existe uma chave (CPF/CNPJ, E-mail, Celular ou Aleatória) cadastrada na conta vinculada ao Access Token.</li>
+                            </ol>
+                            {currentStep === 3 && (
+                                <div className="mt-3 flex gap-2">
+                                    <button onClick={() => setCurrentStep(1)} className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold py-1.5 px-4 rounded-lg">Voltar ao Início</button>
+                                </div>
+                            )}
                         </div>
                     </div>
+
                 </div>
-            )}
+            </div>
         </div>
     );
 };
 
-export default ChromeMemorySaverGuide;
+export default MercadoPagoGuide;

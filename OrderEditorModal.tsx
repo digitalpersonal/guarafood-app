@@ -1,772 +1,504 @@
 
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { subscribeToOrders, fetchOrders } from '../services/orderService';
-import { useAuth } from '../services/authService'; 
-import { APP_VERSION } from './VersionChecker';
-import { fetchRestaurantByIdSecure } from '../services/databaseService';
-import type { Order, StaffMember, CartItem, Restaurant } from '../types';
-import OrdersView from './OrdersView';
-import MenuManagement from './MenuManagement';
-import RestaurantSettings from './RestaurantSettings';
-import PrintableOrder from './PrintableOrder';
-import TableManagement from './TableManagement';
-import StaffManagement from './StaffManagement';
-import MensalistasManager from './MensalistasManager';
-import PinPadModal from './PinPadModal';
-import HelpCenter from './HelpCenter';
-import { useSound } from '../hooks/useSound';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import type { Order, CartItem, MenuItem, Combo, Addon } from '../types';
+import { useNotification } from '../hooks/useNotification';
+import { updateOrderDetails } from '../services/orderService';
+import { getMensalistaByPhone } from '../services/mensalistaService';
+import { fetchMenuForRestaurant, fetchAddonsForRestaurant, fetchRestaurantByIdSecure } from '../services/databaseService';
+import Spinner from './Spinner';
+import OptimizedImage from './OptimizedImage';
+import AddItemToOrderModal from './AddItemToOrderModal';
+import PizzaCustomizationModal from './PizzaCustomizationModal';
+import AcaiCustomizationModal from './AcaiCustomizationModal';
+import GenericCustomizationModal from './GenericCustomizationModal';
 
-const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-  </svg>
-);
+interface OrderEditorModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    order: Order;
+    onSave: (updatedOrder: Order) => void;
+    restaurantId: number;
+    restaurantName: string;
+    playNotification?: () => void;
+}
 
-const LogoutIcon: React.FC<{ className?: string }> = ({ className }) => (
+const XIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+);
+const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+);
+const PlusIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
     </svg>
 );
 
-const LockClosedIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-    </svg>
-);
+const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, order, onSave, restaurantId, restaurantName, playNotification }) => {
+    const { addToast, prompt } = useNotification();
+    const [editedItems, setEditedItems] = useState<CartItem[]>([]);
+    const [editedPaymentMethod, setEditedPaymentMethod] = useState(order.paymentMethod);
+    const [editedCustomerName, setEditedCustomerName] = useState(order.customerName);
+    const [editedCustomerPhone, setEditedCustomerPhone] = useState(order.customerPhone);
+    const [isSaving, setIsSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-const SalesDashboard = React.lazy(() => import('./SalesDashboard'));
-const CustomerList = React.lazy(() => import('./CustomerList'));
+    // States for adding new items
+    const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
+    const [allRestaurantMenuItems, setAllRestaurantMenuItems] = useState<MenuItem[]>([]);
+    const [allRestaurantCombos, setAllRestaurantCombos] = useState<Combo[]>([]);
+    const [allRestaurantAddons, setAllRestaurantAddons] = useState<Addon[]>([]);
 
-const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
-    const { currentUser, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'help' | 'mensalistas'>('orders');
-    const [orders, setOrders] = useState<Order[]>(() => {
-        try {
-            const cached = localStorage.getItem('guarafood-cached-orders');
-            return cached ? JSON.parse(cached) : [];
-        } catch {
-            return [];
-        }
-    });
-    const [restaurant, setRestaurant] = useState<Restaurant | null>(() => {
-        try {
-            const cached = localStorage.getItem('guarafood-cached-restaurant');
-            return cached ? JSON.parse(cached) : null;
-        } catch {
-            return null;
-        }
-    });
-    const [printJob, setPrintJob] = useState<{ 
-        order: Order, 
-        mode: 'full' | 'kitchen' | 'admin', 
-        items?: CartItem[], 
-        jobId?: string 
-    } | null>(null);
-    const [printQueue, setPrintQueue] = useState<Array<{ 
-        order: Order, 
-        mode: 'full' | 'kitchen' | 'admin', 
-        items?: CartItem[], 
-        jobId?: string 
-    }>>([]);
-    const [isPrintingCooldown, setIsPrintingCooldown] = useState<boolean>(false);
-    const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'RECONNECTING'>('CONNECTED');
-    const [isManualSyncing, setIsManualSyncing] = useState(false);
-    const { playNotification, initAudioContext } = useSound();
-    
-    // Staff & Security
-    const [staffList, setStaffList] = useState<StaffMember[]>(() => {
-        try {
-            const cached = localStorage.getItem('guarafood-cached-staff');
-            return cached ? JSON.parse(cached) : [];
-        } catch {
-            return [];
-        }
-    });
-    const [currentStaffUser, setCurrentStaffUser] = useState<StaffMember | null>(null);
-    const [isPinPadOpen, setIsPinPadOpen] = useState(false);
-    const [isLocked, setIsLocked] = useState(localStorage.getItem('guarafood-panel-locked') === 'true');
-
-    const lastSuccessfulSyncRef = useRef<number>(Date.now());
-    const [lastSuccessfulSyncTime, setLastSuccessfulSyncTime] = useState<number>(Date.now());
-    const isSyncingRef = useRef<boolean>(false);
-    const previousOrdersStatusRef = useRef<Map<string, string>>(new Map());
-    const isFirstLoadRef = useRef(true);
-    const printedOrderIdsRef = useRef<Set<string>>(new Set());
-    const processedJobIdsRef = useRef<Set<string>>(new Set());
-    const alertedOrderIdsRef = useRef<Set<string>>(new Set());
-    const heartbeatIntervalRef = useRef<number | null>(null);
-    const reconnectGraceTimeoutRef = useRef<number | null>(null);
-    const appStartTimeRef = useRef<number>(Date.now());
-    const [isBrowserOffline, setIsBrowserOffline] = useState(!navigator.onLine);
-
-    // Screen Wake Lock API
-    const [isWakeLocked, setIsWakeLocked] = useState<boolean>(false);
-    const wakeLockRef = useRef<any>(null);
-
-    const requestWakeLock = useCallback(async () => {
-        if ('wakeLock' in navigator) {
-            try {
-                if (wakeLockRef.current) {
-                    await wakeLockRef.current.release();
-                }
-                const lock = await (navigator as any).wakeLock.request('screen');
-                wakeLockRef.current = lock;
-                setIsWakeLocked(true);
-                console.log('[GuaraFood] Screen Wake Lock ativo com sucesso!');
-                
-                lock.addEventListener('release', () => {
-                    setIsWakeLocked(false);
-                    console.log('[GuaraFood] Screen Wake Lock foi liberado.');
-                });
-            } catch (err: any) {
-                console.warn('[GuaraFood] Falha ao solicitar Screen Wake Lock:', err.message || err);
-                setIsWakeLocked(false);
-            }
-        }
-    }, []);
-
-    const releaseWakeLock = useCallback(async () => {
-        if (wakeLockRef.current) {
-            try {
-                await wakeLockRef.current.release();
-                wakeLockRef.current = null;
-            } catch (err) {
-                console.error('[GuaraFood] Erro ao liberar Screen Wake Lock:', err);
-            }
-        }
-    }, []);
+    // States for item customization modals
+    const [isPizzaModalOpen, setIsPizzaModalOpen] = useState(false);
+    const [isAcaiModalOpen, setIsAcaiModalOpen] = useState(false);
+    const [isGenericModalOpen, setIsGenericModalOpen] = useState(false);
+    const [itemToCustomize, setItemToCustomize] = useState<MenuItem | null>(null);
+    const [hasMensalistas, setHasMensalistas] = useState(false);
+    const [hasKiloService, setHasKiloService] = useState(false);
+    const [pricePerKilo, setPricePerKilo] = useState(0);
 
     useEffect(() => {
-        const handleVisibilityChange = () => {
-            if (document.visibilityState === 'visible') {
-                requestWakeLock();
-            }
-        };
-
-        requestWakeLock();
-
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-            releaseWakeLock();
-        };
-    }, [requestWakeLock, releaseWakeLock]);
-
-    const [printerWidth, setPrinterWidth] = useState<number>(80);
-
-    // Carrega configuração de impressora e STAFF do Banco de Dados
-    useEffect(() => {
-        if (!currentUser?.restaurantId) return;
-        
-        const loadConfig = async () => {
+        const fetchRestaurant = async () => {
             try {
-                // Implement automatic 3.5s timeout race to prevent rendering thread from locking under poor network condition
-                const rest = await Promise.race([
-                    fetchRestaurantByIdSecure(currentUser.restaurantId),
-                    new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Fetch timeout')), 3500))
-                ]).catch(err => {
-                    console.warn("[GuaraFood Offline Mode] Restaurant details fetch timed out or failed. Utilizing cached state.", err);
-                    return null;
-                });
-
+                const rest = await fetchRestaurantByIdSecure(restaurantId);
                 if (rest) {
-                    setRestaurant(rest);
-                    localStorage.setItem('guarafood-cached-restaurant', JSON.stringify(rest));
-                    if (rest.printerWidth) {
-                        setPrinterWidth(rest.printerWidth);
-                        localStorage.setItem('guarafood-printer-width', rest.printerWidth.toString());
-                    }
-                    if (rest.staff) {
-                        setStaffList(rest.staff);
-                        localStorage.setItem('guarafood-cached-staff', JSON.stringify(rest.staff));
-                    }
-                } else {
-                    const saved = localStorage.getItem('guarafood-printer-width');
-                    if (saved) setPrinterWidth(parseInt(saved, 10));
+                    setHasMensalistas(rest.hasMensalistas || false);
+                    setHasKiloService(rest.hasKiloService || false);
+                    setPricePerKilo(rest.pricePerKilo || 0);
                 }
-            } catch (e) {
-                const saved = localStorage.getItem('guarafood-printer-width');
-                if (saved) setPrinterWidth(parseInt(saved, 10));
+            } catch (error) {
+                console.error("Error fetching restaurant:", error);
             }
         };
-        loadConfig();
-    }, [currentUser, activeTab]); // Reload staff when tabs change (e.g. after editing staff)
+        fetchRestaurant();
+    }, [restaurantId]);
 
-    const handleStaffLogin = (member: StaffMember) => {
-        setCurrentStaffUser(member);
-        setIsPinPadOpen(false);
-        
-        if (member.role === 'manager') {
-            setIsLocked(false);
-            localStorage.setItem('guarafood-panel-locked', 'false');
-        } else {
-            // Waiters are always locked to the Tables tab
-            setIsLocked(true);
-            localStorage.setItem('guarafood-panel-locked', 'true');
-            setActiveTab('tables');
-        }
-    };
-
-    const handleLockScreen = () => {
-        setCurrentStaffUser(null);
-        setIsLocked(true);
-        localStorage.setItem('guarafood-panel-locked', 'true');
-        setActiveTab('tables');
-    };
-
-    const handleUnlockClick = () => {
-        setIsPinPadOpen(true);
-    };
-
-    // Determine visible tabs based on role and lock state
-    const visibleTabs = useMemo(() => {
-        const allTabs = ['orders', 'tables', 'menu', 'financial', 'customers', 'staff', 'settings', 'help', 'mensalistas'] as const;
-        
-        // Se o usuário logado for garçom, ele só vê mesas
-        if (currentUser?.role === 'waiter') {
-            return ['tables', 'help'];
-        }
-
-        // Se o painel estiver travado (Modo Garçom compartilhado), só mostra mesas
-        if (isLocked) {
-            return ['tables', 'help'];
-        }
-        
-        // Manager ou Merchant (Dono) vê tudo
-        return restaurant?.hasMensalistas ? allTabs : allTabs.filter(t => t !== 'mensalistas');
-    }, [currentUser, isLocked, restaurant]);
-
-    // Force tab if current is not allowed
     useEffect(() => {
-        if ((isLocked || currentUser?.role === 'waiter') && activeTab !== 'tables') {
-            setActiveTab('tables');
+        if (isOpen) {
+            setEditedItems(order.items.map(item => ({ ...item }))); // Deep copy
+            setEditedPaymentMethod(order.paymentMethod);
+            setEditedCustomerName(order.customerName);
+            setEditedCustomerPhone(order.customerPhone);
+            setError(null);
+            setIsSaving(false);
         }
-    }, [currentUser, isLocked, activeTab]);
+    }, [order, isOpen]);
 
-    const processOrdersUpdate = useCallback((allOrders: Order[]) => {
-        const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
-        
-        const currentStatusMap = new Map<string, string>();
-        allOrders.forEach(o => currentStatusMap.set(o.id, o.status));
+    // Load full menu and addons for the restaurant
+    useEffect(() => {
+        if (!restaurantId || !isOpen) return;
 
-        // We keep 'Aguardando Pagamento' in the main orders state because TableManagement needs them.
-        // OrdersView and other components will filter them out internally if needed.
-        const visibleOrders = allOrders;
-
-        if (!isFirstLoadRef.current) {
-            const ordersToAlert = visibleOrders.filter(order => {
-                const prevStatus = previousOrdersStatusRef.current.get(order.id);
-                const orderTime = order.timestamp ? new Date(order.timestamp).getTime() : Date.now();
-                const isRecent = (Date.now() - orderTime) < 600000; // 10 minutos
-                const isWithinStartupWindow = orderTime > appStartTimeRef.current - 120000; // 2 minutos antes do app abrir ou depois
-                const hasJustChangedStatus = prevStatus !== undefined && prevStatus !== order.status;
-
-                const isNewDelivery = order.status === 'Novo Pedido' && 
-                                      isRecent && 
-                                      !alertedOrderIdsRef.current.has(order.id) && 
-                                      (isWithinStartupWindow || hasJustChangedStatus);
-
-                const isNewTable = order.tableNumber && 
-                                   !previousOrdersStatusRef.current.has(order.id) && 
-                                   !alertedOrderIdsRef.current.has(order.id) && 
-                                   isRecent && 
-                                   (isWithinStartupWindow || prevStatus !== undefined);
-
-                return isNewDelivery || isNewTable;
-            });
-
-            if (ordersToAlert.length > 0) { ordersToAlert.forEach(o => alertedOrderIdsRef.current.add(o.id));
-                const newestOrder = ordersToAlert[0];
-                if (areNotificationsEnabled) {
-                    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-                         try {
-                             new Notification(newestOrder.tableNumber ? 'Nova Mesa Aberta!' : 'Novo Pedido!', {
-                                body: newestOrder.tableNumber 
-                                    ? `Mesa ${newestOrder.tableNumber} foi aberta.`
-                                    : `Pedido ${newestOrder.order_number || ''} - R$ ${newestOrder.totalPrice.toFixed(2)}`,
-                                icon: '/vite.svg',
-                                tag: newestOrder.id
-                            });
-                         } catch (e) { console.error("Notification API error", e); }
-                    }
-                    playNotification(); 
-                }
-                // Only auto-print delivery orders, not empty table openings
-                if (!newestOrder.tableNumber) {
-                    setPrintQueue(prev => [...prev, { order: newestOrder, mode: 'full' }]);
-                }
-            }
-        }
-
-        previousOrdersStatusRef.current = currentStatusMap;
-        setOrders(visibleOrders);
-        try {
-            localStorage.setItem('guarafood-cached-orders', JSON.stringify(visibleOrders));
-        } catch (err) {
-            console.error("Erro ao persistir cache local de pedidos:", err);
-        }
-        if (isFirstLoadRef.current) { visibleOrders.forEach(o => alertedOrderIdsRef.current.add(o.id)); }; isFirstLoadRef.current = false;
-        lastSuccessfulSyncRef.current = Date.now();
-        setLastSuccessfulSyncTime(Date.now());
-        setConnectionStatus('CONNECTED');
-    }, [playNotification]);
-
-    const forceSync = useCallback(async () => {
-        if (!currentUser?.restaurantId || isSyncingRef.current) return;
-        isSyncingRef.current = true;
-        setIsManualSyncing(true);
-        try {
-            // Sincronização robusta com limite estendido para 15 segundos (ideal para as redes móveis instáveis dos restaurantes no Brasil)
-            const allOrders = await Promise.race([
-                fetchOrders(currentUser.restaurantId, { limit: 150 }),
-                new Promise<Order[]>((_, reject) => setTimeout(() => reject(new Error('Sync timeout')), 15000))
-            ]);
-            processOrdersUpdate(allOrders);
-            lastSuccessfulSyncRef.current = Date.now();
-            setLastSuccessfulSyncTime(Date.now());
-            setConnectionStatus('CONNECTED');
-        } catch (e) {
-            console.warn("[GuaraFood Sync] Falha ou timeout na sincronização automática. Utilizando estado guardado offline.", e);
+        const loadRestaurantData = async () => {
             try {
-                const cached = localStorage.getItem('guarafood-cached-orders');
-                if (cached && orders.length === 0) {
-                    const parsed = JSON.parse(cached);
-                    setOrders(parsed);
-                }
+                // Pass true to ignore day filter, so admin can add ANY item to the order manually
+                const [menuData, addonsData] = await Promise.all([
+                    fetchMenuForRestaurant(restaurantId, true), 
+                    fetchAddonsForRestaurant(restaurantId),
+                ]);
+                setAllRestaurantMenuItems(menuData.flatMap(c => c.items));
+                setAllRestaurantCombos(menuData.flatMap(c => c.combos || []));
+                setAllRestaurantAddons(addonsData);
             } catch (err) {
-                console.error("Erro ao ler cache secundário de pedidos:", err);
+                console.error("Failed to load restaurant menu/addons:", err);
+                addToast({ message: "Erro ao carregar cardápio do restaurante para edição.", type: "error" });
             }
-        } finally {
-            isSyncingRef.current = false;
-            setIsManualSyncing(false);
-        }
-    }, [currentUser?.restaurantId, processOrdersUpdate, orders.length]);
+        };
+        loadRestaurantData();
+    }, [restaurantId, isOpen, addToast]);
 
-    useEffect(() => {
-        let wakeLock: any = null;
-        const requestWakeLock = async () => {
-            if ('wakeLock' in navigator) {
-                try { 
-                    wakeLock = await (navigator as any).wakeLock.request('screen'); 
-                } catch (err: any) { 
-                    // Silenciamos o erro de permissão (NotAllowedError) que ocorre em iframes restritos
-                    if (err.name !== 'NotAllowedError') {
-                        console.warn(`WakeLock request failed: ${err.name}, ${err.message}`); 
-                    }
+    const handleQuantityChange = useCallback((itemId: string, newQuantity: number) => {
+        setEditedItems(prevItems => {
+            const updated = prevItems.map(item =>
+                item.id === itemId ? { ...item, quantity: Math.max(0, newQuantity) } : item
+            );
+            return updated.filter(item => item.quantity > 0);
+        });
+    }, []);
+
+    const handleRemoveItem = useCallback((itemId: string) => {
+        setEditedItems(prevItems => prevItems.filter(item => item.id !== itemId));
+    }, []);
+
+    const handleAddItemToOrder = useCallback((newItem: CartItem) => {
+        setEditedItems(prevItems => {
+            // Check if it's the exact same custom item (same ID)
+            const existingItemIndex = prevItems.findIndex(item => item.id === newItem.id);
+
+            if (existingItemIndex > -1) {
+                // If it exists, just increment quantity
+                return prevItems.map((item, index) =>
+                    index === existingItemIndex ? { ...item, quantity: item.quantity + newItem.quantity } : item
+                );
+            } else {
+                // Otherwise, add as a new item
+                return [...prevItems, { ...newItem }];
+            }
+        });
+        addToast({ message: `${newItem.name} adicionado!`, type: "success" });
+        setIsAddItemModalOpen(false); // Close item selection modal
+        setIsPizzaModalOpen(false); // Close customization modals
+        setIsAcaiModalOpen(false);
+        setIsGenericModalOpen(false);
+        setItemToCustomize(null);
+    }, [addToast]);
+
+    const { subtotal, totalItems } = useMemo(() => {
+        const currentSubtotal = editedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        const currentTotalItems = editedItems.reduce((sum, item) => sum + item.quantity, 0);
+        return { subtotal: currentSubtotal, totalItems: currentTotalItems };
+    }, [editedItems]);
+
+    const deliveryFee = order.deliveryFee || 0;
+    const discountAmount = order.discountAmount || 0;
+
+    const finalTotalPrice = useMemo(() => {
+        return Math.max(0, (subtotal - discountAmount) + deliveryFee);
+    }, [subtotal, discountAmount, deliveryFee]);
+
+    const handleSave = async () => {
+        setError(null);
+        if (editedItems.length === 0) {
+            setError('O pedido não pode ficar sem itens. Se desejar cancelar, use a opção de cancelar pedido.');
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            let mensalistaIdToUpdate: string | null | undefined = undefined;
+            let finalPaymentMethod = editedPaymentMethod;
+
+            if (editedPaymentMethod === 'Mensalista') {
+                if (!editedCustomerPhone.trim()) {
+                    setError('O WhatsApp é obrigatório para pedidos de Mensalista.');
+                    setIsSaving(false);
+                    return;
                 }
-            }
-        };
-        requestWakeLock();
-
-        const handleOnline = () => {
-            setIsBrowserOffline(false);
-            forceSync();
-        };
-        const handleOffline = () => {
-            setIsBrowserOffline(true);
-        };
-        const handleFocus = () => {
-            const now = Date.now();
-            lastSuccessfulSyncRef.current = now;
-            setLastSuccessfulSyncTime(now);
-            forceSync();
-        };
-        const handleVisibilityChange = () => { 
-            if (document.visibilityState === 'visible') {
-                const now = Date.now();
-                lastSuccessfulSyncRef.current = now;
-                setLastSuccessfulSyncTime(now);
-                forceSync(); 
-            }
-        };
-
-        window.addEventListener('online', handleOnline);
-        window.addEventListener('offline', handleOffline);
-        window.addEventListener('focus', handleFocus);
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        window.addEventListener('guarafood:update-orders', forceSync);
-
-        heartbeatIntervalRef.current = window.setInterval(() => {
-            const idleTime = Date.now() - lastSuccessfulSyncRef.current;
-            if (idleTime > 90000) { // Antes era 30000. Damos tolerância de 90s para redes móveis lentas
-                setConnectionStatus('RECONNECTING');
-                forceSync();
-            } else if (idleTime > 45000) { // Antes era 10000. Damos tolerância de 45s para evitar acúmulo de tráfego
-                forceSync();
-            }
-        }, 15000); // Executa verificação a cada 15 segundos (antes era 8s)
-
-        return () => { 
-            if (wakeLock !== null) wakeLock.release(); 
-            window.removeEventListener('online', handleOnline);
-            window.removeEventListener('offline', handleOffline);
-            window.removeEventListener('focus', handleFocus);
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-            window.removeEventListener('guarafood:update-orders', forceSync);
-            if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
-            if (reconnectGraceTimeoutRef.current) clearTimeout(reconnectGraceTimeoutRef.current);
-        };
-    }, [forceSync]);
-
-    const enableAudio = useCallback(() => { initAudioContext(); }, [initAudioContext]);
-
-    useEffect(() => {
-        if (printJob) {
-            // Se for um pedido de delivery novo, evitamos duplicidade pelo ID
-            if (printJob.mode === 'full' && !printJob.jobId && printedOrderIdsRef.current.has(printJob.order.id)) {
-                setPrintJob(null); 
-                return;
-            }
-
-            const printTimer = setTimeout(async () => {
-                const printJobId = printJob.jobId;
-                const orderId = printJob.order.id;
-                try {
-                    window.focus();
-                    
-                    if (printJob.mode === 'full' && !printJob.jobId) {
-                        printedOrderIdsRef.current.add(printJob.order.id);
-                    }
-                    
-                    window.print();
-
-                    // Se era um trabalho da fila remota (jobId), marcamos como feito no banco
-                    if (printJobId) {
-                        try {
-                            const { markPrintJobAsDone } = await import('../services/orderService');
-                            await markPrintJobAsDone(orderId, printJobId);
-                        } catch (e) {
-                            console.error("Erro ao marcar impressão como concluída:", e);
-                        }
-                    }
-                } catch (err) {
-                    console.error("Erro ao processar impressão:", err);
-                } finally {
-                    // Ativa o cooldown e limpa o job ativo de forma limpa para recuperar thread
-                    setIsPrintingCooldown(true);
-                    setPrintJob(null);
-                    setTimeout(() => {
-                        setIsPrintingCooldown(false);
-                    }, 1800);
+                const mensalista = await getMensalistaByPhone(editedCustomerPhone.replace(/\D/g, ''), restaurantId);
+                if (mensalista) {
+                    mensalistaIdToUpdate = mensalista.id;
+                    finalPaymentMethod = `Mensalista (${mensalista.name})`;
+                } else {
+                    setError('Mensalista não encontrado com este WhatsApp.');
+                    setIsSaving(false);
+                    return;
                 }
-            }, 500); 
-            return () => clearTimeout(printTimer);
-        }
-    }, [printJob]);
-
-    // GESTOR DE FILA DE IMPRESSÃO LOCAL
-    useEffect(() => {
-        if (!printJob && !isPrintingCooldown && printQueue.length > 0) {
-            const nextJob = printQueue[0];
-            setPrintQueue(prev => prev.slice(1));
-            setPrintJob(nextJob);
-        }
-    }, [printJob, printQueue, isPrintingCooldown]);
-
-    // MONITOR DE FILA DE IMPRESSÃO REMOTA (Para Mesas/Garçons)
-    useEffect(() => {
-        const isPrintServer = localStorage.getItem('guarafood-is-print-server') === 'true';
-        if (!isPrintServer || orders.length === 0) return;
-
-        // Procuramos em todos os pedidos ativos por solicitações de impressão pendentes
-        const pendingJobsToQueue: Array<{
-            order: Order;
-            mode: 'full' | 'kitchen' | 'admin';
-            items?: any[];
-            jobId?: string;
-        }> = [];
-        let shouldPlayNotification = false;
-
-        for (const order of orders) {
-            const queue = order.payment_details?.print_queue || [];
-            const pendingJobs = queue.filter((job: any) => job.status === 'pending');
-            
-            for (const pendingJob of pendingJobs) {
-                // Se já processamos esse ID ou se já está em processamento, ignoramos
-                if (!processedJobIdsRef.current.has(pendingJob.id)) {
-                    processedJobIdsRef.current.add(pendingJob.id);
-                    
-                    shouldPlayNotification = true;
-                    pendingJobsToQueue.push({
-                        order: order,
-                        mode: pendingJob.type || 'kitchen',
-                        items: pendingJob.items,
-                        jobId: pendingJob.id
-                    });
-                }
+            } else if (order.mensalista_id) {
+                // Se era mensalista e mudou para outra forma, removemos o ID do mensalista
+                mensalistaIdToUpdate = null;
             }
-        }
 
-        if (pendingJobsToQueue.length > 0) {
-            if (shouldPlayNotification) {
-                const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
-                if (areNotificationsEnabled) {
-                    playNotification();
-                }
-            }
-            // Enfilera no spooler local de forma limpa
-            setPrintQueue(prev => [...prev, ...pendingJobsToQueue]);
-        }
-    }, [orders, playNotification]);
-
-    const handleManualPrint = (order: Order, mode: 'full' | 'kitchen' | 'admin' = 'full') => {
-        // Se for modo cozinha, verificamos se há itens novos para evitar impressão em branco
-        if (mode === 'kitchen') {
-            const hasNewItems = order.items.some(item => {
-                return true; 
+            const updatedOrder = await updateOrderDetails(order.id, {
+                items: editedItems,
+                subtotal: subtotal,
+                totalPrice: finalTotalPrice,
+                discountAmount: discountAmount,
+                paymentMethod: finalPaymentMethod,
+                customerName: editedCustomerName,
+                customerPhone: editedCustomerPhone,
+                mensalistaId: mensalistaIdToUpdate,
             });
-            if (!hasNewItems && mode === 'kitchen') return;
-        }
 
-        printedOrderIdsRef.current.delete(order.id);
-        setPrintQueue(prev => [...prev, { order, mode }]);
+            // Play notification if it's a table order
+            if (order.tableNumber && playNotification) {
+                playNotification();
+            }
+
+            addToast({ message: 'Pedido atualizado com sucesso!', type: 'success' });
+            onSave(updatedOrder);
+            onClose();
+        } catch (err: any) {
+            console.error("Failed to update order:", err);
+            setError(`Erro ao salvar alterações: ${err.message || JSON.stringify(err)}`);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
-    useEffect(() => {
-        if (!currentUser?.restaurantId) return;
-
-        const handleRealtimeStatus = (status: string) => {
-            if (status === 'SUBSCRIBED') {
-                setConnectionStatus('CONNECTED');
-                if (reconnectGraceTimeoutRef.current) {
-                    clearTimeout(reconnectGraceTimeoutRef.current);
-                    reconnectGraceTimeoutRef.current = null;
-                }
-            } else {
-                // Quando o canal de tempo real oscila ou desconecta, nós não mostramos a temida tarja vermelha
-                // imediatamente porque o polling de backup em segundo plano está 100% ativo e atualizando tudo.
-                // A tarja vermelha só será ativada se ambos falharem no intervalo do heartbeat.
-                console.log(`Canal de tempo real oscilou (${status}). Polling HTTP de backup ativo operando.`);
-            }
-        };
-
-        const unsubscribe = subscribeToOrders((allOrders) => {
-            processOrdersUpdate(allOrders);
-        }, currentUser.restaurantId, handleRealtimeStatus); 
-
-        return () => {
-            unsubscribe();
-        };
-    }, [currentUser?.restaurantId, processOrdersUpdate]);
-
-    const renderContent = () => {
-        switch (activeTab) {
-            case 'orders':
-                return <OrdersView orders={orders} printerWidth={printerWidth} onPrint={handleManualPrint} currentStaffUser={currentStaffUser} restaurant={restaurant} />;
-            case 'tables':
-                return <TableManagement orders={orders} currentStaffUser={currentStaffUser} onPrint={handleManualPrint} restaurant={restaurant} />;
-            case 'menu': return <MenuManagement />;
-            case 'financial':
-                return (
-                    <React.Suspense fallback={<div className="p-4 text-center">Carregando financeiro...</div>}>
-                        <SalesDashboard currentStaffUser={currentStaffUser} />
-                    </React.Suspense>
-                );
-            case 'customers':
-                return (
-                    <React.Suspense fallback={<div className="p-4 text-center">Carregando clientes...</div>}>
-                        <CustomerList orders={orders} />
-                    </React.Suspense>
-                );
-            case 'staff': return <StaffManagement />;
-            case 'mensalistas': return <MensalistasManager />;
-            case 'settings': return <RestaurantSettings />;
-            case 'help': return <HelpCenter onBack={() => setActiveTab('orders')} />;
-            default: return null;
+    const handleSelectMenuItemForCustomization = useCallback((item: MenuItem) => {
+        setItemToCustomize(item);
+        if (item.isPizza) {
+            setIsPizzaModalOpen(true);
+        } else if (item.isAcai) {
+            setIsAcaiModalOpen(true);
+        } else {
+            setIsGenericModalOpen(true);
         }
-    }
+    }, [handleAddItemToOrder]);
     
-    // A tarja vermelha só é exibida se realmente ficarmos mais de 60 segundos sem conseguir atualizar os pedidos
-    const showOfflineBanner = isBrowserOffline || (Date.now() - lastSuccessfulSyncTime > 60000);
-    
-    return (
-        <div className="w-full min-h-screen bg-gray-50" onClick={enableAudio} onTouchStart={enableAudio}>
-            {showOfflineBanner && (
-                <div 
-                    className="text-white text-center text-[10px] uppercase tracking-widest font-black p-1.5 cursor-pointer bg-red-600 animate-pulse flex items-center justify-center gap-2 transition-all duration-500 z-50 sticky top-0"
-                    onClick={forceSync}
-                >
-                    <div className="w-2.5 h-2.5 rounded-full bg-white animate-ping"></div>
-                    <span>{isBrowserOffline ? 'Sem Conexão com a Internet' : 'Sincronização Lenta ou Desconectado...'} - Clique para Forçar</span>
-                </div>
-            )}
+    const handleAddComboToOrder = useCallback((combo: Combo) => {
+        const comboCartItem: CartItem = {
+            id: `combo-${combo.id}-${Date.now()}`, // Unique ID
+            restaurantId: order.restaurantId, name: combo.name,
+            price: combo.price,
+            basePrice: combo.price,
+            imageUrl: combo.imageUrl,
+            quantity: 1,
+            description: combo.description,
+        };
+        handleAddItemToOrder(comboCartItem);
+    }, [handleAddItemToOrder]);
 
-            <header className="p-4 sticky top-0 bg-gray-50 z-20 border-b flex justify-between items-center gap-4">
-                <div className="flex items-center space-x-4 flex-grow min-w-0">
-                    <button onClick={onBack} className="bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition-colors flex-shrink-0">
-                        <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
-                    </button>
-                    <div className="flex flex-col">
-                        <h1 className="text-xl sm:text-2xl font-black text-gray-800 truncate flex items-center gap-2">
-                            {currentUser?.name || 'Painel Lojista'}
-                            <span 
-                                className={`inline-block w-2.5 h-2.5 rounded-full transition-all duration-500 ${
-                                    connectionStatus === 'CONNECTED' 
-                                        ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' 
-                                        : (Date.now() - lastSuccessfulSyncTime < 45000 
-                                            ? 'bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.6)]' 
-                                            : 'bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]')
-                                }`} 
-                                title={
-                                    connectionStatus === 'CONNECTED' 
-                                        ? 'Conexão em Tempo Real Ativa' 
-                                        : (Date.now() - lastSuccessfulSyncTime < 45000 
-                                            ? 'Tempo real instável, mas sistema sincronizado via canal HTTP de backup útil' 
-                                            : 'Sem contato com o servidor. Verifique sua conexão...')
-                                }
-                            />
-                        </h1>
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs text-orange-600 font-bold uppercase">
-                                {currentUser?.role === 'waiter' ? 'Garçom' : currentUser?.role === 'manager' ? 'Gerente' : 'Administrador'}
-                            </span>
-                            <span className="text-[9px] bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded font-bold">v{APP_VERSION}</span>
-                            {isWakeLocked ? (
-                                <span className="text-[9px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-1 animate-pulse" title="A tela não entrará em repouso automaticamente para evitar que você perca pedidos novos!">
-                                    <span className="w-1 h-1 rounded-full bg-green-500 inline-block"></span>
-                                    Tela Ativa
-                                </span>
-                            ) : (
-                                <span 
-                                    onClick={requestWakeLock}
-                                    className="text-[9px] bg-gray-200 text-gray-500 hover:bg-orange-100 hover:text-orange-700 cursor-pointer px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1 transition-colors"
-                                    title="O navegador permite repouso da tela. Clique para forçar a tela a ficar sempre ativada!"
+    const handleAddKiloItem = async () => {
+        if (!hasKiloService || !pricePerKilo) return;
+
+        const weightStr = await prompt({
+            title: 'Adicionar Peso',
+            message: `Valor do Kg: R$ ${pricePerKilo.toFixed(2)}\nDigite o peso em KG (ex: 0.450):`,
+            placeholder: '0.000',
+            submitText: 'Adicionar ao Pedido',
+            cancelText: 'Cancelar'
+        });
+
+        if (!weightStr) return;
+        const weight = parseFloat(weightStr.replace(',', '.'));
+        if (isNaN(weight) || weight <= 0) {
+            addToast({ message: 'Peso inválido.', type: 'error' });
+            return;
+        }
+
+        const itemPrice = weight * pricePerKilo;
+
+        const kiloItem: CartItem = {
+            id: `kilo-${Date.now()}`,
+            restaurantId: order.restaurantId, name: 'Prato por Kilo',
+            price: itemPrice,
+            basePrice: itemPrice,
+            imageUrl: '',
+            quantity: 1,
+            description: `Peso: ${weight.toFixed(3)}kg (R$ ${pricePerKilo.toFixed(2)}/kg)`,
+            weight: weight,
+            isKiloItem: true,
+            served: true
+        };
+
+        handleAddItemToOrder(kiloItem);
+    };
+
+
+    if (!isOpen) return null;
+
+    return (
+        <>
+            <div className="fixed inset-0 bg-black bg-opacity-60 z-[70] flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="order-editor-modal-title">
+                <div className="bg-white p-4 sm:p-6 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex justify-between items-center border-b pb-3 mb-4">
+                        <h2 id="order-editor-modal-title" className="text-xl sm:text-2xl font-bold text-gray-800">Editar Pedido #{order.id.substring(0, 6)}</h2>
+                        <button onClick={onClose} className="text-gray-500 hover:text-gray-800 p-1">
+                            <XIcon className="w-6 h-6" />
+                        </button>
+                    </div>
+
+                    <div className="overflow-y-auto space-y-4 pr-2 -mr-2">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-400 uppercase">Nome do Cliente</label>
+                                <input 
+                                    type="text" 
+                                    value={editedCustomerName} 
+                                    onChange={e => setEditedCustomerName(e.target.value)}
+                                    className="w-full p-2 border rounded bg-gray-50 text-sm font-bold"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-400 uppercase">WhatsApp</label>
+                                <input 
+                                    type="text" 
+                                    value={editedCustomerPhone} 
+                                    onChange={e => setEditedCustomerPhone(e.target.value.replace(/\D/g, ''))}
+                                    className="w-full p-2 border rounded bg-gray-50 text-sm font-bold"
+                                />
+                            </div>
+                        </div>
+
+                        <p className="text-sm text-gray-600 mb-4">Ajuste a quantidade, remova ou adicione itens a este pedido.</p>
+
+                        {editedItems.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500">
+                                Nenhum item no pedido. Clique em "Adicionar Novo Item".
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {editedItems.map(item => (
+                                    <div key={item.id} className="flex items-start space-x-3 p-2 bg-gray-50 rounded-lg border border-gray-100">
+                                        <OptimizedImage src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-md object-cover flex-shrink-0" />
+                                        <div className="flex-grow">
+                                            <p className="font-semibold text-gray-800">
+                                                {item.isKiloItem && item.weight ? (
+                                                    <span className="text-emerald-600 mr-2">{item.weight.toFixed(3)}kg</span>
+                                                ) : null}
+                                                {item.name} {item.sizeName && `(${item.sizeName})`}
+                                            </p>
+                                            
+                                            {/* SHOW CUSTOM OPTIONS */}
+                                            {item.selectedOptions && item.selectedOptions.length > 0 && (
+                                                <ul className="text-xs text-blue-600 bg-blue-50 p-1 rounded mt-1">
+                                                    {item.selectedOptions.map((opt, idx) => (
+                                                        <li key={idx}>• {opt.groupTitle}: {opt.optionName} {opt.price > 0 && `(+ R$ ${opt.price.toFixed(2)})`}</li>
+                                                    ))}
+                                                </ul>
+                                            )}
+
+                                            {item.halves && item.halves.length > 1 && (
+                                                <p className="text-xs text-gray-500 pl-1">
+                                                    (Meia {item.halves.map(h => h.name).join(' / Meia ')})
+                                                </p>
+                                            )}
+                                            {item.selectedAddons && item.selectedAddons.length > 0 && (
+                                                <ul className="text-xs text-gray-500 pl-1 mt-1">
+                                                    {item.selectedAddons.map(addon => (
+                                                        <li key={addon.id}>
+                                                            + {addon.name} {addon.price > 0 && `(R$ ${addon.price.toFixed(2)})`}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                            {item.notes && (
+                                                <p className="text-xs text-orange-500 italic mt-1 bg-orange-50 p-1 rounded">
+                                                    Obs: {item.notes}
+                                                </p>
+                                            )}
+                                            <p className="text-sm text-orange-600 font-bold mt-1">R$ {(item.price * item.quantity).toFixed(2)}</p>
+                                        </div>
+                                        <div className="flex flex-col items-end space-y-2">
+                                            <button onClick={() => handleRemoveItem(item.id)} className="text-gray-400 hover:text-red-500 p-1">
+                                                <TrashIcon className="w-5 h-5"/>
+                                            </button>
+                                            <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
+                                                {!item.isKiloItem ? (
+                                                    <>
+                                                        <button onClick={() => handleQuantityChange(item.id, item.quantity - 1)} className="w-6 h-6 flex items-center justify-center font-bold text-gray-600 hover:bg-white rounded">-</button>
+                                                        <span className="font-bold w-4 text-center text-sm">{item.quantity}</span>
+                                                        <button onClick={() => handleQuantityChange(item.id, item.quantity + 1)} className="w-6 h-6 flex items-center justify-center font-bold text-gray-600 hover:bg-white rounded">+</button>
+                                                    </>
+                                                ) : (
+                                                    <span className="px-2 text-[10px] font-black text-emerald-600 uppercase">PESO</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="flex gap-2">
+                            {hasKiloService && (
+                                <button
+                                    onClick={handleAddKiloItem}
+                                    className="flex-1 py-3 mt-2 border-2 border-dashed border-emerald-300 rounded-lg text-emerald-600 font-semibold hover:bg-emerald-50 flex items-center justify-center gap-2"
                                 >
-                                    <span className="w-1 h-1 rounded-full bg-gray-400 inline-block"></span>
-                                    Tela Normal
-                                </span>
+                                    <PlusIcon className="w-5 h-5" />
+                                    Pesar Prato
+                                </button>
                             )}
+                            <button
+                                onClick={() => setIsAddItemModalOpen(true)}
+                                className="flex-1 py-3 mt-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 font-semibold hover:bg-gray-50 flex items-center justify-center gap-2"
+                            >
+                                <PlusIcon className="w-5 h-5" />
+                                Adicionar Novo Item
+                            </button>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="block text-xs font-black text-gray-500 uppercase">Forma de Pagamento</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Mensalista'].filter(m => m !== 'Mensalista' || hasMensalistas).map(m => (
+                                    <button 
+                                        key={m}
+                                        type="button"
+                                        onClick={() => setEditedPaymentMethod(m)}
+                                        className={`py-2 rounded-lg text-[10px] font-black uppercase border-2 transition-all ${
+                                            editedPaymentMethod.startsWith(m)
+                                            ? 'bg-blue-600 border-blue-600 text-white' 
+                                            : 'bg-white border-gray-100 text-gray-500 hover:border-blue-100'
+                                        }`}
+                                    >
+                                        {m}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="border-t pt-4 space-y-2">
+                            <div className="flex justify-between text-gray-600 text-sm">
+                                <span>Subtotal (Itens)</span>
+                                <span>R$ {subtotal.toFixed(2)}</span>
+                            </div>
+                            {order.deliveryFee != null && (
+                                <div className="flex justify-between text-gray-600 text-sm">
+                                    <span>Taxa de Entrega</span>
+                                    <span>R$ {order.deliveryFee.toFixed(2)}</span>
+                                </div>
+                            )}
+                            {order.discountAmount && order.discountAmount > 0 && (
+                                <div className="flex justify-between text-green-600 text-sm">
+                                    <span>Desconto</span>
+                                    <span>- R$ {order.discountAmount.toFixed(2)}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between items-center font-bold text-lg text-gray-900 border-t pt-2 mt-1">
+                                <span>Total Atualizado</span>
+                                <span>R$ {finalTotalPrice.toFixed(2)}</span>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div className="flex items-center gap-2">
-                    {currentUser?.role !== 'waiter' && (
-                        isLocked ? (
-                            <button 
-                                onClick={handleUnlockClick}
-                                className="flex items-center gap-2 px-3 py-2 bg-orange-100 text-orange-600 rounded-xl hover:bg-orange-200 transition-all font-black text-[10px] uppercase tracking-wider shadow-sm"
-                                title="Desbloquear Painel Completo"
-                            >
-                                <LockClosedIcon className="w-5 h-5" />
-                                Modo Garçom
-                            </button>
-                        ) : (
-                            staffList.length > 0 && (
-                                <button 
-                                    onClick={handleLockScreen}
-                                    className="p-2 rounded-lg text-gray-400 hover:text-orange-600 transition-all"
-                                    title="Ativar Modo Garçom (Restrito)"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                                    </svg>
-                                </button>
-                            )
-                        )
-                    )}
-                    <button 
-                        onClick={forceSync}
-                        className={`p-2 rounded-lg transition-all ${isManualSyncing ? 'bg-orange-100 text-orange-600' : 'text-gray-400 hover:text-orange-600'}`}
-                        disabled={isManualSyncing}
-                        title="Sincronizar Manualmente"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`w-6 h-6 ${isManualSyncing ? 'animate-spin' : ''}`}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-                        </svg>
-                    </button>
-                    <button onClick={logout} className="flex items-center space-x-2 p-2 text-gray-500 hover:text-red-600 rounded-lg transition-colors font-bold flex-shrink-0">
-                        <LogoutIcon className="w-6 h-6" />
-                        <span className="hidden sm:inline">Sair</span>
-                    </button>
-                </div>
-            </header>
 
-             {visibleTabs.length > 1 && (
-                <nav className="p-4 border-b sticky top-[95px] bg-gray-50 z-10 overflow-x-auto no-scrollbar">
-                    <div className="flex space-x-2 rounded-xl bg-gray-200 p-1 min-w-max">
-                        {visibleTabs.map((tab) => {
-                            const labels: Record<string, string> = { 
-                                orders: 'Pedidos', tables: 'Mesas', menu: 'Cardápio', 
-                                financial: 'Financeiro', customers: 'Clientes', staff: 'Equipe', 
-                                settings: 'Config', help: 'Ajuda', mensalistas: 'Mensalistas'
-                            };
-                            return (
-                                <button 
-                                    key={tab}
-                                    onClick={() => setActiveTab(tab)} 
-                                    className={`px-4 py-2 text-center text-xs font-black uppercase rounded-lg transition-all ${activeTab === tab ? 'bg-white shadow-md text-orange-600 scale-105' : 'text-gray-500'}`}
-                                >
-                                    {labels[tab]}
-                                </button>
-                            );
-                        })}
+                    {error && <p className="text-red-500 text-sm mt-4 text-center">{error}</p>}
+
+                    <div className="mt-6 pt-4 border-t flex justify-end space-x-3">
+                        <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300" disabled={isSaving}>Cancelar</button>
+                        <button onClick={handleSave} className="px-6 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 disabled:bg-blue-400" disabled={isSaving}>
+                            {isSaving ? <Spinner message="Salvando..." /> : 'Salvar Alterações'}
+                        </button>
                     </div>
-                </nav>
-            )}
-
-            <main className="flex-grow">{renderContent()}</main>
-
-            <div className="hidden print:block">
-                <div id="printable-order">
-                    {printJob && (
-                        <PrintableOrder 
-                            order={printJob.items ? { ...printJob.order, items: printJob.items } : printJob.order} 
-                            printerWidth={printerWidth} 
-                            printMode={printJob.mode}
-                        />
-                    )}
                 </div>
             </div>
 
-            <PinPadModal 
-                isOpen={isPinPadOpen}
-                onClose={() => {
-                    // If locked and no user is set, we can't just close without login unless it's the owner cancelling the lock action?
-                    // But if we are in "Locked Mode", we must stay locked.
-                    // If we just clicked "Lock" and want to cancel, we can.
-                    if (isLocked && !currentStaffUser) {
-                        // If we are truly locked out (e.g. initial load), we might want to prevent close.
-                        // But here, 'isLocked' is just UI state.
-                        // Let's allow closing if user is the Owner (which they are if they are seeing this component).
-                        setIsPinPadOpen(false);
-                        setIsLocked(false);
-                    } else {
-                        setIsPinPadOpen(false);
-                    }
-                }}
-                staff={staffList}
-                onSuccess={handleStaffLogin}
-                title={isLocked ? "Desbloquear Gerente" : "Acesso Restrito"}
-            />
-
-            {printQueue.length > 0 && (
-                <div id="print-queue-indicator" className="fixed bottom-6 right-6 bg-gradient-to-r from-orange-600 to-red-600 text-white rounded-3xl p-5 shadow-2xl z-[80] flex items-center gap-4 animate-bounce max-w-sm border border-orange-500/30">
-                    <div className="flex-shrink-0 relative flex items-center justify-center">
-                        <span className="absolute inline-flex h-full w-full rounded-full bg-white opacity-40 animate-ping"></span>
-                        <svg className="w-6 h-6 animate-spin text-white" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                    </div>
-                    <div className="flex-grow min-w-0">
-                        <p className="font-black text-xs uppercase tracking-wider">Fila de Impressão</p>
-                        <p className="text-[11px] opacity-90 truncate">{printQueue.length} {printQueue.length === 1 ? 'impressão na fila' : 'impressões na fila'}...</p>
-                    </div>
-                    <button 
-                        id="btn-cancel-print-queue"
-                        onClick={() => {
-                            setPrintQueue([]);
-                            setPrintJob(null);
-                            setIsPrintingCooldown(false);
-                        }}
-                        className="bg-white/20 hover:bg-white/35 active:scale-95 transition-all text-[9px] font-black uppercase px-3 py-2 rounded-xl border border-white/25 flex-shrink-0"
-                    >
-                        Limpar
-                    </button>
-                </div>
+            {isAddItemModalOpen && (
+                <AddItemToOrderModal
+                    isOpen={isAddItemModalOpen}
+                    onClose={() => setIsAddItemModalOpen(false)}
+                    restaurantName={restaurantName}
+                    allMenuItems={allRestaurantMenuItems}
+                    allCombos={allRestaurantCombos}
+                    onSelectMenuItem={handleSelectMenuItemForCustomization}
+                    onSelectCombo={handleAddComboToOrder}
+                />
             )}
-        </div>
+
+            {isPizzaModalOpen && itemToCustomize && (
+                <PizzaCustomizationModal
+                    isOpen={isPizzaModalOpen}
+                    onClose={() => setIsPizzaModalOpen(false)}
+                    onAddToCart={handleAddItemToOrder}
+                    initialPizza={itemToCustomize}
+                    allPizzas={allRestaurantMenuItems.filter(i => i.isPizza)}
+                    allAddons={allRestaurantAddons}
+                />
+            )}
+            {isAcaiModalOpen && itemToCustomize && (
+                <AcaiCustomizationModal
+                    isOpen={isAcaiModalOpen}
+                    onClose={() => setIsAcaiModalOpen(false)}
+                    onAddToCart={handleAddItemToOrder}
+                    initialItem={itemToCustomize}
+                    allAddons={allRestaurantAddons}
+                />
+            )}
+            {isGenericModalOpen && itemToCustomize && (
+                <GenericCustomizationModal
+                    isOpen={isGenericModalOpen}
+                    onClose={() => setIsGenericModalOpen(false)}
+                    onAddToCart={handleAddItemToOrder}
+                    initialItem={itemToCustomize}
+                    allAddons={allRestaurantAddons}
+                />
+            )}
+        </>
     );
 };
 
-export default OrderManagement;
+export default OrderEditorModal;

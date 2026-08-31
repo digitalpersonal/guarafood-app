@@ -1,191 +1,312 @@
-import React, { useState } from 'react';
-import { APP_VERSION } from './VersionChecker';
 
-// Icons
-const DevicePhoneMobileIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3" />
-  </svg>
-);
+import React, { useState, useMemo, useEffect } from 'react';
+import type { MenuItem, Addon, CartItem, SizeOption, OptionGroup } from '../types';
+import OptimizedImage from './OptimizedImage';
 
-const WhatsAppIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
-    <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.894 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01s-.521.074-.792.372c-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.626.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
-  </svg>
-);
-
-const XMarkIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-  </svg>
-);
-
-const ShareIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-    </svg>
-);
-
-const LockClosedIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-  </svg>
-);
-
-interface FooterProps {
-    onLoginClick?: () => void;
-    onHelpClick?: () => void;
+interface GenericCustomizationModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onAddToCart: (customizedItem: CartItem) => void;
+    initialItem: MenuItem;
+    allAddons: Addon[];
 }
 
-const Footer: React.FC<FooterProps> = ({ onLoginClick, onHelpClick }) => {
-  const [showInstallModal, setShowInstallModal] = useState(false);
+const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
+    isOpen,
+    onClose,
+    onAddToCart,
+    initialItem,
+    allAddons,
+}) => {
+    const [selectedSize, setSelectedSize] = useState<SizeOption | null>(null);
+    const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
+    const [selectedOptions, setSelectedOptions] = useState<{ [groupId: string]: string[] }>({});
+    const [notes, setNotes] = useState('');
 
-  return (
-    <>
-      <footer className="relative w-full py-12 mt-auto text-white overflow-hidden bg-gray-900">
-        {/* Background Image Container */}
-        <div className="absolute inset-0 z-0">
-            <img 
-                src="https://images.pexels.com/photos/1640772/pexels-photo-1640772.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1" 
-                alt="Footer Background" 
-                className="w-full h-full object-cover opacity-30"
-            />
-            {/* Dark Overlays for Readability */}
-            <div className="absolute inset-0 bg-black/60"></div>
-            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/40 to-black/80"></div>
-        </div>
+    const [isAdding, setIsAdding] = useState(false);
 
-        <div className="relative z-10 container mx-auto flex flex-col items-center justify-center px-4 text-center space-y-8">
-          
-          <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md justify-center">
-            {/* Botão Como Instalar */}
-            <button 
-              onClick={() => setShowInstallModal(true)}
-              className="flex items-center justify-center gap-2 px-6 py-3 bg-white/10 backdrop-blur-md border border-white/20 rounded-xl hover:bg-white/20 transition-all text-sm font-bold shadow-xl"
-            >
-              <DevicePhoneMobileIcon className="w-5 h-5" />
-              <span>Instalar Aplicativo</span>
-            </button>
+    useEffect(() => {
+        if (initialItem.sizes && initialItem.sizes.length > 0) {
+            setSelectedSize(initialItem.sizes[0]);
+        } else {
+            setSelectedSize({ name: 'Único', price: initialItem.price });
+        }
+        setSelectedAddonIds(new Set());
+        
+        // Initialize options with defaults if any
+        const initialOptions: { [groupId: string]: string[] } = {};
+        initialItem.optionGroups?.forEach(group => {
+            const defaults = group.options.filter(o => o.default).map(o => o.name);
+            initialOptions[group.id] = defaults;
+        });
+        setSelectedOptions(initialOptions);
+        
+        setNotes('');
+        setIsAdding(false);
+    }, [initialItem, isOpen]);
 
-            {/* Botão Central de Ajuda */}
-            {onHelpClick && (
-              <button 
-                onClick={onHelpClick}
-                className="flex items-center justify-center gap-2 px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-xl transition-all text-sm font-black shadow-xl shadow-orange-900/20"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
-                </svg>
-                <span>Central de Ajuda</span>
-              </button>
-            )}
+    const availableAddons = useMemo(() => {
+        return allAddons.filter(addon => initialItem.availableAddonIds?.includes(addon.id));
+    }, [allAddons, initialItem]);
+    
+    const totalPrice = useMemo(() => {
+        const basePrice = Number(selectedSize?.price || initialItem.price);
+        const addonsPrice = availableAddons
+            .filter(a => selectedAddonIds.has(a.id))
+            .reduce((total, addon) => total + Number(addon.price || 0), 0);
+        
+        // Add options price
+        let optionsPrice = 0;
+        initialItem.optionGroups?.forEach(group => {
+            const selectedInGroup = selectedOptions[group.id] || [];
+            selectedInGroup.forEach(optName => {
+                const opt = group.options.find(o => o.name === optName);
+                if (opt) optionsPrice += Number(opt.price || 0);
+            });
+        });
 
-            {/* Botão WhatsApp Dev */}
-            <a 
-              href="https://wa.me/5535991048020" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl transition-all text-sm font-black shadow-xl shadow-green-900/20"
-            >
-              <WhatsAppIcon className="w-5 h-5" />
-              <span>Suporte Técnico</span>
-            </a>
-          </div>
+        return basePrice + addonsPrice + optionsPrice;
+    }, [initialItem, selectedSize, selectedAddonIds, availableAddons, selectedOptions]);
+    
+    const handleAddonToggle = (addonId: number) => {
+        setSelectedAddonIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(addonId)) {
+                newSet.delete(addonId);
+            } else {
+                newSet.add(addonId);
+            }
+            return newSet;
+        });
+    };
 
-          <div className="space-y-2">
-            <p className="text-lg font-black tracking-tight">
-              GUARA<span className="text-orange-500">FOOD</span>
-            </p>
-            <p className="text-xs text-white/50 max-w-xs mx-auto">
-              A única praça de alimentação digital de Guaranésia. Qualidade e rapidez em cada entrega.
-            </p>
-          </div>
-
-          <div className="pt-4 border-t border-white/10 w-full max-w-lg space-y-4">
-            <p className="text-[10px] text-white/40 uppercase tracking-[0.2em] font-bold">
-              Desenvolvido por Multiplus
-            </p>
-            <p className="text-sm font-bold text-white/80">
-              Sílvio T. de Sá Filho
-            </p>
-            <p className="text-[10px] text-white/30">
-              &copy; {new Date().getFullYear()} Todos os direitos reservados. • v{APP_VERSION}
-            </p>
-          </div>
-
-          {/* Botão de Acesso Restrito (Discreto) */}
-          {onLoginClick && (
-            <button 
-              onClick={onLoginClick}
-              className="mt-6 flex items-center gap-1.5 text-[9px] text-white/20 hover:text-white/60 transition-colors uppercase font-black tracking-widest p-2 border border-white/5 rounded-lg hover:bg-white/5"
-              title="Acesso Restrito para Lojistas"
-            >
-              <LockClosedIcon className="w-3 h-3" />
-              <span>Portal do Parceiro</span>
-            </button>
-          )}
-        </div>
-      </footer>
-
-      {/* Modal de Instruções de Instalação */}
-      {showInstallModal && (
-        <div 
-          className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[100] flex justify-center items-center p-4 animate-fadeIn" 
-          onClick={() => setShowInstallModal(false)}
-        >
-          <div 
-            className="bg-white text-gray-800 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="bg-orange-600 p-5 flex justify-between items-center text-white">
-              <h3 className="font-black text-lg uppercase tracking-tight">Instalar no Celular</h3>
-              <button onClick={() => setShowInstallModal(false)} className="p-1 hover:bg-black/10 rounded-full">
-                <XMarkIcon className="w-6 h-6" />
-              </button>
-            </div>
+    const handleOptionToggle = (groupId: string, optionName: string, max: number) => {
+        setSelectedOptions(prev => {
+            const current = prev[groupId] || [];
+            const isSelected = current.includes(optionName);
             
-            <div className="p-6 space-y-8">
-              {/* Android Instructions */}
-              <div className="flex gap-4">
-                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <DevicePhoneMobileIcon className="w-6 h-6 text-green-600" />
-                </div>
-                <div>
-                    <h4 className="font-black text-gray-900 mb-1">Android (Chrome)</h4>
-                    <ol className="text-xs text-gray-600 space-y-2">
-                        <li>1. Toque nos <strong>três pontos ⋮</strong> no canto superior.</li>
-                        <li>2. Selecione <strong>"Instalar aplicativo"</strong>.</li>
-                        <li>3. Confirme em <strong>Adicionar</strong>.</li>
-                    </ol>
-                </div>
-              </div>
+            if (isSelected) {
+                return { ...prev, [groupId]: current.filter(o => o !== optionName) };
+            } else {
+                if (max === 1) {
+                    return { ...prev, [groupId]: [optionName] };
+                }
+                if (current.length < max) {
+                    return { ...prev, [groupId]: [...current, optionName] };
+                }
+                // Se atingiu o limite, remove a primeira opção escolhida e adiciona a nova (FIFO)
+                // permitindo escolher e mudar de ideia com facilidade
+                return { ...prev, [groupId]: [...current.slice(1), optionName] };
+            }
+        });
+    };
 
-              <div className="flex gap-4 border-t pt-6">
-                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <DevicePhoneMobileIcon className="w-6 h-6 text-blue-600" />
-                </div>
-                <div>
-                    <h4 className="font-black text-gray-900 mb-1">iPhone (Safari)</h4>
-                    <ol className="text-xs text-gray-600 space-y-2">
-                        <li>1. Toque no ícone de <strong>Compartilhar</strong> <ShareIcon className="w-4 h-4 inline" />.</li>
-                        <li>2. Role e toque em <strong>"Tela de Início"</strong>.</li>
-                        <li>3. Toque em <strong>Adicionar</strong> no topo.</li>
-                    </ol>
-                </div>
-              </div>
+    const isGroupValid = (group: OptionGroup) => {
+        const selectedCount = (selectedOptions[group.id] || []).length;
+        return selectedCount >= group.minSelections && selectedCount <= group.maxSelections;
+    };
 
-              <button 
-                onClick={() => setShowInstallModal(false)}
-                className="w-full bg-gray-900 text-white font-black py-4 rounded-xl hover:bg-black transition-all shadow-lg uppercase text-xs tracking-widest"
-              >
-                Pronto, entendi!
-              </button>
+    const isAllValid = () => {
+        if (!initialItem.optionGroups) return true;
+        return initialItem.optionGroups.every(isGroupValid);
+    };
+    
+    const handleAddToCartClick = () => {
+        if (!selectedSize || !isAllValid()) return;
+
+        setIsAdding(true);
+
+        const selectedAddons = availableAddons.filter(a => selectedAddonIds.has(a.id));
+        
+        const cartSelectedOptions: { groupTitle: string; optionName: string; price: number }[] = [];
+        initialItem.optionGroups?.forEach(group => {
+            const selectedInGroup = selectedOptions[group.id] || [];
+            selectedInGroup.forEach(optName => {
+                const opt = group.options.find(o => o.name === optName);
+                if (opt) {
+                    cartSelectedOptions.push({
+                        groupTitle: group.title,
+                        optionName: optName,
+                        price: opt.price
+                    });
+                }
+            });
+        });
+
+        const topAddons = selectedAddons.slice(0, 2).map(a => a.name).join(', ');
+        const remainingCount = selectedAddons.length - 2;
+        const name = `${initialItem.name}${selectedAddons.length > 0 ? ` (com ${topAddons}` : ''}${remainingCount > 0 ? ` e mais ${remainingCount}` : ''}${selectedAddons.length > 0 ? ')' : ''}`;
+
+        const optionKey = cartSelectedOptions.map(o => `${o.groupTitle}:${o.optionName}`).sort().join('|');
+        const addonIds = Array.from(selectedAddonIds).sort().join('-');
+        const cartId = `item-${initialItem.id}_size-${selectedSize.name}_addons-${addonIds}_options-${optionKey}`;
+        
+        const customizedItem: CartItem = {
+            id: cartId,
+            restaurantId: initialItem.restaurantId,
+            name: name,
+            price: totalPrice,
+            basePrice: Number(selectedSize.price),
+            imageUrl: initialItem.imageUrl,
+            quantity: 1,
+            description: cartSelectedOptions.length > 0 
+                ? cartSelectedOptions.map(o => o.optionName).join(', ')
+                : `${selectedAddons.length} adicionais selecionados`,
+            selectedAddons: selectedAddons,
+            selectedOptions: cartSelectedOptions,
+            sizeName: selectedSize.name !== 'Único' ? selectedSize.name : undefined,
+            notes: notes.trim() || undefined,
+        };
+        
+        setTimeout(() => {
+            onAddToCart(customizedItem);
+        }, 300);
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-[120] flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="generic-modal-title">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                <div className="p-4 border-b flex justify-between items-center">
+                    <h2 id="generic-modal-title" className="text-xl font-bold text-gray-800">Personalize seu Item</h2>
+                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl font-bold" aria-label="Fechar">&times;</button>
+                </div>
+
+                <div className="overflow-y-auto p-4 space-y-4">
+                    {initialItem.sizes && initialItem.sizes.length > 0 && (
+                        <div>
+                            <h3 className="font-bold mb-2">1. Escolha o Tamanho</h3>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                {initialItem.sizes.map(size => (
+                                    <label key={size.name} className="flex flex-col items-center p-3 border rounded-lg cursor-pointer has-[:checked]:bg-orange-50 has-[:checked]:border-orange-500">
+                                        <input
+                                            type="radio"
+                                            name="item-size"
+                                            value={size.name}
+                                            checked={selectedSize?.name === size.name}
+                                            onChange={() => setSelectedSize(size)}
+                                            className="sr-only"
+                                        />
+                                        <span className="font-bold text-gray-800">{size.name}</span>
+                                        <span className="text-sm text-gray-600">R$ {Number(size.price).toFixed(2)}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    
+                    <div className="border rounded-lg p-3 flex items-center space-x-3 bg-gray-50">
+                        <OptimizedImage src={initialItem.imageUrl || ''} alt={initialItem.name} className="w-14 h-14 rounded-md object-cover flex-shrink-0" />
+                        <div>
+                            <p className="font-bold text-lg">{initialItem.name} {selectedSize && selectedSize.name !== 'Único' ? `(${selectedSize.name})` : ''}</p>
+                            <p className="text-md text-gray-700">R$ {(selectedSize?.price || initialItem.price).toFixed(2)}</p>
+                        </div>
+                    </div>
+
+                    {initialItem.optionGroups?.map((group, gIdx) => {
+                        const isValid = isGroupValid(group);
+                        const selectedCount = (selectedOptions[group.id] || []).length;
+                        
+                        return (
+                            <div key={group.id} className="p-4 bg-white rounded-xl shadow-sm border border-gray-100">
+                                <div className="flex justify-between items-center mb-3">
+                                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                                        {group.title}
+                                        {group.minSelections > 0 && (
+                                            <span className="bg-red-100 text-red-600 text-[10px] px-2 py-0.5 rounded-full font-black uppercase">Obrigatório</span>
+                                        )}
+                                    </h3>
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${isValid ? 'bg-green-50 text-green-600 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200 animate-pulse'}`}>
+                                        {selectedCount} / {group.maxSelections}
+                                    </span>
+                                </div>
+
+                                <div className="space-y-2">
+                                    {group.options.map(option => {
+                                        const isSelected = (selectedOptions[group.id] || []).includes(option.name);
+                                        
+                                        return (
+                                            <label key={option.name} className={`flex items-center justify-between p-3 border rounded-lg transition-all cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-orange-50 border-orange-400 ring-1 ring-orange-400' : 'border-gray-200'}`}>
+                                                <div className="flex items-center gap-3">
+                                                    <input 
+                                                        type={group.maxSelections === 1 ? "radio" : "checkbox"}
+                                                        checked={isSelected}
+                                                        onChange={() => handleOptionToggle(group.id, option.name, group.maxSelections)}
+                                                        className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                                                    />
+                                                    <span className={`font-semibold ${isSelected ? 'text-orange-900' : 'text-gray-700'}`}>{option.name}</span>
+                                                </div>
+                                                {option.price > 0 && (
+                                                    <span className="text-sm font-bold text-gray-500">+ R$ {option.price.toFixed(2)}</span>
+                                                )}
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        );
+                    })}
+
+                    {availableAddons.length > 0 && (
+                        <div>
+                            <h3 className="font-bold mb-2">Selecione os adicionais</h3>
+                            <div className="space-y-2">
+                                {availableAddons.map(addon => (
+                                     <label key={addon.id} className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:bg-orange-50 has-[:checked]:border-orange-400">
+                                        <div className="flex items-center">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedAddonIds.has(addon.id)}
+                                                onChange={() => handleAddonToggle(addon.id)}
+                                                className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                                            />
+                                            <span className="ml-3 font-semibold text-gray-700">{addon.name}</span>
+                                        </div>
+                                        {addon.price > 0 && <span className="font-semibold text-gray-600">+ R$ {Number(addon.price).toFixed(2)}</span>}
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="mt-4">
+                        <label className="block text-sm font-bold text-gray-700 mb-2">Observações</label>
+                        <textarea
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            placeholder="Ex: Sem cebola, bem passado, etc."
+                            className="w-full p-3 border rounded-lg bg-gray-50 focus:ring-2 focus:ring-orange-400 focus:outline-none text-sm"
+                            rows={2}
+                        />
+                    </div>
+                </div>
+
+                <div className="p-4 border-t bg-gray-50 flex justify-between items-center mt-auto">
+                    <div className="text-lg font-bold">
+                        <span>Total: </span>
+                        <span className="text-orange-600">R$ {totalPrice.toFixed(2)}</span>
+                    </div>
+                    <button 
+                        onClick={handleAddToCartClick}
+                        disabled={isAdding || !isAllValid()}
+                        className={`font-bold py-3 px-6 rounded-lg transition-all flex items-center gap-2 ${!isAllValid() ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : (isAdding ? 'bg-green-600 text-white scale-105' : 'bg-orange-600 text-white hover:bg-orange-700')}`}
+                    >
+                        {isAdding ? (
+                            <>
+                                <span>Adicionado!</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-5 h-5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                                </svg>
+                            </>
+                        ) : (
+                            !isAllValid() ? 'Conclua a Seleção' : 'Adicionar ao Carrinho'
+                        )}
+                    </button>
+                </div>
             </div>
-          </div>
         </div>
-      )}
-    </>
-  );
+    );
 };
 
-export default Footer;
+export default GenericCustomizationModal;

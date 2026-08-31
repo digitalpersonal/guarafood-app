@@ -1,377 +1,391 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
-import type { MenuItem, Addon, CartItem, SizeOption, OptionGroup } from '../types';
-import OptimizedImage from './OptimizedImage';
+import React from 'react';
+import { createPortal } from 'react-dom';
+import type { Order } from '../types';
 
-interface PizzaCustomizationModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    onAddToCart: (customizedPizza: CartItem) => void;
-    initialPizza: MenuItem;
-    allPizzas: MenuItem[];
-    allAddons: Addon[];
+interface PrintableOrderProps {
+    order: Order;
+    printerWidth?: number; // 80 or 58
+    printMode?: 'full' | 'kitchen' | 'admin'; // 'full' prints everything, 'kitchen'/'admin' prints only new items
+    printedItems?: string[]; // IDs of items already printed (for kitchen mode)
 }
 
-const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
-    isOpen,
-    onClose,
-    onAddToCart,
-    initialPizza,
-    allPizzas,
-    allAddons,
-}) => {
-    const [selectedSize, setSelectedSize] = useState<SizeOption | null>(null);
-    const [firstHalf, setFirstHalf] = useState<MenuItem>(initialPizza);
-    const [secondHalf, setSecondHalf] = useState<MenuItem | null>(null);
-    const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
-    const [selectedOptions, setSelectedOptions] = useState<{ [groupId: string]: string[] }>({});
-    const [showSecondHalfSelector, setShowSecondHalfSelector] = useState(false);
-    const [notes, setNotes] = useState('');
+const sanitizePrintText = (str?: string): string => {
+    if (!str) return '';
+    return str
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'")
+        .replace(/[–—]/g, '-')
+        .trim();
+};
 
-    const [isAdding, setIsAdding] = useState(false);
-
-    useEffect(() => {
-        setFirstHalf(initialPizza);
-        if (initialPizza.sizes && initialPizza.sizes.length > 0) {
-            setSelectedSize(initialPizza.sizes[0]);
-        } else {
-            setSelectedSize({ name: 'Único', price: initialPizza.price });
-        }
-        setSecondHalf(null);
-        setSelectedAddonIds(new Set());
-        
-        const initialOptions: { [groupId: string]: string[] } = {};
-        initialPizza.optionGroups?.forEach(group => {
-            const defaults = group.options.filter(o => o.default).map(o => o.name);
-            initialOptions[group.id] = defaults;
-        });
-        setSelectedOptions(initialOptions);
-
-        setShowSecondHalfSelector(false);
-        setNotes('');
-        setIsAdding(false);
-    }, [initialPizza, isOpen]);
-
-    const availableAddons = useMemo(() => {
-        return allAddons.filter(addon => firstHalf.availableAddonIds?.includes(addon.id));
-    }, [allAddons, firstHalf]);
-
-    const { totalPrice, basePrice } = useMemo(() => {
-        if (!selectedSize) return { basePrice: 0, totalPrice: 0 };
-        
-        const getPriceForSize = (pizza: MenuItem, sizeName: string): number => {
-            const sizeOption = pizza.sizes?.find(s => s.name === sizeName);
-            return Number(sizeOption ? sizeOption.price : pizza.price);
-        };
-
-        const firstHalfPrice = getPriceForSize(firstHalf, selectedSize.name);
-        const secondHalfPrice = secondHalf ? getPriceForSize(secondHalf, selectedSize.name) : 0;
-        
-        const pizzaPrice = secondHalf ? Math.max(firstHalfPrice, secondHalfPrice) : firstHalfPrice;
-        
-        const addonsPrice = allAddons
-            .filter(addon => selectedAddonIds.has(addon.id))
-            .reduce((total, addon) => total + Number(addon.price || 0), 0);
-
-        let optionsPrice = 0;
-        initialPizza.optionGroups?.forEach(group => {
-            const selectedInGroup = selectedOptions[group.id] || [];
-            selectedInGroup.forEach(optName => {
-                const opt = group.options.find(o => o.name === optName);
-                if (opt) optionsPrice += Number(opt.price || 0);
-            });
-        });
-
-        return { 
-            basePrice: pizzaPrice, 
-            totalPrice: pizzaPrice + addonsPrice + optionsPrice
-        };
-    }, [firstHalf, secondHalf, selectedAddonIds, allAddons, selectedSize, selectedOptions, initialPizza.optionGroups]);
+const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 80, printMode = 'full', printedItems = [] }) => {
+    const paperSize = `${printerWidth}mm`;
     
-    const handleAddonToggle = (addonId: number) => {
-        setSelectedAddonIds(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(addonId)) {
-                newSet.delete(addonId);
-            } else {
-                newSet.add(addonId);
-            }
-            return newSet;
-        });
-    };
+    // Filter items for kitchen/admin printing (only new items)
+    const itemsToPrint = (printMode === 'kitchen' || printMode === 'admin')
+        ? (order.items || []).filter(item => !printedItems.includes(item.id))
+        : (order.items || []);
 
-    const handleSelectSecondHalf = (pizza: MenuItem) => {
-        setSecondHalf(pizza);
-        setShowSecondHalfSelector(false);
-    };
+    // If no items to print, don't render anything to avoid blank prints
+    if (itemsToPrint.length === 0) {
+        return null; 
+    }
 
-    const handleOptionToggle = (groupId: string, optionName: string, max: number) => {
-        setSelectedOptions(prev => {
-            const current = prev[groupId] || [];
-            const isSelected = current.includes(optionName);
-            
-            if (isSelected) {
-                return { ...prev, [groupId]: current.filter(o => o !== optionName) };
-            } else {
-                if (max === 1) {
-                    return { ...prev, [groupId]: [optionName] };
-                }
-                if (current.length < max) {
-                    return { ...prev, [groupId]: [...current, optionName] };
-                }
-                return { ...prev, [groupId]: [...current.slice(1), optionName] };
-            }
-        });
-    };
+    // ... (rest of the component logic remains mostly the same, but using itemsToPrint)
 
-    const isGroupValid = (group: OptionGroup) => {
-        const count = (selectedOptions[group.id] || []).length;
-        return count >= group.minSelections;
-    };
-
-    const allGroupsValid = initialPizza.optionGroups 
-        ? initialPizza.optionGroups.every(isGroupValid) 
-        : true;
+    // ÁREAS ÚTEIS SEGURAS:
+    // Aumentamos o recuo lateral para evitar cortes nas bordas da bobina
+    // Maioria das impressoras 58mm tem área impressa de 48mm-50mm
+    const sidePadding = printerWidth === 58 ? '5mm' : '6mm';
     
-    const handleAddToCartClick = () => {
-        if (!selectedSize) return;
+    const baseFontSize = printerWidth === 58 ? '14px' : '13px';
+    const headerFontSize = printerWidth === 58 ? '16px' : '15px';
+    const titleFontSize = printerWidth === 58 ? '18px' : '20px';
+    const smallFontSize = printerWidth === 58 ? '12px' : '11px';
+    const lineHeight = printerWidth === 58 ? '1.2' : '1.1';
 
-        setIsAdding(true);
+    const isPixPaid = order.paymentMethod.toLowerCase().includes('pix') && order.paymentStatus === 'paid';
+    
+    const isPickup = !order.customerAddress || 
+                     !order.customerAddress.street ||
+                     order.customerAddress.street.includes('Retirada') || 
+                     order.customerAddress.street.includes('Consumo Local') ||
+                     order.tableNumber !== undefined;
 
-        const halves = secondHalf ? [
-            { name: firstHalf.name, price: firstHalf.price },
-            { name: secondHalf.name, price: secondHalf.price }
-        ] : [{ name: firstHalf.name, price: firstHalf.price }];
+    const displayOrderNum = order.order_number 
+        ? `${String(order.order_number).padStart(3, '0')}`
+        : `${order.id.substring(order.id.length - 4).toUpperCase()}`;
 
-        const selectedAddons = allAddons.filter(a => selectedAddonIds.has(a.id));
-        
-        const name = secondHalf
-            ? `Pizza Meia ${firstHalf.name} / Meia ${secondHalf.name}`
-            : `Pizza ${firstHalf.name}`;
+    const displaySubtotal = Number(order.subtotal) > 0 
+        ? Number(order.subtotal) 
+        : (order.items || []).reduce((acc, item) => acc + (Number(item.price || 0) * (item.quantity || 1)), 0);
+    
+    const displayTotal = Number(order.totalPrice) > 0 
+        ? Number(order.totalPrice) 
+        : (displaySubtotal + Number(order.deliveryFee || 0) - Number(order.discountAmount || 0));
 
-        const sortedHalfIds = secondHalf ? [firstHalf.id, secondHalf.id].sort() : [firstHalf.id];
-        const sortedAddonIds = Array.from(selectedAddonIds).sort();
-        const cartId = `pizza-${sortedHalfIds.join('-')}_size-${selectedSize.name}_addons-${sortedAddonIds.join('-')}`;
-        
-        const cartSelectedOptions: { groupTitle: string, optionName: string, price: number }[] = [];
-        initialPizza.optionGroups?.forEach(group => {
-            const selected = selectedOptions[group.id] || [];
-            selected.forEach(optName => {
-                const opt = group.options.find(o => o.name === optName);
-                if (opt) {
-                    cartSelectedOptions.push({
-                        groupTitle: group.title,
-                        optionName: opt.name,
-                        price: Number(opt.price) || 0
-                    });
+    const content = (
+        <div id="thermal-receipt-container">
+            <style dangerouslySetInnerHTML={{ __html: `
+                @media screen {
+                    #thermal-receipt-container {
+                        display: none !important;
+                    }
                 }
-            });
-        });
 
-        const customizedPizza: CartItem = {
-            id: cartId,
-            restaurantId: initialPizza.restaurantId,
-            name,
-            price: totalPrice,
-            basePrice,
-            imageUrl: firstHalf.imageUrl,
-            quantity: 1,
-            description: secondHalf ? 'Pizza com dois sabores' : firstHalf.description,
-            halves,
-            selectedAddons,
-            selectedOptions: cartSelectedOptions.length > 0 ? cartSelectedOptions : undefined,
-            sizeName: selectedSize.name,
-            notes: notes.trim() || undefined,
-        };
-        
-        setTimeout(() => {
-            onAddToCart(customizedPizza);
-        }, 300);
-    };
+                @media print {
+                    @page {
+                        margin: 0 !important;
+                        size: ${paperSize} auto;
+                    }
+                    
+                    /* Aggressive reset for printing */
+                    html, body {
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        width: ${paperSize} !important;
+                        height: auto !important;
+                        min-height: 0 !important;
+                        overflow: visible !important;
+                    }
 
-    if (!isOpen) return null;
+                    /* Hide everything on the page */
+                    body * {
+                        display: none !important;
+                    }
 
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-[120] flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="pizza-modal-title">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                <div className="p-4 border-b flex justify-between items-center">
-                    <h2 id="pizza-modal-title" className="text-xl font-bold text-gray-800">Monte sua Pizza</h2>
-                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl font-bold" aria-label="Fechar">&times;</button>
+                    /* Show ONLY the thermal container and its children */
+                    #thermal-receipt-container, 
+                    #thermal-receipt-container *,
+                    body > #thermal-receipt-container,
+                    body > #thermal-receipt-container * {
+                        display: block !important;
+                        visibility: visible !important;
+                    }
+
+                    /* CRITICAL: Explicitly hide the style tag itself from the print output */
+                    #thermal-receipt-container style {
+                        display: none !important;
+                    }
+
+                    #thermal-receipt-container {
+                        position: absolute !important;
+                        left: 0 !important;
+                        top: 0 !important;
+                        width: ${paperSize} !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        background: white !important;
+                        z-index: 999999 !important;
+                    }
+
+                    #thermal-content {
+                        width: 100% !important;
+                        margin: 0 !important;
+                        padding: 2mm ${sidePadding} 8mm ${sidePadding} !important;
+                        box-sizing: border-box !important;
+                    }
+
+                    .section-divider {
+                        border-top: 1px dashed black !important;
+                        margin: 4px 0 !important;
+                        width: 100% !important;
+                        height: 1px !important;
+                        display: block !important;
+                    }
+
+                    /* Prevent items from being split across page breaks if they occur */
+                    .item-row, .receipt-header, .payment-box, .condiments-box {
+                        break-inside: avoid !important;
+                        page-break-inside: avoid !important;
+                    }
+
+                    /* Fix for some browsers that add headers/footers */
+                    header, footer, nav {
+                        display: none !important;
+                    }
+                }
+
+                #thermal-content {
+                    font-family: Arial, Helvetica, sans-serif; 
+                    color: #000 !important;
+                    line-height: ${lineHeight};
+                    background: #fff !important;
+                    width: 100%;
+                    padding: 10px ${sidePadding} 40px ${sidePadding}; /* Tail for screen view too */
+                    box-sizing: border-box;
+                }
+
+                #thermal-content * {
+                    color: #000 !important;
+                    background: #fff !important;
+                    word-wrap: break-word !important;
+                    overflow-wrap: break-word !important;
+                    white-space: normal !important;
+                    font-weight: 700 !important;
+                }
+
+                .receipt-header {
+                    text-align: center;
+                    margin-bottom: 6px;
+                }
+
+                .order-number-box {
+                    font-size: ${titleFontSize};
+                    border: 3px solid #000;
+                    display: inline-block;
+                    padding: 6px 16px;
+                    margin: 6px 0;
+                    line-height: 1;
+                    text-transform: uppercase;
+                }
+
+                .mode-indicator {
+                    font-size: ${headerFontSize};
+                    text-align: center;
+                    padding: 6px 0;
+                    margin: 4px 0;
+                    text-transform: uppercase;
+                    border-top: 1.5px solid #000;
+                    border-bottom: 1.5px solid #000;
+                    display: block;
+                    width: 100%;
+                }
+
+                .section-divider {
+                    border-top: 1.5px solid #000;
+                    margin: 4px 0;
+                }
+
+                .label-center {
+                    text-align: center;
+                    font-size: ${smallFontSize};
+                    letter-spacing: 1px;
+                    margin: 2px 0;
+                }
+
+                .item-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-start;
+                    width: 100%;
+                    margin-bottom: 4px;
+                }
+
+                .item-price-col {
+                    text-align: right;
+                    min-width: ${printerWidth === 58 ? '60px' : '75px'};
+                    margin-left: 2mm;
+                }
+
+                .payment-box {
+                    border: 2px solid #000;
+                    padding: 6px;
+                    text-align: center;
+                    margin-top: 8px;
+                    font-size: ${baseFontSize};
+                    text-transform: uppercase;
+                }
+
+                .condiments-box {
+                    border: 1px solid #000;
+                    padding: 4px;
+                    text-align: center;
+                    margin: 4px 0;
+                    font-size: ${smallFontSize};
+                }
+            ` }} />
+
+            <div id="thermal-content">
+                {/* CABEÇALHO */}
+                <div className="receipt-header">
+                    <div style={{ fontSize: headerFontSize, marginBottom: '2px' }}>{sanitizePrintText(order.restaurantName).toUpperCase()}</div>
+                    <div style={{ fontSize: smallFontSize }}>
+                        {new Date(order.timestamp).toLocaleDateString('pt-BR')} - {new Date(order.timestamp).toLocaleTimeString('pt-BR').substring(0,5)}
+                    </div>
+                    <div className="order-number-box">
+                        {printMode === 'kitchen' ? 'COZINHA / BAR' : printMode === 'admin' ? 'VIA ADMINISTRADOR' : `PEDIDO: ${displayOrderNum}`}
+                    </div>
                 </div>
 
-                <div className="overflow-y-auto p-4 space-y-4">
-                    {initialPizza.sizes && initialPizza.sizes.length > 0 && (
-                        <div>
-                            <h3 className="font-bold mb-2">1. Escolha o Tamanho</h3>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {initialPizza.sizes.map(size => (
-                                    <label key={size.name} className="flex flex-col items-center p-3 border rounded-lg cursor-pointer has-[:checked]:bg-orange-50 has-[:checked]:border-orange-500">
-                                        <input
-                                            type="radio"
-                                            name="pizza-size"
-                                            value={size.name}
-                                            checked={selectedSize?.name === size.name}
-                                            onChange={() => setSelectedSize(size)}
-                                            className="sr-only"
-                                        />
-                                        <span className="font-bold text-gray-800">{size.name}</span>
-                                        <span className="text-sm text-gray-600">R$ {Number(size.price).toFixed(2)}</span>
-                                    </label>
-                                ))}
-                            </div>
+                <div className="section-divider"></div>
+
+                {/* MODO DE ENTREGA */}
+                <div className="mode-indicator">
+                    {order.tableNumber 
+                        ? `>> MESA ${order.tableNumber} <<` 
+                        : isPickup 
+                            ? ">> RETIRADA NO BALCÃO <<" 
+                            : ">> ENTREGA EM DOMICÍLIO <<"}
+                </div>
+
+                {/* SACHÊS / CONDIMENTOS */}
+                {printMode === 'full' && (
+                    <div className="condiments-box" style={{ fontWeight: 'bold', fontSize: headerFontSize }}>
+                        {order.wantsSachets 
+                            ? ">>> ENVIAR SACHÊS: SIM <<<" 
+                            : ">>> NÃO ENVIAR SACHÊS <<<"}
+                    </div>
+                )}
+
+                {/* DADOS DO CLIENTE / ENTREGA */}
+                {(order.customerName || order.customerPhone) && (
+                    <div style={{ marginTop: '4px', marginBottom: '8px', fontSize: baseFontSize, border: '1.5px solid #000', padding: '6px' }}>
+                        <div style={{ fontWeight: '900', textDecoration: 'underline', marginBottom: '4px', fontSize: headerFontSize, textAlign: 'center' }}>
+                            {isPickup ? 'DADOS DO CLIENTE' : 'DADOS DE ENTREGA'}
                         </div>
-                    )}
-                    
-                     <div>
-                        <h3 className="font-bold mb-2">2. Escolha o(s) Sabor(es)</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="border rounded-lg p-3">
-                                <h3 className="font-bold text-center text-gray-600 text-sm mb-2">1ª Metade</h3>
-                                <div className="flex items-center space-x-3">
-                                    <OptimizedImage src={firstHalf.imageUrl || ''} alt={firstHalf.name} className="w-14 h-14 rounded-md object-cover flex-shrink-0" />
-                                    <div>
-                                        <p className="font-semibold">{firstHalf.name}</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="border rounded-lg p-3 flex flex-col justify-center items-center">
-                                <h3 className="font-bold text-center text-gray-600 text-sm mb-2">2ª Metade</h3>
-                                {secondHalf ? (
-                                    <div className="w-full">
-                                        <div className="flex items-center space-x-3">
-                                            <OptimizedImage src={secondHalf.imageUrl || ''} alt={secondHalf.name} className="w-14 h-14 rounded-md object-cover flex-shrink-0" />
-                                            <div className="flex-grow">
-                                                <p className="font-semibold">{secondHalf.name}</p>
-                                            </div>
-                                            <button onClick={() => setSecondHalf(null)} className="text-red-500 hover:text-red-700 text-xl font-bold p-1">&times;</button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <button onClick={() => setShowSecondHalfSelector(true)} className="w-full text-center text-orange-600 font-semibold border-2 border-dashed border-gray-300 rounded-lg py-4 hover:bg-orange-50">
-                                        + Escolher outro sabor
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                     </div>
-                    
-                    {showSecondHalfSelector && (
-                        <div>
-                            <h3 className="font-bold mb-2">Escolha o segundo sabor:</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border rounded-lg bg-gray-50">
-                                {allPizzas.filter(p => p.id !== firstHalf.id).map(pizza => (
-                                    <div key={pizza.id} onClick={() => handleSelectSecondHalf(pizza)} className="p-2 flex items-center space-x-3 rounded-md hover:bg-gray-200 cursor-pointer">
-                                        <OptimizedImage src={pizza.imageUrl || ''} alt={pizza.name} className="w-10 h-10 rounded-md object-cover flex-shrink-0" />
-                                        <span className="font-semibold text-sm">{pizza.name}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                    
-                    {initialPizza.optionGroups?.map((group, gIdx) => {
-                        const isValid = isGroupValid(group);
-                        const selectedCount = (selectedOptions[group.id] || []).length;
+                        {order.customerName && <div style={{ marginBottom: '2px' }}>CLIENTE: {order.customerName.toUpperCase()}</div>}
+                        {order.customerPhone && <div style={{ marginBottom: '2px' }}>FONE: {order.customerPhone}</div>}
                         
-                        return (
-                            <div key={group.id} className="p-4 bg-white rounded-xl shadow-sm border border-gray-100">
-                                <div className="flex justify-between items-center mb-3">
-                                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                                        {group.title}
-                                        {group.minSelections > 0 && (
-                                            <span className="bg-red-100 text-red-600 text-[10px] px-2 py-0.5 rounded-full font-black uppercase">Obrigatório</span>
-                                        )}
-                                    </h3>
-                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${isValid ? 'bg-green-50 text-green-600 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200 animate-pulse'}`}>
-                                        {selectedCount} / {group.maxSelections}
-                                    </span>
-                                </div>
-
-                                <div className="space-y-2">
-                                    {group.options.map(option => {
-                                        const isSelected = (selectedOptions[group.id] || []).includes(option.name);
-                                        
-                                        return (
-                                            <label key={option.name} className={`flex items-center justify-between p-3 border rounded-lg transition-all cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-orange-50 border-orange-400 ring-1 ring-orange-400' : 'border-gray-200'}`}>
-                                                <div className="flex items-center gap-3">
-                                                    <input 
-                                                        type={group.maxSelections === 1 ? "radio" : "checkbox"}
-                                                        checked={isSelected}
-                                                        onChange={() => handleOptionToggle(group.id, option.name, group.maxSelections)}
-                                                        className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
-                                                    />
-                                                    <span className={`font-semibold ${isSelected ? 'text-orange-900' : 'text-gray-700'}`}>{option.name}</span>
-                                                </div>
-                                                {option.price > 0 && (
-                                                    <span className="text-sm font-bold text-gray-500">+ R$ {option.price.toFixed(2)}</span>
-                                                )}
-                                            </label>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        );
-                    })}
-
-                    {availableAddons.length > 0 && (
-                        <div>
-                            <h3 className="font-bold mb-2">3. Adicionais (Opcional)</h3>
-                            <div className="space-y-2">
-                                {availableAddons.map(addon => (
-                                     <label key={addon.id} className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:bg-orange-50 has-[:checked]:border-orange-400">
-                                        <div className="flex items-center">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedAddonIds.has(addon.id)}
-                                                onChange={() => handleAddonToggle(addon.id)}
-                                                className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
-                                            />
-                                            <span className="ml-3 font-semibold text-gray-700">{addon.name}</span>
-                                        </div>
-                                        {addon.price > 0 && <span className="font-semibold text-gray-600">+ R$ {Number(addon.price).toFixed(2)}</span>}
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="mt-4">
-                        <label className="block text-sm font-bold text-gray-700 mb-2">Observações</label>
-                        <textarea
-                            value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
-                            placeholder="Ex: Tirar cebola, borda recheada, etc."
-                            className="w-full p-3 border rounded-lg bg-gray-50 focus:ring-2 focus:ring-orange-400 focus:outline-none text-sm"
-                            rows={2}
-                        />
+                        {!isPickup && order.customerAddress && (
+                            <>
+                                <div style={{ marginBottom: '2px' }}>RUA: {order.customerAddress.street.toUpperCase()}, {order.customerAddress.number}</div>
+                                {order.customerAddress.complement && <div style={{ marginBottom: '2px' }}>COMPL: {order.customerAddress.complement.toUpperCase()}</div>}
+                                <div style={{ marginBottom: '2px' }}>BAIRRO: {order.customerAddress.neighborhood.toUpperCase()}</div>
+                            </>
+                        )}
                     </div>
+                )}
+
+                {/* VISUALIZAÇÃO APENAS PARA COZINHA/ADMIN (SEM PREÇOS TOTAIS) */}
+                {(printMode === 'kitchen' || printMode === 'admin') && (
+                     <div style={{ textAlign: 'center', margin: '10px 0', fontSize: headerFontSize, fontWeight: 'bold' }}>
+                        *** NOVOS ITENS ***
+                     </div>
+                )}
+
+                {/* SEÇÃO ITENS */}
+                <div className="section-divider"></div>
+                <div className="label-center">ITENS</div>
+                <div className="section-divider"></div>
+
+                <div style={{ width: '100%', marginBottom: '8px' }}>
+                    {itemsToPrint.map((item, index) => (
+                        <div key={index} style={{ marginBottom: '6px' }}>
+                            <div className="item-row">
+                                <div style={{ flex: 1, textTransform: 'uppercase', fontSize: baseFontSize }}>
+                                    {item.quantity}X {item.name} {item.sizeName && `(${item.sizeName})`} {item.weight && item.isKiloItem && `(${Number(item.weight).toFixed(3)}kg)`}
+                                </div>
+                                {/* Hide price in kitchen mode if desired, or keep it. Keeping for now. */}
+                                <div className="item-price-col" style={{ fontSize: baseFontSize }}>
+                                    {(Number(item.price) * item.quantity).toFixed(2)}
+                                </div>
+                            </div>
+                            
+                            {/* ADICIONAIS E OPÇÕES */}
+                            {item.selectedOptions?.map((opt, i) => (
+                                <div key={i} style={{ fontSize: smallFontSize, paddingLeft: '4mm' }}>• {opt.groupTitle.toUpperCase()}: {opt.optionName.toUpperCase()} {opt.price > 0 ? `(+R$ ${Number(opt.price).toFixed(2)})` : ''}</div>
+                            ))}
+                            {item.selectedAddons?.map((a, i) => (
+                                <div key={i} style={{ fontSize: smallFontSize, paddingLeft: '4mm' }}>+ {a.name.toUpperCase()}</div>
+                            ))}
+                            {item.notes && (
+                                <div style={{ fontSize: smallFontSize, borderLeft: '3px solid #000', paddingLeft: '2mm', margin: '2px 0 0 4mm' }}>
+                                    OBS: {item.notes.toUpperCase()}
+                                </div>
+                            )}
+                        </div>
+                    ))}
                 </div>
 
-                <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
-                    <div className="text-lg font-bold">
-                        <span>Total: </span>
-                        <span className="text-orange-600">R$ {totalPrice.toFixed(2)}</span>
-                    </div>
-                    <button 
-                        onClick={handleAddToCartClick}
-                        disabled={isAdding || !allGroupsValid}
-                        className={`font-bold py-3 px-6 rounded-lg transition-all flex items-center gap-2 ${isAdding ? 'bg-green-600 text-white scale-105' : (!allGroupsValid ? 'bg-gray-400 text-gray-200 cursor-not-allowed' : 'bg-orange-600 text-white hover:bg-orange-700')}`}
-                    >
-                        {isAdding ? (
-                            <>
-                                <span>Adicionado!</span>
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-5 h-5">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                                </svg>
-                            </>
-                        ) : (
-                            'Adicionar ao Carrinho'
-                        )}
-                    </button>
+                {/* TOTAIS - APENAS SE NÃO FOR MODO COZINHA */}
+                {printMode === 'full' && (
+                    <>
+                        <div className="section-divider"></div>
+                        <div style={{ fontSize: baseFontSize }}>
+                            <div className="item-row">
+                                <span>SUBTOTAL:</span>
+                                <span className="item-price-col">R$ {displaySubtotal.toFixed(2)}</span>
+                            </div>
+                            {!isPickup && (
+                                <div className="item-row">
+                                    <span>TAXA ENTREGA:</span>
+                                    <span className="item-price-col">R$ {Number(order.deliveryFee || 0).toFixed(2)}</span>
+                                </div>
+                            )}
+                            {Number(order.discountAmount || 0) > 0 && (
+                                <div className="item-row">
+                                    <span>DESCONTO:</span>
+                                    <span className="item-price-col">- R$ {Number(order.discountAmount).toFixed(2)}</span>
+                                </div>
+                            )}
+                            <div className="item-row" style={{ fontSize: titleFontSize, marginTop: '4px', borderTop: '1px solid #000', paddingTop: '4px' }}>
+                                <span>TOTAL:</span>
+                                <span className="item-price-col">R$ {displayTotal.toFixed(2)}</span>
+                            </div>
+                        </div>
+
+                        {/* PAGAMENTO */}
+                        <div className="payment-box">
+                            <div style={{ fontWeight: 'bold' }}>PGTO: {order.paymentMethod.split('(')[0].trim().toUpperCase()}</div>
+                            {(order.changeFor || order.paymentMethod.includes('Troco para')) && (
+                                <div style={{ fontSize: headerFontSize, marginTop: '4px', borderTop: '1px dashed #000', paddingTop: '4px', fontWeight: '900' }}>
+                                    {order.changeFor 
+                                        ? `TROCO PARA: R$ ${order.changeFor.toFixed(2)}`
+                                        : (order.paymentMethod.match(/\(([^)]+)\)/)?.[1].toUpperCase() || order.paymentMethod.toUpperCase())
+                                    }
+                                    {order.changeFor && order.changeFor > displayTotal && (
+                                        <div style={{ fontSize: smallFontSize, marginTop: '2px' }}>
+                                            TROCO: R$ {(order.changeFor - displayTotal).toFixed(2)}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            {isPixPaid && <div style={{ fontSize: smallFontSize, marginTop: '2px' }}>(PAGO PELO APP)</div>}
+                        </div>
+                    </>
+                )}
+
+                {/* RODAPÉ */}
+                <div style={{ textAlign: 'center', fontSize: smallFontSize, marginTop: '15px', borderTop: '1px dashed #000', paddingTop: '6px' }}>
+                    GUARA-FOOD PDV
                 </div>
             </div>
         </div>
     );
+
+    return createPortal(content, document.body);
 };
 
-export default PizzaCustomizationModal;
+export default PrintableOrder;

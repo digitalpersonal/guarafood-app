@@ -1,1126 +1,462 @@
 
-import React, { useState, useMemo } from 'react';
-import { motion } from 'motion/react';
-import { useAuth } from '../services/authService';
+import React, { useState, useEffect } from 'react';
+import type { Restaurant, OperatingHours, RestaurantCategory } from '../types';
 import { useNotification } from '../hooks/useNotification';
-import type { Order, OrderStatus, CartItem, StaffMember, Restaurant } from '../types';
-import OrderDetailsModal from './OrderDetailsModal';
-import OrderEditorModal from './OrderEditorModal';
-import { updateOrderStatus, createOrder } from '../services/orderService';
-import { getMensalistaByPhone, searchMensalistas } from '../services/mensalistaService';
-import type { Mensalista } from '../types';
-import PaymentDiagnostic from './PaymentDiagnostic';
+import { supabase } from '../services/api';
+import { fetchRestaurantCategories } from '../services/databaseService';
+import { SUPABASE_URL } from '../config';
+import { KNOWN_CITIES } from '../utils/locationService';
 
-
-const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-  </svg>
-);
-const SearchIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-  </svg>
-);
-
-const CreditCardIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15A2.25 2.25 0 002.25 6.75v10.5A2.25 2.25 0 004.5 19.5z" />
-    </svg>
-);
-const UserIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
-        <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 a4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" clipRule="evenodd" />
-    </svg>
-);
-const MapPinIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
-        <path fillRule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
-    </svg>
-);
-const PrinterIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.356-1.07 2.448-2.384 2.448H6.384C5.07 24.948 4 23.856 4 22.5c0-1.44 1.152-3.036 2.405-4.5m11.318 0c.397-1.362.63-2.826.63-4.342 0-1.44-1.152-3.036-2.405-4.5l-1.050-1.242A3.375 3.375 0 0 0 14.25 6H9.75a3.375 3.375 0 0 0-2.345 1.05L6.34 8.292c-1.253 1.464-2.405 3.06-2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z" />
-    </svg>
-);
-const StoreIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
-        <path fillRule="evenodd" d="M7.5 6v.75H5.513c-.96 0-1.764.724-1.865 1.679l-1.263 12A1.875 1.875 0 004.25 22.5h15.5a1.875 1.875 0 001.865-2.071l-1.263-12a1.875 1.875 0 00-1.865-1.679H16.5V6a4.5 4.5 0 10-9 0zM12 3a3 3 0 00-3 3v.75h6V6a3 3 0 00-3-3zm-3 8.25a3 3 0 106 0v-.75a.75.75 0 011.5 0v.75a4.5 4.5 0 11-9 0v-.75a.75.75 0 011.5v.75z" clipRule="evenodd" />
-    </svg>
-);
-
-const WhatsAppIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
-      <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.894 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01s-.521.074-.792.372c-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.626.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
-    </svg>
-);
-
-const statusConfig: { [key in OrderStatus]: { text: string; color: string; } } = {
-    'Aguardando Pagamento': { text: 'Pgto Pendente', color: 'bg-gray-400' },
-    'Novo Pedido': { text: 'Novo', color: 'bg-blue-500' },
-    'Preparando': { text: 'Preparo', color: 'bg-yellow-500' },
-    'A Caminho': { text: 'Entrega', color: 'bg-orange-500' },
-    'Entregue': { text: 'Entregue', color: 'bg-green-500' },
-    'Cancelado': { text: 'Cancelado', color: 'bg-red-500' },
-    // FIX: Added missing 'Mesa Aberta' property to statusConfig to satisfy TypeScript requirement for exhaustiveness or matching type interface.
-    'Mesa Aberta': { text: 'Mesa Aberta', color: 'bg-purple-600' },
-};
-
-/**
- * Formats order details into a WhatsApp-friendly string.
- */
-const formatOrderDetailsForWhatsApp = (order: Order): string => {
-    const displayOrderNum = order.order_number 
-        ? `#${String(order.order_number).padStart(3, '0')}`
-        : `#${order.id.substring(order.id.length - 4).toUpperCase()}`;
-
-    let detailsMessage = `\n--- DETALHES DO PEDIDO ${displayOrderNum} ---\n`;
-
-    // Items
-    detailsMessage += `*Itens:*\n`;
-    order.items.forEach((item: CartItem) => {
-        let itemLine = `- ${item.quantity}x ${item.name}`;
-        if (item.sizeName && item.sizeName !== 'Único') itemLine += ` (${item.sizeName})`;
-        itemLine += ` (R$ ${item.price.toFixed(2)})`;
-
-        detailsMessage += `${itemLine}\n`;
-
-        if (item.selectedOptions && item.selectedOptions.length > 0) {
-            item.selectedOptions.forEach(opt => {
-                detailsMessage += `  _ + ${opt.optionName} ${opt.price > 0 ? `(R$ ${opt.price.toFixed(2)})` : ''}_\n`;
-            });
-        }
-        if (item.selectedAddons && item.selectedAddons.length > 0) {
-            item.selectedAddons.forEach(addon => {
-                detailsMessage += `  _ + ${addon.name} ${addon.price > 0 ? `(R$ ${addon.price.toFixed(2)})` : ''}_\n`;
-            });
-        }
-        if (item.notes) {
-            detailsMessage += `  _ OBS: ${item.notes}_\n`;
-        }
-    });
-
-    // Totals
-    detailsMessage += `\n*Totais:*\n`;
-    detailsMessage += `Subtotal: R$ ${Number(order.subtotal || 0).toFixed(2)}\n`;
-    if (order.deliveryFee && Number(order.deliveryFee) > 0) {
-        detailsMessage += `Entrega: R$ ${Number(order.deliveryFee).toFixed(2)}\n`;
-    }
-    if (order.discountAmount && Number(order.discountAmount) > 0) {
-        detailsMessage += `Desconto (${order.couponCode || 'Cupom'}): - R$ ${Number(order.discountAmount).toFixed(2)}\n`;
-    }
-    detailsMessage += `*TOTAL: R$ ${order.totalPrice.toFixed(2)}*\n\n`;
-    
-    // Payment and Address
-    detailsMessage += `*Pagamento:* ${order.paymentMethod}\n`;
-    if (order.wantsSachets === false) {
-        detailsMessage += `_Cliente solicitou *NÃO ENVIAR SACHÊS/TALHERES*._\n`;
-    }
-    
-    if (order.customerAddress && order.customerAddress.street !== 'Retirada no Local') {
-        detailsMessage += `*Endereço:* ${order.customerAddress.street}, ${order.customerAddress.number}`;
-        if (order.customerAddress.complement) detailsMessage += ` - ${order.customerAddress.complement}`;
-        detailsMessage += `\nBairro: ${order.customerAddress.neighborhood}\n`;
-    } else {
-        detailsMessage += `*Retirada no Balcão.*\n`;
-    }
-
-    detailsMessage += `---------------------------------`;
-    return detailsMessage;
-};
-
-
-const OrderCard: React.FC<{ 
-    order: Order; 
-    onStatusUpdate: (id: string, status: OrderStatus) => void; 
-    onNotify: (order: Order) => void; 
-    onViewDetails: (order: Order) => void; 
-    onPrint: (order: Order) => void;
-    enableFiscal?: boolean;
-    onToggleFiscal?: (id: string, currentVal: boolean) => void;
-}> = ({ order, onStatusUpdate, onNotify, onViewDetails, onPrint, enableFiscal, onToggleFiscal }) => {
-    const { confirm } = useNotification();
-    const { text, color } = statusConfig[order.status];
-    const [isExpanded, setIsExpanded] = useState(false);
-
-    const displayOrderNum = order.order_number 
-        ? `#${String(order.order_number).padStart(3, '0')}`
-        : `#${order.id.substring(order.id.length - 4).toUpperCase()}`;
-
-    const isNew = useMemo(() => {
-        if (order.status !== 'Novo Pedido') return false;
-        const orderDate = new Date(order.timestamp);
-        const now = new Date();
-        return (now.getTime() - orderDate.getTime()) < 300000;
-    }, [order.status, order.timestamp]);
-
-    const isPixPaid = order.paymentMethod.toLowerCase().includes('pix') && order.paymentStatus === 'paid';
-    const isPickup = !order.customerAddress || order.customerAddress.street === 'Retirada no Local';
-
-    const handleConfirmAndUpdate = async (message: string, newStatus: OrderStatus) => {
-        const confirmed = await confirm({
-            title: 'Confirmar Ação',
-            message: message,
-            confirmText: 'Sim',
-            cancelText: 'Não',
-        });
-        if (confirmed) {
-            onStatusUpdate(order.id, newStatus);
-        }
-    };
-
-    const orderDateObj = new Date(order.timestamp);
-    const dateString = orderDateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    const timeString = orderDateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-
-    const ActionButtons: React.FC = () => {
-        const btnClass = "flex-1 py-1 px-2 rounded text-xs font-bold text-white shadow-sm hover:opacity-90 transition-opacity whitespace-nowrap";
-        
-        switch (order.status) {
-            case 'Novo Pedido':
-                 return (
-                    <div className="flex gap-1 mt-2">
-                        <button onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate("Aceitar pedido?", 'Preparando'); }} className={`${btnClass} bg-green-600`}>
-                            Aceitar
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate("Rejeitar pedido?", 'Cancelado'); }} className={`${btnClass} bg-red-600`}>
-                            Rejeitar
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); onNotify(order); }} className={`${btnClass} bg-blue-600 flex items-center justify-center gap-1`} title="Avisar Cliente">
-                            <WhatsAppIcon className="w-3.5 h-3.5" /> Avisar
-                        </button>
-                    </div>
-                );
-            case 'Preparando':
-                return (
-                    <div className="flex gap-1 mt-2">
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate(isPickup ? "Pedido pronto para retirada?" : "Despachar para entrega?", 'A Caminho'); }} 
-                            className={`${btnClass} bg-orange-600 flex-grow-[2]`}
-                        >
-                            {isPickup ? "Pronto p/ Retirar" : "Despachar"}
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); onNotify(order); }} className={`${btnClass} bg-blue-600 flex items-center justify-center gap-1`} title="Avisar Cliente">
-                            <WhatsAppIcon className="w-3.5 h-3.5" /> Avisar
-                        </button>
-                    </div>
-                );
-            case 'A Caminho':
-                return (
-                    <div className="flex gap-1 mt-2">
-                        <button onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate("Marcar como Entregue/Retirado?", 'Entregue'); }} className={`${btnClass} bg-green-600 flex-grow-[2]`}>
-                            {isPickup ? "Retirado" : "Entregue"}
-                        </button>
-                         <button onClick={(e) => { e.stopPropagation(); onNotify(order); }} className={`${btnClass} bg-blue-600 flex items-center justify-center gap-1`} title="Avisar Cliente">
-                            <WhatsAppIcon className="w-3.5 h-3.5" /> Avisar
-                        </button>
-                    </div>
-                );
-            default:
-                return null;
-        }
-    };
-
-    return (
-        <div
-            className={`bg-white rounded-lg shadow-sm p-2 flex flex-col cursor-pointer hover:shadow-md transition-all duration-200 border-l-4 
-            ${isNew ? 'border-l-blue-500 animate-pulse ring-1 ring-blue-300' : 'border-l-gray-300 border-gray-200 border'}`}
-            onClick={() => onViewDetails(order)}
-            role="article"
-        >
-            <div className="flex justify-between items-start mb-1">
-                <div className="flex items-center gap-1">
-                    <span className="font-mono font-black text-orange-600 text-sm">{displayOrderNum}</span>
-                    <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded font-mono" title={`${dateString} ${timeString}`}>
-                        {dateString} {timeString}
-                    </span>
-                </div>
-                <button 
-                    onClick={(e) => { e.stopPropagation(); onPrint(order); }} 
-                    className="p-1 -mt-1 -mr-1 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors" 
-                    title="Imprimir Via / Reimprimir"
-                >
-                    <PrinterIcon className="w-4 h-4" />
-                </button>
-            </div>
-            
-            <div className="flex justify-end mb-1 items-center gap-2">
-                {enableFiscal && onToggleFiscal && (
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); onToggleFiscal(order.id, !!order.fiscalExport); }}
-                        className={`text-[10px] px-2 py-0.5 rounded font-bold border transition-colors ${order.fiscalExport ? 'bg-purple-100 text-purple-700 border-purple-300' : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'}`}
-                        title="Exportar para NF?"
-                    >
-                        {order.fiscalExport ? 'NF: Sim' : 'NF: Não'}
-                    </button>
-                )}
-                {isPixPaid && (
-                    <span className="bg-green-100 text-green-800 text-[10px] font-bold px-1.5 py-0.5 rounded border border-green-200 shadow-sm">
-                        PIX PAGO
-                    </span>
-                )}
-                <span className="block font-bold text-sm text-gray-900">R$ {order.totalPrice.toFixed(2)}</span>
-            </div>
-
-            <div className="space-y-1 mb-1">
-                <div className="flex items-center gap-1 text-xs text-gray-800 truncate" title={order.customerName}>
-                    <UserIcon className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                    <span className="font-semibold truncate">{order.customerName.split(' ')[0]}</span>
-                    <span className="text-gray-400 font-normal truncate">{order.customerName.split(' ').slice(1).join(' ')}</span>
-                </div>
-                
-                {isPickup ? (
-                    <div className="flex items-center gap-1 text-[10px] bg-purple-50 text-purple-700 font-bold px-1 py-0.5 rounded w-fit border border-purple-100">
-                        <StoreIcon className="w-3 h-3 flex-shrink-0" />
-                        <span>RETIRADA NO BALCÃO</span>
-                    </div>
-                ) : (
-                    <div className="flex items-center gap-1 text-[10px] text-gray-500 truncate">
-                        <MapPinIcon className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                        <span className="truncate">{order.customerAddress?.street}, {order.customerAddress?.number}</span>
-                    </div>
-                )}
-
-                <div className="flex items-center gap-1 text-[10px] text-gray-600 truncate">
-                    <CreditCardIcon className={`w-3 h-3 flex-shrink-0 ${isPixPaid ? 'text-green-600' : 'text-gray-400'}`} />
-                    <span className={`truncate ${isPixPaid ? 'text-green-700 font-bold' : ''}`}>
-                        {order.paymentMethod}
-                    </span>
-                </div>
-            </div>
-
-            <div className="border-t border-dashed border-gray-200 pt-1 mt-1">
-                <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        setIsExpanded(!isExpanded);
-                    }}
-                    className="w-full flex justify-between items-center text-xs font-semibold text-gray-700 hover:bg-gray-50 rounded px-1 py-0.5"
-                >
-                    <span>{order.items.reduce((acc, i) => acc + i.quantity, 0)} Itens</span>
-                    <ChevronDownIcon className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                </button>
-                
-                {isExpanded && (
-                    <ul className="mt-1 space-y-1.5 bg-gray-50 p-2 rounded text-[10px] text-gray-700">
-                        {order.items.map((item, idx) => (
-                            <li key={`${order.id}-item-${idx}`} className="flex flex-col border-b border-gray-100 last:border-0 pb-1 pt-0.5">
-                                <div className="flex justify-between items-start gap-1">
-                                    <span className="w-full">
-                                        <strong className="text-orange-600 font-extrabold">{item.quantity}x</strong> {item.name} {item.sizeName && `(${item.sizeName})`} {item.weight && item.isKiloItem && <span className="text-gray-400 font-normal">({Number(item.weight).toFixed(3)}kg)</span>}
-                                    </span>
-                                    <span className="font-semibold text-gray-500 shrink-0">R$ {(Number(item.price) * item.quantity).toFixed(2)}</span>
-                                </div>
-                                {item.selectedOptions && item.selectedOptions.length > 0 && (
-                                    <div className="pl-3.5 text-[9px] text-blue-600 font-semibold space-y-0.5 mt-0.5">
-                                        {item.selectedOptions.map((opt, oIdx) => (
-                                            <span key={oIdx} className="block">
-                                                • {opt.groupTitle}: {opt.optionName} {opt.price > 0 ? `(+R$ ${Number(opt.price).toFixed(2)})` : ''}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-                                {item.selectedAddons && item.selectedAddons.length > 0 && (
-                                    <div className="pl-3.5 text-[9px] text-gray-500 font-medium space-y-0.5 mt-0.5">
-                                        {item.selectedAddons.map((addon, aIdx) => (
-                                            <span key={aIdx} className="block font-medium text-gray-500">
-                                                • + {addon.name} {addon.price > 0 ? `(+R$ ${Number(addon.price).toFixed(2)})` : ''}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-                                {item.notes && (
-                                    <div className="pl-3.5 text-[9px] text-orange-600 font-bold mt-0.5 italic">
-                                        Obs: {item.notes}
-                                    </div>
-                                )}
-                            </li>
-                        ))}
-                    </ul>
-                )}
-            </div>
-
-            {order.status !== 'Entregue' && order.status !== 'Cancelado' && (
-                <ActionButtons />
-            )}
-        </div>
-    );
-};
-
-interface OrdersViewProps {
-    orders: Order[];
-    printerWidth?: number;
-    onPrint: (order: Order) => void;
-    currentStaffUser?: StaffMember | null;
-    restaurant: Restaurant | null;
+interface RestaurantEditorModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onSaveSuccess: () => void;
+    existingRestaurant: Restaurant | null;
 }
 
-const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPrint, currentStaffUser, restaurant }) => {
-    const { currentUser } = useAuth();
-    const { addToast, prompt } = useNotification();
-    const [searchTerm, setSearchTerm] = useState('');
-    const [viewMode, setViewMode] = useState<'active' | 'history'>('active');
-    const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-    const [orderToEdit, setOrderToEdit] = useState<Order | null>(null);
-    const [isCreatingOrder, setIsCreatingOrder] = useState(false);
-    const [isManualModalOpen, setIsManualModalOpen] = useState(false);
-    const [manualCustomerName, setManualCustomerName] = useState('');
-    const [manualCustomerPhone, setManualCustomerPhone] = useState('');
-    const [manualPaymentMethod, setManualPaymentMethod] = useState('Dinheiro');
-    const [mensalistaSuggestions, setMensalistaSuggestions] = useState<Mensalista[]>([]);
-    const [isSearchingMensalista, setIsSearchingMensalista] = useState(false);
-    const [filterFiscalOnly, setFilterFiscalOnly] = useState(false);
+type FormData = Omit<Restaurant, 'id'>;
 
-    const fiscalSelectedCount = useMemo(() => {
-        return orders.filter(o => o.fiscalExport).length;
-    }, [orders]);
+const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
-    const fiscalSelectedTotalAmount = useMemo(() => {
-        return orders.filter(o => o.fiscalExport).reduce((sum, o) => sum + (o.totalPrice || 0), 0);
-    }, [orders]);
+const PREDEFINED_PAYMENT_METHODS = [
+    "Pix",
+    "Cartão de Crédito",
+    "Cartão de Débito",
+    "Dinheiro"
+];
 
-    const escapeXml = (unsafe: string): string => {
-        if (!unsafe) return '';
-        return unsafe.replace(/[<>&'"]/g, (c) => {
-            switch (c) {
-                case '<': return '&lt;';
-                case '>': return '&gt;';
-                case '&': return '&amp;';
-                case '\'': return '&apos;';
-                case '"': return '&quot;';
-                default: return c;
-            }
-        });
-    };
+const PlusIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+    </svg>
+);
 
-    const handleExportFiscalXML = () => {
-        const selectedOrders = orders.filter(o => o.fiscalExport);
-        if (selectedOrders.length === 0) {
-            addToast({ message: "Nenhum pedido marcado para exportação fiscal.", type: 'error' });
-            return;
-        }
+const ClipboardIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v3.043c0 .317-.135.619-.372.83h-9.312a1.125 1.125 0 01-1.125-1.125v-3.043c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+    </svg>
+);
 
-        const now = new Date().toISOString();
-        const emitenteNome = restaurant?.name || 'GuaraFood';
-        const emitenteCnpj = restaurant?.cnpj || 'Não Informado';
-        const emitenteIe = restaurant?.ie || 'Não Informado';
-        const emitentePhone = restaurant?.phone || 'Não Informado';
-        const emitenteAddress = restaurant?.address || 'Não Informado';
+const getDefaultOperatingHours = (): OperatingHours[] =>
+    daysOfWeek.map((_, index) => ({
+        dayOfWeek: index,
+        opens: '18:00',
+        closes: '23:00',
+        isOpen: false,
+    }));
 
-        let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
-        xml += `<exportacao_fiscal>\n`;
-        xml += `    <data_geracao>${now}</data_geracao>\n`;
-        xml += `    <emitente>\n`;
-        xml += `        <razao_social>${escapeXml(emitenteNome)}</razao_social>\n`;
-        xml += `        <cnpj>${escapeXml(emitenteCnpj)}</cnpj>\n`;
-        xml += `        <inscricao_estadual>${escapeXml(emitenteIe)}</inscricao_estadual>\n`;
-        xml += `        <telefone>${escapeXml(emitentePhone)}</telefone>\n`;
-        xml += `        <endereco>${escapeXml(emitenteAddress)}</endereco>\n`;
-        xml += `    </emitente>\n`;
-        xml += `    <pedidos_quantidade>${selectedOrders.length}</pedidos_quantidade>\n`;
-        xml += `    <pedidos>\n`;
 
-        selectedOrders.forEach(order => {
-            const displayOrderNum = order.order_number 
-                ? String(order.order_number).padStart(3, '0')
-                : order.id.substring(order.id.length - 4).toUpperCase();
-
-            xml += `        <pedido>\n`;
-            xml += `            <id>${escapeXml(order.id)}</id>\n`;
-            xml += `            <numero>${escapeXml(displayOrderNum)}</numero>\n`;
-            xml += `            <data_hora>${escapeXml(order.timestamp)}</data_hora>\n`;
-            
-            // Cliente
-            xml += `            <cliente>\n`;
-            xml += `                <nome>${escapeXml(order.customerName)}</nome>\n`;
-            xml += `                <telefone>${escapeXml(order.customerPhone || '')}</telefone>\n`;
-            if (order.customerAddress && order.customerAddress.street !== 'Retirada no Local') {
-                xml += `                <endereco_entrega>\n`;
-                xml += `                    <rua>${escapeXml(order.customerAddress.street || '')}</rua>\n`;
-                xml += `                    <numero>${escapeXml(order.customerAddress.number || '')}</numero>\n`;
-                xml += `                    <bairro>${escapeXml(order.customerAddress.neighborhood || '')}</bairro>\n`;
-                xml += `                    <complemento>${escapeXml(order.customerAddress.complement || '')}</complemento>\n`;
-                xml += `                    <cep>${escapeXml(order.customerAddress.zipCode || '')}</cep>\n`;
-                xml += `                </endereco_entrega>\n`;
-            } else {
-                xml += `                <tipo_entrega>Retirada no Balcão</tipo_entrega>\n`;
-            }
-            xml += `            </cliente>\n`;
-
-            // Itens
-            xml += `            <itens>\n`;
-            order.items.forEach(item => {
-                const totalItemPrice = item.price * item.quantity;
-                xml += `                <item>\n`;
-                xml += `                    <nome>${escapeXml(item.name)}</nome>\n`;
-                xml += `                    <quantidade>${item.quantity}</quantidade>\n`;
-                xml += `                    <preco_unitario>${item.price.toFixed(2)}</preco_unitario>\n`;
-                xml += `                    <preco_total>${totalItemPrice.toFixed(2)}</preco_total>\n`;
-                if (item.sizeName) {
-                    xml += `                    <tamanho>${escapeXml(item.sizeName)}</tamanho>\n`;
-                }
-                if (item.notes) {
-                    xml += `                    <observacoes>${escapeXml(item.notes)}</observacoes>\n`;
-                }
-                xml += `                </item>\n`;
-            });
-            xml += `            </itens>\n`;
-
-            // Financeiro
-            xml += `            <valores>\n`;
-            xml += `                <subtotal>${Number(order.subtotal || 0).toFixed(2)}</subtotal>\n`;
-            xml += `                <taxa_entrega>${Number(order.deliveryFee || 0).toFixed(2)}</taxa_entrega>\n`;
-            xml += `                <desconto>${Number(order.discountAmount || 0).toFixed(2)}</desconto>\n`;
-            xml += `                <total>${order.totalPrice.toFixed(2)}</total>\n`;
-            xml += `            </valores>\n`;
-
-            // Pagamento
-            xml += `            <pagamento>\n`;
-            xml += `                <metodo>${escapeXml(order.paymentMethod)}</metodo>\n`;
-            xml += `                <status>${escapeXml(order.paymentStatus || 'pending')}</status>\n`;
-            xml += `            </pagamento>\n`;
-
-            xml += `        </pedido>\n`;
-        });
-
-        xml += `    </pedidos>\n`;
-        xml += `</exportacao_fiscal>\n`;
-
-        const blob = new Blob([xml], { type: 'application/xml;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        
-        const formattedDate = new Date().toISOString().slice(0, 10);
-        link.setAttribute('download', `export_fiscal_${formattedDate}_${selectedOrders.length}_pedidos.xml`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-
-        addToast({ message: "Arquivo XML exportado com sucesso!", type: 'success' });
-    };
-
-    const handleSearchMensalista = async (query: string) => {
-        setManualCustomerName(query);
-        if (query.length < 3 || !currentUser?.restaurantId) {
-            setMensalistaSuggestions([]);
-            return;
-        }
-        setIsSearchingMensalista(true);
-        try {
-            const results = await searchMensalistas(query, currentUser.restaurantId);
-            setMensalistaSuggestions(results);
-        } catch (e) {
-            console.error("Error searching mensalistas:", e);
-        } finally {
-            setIsSearchingMensalista(false);
-        }
-    };
-
-    const selectMensalista = (m: Mensalista) => {
-        setManualCustomerName(m.name);
-        setManualCustomerPhone(m.phone);
-        setManualPaymentMethod('Mensalista');
-        setMensalistaSuggestions([]);
-    };
-
-    const handleCreateManualOrder = async (e?: React.FormEvent) => {
-        if (e) e.preventDefault();
-        if (!currentUser?.restaurantId) return;
-
-        setIsCreatingOrder(true);
-        try {
-            let finalPaymentMethod = manualPaymentMethod;
-            let mensalistaId: string | undefined = undefined;
-            const finalCustomerName = manualCustomerName.trim() || 'Cliente Balcão';
-
-            if (manualPaymentMethod === 'Mensalista') {
-                if (!manualCustomerPhone.trim()) {
-                    addToast({ message: 'O WhatsApp é obrigatório para pedidos de Mensalista.', type: 'error' });
-                    setIsCreatingOrder(false);
-                    return;
-                }
-                const mensalista = await getMensalistaByPhone(manualCustomerPhone.replace(/\D/g, ''), currentUser.restaurantId);
-                if (mensalista) {
-                    mensalistaId = mensalista.id;
-                    finalPaymentMethod = `Mensalista (${mensalista.name})`;
-                    addToast({ message: `Mensalista ${mensalista.name} identificado!`, type: 'success' });
-                } else {
-                    addToast({ message: 'Mensalista não encontrado com este WhatsApp.', type: 'error' });
-                    setIsCreatingOrder(false);
-                    return;
-                }
-            }
-
-            const newOrder = await createOrder({
-                customerName: finalCustomerName,
-                customerPhone: manualCustomerPhone.trim() || '0000000000',
-                customerAddress: { zipCode: '00000-000', street: 'Retirada no Local', number: 'Balcão', neighborhood: 'Balcão', complement: '' },
-                items: [],
-                totalPrice: 0,
-                restaurantId: currentUser.restaurantId,
-                restaurantName: currentUser.name,
-                restaurantAddress: '',
-                restaurantPhone: '',
-                paymentMethod: finalPaymentMethod,
-                status: 'Novo Pedido',
-                mensalistaId: mensalistaId
-            });
-            
-            addToast({ message: 'Pedido criado! Adicione os itens agora.', type: 'success' });
-            setOrderToEdit(newOrder);
-            setIsManualModalOpen(false);
-            setManualCustomerName('');
-            setManualCustomerPhone('');
-            setManualPaymentMethod('Dinheiro');
-        } catch (e: any) {
-            addToast({ message: `Erro ao criar pedido: ${e.message}`, type: 'error' });
-        } finally {
-            setIsCreatingOrder(false);
-        }
-    };
-
-    const handleStatusUpdate = (orderId: string, newStatus: OrderStatus) => {
-        updateOrderStatus(orderId, newStatus)
-            .then(() => {
-                addToast({ message: "Status atualizado!", type: 'success' });
-            })
-            .catch(err => {
-                addToast({ message: `Erro: ${err.message}`, type: 'error' });
-            });
-    };
-
-    const handleToggleFiscal = async (orderId: string, currentFiscalExport: boolean) => {
-        try {
-            const { updateOrderFiscalExport } = await import('../services/orderService');
-            await updateOrderFiscalExport(orderId, !currentFiscalExport);
-            addToast({ message: "Status fiscal atualizado!", type: 'success' });
-        } catch (err: any) {
-            addToast({ message: `Erro: ${err.message}`, type: 'error' });
-        }
-    };
-
-    const handleNotify = (order: Order) => {
-        const customerFirstName = order.customerName.split(' ')[0];
-        let statusMessage = '';
-        
-        if (order.status === 'Novo Pedido') {
-            statusMessage = `Olá *${customerFirstName}*! Recebemos seu pedido *#${order.order_number || order.id.substring(0, 6)}*! 👨‍🍳\n\nJá estamos preparando.`;
-        } else if (order.status === 'Preparando') {
-            const isPickup = !order.customerAddress || order.customerAddress.street === 'Retirada no Local';
-            if (isPickup) {
-                statusMessage = `Olá *${customerFirstName}*! \n\n✅ Seu pedido está pronto para retirada no balcão!`;
-            } else {
-                statusMessage = `Olá *${customerFirstName}*! \n\n🏍️ Seu pedido saiu para entrega!\n\nLogo chega aí. Bom apetite! 😋`;
-            }
-        } else if (order.status === 'A Caminho') {
-             const isPickup = !order.customerAddress || order.customerAddress.street === 'Retirada no Local';
-             if (isPickup) {
-                statusMessage = `Olá *${customerFirstName}*! \n\n✅ Seu pedido *#${order.order_number || order.id.substring(0, 6)}* foi retirado no balcão!\n\nEsperamos que goste!`;
-            } else {
-                statusMessage = `Olá *${customerFirstName}*! \n\n✅ Seu pedido *#${order.order_number || order.id.substring(0, 6)}* foi entregue!\n\nEsperamos que goste!`;
-            }
-        } else {
-            statusMessage = `Olá *${customerFirstName}*! Sobre seu pedido *#${order.order_number || order.id.substring(0, 6)}*...`;
-        }
-
-        // NOVO AVISO OBRIGATÓRIO
-        const trackingDisclaimer = `\n\n📢 *AVISO:* O acompanhamento em tempo real do seu pedido é feito *100% por dentro do aplicativo GuaraFood*. O envio desta mensagem por WhatsApp é apenas uma notificação excepcional.\n\n_Mantenha a aba do app aberta para ver o status mudar instantaneamente!_`;
-
-        const orderDetails = formatOrderDetailsForWhatsApp(order);
-        const fullMessage = `${statusMessage}${trackingDisclaimer}\n\n${orderDetails}`;
-
-        // SMART LINK LOGIC + REUSO DE ABA:
-        // No computador, usamos o nome fixo "whatsapp_guarafood" para abrir sempre na mesma aba e não poluir o lojista
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        const baseUrl = isMobile ? 'https://api.whatsapp.com/send' : 'https://web.whatsapp.com/send';
-        
-        const whatsappUrl = `${baseUrl}?phone=55${(order.customerPhone || '').replace(/\D/g, '')}&text=${encodeURIComponent(fullMessage)}`;
-        
-        // No desktop, o target fixo 'whatsapp_guarafood' reutiliza a janela se ela já existir
-        window.open(whatsappUrl, isMobile ? '_blank' : 'whatsapp_guarafood');
-    };
-
-    const filteredOrders = useMemo(() => {
-        let list = orders;
-        if (filterFiscalOnly) {
-            list = list.filter(order => order.fiscalExport);
-        }
-        if (!searchTerm.trim()) return list;
-        const lowerSearch = searchTerm.toLowerCase();
-        return list.filter(order =>
-            order.customerName.toLowerCase().includes(lowerSearch) ||
-            String(order.order_number).includes(lowerSearch) ||
-            order.id.toLowerCase().includes(lowerSearch)
-        );
-    }, [orders, searchTerm, filterFiscalOnly]);
-
-    const { activeOrders, historyOrders, groupedActiveOrders, groupedHistoryOrders } = useMemo(() => {
-        const active = filteredOrders.filter(o => 
-            ['Novo Pedido', 'Preparando', 'A Caminho'].includes(o.status) && 
-            o.status !== 'Aguardando Pagamento'
-        );
-        
-        const history = filteredOrders.filter(o => ['Entregue', 'Cancelado'].includes(o.status));
-        
-        const group = (orderList: Order[]) => orderList.reduce((acc, order) => {
-            const status = order.status;
-            if (!acc[status]) acc[status] = [];
-            acc[status]!.push(order);
-            return acc;
-        }, {} as { [key in OrderStatus]?: Order[] });
-
-        return {
-            activeOrders: active,
-            historyOrders: history,
-            groupedActiveOrders: group(active),
-            groupedHistoryOrders: group(history)
-        };
-    }, [filteredOrders]);
-
-    const allCurrentSelectedForFiscal = useMemo(() => {
-        const targetOrders = viewMode === 'active' ? activeOrders : historyOrders;
-        if (targetOrders.length === 0) return false;
-        return targetOrders.every(o => o.fiscalExport);
-    }, [viewMode, activeOrders, historyOrders]);
-
-    const handleToggleAllFiscal = async () => {
-        const targetOrders = viewMode === 'active' ? activeOrders : historyOrders;
-        if (targetOrders.length === 0) return;
-
-        const anyUnmarked = targetOrders.some(o => !o.fiscalExport);
-        const newValue = anyUnmarked;
-
-        try {
-            const { updateOrderFiscalExport } = await import('../services/orderService');
-            addToast({ message: newValue ? "Marcando todos..." : "Desmarcando todos...", type: 'info' });
-            
-            await Promise.all(targetOrders.map(order => updateOrderFiscalExport(order.id, newValue)));
-            
-            addToast({ message: `Configuração fiscal atualizada para ${targetOrders.length} pedidos!`, type: 'success' });
-        } catch (err: any) {
-            addToast({ message: `Erro ao atualizar pedidos: ${err.message}`, type: 'error' });
-        }
-    };
-
-    const activeSections = [
-        { title: 'Novos', status: 'Novo Pedido' as OrderStatus, bgColor: 'bg-blue-50' },
-        { title: 'Cozinha', status: 'Preparando' as OrderStatus, bgColor: 'bg-yellow-50' },
-        { title: 'Entrega/Retirada', status: 'A Caminho' as OrderStatus, bgColor: 'bg-orange-50' },
-    ];
+const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, onClose, onSaveSuccess, existingRestaurant }) => {
+    const { addToast } = useNotification();
+    const [formData, setFormData] = useState<FormData>({
+        name: '',
+        category: '',
+        city: 'Guaranésia',
+        deliveryTime: '',
+        rating: 0,
+        imageUrl: '',
+        paymentGateways: [],
+        address: '',
+        phone: '',
+        openingHours: '',
+        closingHours: '',
+        deliveryFee: 0,
+        mercado_pago_credentials: { accessToken: '' },
+        asaas_credentials: { apiKey: '' },
+        selectedPaymentGateway: 'mercadopago',
+        operatingHours: getDefaultOperatingHours(),
+        manualPixKey: '',
+        active: true,
+    });
     
-    const historySections = [
-        { title: 'Entregues', status: 'Entregue' as OrderStatus },
-        { title: 'Cancelados', status: 'Cancelado' as OrderStatus },
-    ];
+    const [merchantEmail, setMerchantEmail] = useState('');
+    const [merchantPassword, setMerchantPassword] = useState('');
+    const [changeCredentials, setChangeCredentials] = useState(false);
+    const [logoFile, setLogoFile] = useState<File | null>(null);
+    const [logoPreview, setLogoPreview] = useState<string | null>(null);
+    const [error, setError] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    const [categories, setCategories] = useState<RestaurantCategory[]>([]);
+    const [showSecondShift, setShowSecondShift] = useState<boolean[]>(Array(7).fill(false));
 
-    const RenderHistoryList = ({ groupedOrders }: { groupedOrders: any }) => (
-        <>
-            {historySections.map(section => (
-                (groupedOrders[section.status] && groupedOrders[section.status]!.length > 0) ? (
-                    <div key={section.status} role="region" aria-labelledby={`section-title-${section.status}`} className="mb-8">
-                        <h2 id={`section-title-${section.status}`} className="text-xl font-bold mb-4">{section.title} ({groupedOrders[section.status]!.length})</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" role="list">
-                            {groupedOrders[section.status]!.map((order: Order) => (
-                                <OrderCard 
-                                    key={order.id} 
-                                    order={order} 
-                                    onStatusUpdate={handleStatusUpdate} 
-                                    onNotify={handleNotify} 
-                                    onViewDetails={setSelectedOrder}
-                                    onPrint={onPrint}
-                                    enableFiscal={restaurant?.enableFiscal}
-                                    onToggleFiscal={handleToggleFiscal}
-                                />
+    useEffect(() => {
+        const loadCategories = async () => {
+            try {
+                const data = await fetchRestaurantCategories();
+                setCategories(data);
+            } catch (e) { console.error(e); }
+        };
+        if (isOpen) loadCategories();
+    }, [isOpen]);
+
+    const compressLogo = async (file: File): Promise<File> => {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.src = URL.createObjectURL(file);
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                if (!ctx) { reject(new Error("Canvas error")); return; }
+                const MAX_SIZE = 400;
+                let width = img.width, height = img.height;
+                if (width > height) { if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; } }
+                else { if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; } }
+                canvas.width = width; canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+                canvas.toBlob((blob) => {
+                    URL.revokeObjectURL(img.src);
+                    if (blob) resolve(new File([blob], "logo.jpg", { type: 'image/jpeg' }));
+                    else reject(new Error("Blob error"));
+                }, 'image/jpeg', 0.5);
+            };
+            img.onerror = () => reject(new Error("Load error"));
+        });
+    };
+
+    useEffect(() => {
+        if (existingRestaurant) {
+            const opHours = Array.isArray(existingRestaurant.operatingHours) && existingRestaurant.operatingHours.length === 7 
+                ? existingRestaurant.operatingHours.map((d, i) => (d && typeof d === 'object' ? d : { dayOfWeek: i, opens: '18:00', closes: '23:00', isOpen: false }))
+                : getDefaultOperatingHours();
+            setShowSecondShift(opHours.map(d => !!(d && d.opens2 || d && d.closes2)));
+            setFormData({
+                ...existingRestaurant,
+                city: existingRestaurant.city || 'Guaranésia',
+                mercado_pago_credentials: typeof existingRestaurant.mercado_pago_credentials === 'object' && existingRestaurant.mercado_pago_credentials !== null ? existingRestaurant.mercado_pago_credentials : { accessToken: '' },
+                asaas_credentials: typeof existingRestaurant.asaas_credentials === 'object' && existingRestaurant.asaas_credentials !== null ? existingRestaurant.asaas_credentials : { apiKey: '' },
+                selectedPaymentGateway: existingRestaurant.selectedPaymentGateway || 'mercadopago',
+                operatingHours: opHours,
+                manualPixKey: existingRestaurant.manualPixKey || '',
+                active: existingRestaurant.active !== false,
+                paymentGateways: Array.isArray(existingRestaurant.paymentGateways) ? existingRestaurant.paymentGateways : [],
+                category: typeof existingRestaurant.category === 'string' ? existingRestaurant.category : '',
+                name: existingRestaurant.name || '',
+                address: existingRestaurant.address || '',
+                phone: existingRestaurant.phone || '',
+                deliveryFee: existingRestaurant.deliveryFee || 0,
+            });
+            setLogoPreview(existingRestaurant.imageUrl);
+            setChangeCredentials(false);
+        } else {
+            setFormData({
+                name: '', category: '', city: 'Guaranésia', deliveryTime: '', rating: 0, imageUrl: '', paymentGateways: [],
+                address: '', phone: '', openingHours: '', closingHours: '', deliveryFee: 0,
+                mercado_pago_credentials: { accessToken: '' }, 
+                asaas_credentials: { apiKey: '' },
+                selectedPaymentGateway: 'mercadopago',
+                operatingHours: getDefaultOperatingHours(),
+                manualPixKey: '', active: true
+            });
+            setShowSecondShift(Array(7).fill(false));
+            setChangeCredentials(true); 
+            setLogoPreview(null);
+        }
+        setMerchantEmail(''); setMerchantPassword(''); setLogoFile(null); setError('');
+    }, [existingRestaurant, isOpen]);
+    
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: (name === 'deliveryFee') ? parseFloat(value) : value }));
+    };
+
+    const handleCredentialsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { value } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            mercado_pago_credentials: { accessToken: value }
+        }));
+    };
+
+    const handleOperatingHoursChange = (dayIndex: number, field: any, value: any) => {
+        setFormData(prev => {
+            const newHours = [...(prev.operatingHours || getDefaultOperatingHours())];
+            newHours[dayIndex] = { ...newHours[dayIndex], [field]: value };
+            return { ...prev, operatingHours: newHours };
+        });
+    };
+
+    const handleSubmit = async () => {
+        if (!formData.name || !formData.address || !formData.phone) {
+            setError('Campos obrigatórios faltando (Nome, Endereço, Telefone).'); return;
+        }
+        if (!existingRestaurant && (!merchantEmail || !merchantPassword)) {
+            setError('Para criar um novo restaurante, informe Email e Senha (estes serão usados para acessar o painel).'); return;
+        }
+        
+        setIsSaving(true);
+        let finalImageUrl = existingRestaurant?.imageUrl || '';
+        if (logoFile) {
+            try {
+                const fileName = `${crypto.randomUUID()}.jpg`;
+                const { error: upErr } = await supabase.storage.from('restaurant-logos').upload(`public/${fileName}`, logoFile);
+                if (upErr) throw upErr;
+                const { data } = supabase.storage.from('restaurant-logos').getPublicUrl(`public/${fileName}`);
+                finalImageUrl = data.publicUrl;
+            } catch (err: any) { setError(err.message); setIsSaving(false); return; }
+        }
+
+        const openDays = formData.operatingHours?.filter(d => d.isOpen) || [];
+        const dbPayload = {
+            name: formData.name, 
+            category: formData.category, 
+            city: formData.city || 'Guaranésia',
+            delivery_time: formData.deliveryTime,
+            rating: formData.rating, 
+            image_url: finalImageUrl, 
+            payment_gateways: formData.paymentGateways,
+            address: formData.address, 
+            phone: formData.phone, 
+            opening_hours: openDays.length > 0 ? openDays[0].opens : '',
+            closing_hours: openDays.length > 0 ? openDays[0].closes : '',
+            delivery_fee: formData.deliveryFee || 0,
+            mercado_pago_credentials: formData.mercado_pago_credentials,
+            asaas_credentials: formData.asaas_credentials,
+            selected_payment_gateway: formData.selectedPaymentGateway,
+            operating_hours: formData.operatingHours,
+            manual_pix_key: formData.manualPixKey,
+            active: formData.active
+        };
+
+        try {
+            if (!existingRestaurant || changeCredentials) {
+                const { data, error: fErr } = await supabase.functions.invoke('create-restaurant-with-user', {
+                    body: { restaurantData: dbPayload, userData: { email: merchantEmail, password: merchantPassword } }
+                });
+                if (fErr) throw fErr;
+                if (data && data.error) throw new Error(data.error);
+            } else {
+                const { error: uErr } = await supabase.from('restaurants').update(dbPayload).eq('id', existingRestaurant.id);
+                if (uErr) throw uErr;
+            }
+            addToast({ message: 'Salvo!', type: 'success' });
+            onSaveSuccess(); onClose();
+        } catch (err: any) { setError(err.message); } finally { setIsSaving(false); }
+    };
+
+    const webhookUrl = existingRestaurant ? `${SUPABASE_URL}/functions/v1/payment-webhook?restaurantId=${existingRestaurant.id}` : 'Disponível após criar';
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose}>
+            <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-2xl font-bold">{existingRestaurant ? 'Editar' : 'Novo'} Restaurante</h2>
+                </div>
+                
+                <div className="overflow-y-auto space-y-6 pr-2">
+                    <div className="flex gap-4 items-center">
+                        {logoPreview ? (
+                            <img src={logoPreview} alt="Logo Preview" className="w-20 h-20 bg-gray-100 rounded border object-cover" />
+                        ) : (
+                            <div className="w-20 h-20 bg-gray-100 rounded border flex items-center justify-center text-gray-400 text-xs text-center">Sem Logo</div>
+                        )}
+                        <input type="file" accept="image/*" onChange={async e => {
+                            if(e.target.files?.[0]) {
+                                const comp = await compressLogo(e.target.files[0]);
+                                setLogoFile(comp); setLogoPreview(URL.createObjectURL(comp));
+                            }
+                        }} className="text-xs" />
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-black text-gray-700 uppercase mb-1">
+                            Nome do Restaurante / Estabelecimento
+                        </label>
+                        <p className="text-[11px] text-gray-500 mb-1.5 font-medium leading-tight">
+                            Nome fantasia exibido aos clientes no aplicativo.
+                        </p>
+                        <input name="name" value={formData.name} onChange={handleChange} placeholder="Ex: Pastelaria Renovação" className="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-orange-500 font-bold text-gray-800" />
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-black text-gray-700 uppercase mb-1">
+                                📍 Cidade Atendida (Multi-cidades)
+                            </label>
+                            <p className="text-[11px] text-gray-500 mb-1.5 font-medium leading-tight">
+                                Cidade principal onde o cardápio ficará visível aos clientes.
+                            </p>
+                            <input 
+                                name="city" 
+                                list="cities-list"
+                                value={formData.city || ''} 
+                                onChange={handleChange} 
+                                placeholder="Ex: Guaranésia, Guaxupé..." 
+                                className="w-full p-2.5 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 bg-orange-50/20 font-bold" 
+                            />
+                            <datalist id="cities-list">
+                                {KNOWN_CITIES.map(c => (
+                                    <option key={c.name} value={c.name}>{c.name} - {c.state}</option>
+                                ))}
+                            </datalist>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black text-gray-700 uppercase mb-1">
+                                Endereço Completo
+                            </label>
+                            <p className="text-[11px] text-gray-500 mb-1.5 font-medium leading-tight">
+                                Rua, número e bairro para retirada no local e cálculo de distância.
+                            </p>
+                            <input name="address" value={formData.address} onChange={handleChange} placeholder="Rua, Número, Bairro" className="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-orange-500" />
+                        </div>
+                    </div>
+                    
+                    <div className="border rounded-xl p-3 bg-white">
+                        <h3 className="font-bold text-sm mb-2">Categorias do Restaurante</h3>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                            {categories.map(cat => (
+                                <label key={cat.id} className="flex items-center gap-2 text-gray-700">
+                                    {cat.iconUrl && <img src={cat.iconUrl} alt={cat.name} className="w-5 h-5 object-cover rounded-full" />}
+                                    <input
+                                        type="checkbox"
+                                        checked={(formData.category || '').split(',').map(c => c.trim()).includes(cat.name)}
+                                        onChange={(e) => {
+                                             const currentCategories = (formData.category || '').split(',').map(c => c.trim()).filter(c => c !== '');
+                                            if (e.target.checked) {
+                                                setFormData(prev => ({ ...prev, category: [...currentCategories, cat.name].join(', ') }));
+                                            } else {
+                                                setFormData(prev => ({ ...prev, category: currentCategories.filter(c => c !== cat.name).join(', ') }));
+                                            }
+                                        }}
+                                    />
+                                    {cat.name}
+                                </label>
                             ))}
                         </div>
                     </div>
-                ) : null
-            ))}
-        </>
-    );
 
-    return (
-        <>
-            <PaymentDiagnostic restaurant={restaurant} />
-            <div className="p-3 border-b bg-white sticky top-[138px] z-10 shadow-sm">
-                <div className="relative flex gap-2">
-                     <div className="relative flex-grow">
-                        <input
-                            type="text"
-                            placeholder="Buscar cliente ou #número..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full p-2 pl-9 border rounded-lg bg-gray-50 focus:ring-2 focus:ring-orange-400 focus:outline-none text-sm"
-                            aria-label="Buscar pedidos"
-                        />
-                        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" aria-hidden="true" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                        <div>
+                            <label className="block text-xs font-black text-gray-800 uppercase mb-1">
+                                📞 Telefone / WhatsApp de Contato
+                            </label>
+                            <p className="text-[11px] text-gray-500 mb-2 font-medium leading-tight">
+                                Insira o número do estabelecimento com DDD (ex: 35999998888) para receber pedidos, contatos e mensagens automáticas de clientes.
+                            </p>
+                            <input 
+                                name="phone" 
+                                value={formData.phone} 
+                                onChange={handleChange} 
+                                placeholder="Ex: (35) 99999-8888" 
+                                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 bg-white font-medium text-gray-800 shadow-sm" 
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black text-gray-800 uppercase mb-1">
+                                🛵 Valor da Taxa de Entrega (R$)
+                            </label>
+                            <p className="text-[11px] text-gray-500 mb-2 font-medium leading-tight">
+                                Digite o valor fixo cobrado por entrega em domicílio (ex: 5.00). Caso a entrega seja gratuita para os clientes, deixe 0.
+                            </p>
+                            <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">R$</span>
+                                <input 
+                                    name="deliveryFee" 
+                                    type="number" 
+                                    step="0.01" 
+                                    min="0"
+                                    value={formData.deliveryFee} 
+                                    onChange={handleChange} 
+                                    placeholder="0.00" 
+                                    className="w-full p-2.5 pl-9 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 bg-white font-mono font-bold text-gray-800 shadow-sm" 
+                                />
+                            </div>
+                        </div>
                     </div>
-                    {(!currentStaffUser || currentStaffUser.role === 'admin' || currentStaffUser.role === 'manager') && (
-                        <div className="flex gap-2">
-                            {restaurant?.hasKiloService && (
-                                <button
-                                    onClick={async () => {
-                                        if (!currentUser?.restaurantId || !restaurant?.pricePerKilo) return;
-                                        
-                                        const name = await prompt({
-                                            title: 'Novo Prato por Peso (Balcão)',
-                                            message: 'Nome do Cliente (opcional)',
-                                            placeholder: 'João...',
-                                            submitText: 'Continuar',
-                                            cancelText: 'Cancelar'
-                                        }) || 'Cliente Balcão';
 
-                                        const weightStr = await prompt({
-                                            title: 'Pesar Prato',
-                                            message: `Valor do Kg: R$ ${restaurant.pricePerKilo.toFixed(2)}\nDigite o peso em KG (ex: 0.450):`,
-                                            placeholder: '0.000',
-                                            submitText: 'Criar Pedido',
-                                            cancelText: 'Cancelar'
-                                        });
+                    <div className="border-t pt-4">
+                        <h3 className="font-bold mb-2">Formas de Pagamento</h3>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                            {PREDEFINED_PAYMENT_METHODS.map(method => (
+                                <label key={method} className="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        checked={(formData.paymentGateways || []).includes(method)}
+                                        onChange={(e) => {
+                                            if (e.target.checked) {
+                                                setFormData(prev => ({ ...prev, paymentGateways: [...prev.paymentGateways, method] }));
+                                            } else {
+                                                setFormData(prev => ({ ...prev, paymentGateways: prev.paymentGateways.filter(m => m !== method) }));
+                                            }
+                                        }}
+                                    />
+                                    {method}
+                                </label>
+                            ))}
+                        </div>
+                    </div>
 
-                                        if (!weightStr) return;
-                                        const weight = parseFloat(weightStr.replace(',', '.'));
-                                        if (isNaN(weight) || weight <= 0) {
-                                            addToast({ message: 'Peso inválido.', type: 'error' });
-                                            return;
-                                        }
-
-                                        const itemPrice = weight * restaurant.pricePerKilo;
-                                        
-                                        setIsCreatingOrder(true);
-                                        try {
-                                            const newOrder = await createOrder({
-                                                customerName: name,
-                                                customerPhone: '0000000000',
-                                                customerAddress: { zipCode: '00000-000', street: 'Retirada no Local', number: 'Balcão', neighborhood: 'Balcão', complement: '' },
-                                                items: [{
-                                                    id: `kilo-${Date.now()}`,
-                                                    name: 'Prato por Kilo',
-                                                    price: itemPrice,
-                                                    basePrice: itemPrice,
-                                                    imageUrl: '',
-                                                    quantity: 1,
-                                                    description: `Peso: ${weight.toFixed(3)}kg (R$ ${restaurant.pricePerKilo.toFixed(2)}/kg)`,
-                                                    weight: weight,
-                                                    isKiloItem: true,
-                                                    served: true
-                                                }],
-                                                totalPrice: itemPrice,
-                                                restaurantId: currentUser.restaurantId,
-                                                restaurantName: currentUser.name,
-                                                restaurantAddress: '',
-                                                restaurantPhone: '',
-                                                paymentMethod: 'Dinheiro',
-                                                status: 'Novo Pedido'
-                                            });
-                                            addToast({ message: 'Pedido por Kilo criado!', type: 'success' });
-                                            setOrderToEdit(newOrder);
-                                        } catch (e: any) {
-                                            addToast({ message: `Erro: ${e.message}`, type: 'error' });
-                                        } finally {
-                                            setIsCreatingOrder(false);
-                                        }
-                                    }}
-                                    disabled={isCreatingOrder}
-                                    className="bg-emerald-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-1 shadow flex-shrink-0 disabled:opacity-50"
-                                    title="Pesar prato e criar pedido balcão"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                                    </svg>
-                                    <span className="hidden sm:inline">Pesar Prato</span>
-                                </button>
-                            )}
-                            <button
-                                onClick={() => setIsManualModalOpen(true)}
-                                disabled={isCreatingOrder}
-                                className="bg-orange-600 text-white px-3 py-1 text-xs font-bold rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-1 shadow flex-shrink-0 disabled:opacity-50"
-                                title="Criar pedido manual para retirada"
+                    <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 space-y-3">
+                        <h3 className="text-sm font-black text-blue-900 uppercase">Configuração de Pagamento</h3>
+                        
+                        <div>
+                            <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Gateway Ativo</label>
+                            <select 
+                                value={formData.selectedPaymentGateway || 'mercadopago'} 
+                                onChange={e => setFormData(prev => ({ ...prev, selectedPaymentGateway: e.target.value as any }))}
+                                className="w-full p-2 border rounded text-sm"
                             >
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                                </svg>
-                                <span className="hidden sm:inline">Novo Pedido</span>
-                            </button>
+                                <option value="mercadopago">Mercado Pago</option>
+                                <option value="asaas">Asaas</option>
+                            </select>
                         </div>
-                    )}
-                    <div className="flex bg-gray-200 rounded-lg p-1 flex-shrink-0">
-                        <button 
-                            onClick={() => setViewMode('active')} 
-                            className={`px-3 py-1 text-xs font-bold rounded transition-colors ${viewMode === 'active' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}
-                        >
-                            Ativos
-                        </button>
-                        <button 
-                            onClick={() => setViewMode('history')} 
-                            className={`px-3 py-1 text-xs font-bold rounded transition-colors ${viewMode === 'history' ? 'bg-white shadow text-orange-600' : 'text-gray-600'}`}
-                        >
-                            Histórico
-                        </button>
-                    </div>
-                </div>
-                
-                {restaurant?.enableFiscal && viewMode === 'history' && (
-                    <motion.div 
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="mt-3 bg-white border border-purple-200 rounded-2xl shadow-sm overflow-hidden"
-                    >
-                        {/* Resumo de Seleção (Topo do Dashboard Fiscal) */}
-                        <div className="p-4 bg-purple-900 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                    <span className="p-1.5 bg-purple-800 text-purple-300 rounded-lg">
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                                        </svg>
-                                    </span>
-                                    <h3 className="text-xs font-black uppercase tracking-widest text-purple-200 font-mono">Resumo de Seleção</h3>
-                                </div>
-                                <div className="flex items-baseline gap-1.5">
-                                    <motion.span 
-                                        key={fiscalSelectedCount}
-                                        initial={{ scale: 0.8, opacity: 0 }}
-                                        animate={{ scale: 1, opacity: 1 }}
-                                        className="text-2xl font-black text-white"
-                                    >
-                                        {fiscalSelectedCount}
-                                    </motion.span>
-                                    <span className="text-sm font-bold text-purple-300">
-                                        {fiscalSelectedCount === 1 ? 'pedido selecionado' : 'pedidos selecionados'} para exportação
-                                    </span>
-                                </div>
-                                <p className="text-[10px] text-purple-400 font-semibold uppercase tracking-wider">
-                                    Otimizando a exportação múltipla em lote de arquivos XML
-                                </p>
+
+                        {formData.selectedPaymentGateway === 'mercadopago' ? (
+                            <div>
+                                <label className="text-[10px] font-bold text-blue-700">ACCESS TOKEN (MERCADO PAGO)</label>
+                                <input 
+                                    type="password" 
+                                    value={formData.mercado_pago_credentials?.accessToken || ''} 
+                                    onChange={e => setFormData(prev => ({ ...prev, mercado_pago_credentials: { accessToken: e.target.value } }))}
+                                    className="w-full p-2 border border-blue-200 rounded text-sm font-mono" 
+                                />
                             </div>
-
-                            {/* Indicadores de Progresso e Valor Acumulado */}
-                            <div className="flex flex-wrap items-center gap-4 md:gap-6 bg-purple-950/40 p-3 rounded-xl border border-purple-800/40">
-                                <div className="space-y-1">
-                                    <span className="text-[10px] text-purple-400 font-bold uppercase tracking-wider block font-mono">Progresso da Seleção</span>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-24 bg-purple-900 rounded-full h-1.5 overflow-hidden">
-                                            <motion.div 
-                                                initial={{ width: 0 }}
-                                                animate={{ width: `${orders.length > 0 ? (fiscalSelectedCount / orders.length) * 100 : 0}%` }}
-                                                transition={{ duration: 0.3, ease: "easeOut" }}
-                                                className="bg-purple-400 h-1.5 rounded-full"
-                                            />
-                                        </div>
-                                        <span className="text-xs font-mono font-black text-purple-200">
-                                            {orders.length > 0 ? Math.round((fiscalSelectedCount / orders.length) * 100) : 0}%
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-0.5 border-l border-purple-800/60 pl-4">
-                                    <span className="text-[10px] text-purple-400 font-bold uppercase tracking-wider block font-mono">Valor Consolidado</span>
-                                    <motion.span 
-                                        key={fiscalSelectedTotalAmount}
-                                        initial={{ opacity: 0, y: 5 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        className="text-base font-mono font-black text-emerald-400 block"
-                                    >
-                                        R$ {fiscalSelectedTotalAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </motion.span>
-                                </div>
-
-                                <div className="space-y-0.5 border-l border-purple-800/60 pl-4">
-                                    <span className="text-[10px] text-purple-400 font-bold uppercase tracking-wider block font-mono">Total Geral</span>
-                                    <span className="text-sm font-mono font-bold text-purple-200 block">
-                                        {orders.length} pedidos
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Controles de Ação do Dashboard */}
-                        <div className="p-3 bg-purple-50/50 border-t border-purple-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <button 
-                                    onClick={handleToggleAllFiscal}
-                                    className="px-3 py-1.5 text-xs font-bold text-purple-700 bg-purple-100 hover:bg-purple-200 border border-purple-200 rounded-lg transition-colors flex items-center gap-1.5 uppercase tracking-wider"
-                                >
-                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 0 1-1.043 3.296 3.745 3.745 0 0 1-3.296 1.043A3.745 3.745 0 0 1 12 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 0 1-3.296-1.043 3.745 3.745 0 0 1-1.043-3.296A3.745 3.745 0 0 1 3 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 0 1 1.043-3.296 3.746 3.746 0 0 1 3.296-1.043A3.746 3.746 0 0 1 12 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 0 1 3.296 1.043 3.746 3.746 0 0 1 1.043 3.296A3.745 3.745 0 0 1 21 12Z" />
-                                    </svg>
-                                    {allCurrentSelectedForFiscal ? 'Desmarcar Todos' : 'Marcar Todos'}
-                                </button>
-                                
-                                <button
-                                    onClick={() => setFilterFiscalOnly(!filterFiscalOnly)}
-                                    className={`px-3 py-1.5 text-xs font-bold border rounded-lg transition-colors flex items-center gap-1.5 uppercase tracking-wider ${
-                                        filterFiscalOnly 
-                                            ? 'bg-purple-600 border-purple-600 text-white shadow-sm' 
-                                            : 'bg-white border-purple-200 text-purple-700 hover:bg-purple-50'
-                                    }`}
-                                >
-                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
-                                    </svg>
-                                    {filterFiscalOnly ? 'Mostrando Apenas NF' : 'Filtrar por NF'}
-                                </button>
-                            </div>
-
-                            <button
-                                onClick={handleExportFiscalXML}
-                                disabled={fiscalSelectedCount === 0}
-                                className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-40 disabled:bg-purple-300 text-xs font-black rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm uppercase tracking-wider"
-                            >
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                                </svg>
-                                Exportar XML ({fiscalSelectedCount})
-                            </button>
-                        </div>
-                    </motion.div>
-                )}
-            </div>
-
-            <main className="p-3 bg-gray-50 min-h-[calc(100vh-200px)]">
-                {viewMode === 'active' && (
-                    <div id="panel-active-orders" role="tabpanel" className="h-full">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start h-full">
-                            {activeSections.map(section => {
-                                const ordersInSection = groupedActiveOrders[section.status] || [];
-                                return (
-                                    <div key={section.status} className={`p-2 rounded-lg flex flex-col shadow-inner border border-gray-200 ${section.bgColor}`}>
-                                        <h2 className="text-sm font-bold mb-2 flex justify-between items-center text-gray-700 uppercase tracking-wide px-1">
-                                            {section.title}
-                                            <span className="bg-white text-gray-800 px-2 py-0.5 rounded-full text-xs shadow-sm font-extrabold border">
-                                                {ordersInSection.length}
-                                            </span>
-                                        </h2>
-                                        
-                                        <div className="space-y-2 flex-grow min-h-[100px]">
-                                            {ordersInSection.length > 0 ? (
-                                                ordersInSection.map((order: Order) => (
-                                                    <OrderCard 
-                                                        key={order.id} 
-                                                        order={order} 
-                                                        onStatusUpdate={handleStatusUpdate} 
-                                                        onNotify={handleNotify} 
-                                                        onViewDetails={setSelectedOrder}
-                                                        onPrint={onPrint}
-                                                        enableFiscal={restaurant?.enableFiscal}
-                                                        onToggleFiscal={handleToggleFiscal}
-                                                    />
-                                                ))
-                                            ) : (
-                                                <div className="h-20 flex items-center justify-center border-2 border-dashed border-gray-300/50 rounded-lg">
-                                                    <p className="text-gray-400 text-xs italic">Vazio</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-                
-                {viewMode === 'history' && (
-                    <div id="panel-history-orders" role="tabpanel">
-                        {historyOrders.length > 0 ? (
-                            <RenderHistoryList groupedOrders={groupedHistoryOrders} />
                         ) : (
-                            <div className="text-center py-16 text-gray-500">
-                                <p className="font-semibold text-sm">Histórico vazio.</p>
+                            <div>
+                                <label className="text-[10px] font-bold text-blue-700">API KEY (ASAAS)</label>
+                                <input 
+                                    type="password" 
+                                    value={formData.asaas_credentials?.apiKey || ''} 
+                                    onChange={e => setFormData(prev => ({ ...prev, asaas_credentials: { apiKey: e.target.value } }))}
+                                    className="w-full p-2 border border-blue-200 rounded text-sm font-mono" 
+                                />
                             </div>
                         )}
                     </div>
-                )}
-            </main>
-            {selectedOrder && <OrderDetailsModal order={selectedOrder} onClose={() => setSelectedOrder(null)} printerWidth={printerWidth} />}
-            {orderToEdit && currentUser && (
-                <OrderEditorModal
-                    isOpen={!!orderToEdit}
-                    onClose={() => setOrderToEdit(null)}
-                    order={orderToEdit}
-                    onSave={(updated) => {
-                        setOrderToEdit(null);
-                        setSelectedOrder(updated); // Show details after saving
-                    }}
-                    restaurantId={currentUser.restaurantId!}
-                    restaurantName={currentUser.name}
-                />
-            )}
 
-            {isManualModalOpen && (
-                <div className="fixed inset-0 bg-black/60 z-[100] flex justify-center items-center p-4 backdrop-blur-sm" onClick={() => setIsManualModalOpen(false)}>
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
-                        <h3 className="text-xl font-bold text-gray-800 mb-4">Novo Pedido (Balcão / Mensalista)</h3>
-                        <form onSubmit={handleCreateManualOrder} className="space-y-4">
-                            <div className="relative">
-                                <label className="block text-xs font-black text-gray-500 uppercase mb-1">Nome do Cliente / Busca Mensalista</label>
-                                <input 
-                                    type="text" 
-                                    value={manualCustomerName} 
-                                    onChange={e => handleSearchMensalista(e.target.value)} 
-                                    className="w-full p-3 border-2 rounded-xl bg-gray-50 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all font-bold text-gray-800"
-                                    placeholder="Ex: João Silva (Opcional)"
-                                />
-                                {mensalistaSuggestions.length > 0 && (
-                                    <div className="absolute z-[110] left-0 right-0 mt-1 bg-white border-2 border-orange-100 rounded-xl shadow-xl max-h-48 overflow-y-auto">
-                                        {mensalistaSuggestions.map(m => (
-                                            <button
-                                                key={m.id}
-                                                type="button"
-                                                onClick={() => selectMensalista(m)}
-                                                className="w-full p-3 text-left hover:bg-orange-50 border-b last:border-0 flex flex-col"
-                                            >
-                                                <span className="font-bold text-gray-800">{m.name}</span>
-                                                <span className="text-xs text-gray-500">{m.phone}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
+                    <div className="border-t pt-4">
+                        <h3 className="font-bold mb-2">Funcionamento</h3>
+                        {formData.operatingHours?.map((day, i) => (
+                            <div key={i} className="flex items-center gap-2 mb-1 text-xs">
+                                <input type="checkbox" checked={!!day.isOpen} onChange={e => handleOperatingHoursChange(i, 'isOpen', e.target.checked)} />
+                                <span className="w-20">{daysOfWeek[i]}</span>
+                                <input type="time" value={day.opens || ''} onChange={e => handleOperatingHoursChange(i, 'opens', e.target.value)} disabled={!day.isOpen} className="border rounded p-1" />
+                                <input type="time" value={day.closes || ''} onChange={e => handleOperatingHoursChange(i, 'closes', e.target.value)} disabled={!day.isOpen} className="border rounded p-1" />
                             </div>
-                            <div>
-                                <label className="block text-xs font-black text-gray-500 uppercase mb-1">WhatsApp (Opcional)</label>
-                                <input 
-                                    type="tel" 
-                                    value={manualCustomerPhone} 
-                                    onChange={e => setManualCustomerPhone(e.target.value.replace(/\D/g, ''))} 
-                                    className="w-full p-3 border-2 rounded-xl bg-gray-50 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all font-bold text-gray-800"
-                                    placeholder="Apenas números. Ex: 35999998888"
-                                />
-                                <p className="text-[10px] text-gray-500 mt-1">Obrigatório apenas se selecionar "Mensalista".</p>
+                        ))}
+                    </div>
+
+                    <div className="p-4 bg-gray-100 rounded">
+                        <h3 className="font-bold text-sm mb-2">Acesso</h3>
+                        {!existingRestaurant || changeCredentials ? (
+                            <div className="grid grid-cols-2 gap-2">
+                                <input type="email" placeholder="Email" value={merchantEmail} onChange={e => setMerchantEmail(e.target.value)} className="p-2 border rounded bg-white" />
+                                <input type="password" placeholder="Senha" value={merchantPassword} onChange={e => setMerchantPassword(e.target.value)} className="p-2 border rounded bg-white" />
                             </div>
-                            <div>
-                                <label className="block text-xs font-black text-gray-500 uppercase mb-1">Forma de Pagamento</label>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Mensalista'].filter(m => m !== 'Mensalista' || restaurant?.hasMensalistas).map(m => (
-                                        <button 
-                                            key={m}
-                                            type="button"
-                                            onClick={() => setManualPaymentMethod(m)}
-                                            className={`py-2 rounded-xl text-[10px] font-black uppercase border-2 transition-all ${
-                                                manualPaymentMethod === m 
-                                                ? 'bg-orange-600 border-orange-600 text-white' 
-                                                : 'bg-white border-gray-100 text-gray-500 hover:border-orange-100'
-                                            }`}
-                                        >
-                                            {m}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            <div className="flex justify-end gap-2 mt-6">
-                                <button type="button" onClick={() => setIsManualModalOpen(false)} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold text-sm">Cancelar</button>
-                                <button type="submit" disabled={isCreatingOrder} className="px-4 py-2 rounded-lg bg-orange-600 text-white font-bold text-sm disabled:opacity-50">
-                                    {isCreatingOrder ? 'Criando...' : 'Criar Pedido'}
-                                </button>
-                            </div>
-                        </form>
+                        ) : (
+                            <button onClick={() => setChangeCredentials(true)} className="text-xs text-blue-600 font-bold underline">Alterar Login/Senha</button>
+                        )}
                     </div>
                 </div>
-            )}
-        </>
+
+                {error && <div className="text-red-500 text-xs mt-2">{error}</div>}
+                <div className="mt-4 flex justify-end gap-2">
+                    <button onClick={onClose} className="p-2 bg-gray-200 rounded">Cancelar</button>
+                    <button onClick={handleSubmit} disabled={isSaving} className="p-2 bg-orange-600 text-white rounded font-bold">{isSaving ? '...' : 'Salvar'}</button>
+                </div>
+            </div>
+        </div>
     );
 };
-
-export default OrdersView;
+export default RestaurantEditorModal;

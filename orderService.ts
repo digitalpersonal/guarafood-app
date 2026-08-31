@@ -1,399 +1,694 @@
-import React, { createContext, useState, useContext, useEffect, useMemo, useCallback } from 'react';
-import type { User, Role } from '../types';
+
+import type { Order, OrderStatus, CartItem, PaymentEntry } from '../types';
 import { supabase, handleSupabaseError } from './api';
-import { User as SupabaseUser } from '@supabase/supabase-js';
+import { retryWithExponentialBackoff, type RetryOptions } from '../utils/retry';
 
-interface AuthContextType {
-  currentUser: User | null;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
-  loading: boolean;
-  authError: string | null;
-}
+// Mapeia do Banco (snake_case) para o App (camelCase)
+const normalizeOrder = (data: any): Order => {
+    const wantsSachets = data.customer_address?.wantsSachets === true;
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-const USER_STORAGE_KEY = 'guara-food-user-profile-v3';
-
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-      try {
-          const storedUser = localStorage.getItem(USER_STORAGE_KEY);
-          return storedUser ? JSON.parse(storedUser) : null;
-      } catch {
-          return null;
-      }
-  });
-  // DESIGN OPTIMIZATION: Se já temos o perfil do usuário no cache local (localStorage),
-  // iniciamos 'loading' como FALSE para fazer com que a pintura do painel do restaurante/cliente
-  // seja Instantânea (Optimistic Loading/UI) ao apertar F5, sem travar na tela de carregamento.
-  const [loading, setLoading] = useState(() => {
-      try {
-          return !localStorage.getItem(USER_STORAGE_KEY);
-      } catch {
-          return true;
-      }
-  });
-  const [authError, setAuthError] = useState<string | null>(null);
-
-  const fetchUserProfile = async (authUser: SupabaseUser): Promise<User | null> => {
-      // SENIOR MOVE: Confia primeiro nos metadados do Token (JWT)
-      // Se o usuário logou, o Supabase já nos deu quem ele é nos metadados.
-      const meta = authUser.user_metadata;
-      
-      const buildProfileFromMeta = (): User | null => {
-          if (meta && meta.role && meta.name) {
-              const rawId = meta.restaurantId ?? meta.restaurant_id;
-              const parsedRestaurantId = rawId ? (isNaN(Number(rawId)) ? rawId : Number(rawId)) : undefined;
-              return {
-                  id: authUser.id,
-                  email: authUser.email!,
-                  role: meta.role as Role,
-                  name: meta.name,
-                  restaurantId: parsedRestaurantId,
-              };
-          }
-          return null;
-      };
-
-      const metaProfile = buildProfileFromMeta();
-
-      // Criamos um executor assíncrono para buscar dados adicionais do banco
-      const queryDbForProfile = async (): Promise<User | null> => {
-          if (metaProfile) {
-              // VERIFICAÇÃO DE INTEGRIDADE: O restaurante ainda existe?
-              if (metaProfile.restaurantId) {
-                  try {
-                      const { data: resExists, error: resError } = await supabase
-                          .from('restaurants')
-                          .select('id')
-                          .eq('id', metaProfile.restaurantId)
-                          .maybeSingle();
-                      
-                      if (resExists && !resError) return metaProfile;
-                  } catch (err) {
-                      console.warn("[GuaraFood Auth] Erro ao validar se restaurante existe na tabela, usando profile do metadado resiliente:", err);
-                      return metaProfile;
-                  }
-                  
-                  console.warn(`Restaurant ID ${metaProfile.restaurantId} not found. Searching for new ID...`);
-              } else {
-                  return metaProfile;
-              }
-          }
-          
-          // Fallback para tabela profiles apenas se necessário
-          try {
-              const { data, error } = await supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle();
-              
-              if (data && !error) {
-                  const rawId = data.restaurantId ?? data.restaurant_id;
-                  const parsedRestaurantId = rawId ? (isNaN(Number(rawId)) ? rawId : Number(rawId)) : undefined;
-                  const profile: User = {
-                      id: data.id,
-                      email: authUser.email!,
-                      role: data.role as Role,
-                      name: data.name,
-                      restaurantId: parsedRestaurantId
-                  };
-
-                  // Verifica se o restaurante do profile ainda existe
-                  if (profile.restaurantId) {
-                      try {
-                          const { data: resExists } = await supabase
-                              .from('restaurants')
-                              .select('id')
-                              .eq('id', profile.restaurantId)
-                              .maybeSingle();
-                          
-                          if (resExists) return profile;
-                      } catch (e) {
-                          return profile;
-                      }
-                  } else {
-                      return profile;
-                  }
-              }
-          } catch (err) {
-              console.warn("[GuaraFood Auth] Erro ao buscar dados na tabela profiles:", err);
-          }
-
-          // 3. SENIOR MOVE: Busca na lista de staff de todos os restaurantes
-          // Se o usuário não é um merchant dono, ele pode ser um funcionário convidado
-          try {
-              const { data: staffData } = await supabase
-                  .from('restaurants')
-                  .select('id, name, staff')
-                  .not('staff', 'is', null);
-
-              if (staffData) {
-                  for (const res of staffData) {
-                      const staffList = Array.isArray(res.staff) ? (res.staff as any[]) : [];
-                      const member = staffList.find(s => s?.email?.toLowerCase() === authUser.email?.toLowerCase() && s?.active);
-                      if (member) {
-                          const newProfile: User = {
-                              id: authUser.id,
-                              email: authUser.email!,
-                              role: member.role as Role,
-                              name: member.name,
-                              restaurantId: res.id
-                          };
-                          
-                          return newProfile;
-                      }
-                  }
-              }
-          } catch (err) {
-              console.warn("[GuaraFood Auth] Erro ao buscar lista de staff dos restaurantes:", err);
-          }
-
-          // Se nada funcionar, mas o cara está autenticado, monta um perfil básico para não travar
-          if (authUser.email === 'admin@guarafood.com.br' || authUser.email === 'digitalpersonal@gmail.com') {
-              return { id: authUser.id, email: authUser.email!, role: 'admin', name: 'Administrador' };
-          }
-
-          return null;
-      };
-
-      try {
-          // Timeout ultra-rápido de 2 segundos para garantir reatividade e impedir travamento
-          const timeoutPromise = new Promise<User | null>((_, reject) => {
-              setTimeout(() => reject(new Error("Timeout checking session database")), 2000);
-          });
-          
-          const finalProfile = await Promise.race([queryDbForProfile(), timeoutPromise]);
-          return finalProfile || metaProfile;
-      } catch (err) {
-          console.warn("[GuaraFood Auth] Timeout ou erro buscando perfil no banco de dados. Usando metadados locais de sobrevivência:", err);
-          return metaProfile;
-      }
-  };
-
-  useEffect(() => {
-    const handleSessionExpired = async () => {
-        console.warn("Session expired event received. Logging out.");
-        localStorage.removeItem(USER_STORAGE_KEY);
-        setCurrentUser(null);
-        try {
-            await supabase.auth.signOut();
-        } catch (e) {
-            console.warn("Error during signOut after session expired:", e);
-        }
+    return {
+        id: data.id,
+        order_number: data.order_number, 
+        timestamp: data.timestamp || data.created_at,
+        status: data.status,
+        customerName: data.customer_name,
+        customerPhone: data.customer_phone,
+        fiscalExport: data.fiscalExport || false,
+        customerAddress: data.customer_address,
+        wantsSachets: wantsSachets,
+        items: data.items,
+        totalPrice: data.total_price,
+        restaurantId: data.restaurant_id,
+        restaurantName: data.restaurant_name,
+        restaurantAddress: data.restaurant_address,
+        restaurantPhone: data.restaurant_phone,
+        paymentMethod: data.payment_method,
+        changeFor: data.change_for || data.payment_details?.changeFor,
+        couponCode: data.coupon_code,
+        discountAmount: data.discount_amount,
+        subtotal: data.subtotal,
+        deliveryFee: data.delivery_fee,
+        payment_id: data.payment_id,
+        payment_details: data.payment_details,
+        paymentStatus: data.payment_status || 'paid',
+        tableNumber: data.table_number || data.customer_address?.tableNumber,
+        comandaNumber: data.comanda_number || data.customer_address?.comandaNumber,
+        paymentHistory: data.payment_history || data.payment_details?.history || [],
+        mensalistaId: data.mensalista_id
     };
-    window.addEventListener('auth:session-expired', handleSessionExpired);
-
-    // Executa a validação da sessão em segundo plano se o usuário já estiver cacheado,
-    // garantindo zero bloqueios visuais ao usuário final.
-    const hasLocalUser = (() => {
-        try {
-            return !!localStorage.getItem(USER_STORAGE_KEY);
-        } catch {
-            return false;
-        }
-    })();
-    
-    if (!hasLocalUser) {
-        setLoading(true);
-    }
-
-    const checkSessionWithTimeout = async () => {
-      // SENIOR RESILIENCE FIRST: Encapsula todo o processo de obter sessão E buscar o perfil do usuário
-      // em uma única promessa. Se ela demorar mais de 2500ms, aborta tudo de forma segura.
-      const getSessionAndProfile = async () => {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        
-        if (session?.user) {
-          const profile = await fetchUserProfile(session.user);
-          return { session, profile };
-        }
-        return { session: null, profile: null };
-      };
-
-      const timeoutPromise = new Promise<{ session: null; profile: null }>((_, reject) => {
-        setTimeout(() => reject(new Error("Timeout checking session and profile")), 2500);
-      });
-
-      try {
-        const { session, profile } = await Promise.race([getSessionAndProfile(), timeoutPromise]);
-        
-        if (session?.user && profile) {
-          localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
-          setCurrentUser(profile);
-        } else {
-          // Restaurar usuário em modo offline / sessão inexistente
-          const storedUser = localStorage.getItem(USER_STORAGE_KEY);
-          if (storedUser) {
-              try {
-                  const user = JSON.parse(storedUser);
-                  if (user) {
-                      console.log("Restaurando usuário em modo offline de sobrevivência:", user.role, user.name);
-                      setCurrentUser(user);
-                  } else {
-                      setCurrentUser(null);
-                  }
-              } catch {
-                  setCurrentUser(null);
-              }
-          } else {
-              setCurrentUser(null);
-          }
-        }
-      } catch (err: any) {
-        console.warn("Unexpected auth error or timeout during session check:", err);
-        
-        // CORREÇÃO CRÍTICA (OFFLINE E RESILIÊNCIA):
-        // Se a chamada falhou puramente por erro de rede ou excedeu o tempo limite (timeout),
-        // NÃO podemos remover o usuário local nem forçar logout. Deixamos ele trabalhar offline
-        // com o perfil que já tem no cache do painel.
-        const errorMsg = err?.message || String(err);
-        const isNetworkOrTimeout = errorMsg.toLowerCase().includes('timeout') ||
-                                   errorMsg.toLowerCase().includes('failed to fetch') || 
-                                   errorMsg.toLowerCase().includes('network') || 
-                                   errorMsg.toLowerCase().includes('load failed') ||
-                                   errorMsg.toLowerCase().includes('cors');
-                                   
-        if (!isNetworkOrTimeout) {
-            console.warn("Real auth error detected during setup, purging session cache.");
-            localStorage.removeItem(USER_STORAGE_KEY);
-            setCurrentUser(null);
-        } else {
-            console.log("Network glitch/timeout detected during auth check. Preserving offline user shell.");
-            // Tenta restaurar usuário local para modo offline
-            const storedUser = localStorage.getItem(USER_STORAGE_KEY);
-            if (storedUser) {
-                try {
-                    const user = JSON.parse(storedUser);
-                    if (user) {
-                        setCurrentUser(user);
-                    }
-                } catch {}
-            }
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkSessionWithTimeout();
-
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
-            const profile = await fetchUserProfile(session.user);
-            if (profile) {
-                localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
-                setCurrentUser(profile);
-                setAuthError(null);
-            }
-        } else if (event === 'SIGNED_OUT') {
-          // Evita limpar se for apenas o evento de inicialização sem sessão no Supabase (F5/Hot-reload)
-          // Se o usuário já estava autenticado localmente, mantemos suas credenciais de sobrevivência offline até logout explícito.
-          if (!localStorage.getItem(USER_STORAGE_KEY)) {
-              setCurrentUser(null);
-              setAuthError(null);
-          }
-        }
-      }
-    );
-
-    return () => {
-      authListener?.subscription.unsubscribe();
-      window.removeEventListener('auth:session-expired', handleSessionExpired);
-    };
-  }, []);
-
-    const login = useCallback(async (email: string, password: string) => {
-      setAuthError(null);
-      
-      const cleanEmail = email.toLowerCase().trim();
-      const cleanPassword = password.trim();
-
-      // 1. Tenta login real no Supabase primeiro
-      const { data, error } = await supabase.auth.signInWithPassword({ 
-          email: cleanEmail, 
-          password: cleanPassword 
-      });
-
-      if (error) {
-          // 2. SENIOR MOVE: Se falhar no Supabase, busca na lista de staff dos restaurantes
-          // Isso permite acesso imediato para garçons cadastrados pelo admin
-          const { data: staffData } = await supabase
-              .from('restaurants')
-              .select('id, name, staff')
-              .not('staff', 'is', null);
-
-          if (staffData) {
-              for (const res of staffData) {
-                  const staffList = Array.isArray(res.staff) ? (res.staff as any[]) : [];
-                  const member = staffList.find(s => 
-                      s?.email?.toLowerCase() === cleanEmail && 
-                      (s?.password === cleanPassword || s?.password === password) && 
-                      s?.active
-                  );
-                  
-                  if (member) {
-                      const profile: User = {
-                          id: member.id,
-                          email: member.email,
-                          role: member.role as Role,
-                          name: member.name,
-                          restaurantId: res.id
-                      };
-                      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
-                      setCurrentUser(profile);
-                      return;
-                  }
-              }
-          }
-          
-          throw new Error(error.message);
-      } else if (data?.user) {
-          // 3. SE LOGIN NO SUPABASE DER CERTO: Já buscamos o perfil imediatamente e atualizamos os dados locais.
-          // Isso garante que no retorno do 'login' (que é esperado síncrono com a transição), o currentUser esteja preenchido.
-          const profile = await fetchUserProfile(data.user);
-          if (profile) {
-              localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
-              setCurrentUser(profile);
-          } else {
-              throw new Error("Perfil não encontrado para o usuário autenticado.");
-          }
-      }
-  }, []);
-
-  const logout = useCallback(async () => {
-      try {
-          // Clear local cache immediately so the UI reacts instantly to provide premium offline-first resilience
-          localStorage.removeItem(USER_STORAGE_KEY);
-          setCurrentUser(null);
-          
-          // Fire-and-forget Supabase signOut in the background so slow or offline networks cannot freeze the UI
-          supabase.auth.signOut().catch(err => {
-              console.warn("Async signOut warning during logout:", err);
-          });
-      } catch (err) {
-          console.error("Critical error in logout:", err);
-          // Fallback force clean
-          localStorage.removeItem(USER_STORAGE_KEY);
-          setCurrentUser(null);
-      }
-  }, []);
-
-  const value = useMemo(() => ({
-    currentUser,
-    login,
-    logout,
-    loading,
-    authError,
-  }), [currentUser, login, logout, loading, authError]);
-  
-  return React.createElement(AuthContext.Provider, { value }, children);
 };
 
-export const useAuth = (): AuthContextType => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+export const subscribeToOrders = (
+    callback: (orders: Order[]) => void, 
+    restaurantId?: number,
+    onStatusChange?: (status: string) => void
+): (() => void) => {
+    let isMounted = true;
+    let isFetching = false;
+
+    const refreshData = async () => {
+        if (!isMounted || isFetching) return;
+        isFetching = true;
+        try {
+            // Usamos um limite de 150 para máxima velocidade e leveza em celulares e tablets dos restaurantes e timeout de 10s para evitar travamento
+            const orders = await Promise.race([
+                fetchOrders(restaurantId, { limit: 150 }),
+                new Promise<Order[]>((_, reject) => setTimeout(() => reject(new Error('Polling sync timeout')), 10000))
+            ]);
+            if (isMounted) callback(orders);
+        } catch (e) {
+            console.warn("[GuaraFood Polling] Erro ou timeout ao atualizar pedidos:", e);
+        } finally {
+            isFetching = false;
+        }
+    };
+
+    // Canal Estático para estabilidade
+    const channelName = restaurantId ? `orders_store_${restaurantId}` : `orders_global_admin`;
+    
+    // Garantir que não existam múltiplos canais pendentes - defensivo para evitar falhas se getChannels não existir
+    let existingChannels: any[] = [];
+    try {
+        if (typeof supabase.getChannels === 'function') {
+            existingChannels = supabase.getChannels().filter(ch => (ch as any).topic === channelName || (ch as any).name === channelName);
+            existingChannels.forEach(ch => {
+                try {
+                    supabase.removeChannel(ch);
+                } catch (err) {
+                    console.warn("[GuaraFood WebSockets] Erro ao remover canal individual:", err);
+                }
+            });
+        }
+    } catch (err) {
+        console.warn("[GuaraFood WebSockets] Erro ao limpar canais antigos no Supabase:", err);
+    }
+
+    let channel: any = null;
+    try {
+        channel = supabase.channel(channelName)
+            .on(
+                'postgres_changes',
+                { 
+                    event: '*', 
+                    schema: 'public', 
+                    table: 'orders', 
+                    filter: restaurantId ? `restaurant_id=eq.${restaurantId}` : undefined 
+                },
+                () => {
+                    refreshData();
+                }
+            )
+            .subscribe((status) => {
+                if (isMounted && onStatusChange) {
+                    onStatusChange(status);
+                }
+                // Se o WebSocket desconectar ou falhar, força atualização imediata para garantir resiliência
+                if (status === 'TIMED_OUT' || status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+                    refreshData();
+                }
+            });
+    } catch (err) {
+        console.error("[GuaraFood WebSockets] Erro ao criar canal de tempo real. Polling HTTP operando como fallback principal.", err);
+        if (isMounted && onStatusChange) {
+            onStatusChange('CHANNEL_ERROR');
+        }
+    }
+
+    refreshData();
+
+    // GARANTIA COMPLETA E HEARTBEAT: Polling em segundo plano a cada 12 segundos para máxima reatividade
+    const fallbackInterval = setInterval(() => {
+        refreshData();
+    }, 12000);
+
+    // Sincronização inteligente ao ganhar foco, reconectar ou ficar visível (evita perda de sincronia após telefone/tablet dormir)
+    const handleActivity = () => {
+        if (isMounted) {
+            refreshData();
+        }
+    };
+
+    window.addEventListener('focus', handleActivity);
+    window.addEventListener('online', handleActivity);
+    document.addEventListener('visibilitychange', handleActivity);
+    window.addEventListener('guarafood:update-orders', handleActivity);
+
+    return () => {
+        isMounted = false;
+        clearInterval(fallbackInterval);
+        window.removeEventListener('focus', handleActivity);
+        window.removeEventListener('online', handleActivity);
+        document.removeEventListener('visibilitychange', handleActivity);
+        window.removeEventListener('guarafood:update-orders', handleActivity);
+        if (channel) {
+            try {
+                supabase.removeChannel(channel);
+            } catch (err) {
+                console.warn("[GuaraFood WebSockets] Erro ao remover canal no unmount:", err);
+            }
+        }
+    };
+};
+
+export const fetchOrders = async (restaurantId?: number, options?: { limit?: number }): Promise<Order[]> => {
+    let query = supabase.from('orders').select('*');
+    if (restaurantId) {
+        query = query.eq('restaurant_id', restaurantId);
+    }
+    
+    // Se não houver limite definido, usamos 150 como limite seguro e leve para evitar travamento em dispositivos móveis.
+    const finalLimit = options?.limit || 150;
+    query = query.limit(finalLimit);
+
+    const { data, error } = await query.order('timestamp', { ascending: false });
+    if (error) {
+        handleSupabaseError({ error, customMessage: 'Failed to fetch orders' });
+        return [];
+    }
+    
+    return (data || []).map(normalizeOrder);
+};
+
+export const fetchOrdersByMensalistaId = async (mensalistaId: string): Promise<Order[]> => {
+    const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('mensalista_id', mensalistaId)
+        .order('timestamp', { ascending: false });
+    
+    if (error) {
+        handleSupabaseError({ error, customMessage: 'Failed to fetch orders for mensalista' });
+        return [];
+    }
+    
+    return (data || []).map(normalizeOrder);
+};
+
+export interface NewOrderData {
+    customerName: string;
+    customerPhone: string;
+    customerAddress: {
+        zipCode: string;
+        street: string;
+        number: string;
+        neighborhood: string;
+        complement?: string;
+    };
+    wantsSachets?: boolean;
+    items: CartItem[];
+    totalPrice: number;
+    restaurantId: number;
+    restaurantName: string;
+    restaurantAddress: string;
+    restaurantPhone: string;
+    paymentMethod: string;
+    couponCode?: string;
+    discountAmount?: number;
+    subtotal?: number;
+    deliveryFee?: number;
+    changeFor?: number;
+    tableNumber?: string;
+    comandaNumber?: string;
+    status?: OrderStatus;
+    mensalistaId?: string; // NEW: Para pedidos de mensalistas
+    pointsRedeemed?: number; // NEW: Pontos de fidelidade resgatados
+}
+
+export const createOrder = async (
+    orderData: NewOrderData,
+    options?: { onRetry?: (attempt: number, error: any, delayMs: number) => void; retryOptions?: RetryOptions }
+): Promise<Order> => {
+    return retryWithExponentialBackoff(async () => {
+        const isTable = !!orderData.tableNumber;
+        
+        const addressWithSachetPreference = {
+            ...orderData.customerAddress,
+            wantsSachets: orderData.wantsSachets === true,
+            tableNumber: orderData.tableNumber,
+            comandaNumber: orderData.comandaNumber
+        };
+        
+        const newOrderPayload = {
+            customer_name: orderData.customerName,
+            customer_phone: orderData.customerPhone,
+            customer_address: addressWithSachetPreference,
+            items: orderData.items,
+            total_price: orderData.totalPrice,
+            restaurant_id: orderData.restaurantId,
+            restaurant_name: orderData.restaurantName,
+            restaurant_address: orderData.restaurantAddress,
+            restaurant_phone: orderData.restaurantPhone,
+            payment_method: orderData.mensalistaId ? 'Mensalista' : orderData.paymentMethod,
+            coupon_code: orderData.couponCode,
+            discount_amount: orderData.discountAmount,
+            subtotal: orderData.subtotal,
+            delivery_fee: orderData.deliveryFee,
+            change_for: orderData.changeFor,
+            table_number: orderData.tableNumber,
+            comanda_number: orderData.comandaNumber,
+            status: orderData.status || 'Novo Pedido', 
+            payment_status: isTable ? 'pending' : 'paid',
+            timestamp: new Date().toISOString(),
+            mensalista_id: orderData.mensalistaId, // NEW
+        };
+
+        const { data, error } = await supabase.from('orders').insert(newOrderPayload).select().single();
+        if (error) {
+            handleSupabaseError({ error, customMessage: 'Failed to create order', tableName: 'orders' });
+            throw error;
+        }
+        
+        // Atualizar saldo do mensalista se aplicável
+        if (orderData.mensalistaId) {
+            const { data: mensalista } = await supabase.from('mensalistas').select('balance').eq('id', orderData.mensalistaId).single();
+            if (mensalista) {
+                await supabase.from('mensalistas').update({ balance: Number(mensalista.balance || 0) + orderData.totalPrice }).eq('id', orderData.mensalistaId);
+            }
+        }
+
+        if (orderData.pointsRedeemed && orderData.pointsRedeemed > 0) {
+            // Reduz os pontos do cliente (temos que buscar primeiro e atualizar, ou fazer RPC, aqui faremos read/write simples para facilitar)
+            const { data: loyaltyCard } = await supabase.from('customer_loyalty')
+                .select('points, redeemed_points')
+                .eq('restaurant_id', orderData.restaurantId)
+                .eq('customer_phone', orderData.customerPhone)
+                .single();
+                
+            if (loyaltyCard) {
+                await supabase.from('customer_loyalty').update({
+                    points: Math.max(0, loyaltyCard.points - orderData.pointsRedeemed),
+                    redeemed_points: (loyaltyCard.redeemed_points || 0) + orderData.pointsRedeemed
+                }).eq('restaurant_id', orderData.restaurantId).eq('customer_phone', orderData.customerPhone);
+            }
+        }
+        
+        window.dispatchEvent(new Event('guarafood:update-orders'));
+        
+        return normalizeOrder(data);
+    }, {
+        maxRetries: 4,
+        initialDelayMs: 400,
+        backoffFactor: 2,
+        maxDelayMs: 4000,
+        onRetry: options?.onRetry,
+        ...options?.retryOptions
+    });
+};
+
+export const updateOrderStatus = async (
+    orderId: string, 
+    status: OrderStatus,
+    options?: { onRetry?: (attempt: number, error: any, delayMs: number) => void; retryOptions?: RetryOptions }
+): Promise<Order> => {
+    return retryWithExponentialBackoff(async () => {
+        const { data, error } = await supabase.from('orders').update({ status }).eq('id', orderId).select().single();
+        if (error) {
+            handleSupabaseError({ error, customMessage: 'Failed to update order status' });
+            throw error;
+        }
+        
+        // Trigger manual sync for all listeners
+        window.dispatchEvent(new Event('guarafood:update-orders'));
+        
+        return normalizeOrder(data);
+    }, {
+        maxRetries: 4,
+        initialDelayMs: 400,
+        backoffFactor: 2,
+        maxDelayMs: 4000,
+        onRetry: options?.onRetry,
+        ...options?.retryOptions
+    });
+};
+
+export const updateOrderFiscalExport = async (orderId: string, fiscalExport: boolean): Promise<void> => {
+    return retryWithExponentialBackoff(async () => {
+        const { error } = await supabase.from('orders').update({ fiscalExport }).eq('id', orderId);
+        if (error) {
+            handleSupabaseError({ error, customMessage: 'Failed to update fiscal export status' });
+            throw error;
+        }
+        window.dispatchEvent(new Event('guarafood:update-orders'));
+    }, {
+        maxRetries: 3,
+        initialDelayMs: 350
+    });
+};
+
+export const updateOrderPaymentStatus = async (orderId: string, paymentStatus: 'paid' | 'pending' | 'partial'): Promise<void> => {
+    return retryWithExponentialBackoff(async () => {
+        const { error } = await supabase.from('orders').update({ payment_status: paymentStatus }).eq('id', orderId);
+        if (error) {
+            handleSupabaseError({ error, customMessage: 'Failed to update payment status' });
+            throw error;
+        }
+        // Trigger manual sync for all listeners
+        window.dispatchEvent(new Event('guarafood:update-orders'));
+    }, {
+        maxRetries: 3,
+        initialDelayMs: 350
+    });
+};
+
+export const recordOrderPayment = async (
+    orderId: string, 
+    payment: PaymentEntry, 
+    newTotalPaid: number, 
+    originalTotal: number, 
+    mensalistaId?: string,
+    options?: { onRetry?: (attempt: number, error: any, delayMs: number) => void }
+): Promise<Order> => {
+    return retryWithExponentialBackoff(async () => {
+        // Busca o histórico atual
+        const { data: currentOrder, error: fetchErr } = await supabase.from('orders').select('payment_history, payment_details').eq('id', orderId).single();
+        if (fetchErr) {
+            handleSupabaseError({ error: fetchErr, customMessage: 'Failed to fetch order payment history' });
+            throw fetchErr;
+        }
+        
+        const history = currentOrder?.payment_history || currentOrder?.payment_details?.history || [];
+        const newHistory = [...history, payment];
+        
+        const isFullyPaid = newTotalPaid >= originalTotal - 0.01; // Tolerance for float precision
+        const paymentStatus = isFullyPaid ? 'paid' : 'partial';
+
+        const updateData: any = { 
+            payment_history: newHistory,
+            payment_status: paymentStatus
+        };
+
+        // Also update payment_details for backward compatibility if needed
+        if (currentOrder?.payment_details) {
+            updateData.payment_details = {
+                ...currentOrder.payment_details,
+                history: newHistory
+            };
+        }
+
+        if (mensalistaId) {
+            updateData.mensalista_id = mensalistaId;
+            
+            // Adjust mensalista balance
+            const { data: mensalista } = await supabase.from('mensalistas').select('balance').eq('id', mensalistaId).single();
+            if (mensalista) {
+                await supabase.from('mensalistas').update({ balance: Number(mensalista.balance || 0) + payment.amount }).eq('id', mensalistaId);
+            }
+        }
+
+        const { data, error } = await supabase.from('orders')
+            .update(updateData)
+            .eq('id', orderId)
+            .select()
+            .single();
+
+        if (error) {
+            handleSupabaseError({ error, customMessage: 'Failed to record payment' });
+            throw error;
+        }
+        return normalizeOrder(data);
+    }, {
+        maxRetries: 4,
+        initialDelayMs: 400,
+        backoffFactor: 2,
+        onRetry: options?.onRetry
+    });
+};
+
+export const updateOrderDetails = async (
+    orderId: string,
+    updatedDetails: {
+        items: CartItem[];
+        totalPrice: number;
+        subtotal: number;
+        discountAmount?: number;
+        paymentMethod?: string; 
+        customerName?: string;
+        customerPhone?: string;
+        mensalistaId?: string | null;
+    },
+    options?: { onRetry?: (attempt: number, error: any, delayMs: number) => void }
+): Promise<Order> => {
+    return retryWithExponentialBackoff(async () => {
+        // Fetch current order to get old total price and mensalista_id
+        const { data: currentOrder, error: fetchErr } = await supabase.from('orders').select('total_price, mensalista_id').eq('id', orderId).single();
+        if (fetchErr) {
+            handleSupabaseError({ error: fetchErr, customMessage: 'Failed to fetch current order details' });
+            throw fetchErr;
+        }
+
+        const payload: any = {
+            items: updatedDetails.items,
+            total_price: updatedDetails.totalPrice,
+            subtotal: updatedDetails.subtotal,
+            discount_amount: updatedDetails.discountAmount,
+            payment_method: updatedDetails.paymentMethod,
+        };
+
+        if (updatedDetails.customerName) payload.customer_name = updatedDetails.customerName;
+        if (updatedDetails.customerPhone) payload.customer_phone = updatedDetails.customerPhone;
+        if (updatedDetails.mensalistaId !== undefined) payload.mensalista_id = updatedDetails.mensalistaId;
+
+        const { data, error } = await supabase.from('orders').update(payload).eq('id', orderId).select().single();
+        if (error) {
+            handleSupabaseError({ error, customMessage: 'Failed to update order details' });
+            throw error;
+        }
+
+        // Recalculate payment status based on history and new total price
+        const history = data.payment_history || data.payment_details?.history || [];
+        const totalPaid = history.reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
+        const isFullyPaid = totalPaid >= updatedDetails.totalPrice - 0.01;
+        const paymentStatus = isFullyPaid ? 'paid' : (totalPaid > 0 ? 'partial' : 'pending');
+        
+        if (data.payment_status !== paymentStatus) {
+            await supabase.from('orders').update({ payment_status: paymentStatus }).eq('id', orderId);
+            data.payment_status = paymentStatus;
+        }
+
+        // Adjust mensalista balance if applicable
+        // Case 1: Mensalista ID changed (from one to another, or added/removed)
+        const oldMensalistaId = currentOrder?.mensalista_id;
+        const newMensalistaId = updatedDetails.mensalistaId;
+
+        if (currentOrder && newMensalistaId !== undefined && oldMensalistaId !== newMensalistaId) {
+            // Remove from old mensalista balance
+            if (oldMensalistaId) {
+                const { data: oldMensalista } = await supabase.from('mensalistas').select('balance').eq('id', oldMensalistaId).single();
+                if (oldMensalista) {
+                    await supabase.from('mensalistas').update({ balance: Number(oldMensalista.balance || 0) - Number(currentOrder.total_price) }).eq('id', oldMensalistaId);
+                }
+            }
+            // Add to new mensalista balance
+            if (newMensalistaId) {
+                const { data: newMensalista } = await supabase.from('mensalistas').select('balance').eq('id', newMensalistaId).single();
+                if (newMensalista) {
+                    await supabase.from('mensalistas').update({ balance: Number(newMensalista.balance || 0) + updatedDetails.totalPrice }).eq('id', newMensalistaId);
+                }
+            }
+        } 
+        // Case 2: Same mensalista, but price changed
+        else if (currentOrder && oldMensalistaId && updatedDetails.totalPrice !== undefined) {
+            const priceDifference = updatedDetails.totalPrice - Number(currentOrder.total_price);
+            if (priceDifference !== 0) {
+                const { data: mensalista } = await supabase.from('mensalistas').select('balance').eq('id', oldMensalistaId).single();
+                if (mensalista) {
+                    await supabase.from('mensalistas').update({ balance: Number(mensalista.balance || 0) + priceDifference }).eq('id', oldMensalistaId);
+                }
+            }
+        }
+
+        return normalizeOrder(data);
+    }, {
+        maxRetries: 4,
+        initialDelayMs: 400,
+        backoffFactor: 2,
+        onRetry: options?.onRetry
+    });
+};
+
+export const fetchOpenTableOrders = async (restaurantId: number, tableNumber: string): Promise<Order[]> => {
+    try {
+        const { data, error } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('status', 'Aguardando Pagamento');
+
+        if (error) {
+            console.error("Error fetching table orders:", error);
+            return [];
+        }
+
+        const normalized = (data || []).map(normalizeOrder);
+        
+        // Filtro ultra-robusto em memória que é 100% imune a erros de tipagem/cast do Postgres ou JSON
+        return normalized.filter(order => {
+            const numStr = String(tableNumber).trim();
+            const orderTableNum = order.tableNumber ? String(order.tableNumber).trim() : '';
+            const addressTableNum = (order.customerAddress && typeof order.customerAddress === 'object') 
+                ? String((order.customerAddress as any).tableNumber || '').trim() 
+                : '';
+                
+            return orderTableNum === numStr || addressTableNum === numStr;
+        });
+    } catch (e) {
+        console.error("Exception fetching table orders:", e);
+        return [];
+    }
+};
+
+export const fetchOpenTableOrder = async (restaurantId: number, tableNumber: string): Promise<Order | null> => {
+    try {
+        const orders = await fetchOpenTableOrders(restaurantId, tableNumber);
+        return orders.length > 0 ? orders[0] : null;
+    } catch (e) {
+        console.error("Exception fetching table order:", e);
+        return null;
+    }
+};
+
+export const clearTodayTableOrders = async (restaurantId: number): Promise<void> => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayIso = today.toISOString();
+
+    const { data: ordersToDelete, error: fetchError } = await supabase
+        .from('orders')
+        .select('id, customer_address')
+        .eq('restaurant_id', restaurantId)
+        .gte('created_at', todayIso);
+        
+    if (fetchError) {
+        handleSupabaseError({ error: fetchError, customMessage: 'Failed to fetch orders for cleanup' });
+        return;
+    }
+
+    const idsToDelete = ordersToDelete
+        .filter((o: any) => o.customer_address && o.customer_address.tableNumber)
+        .map((o: any) => o.id);
+
+    if (idsToDelete.length === 0) return;
+
+    const { error: deleteError } = await supabase
+        .from('orders')
+        .delete()
+        .in('id', idsToDelete);
+
+    handleSupabaseError({ error: deleteError, customMessage: 'Failed to clear table orders' });
+    
+    window.dispatchEvent(new Event('guarafood:update-orders'));
+};
+
+export const requestKitchenPrint = async (orderId: string, itemsToPrint: CartItem[]): Promise<void> => {
+    return retryWithExponentialBackoff(async () => {
+        const { data: currentOrder, error: fetchErr } = await supabase.from('orders').select('payment_details').eq('id', orderId).single();
+        if (fetchErr) {
+            handleSupabaseError({ error: fetchErr, customMessage: 'Failed to fetch order for kitchen print' });
+            throw fetchErr;
+        }
+        const currentDetails = currentOrder?.payment_details || {};
+        const currentQueue = currentDetails.print_queue || [];
+        
+        const newRequest = {
+            id: crypto.randomUUID(),
+            timestamp: new Date().toISOString(),
+            items: itemsToPrint,
+            status: 'pending',
+            type: 'kitchen'
+        };
+        
+        const newDetails = {
+            ...currentDetails,
+            print_queue: [...currentQueue, newRequest]
+        };
+        
+        const { error } = await supabase.from('orders').update({ payment_details: newDetails }).eq('id', orderId);
+        if (error) {
+            handleSupabaseError({ error, customMessage: 'Failed to request kitchen print' });
+            throw error;
+        }
+    }, { maxRetries: 3, initialDelayMs: 350 });
+};
+
+export const requestAdminPrint = async (orderId: string, itemsToPrint: CartItem[]): Promise<void> => {
+    return retryWithExponentialBackoff(async () => {
+        const { data: currentOrder, error: fetchErr } = await supabase.from('orders').select('payment_details').eq('id', orderId).single();
+        if (fetchErr) {
+            handleSupabaseError({ error: fetchErr, customMessage: 'Failed to fetch order for admin print' });
+            throw fetchErr;
+        }
+        const currentDetails = currentOrder?.payment_details || {};
+        const currentQueue = currentDetails.print_queue || [];
+        
+        const newRequest = {
+            id: crypto.randomUUID(),
+            timestamp: new Date().toISOString(),
+            items: itemsToPrint,
+            status: 'pending',
+            type: 'admin'
+        };
+        
+        const newDetails = {
+            ...currentDetails,
+            print_queue: [...currentQueue, newRequest]
+        };
+        
+        const { error } = await supabase.from('orders').update({ payment_details: newDetails }).eq('id', orderId);
+        if (error) {
+            handleSupabaseError({ error, customMessage: 'Failed to request admin print' });
+            throw error;
+        }
+    }, { maxRetries: 3, initialDelayMs: 350 });
+};
+
+export const requestBillPrint = async (orderId: string): Promise<void> => {
+    return retryWithExponentialBackoff(async () => {
+        const { data: currentOrder, error: fetchErr } = await supabase.from('orders').select('payment_details').eq('id', orderId).single();
+        if (fetchErr) {
+            handleSupabaseError({ error: fetchErr, customMessage: 'Failed to fetch order for bill print' });
+            throw fetchErr;
+        }
+        const currentDetails = currentOrder?.payment_details || {};
+        const currentQueue = currentDetails.print_queue || [];
+        
+        const newRequest = {
+            id: crypto.randomUUID(),
+            timestamp: new Date().toISOString(),
+            status: 'pending',
+            type: 'full'
+        };
+        
+        const newDetails = {
+            ...currentDetails,
+            print_queue: [...currentQueue, newRequest]
+        };
+        
+        const { error } = await supabase.from('orders').update({ payment_details: newDetails }).eq('id', orderId);
+        if (error) {
+            handleSupabaseError({ error, customMessage: 'Failed to request bill print' });
+            throw error;
+        }
+    }, { maxRetries: 3, initialDelayMs: 350 });
+};
+
+export const markPrintJobAsDone = async (orderId: string, jobId: string): Promise<void> => {
+    return retryWithExponentialBackoff(async () => {
+        const { data: currentOrder, error: fetchErr } = await supabase.from('orders').select('payment_details').eq('id', orderId).single();
+        if (fetchErr) throw fetchErr;
+        const currentDetails = currentOrder?.payment_details || {};
+        const currentQueue = currentDetails.print_queue || [];
+        
+        const newQueue = currentQueue.map((job: any) => 
+            job.id === jobId ? { ...job, status: 'printed', printedAt: new Date().toISOString() } : job
+        );
+        
+        const newDetails = {
+            ...currentDetails,
+            print_queue: newQueue
+        };
+        
+        const { error } = await supabase.from('orders').update({ payment_details: newDetails }).eq('id', orderId);
+        if (error) throw error;
+    }, { maxRetries: 3, initialDelayMs: 350 });
 };

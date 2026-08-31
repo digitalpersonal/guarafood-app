@@ -1,205 +1,632 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../services/authService';
-import { fetchMensalistas, createMensalista, updateMensalista, deleteMensalista } from '../services/mensalistaService';
-import { fetchOrdersByMensalistaId } from '../services/orderService';
-import { Mensalista, Order } from '../types';
-import { useNotification } from '../hooks/useNotification';
-import Spinner from './Spinner';
+import React, { useState } from 'react';
+import { APP_VERSION } from './VersionChecker';
 
-interface MensalistasManagerProps {
-    restaurantId?: number;
+interface HelpSection {
+    id: string;
+    title: string;
+    icon: string;
+    badge?: string;
+    content: React.ReactNode;
 }
 
-const MensalistasManager: React.FC<MensalistasManagerProps> = ({ restaurantId }) => {
-    const { currentUser } = useAuth();
-    const { addToast, confirm, prompt } = useNotification();
-    const [mensalistas, setMensalistas] = useState<Mensalista[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isFormOpen, setIsFormOpen] = useState(false);
-    const [expandedId, setExpandedId] = useState<string | null>(null);
-    const [ordersMap, setOrdersMap] = useState<Record<string, Order[]>>({});
-    
-    // Form state
-    const [name, setName] = useState('');
-    const [phone, setPhone] = useState('');
-    const [monthlyFee, setMonthlyFee] = useState('');
-    const [nextPaymentDate, setNextPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+const HelpCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+    const [activeSection, setActiveSection] = useState('mesas');
+    const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
 
-    const effectiveRestaurantId = restaurantId || currentUser?.restaurantId;
-
-    useEffect(() => {
-        loadMensalistas();
-    }, [effectiveRestaurantId]);
-
-    const loadMensalistas = async () => {
-        console.log("Loading mensalistas for restaurant:", effectiveRestaurantId);
-        if (!effectiveRestaurantId) {
-            console.log("No restaurantId found, stopping load.");
-            setIsLoading(false);
-            return;
-        }
-        setIsLoading(true);
-        try {
-            const data = await fetchMensalistas(effectiveRestaurantId);
-            console.log("Mensalistas loaded:", data);
-            setMensalistas(Array.isArray(data) ? data : []);
-        } catch (error) {
-            console.error("Error loading mensalistas:", error);
-            addToast({ message: 'Erro ao carregar mensalistas', type: 'error' });
-        } finally {
-            setIsLoading(false);
-        }
+    const handleCopyCommand = (text: string, label: string) => {
+        navigator.clipboard.writeText(text);
+        setCopiedCommand(label);
+        setTimeout(() => setCopiedCommand(null), 2500);
     };
 
-    const handleAdd = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!effectiveRestaurantId) return;
+    const sections: HelpSection[] = [
+        {
+            id: 'mesas',
+            title: 'Gestão de Mesas, Comandas e Garçons',
+            icon: '🪑',
+            badge: 'Completo',
+            content: (
+                <div className="space-y-8">
+                    {/* Destaque Inicial */}
+                    <div className="bg-gradient-to-br from-orange-500 via-orange-600 to-amber-600 p-6 rounded-2xl text-white shadow-lg">
+                        <div className="flex items-center gap-3 mb-2">
+                            <span className="text-3xl">📱</span>
+                            <h3 className="text-xl font-black tracking-tight">Módulo Salão & Comandas na Palma da Mão</h3>
+                        </div>
+                        <p className="text-orange-50 text-sm leading-relaxed">
+                            O módulo de Mesas do <strong>GuaraFood</strong> foi desenhado para operar com máxima velocidade e agilidade em <strong>smartphones de garçons, tablets de salão e computadores de caixa</strong>. Garçons lançam pedidos diretamente na mesa do cliente, enviam para a cozinha sem papel e fecham contas com divisão de pagamentos em segundos.
+                        </p>
+                    </div>
 
-        try {
-            await createMensalista({
-                restaurantId: effectiveRestaurantId,
-                name,
-                phone,
-                startDate: new Date().toISOString().split('T')[0],
-                nextPaymentDate,
-                status: 'active',
-                monthlyFee: Number(monthlyFee),
-                balance: 0,
-            });
-            addToast({ message: 'Mensalista adicionado!', type: 'success' });
-            setIsFormOpen(false);
-            setName('');
-            setPhone('');
-            setMonthlyFee('');
-            loadMensalistas();
-        } catch (error) {
-            addToast({ message: 'Erro ao adicionar mensalista', type: 'error' });
-        }
-    };
-
-    const handleDelete = async (id: string) => {
-        const confirmed = await confirm({
-            title: 'Remover mensalista?',
-            message: 'Tem certeza que deseja remover este mensalista?',
-            confirmText: 'Remover',
-            isDestructive: true
-        });
-
-        if (confirmed) {
-            try {
-                await deleteMensalista(id);
-                addToast({ message: 'Mensalista removido!', type: 'success' });
-                loadMensalistas();
-            } catch (error) {
-                addToast({ message: 'Erro ao remover mensalista', type: 'error' });
-            }
-        }
-    };
-
-    const handleSettle = async (mensalista: Mensalista) => {
-        const amountStr = await prompt({
-            title: 'Registrar pagamento',
-            message: `Saldo atual: R$ ${mensalista.balance.toFixed(2)}. Informe o valor do pagamento:`,
-            placeholder: '0.00',
-            submitText: 'Registrar'
-        });
-
-        if (amountStr) {
-            const amount = parseFloat(amountStr.replace(',', '.'));
-            if (isNaN(amount) || amount <= 0) {
-                addToast({ message: 'Valor inválido', type: 'error' });
-                return;
-            }
-            
-            try {
-                const newBalance = Math.max(0, mensalista.balance - amount);
-                await updateMensalista(mensalista.id, { ...mensalista, balance: newBalance });
-                addToast({ message: 'Pagamento registrado!', type: 'success' });
-                loadMensalistas();
-            } catch (error) {
-                addToast({ message: 'Erro ao registrar pagamento', type: 'error' });
-            }
-        }
-    };
-
-    const toggleExpand = async (id: string) => {
-        if (expandedId === id) {
-            setExpandedId(null);
-        } else {
-            setExpandedId(id);
-            if (!ordersMap[id]) {
-                const orders = await fetchOrdersByMensalistaId(id);
-                setOrdersMap(prev => ({...prev, [id]: orders}));
-            }
-        }
-    };
-
-    if (isLoading) return <Spinner />;
-
-    return (
-        <div className="p-6 bg-white rounded-3xl shadow-sm">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tight">Mensalistas</h2>
-                <div className="text-right">
-                    <p className="text-xs text-gray-500 uppercase font-black">Total a Receber</p>
-                    <p className="text-xl font-black text-red-600">R$ {mensalistas.reduce((acc, m) => acc + m.balance, 0).toFixed(2)}</p>
-                </div>
-                <button 
-                    onClick={() => setIsFormOpen(!isFormOpen)}
-                    className="bg-orange-600 text-white font-black px-6 py-3 rounded-2xl hover:bg-orange-700 transition-all text-xs uppercase tracking-widest active:scale-95"
-                >
-                    {isFormOpen ? 'Cancelar' : 'Novo Mensalista'}
-                </button>
-            </div>
-
-            {isFormOpen && (
-                <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 p-4 bg-gray-50 rounded-2xl">
-                    <input type="text" placeholder="Nome" value={name} onChange={e => setName(e.target.value)} className="p-3 rounded-xl border" required />
-                    <input type="text" placeholder="Telefone" value={phone} onChange={e => setPhone(e.target.value)} className="p-3 rounded-xl border" required />
-                    <input type="number" placeholder="Valor Mensal" value={monthlyFee} onChange={e => setMonthlyFee(e.target.value)} className="p-3 rounded-xl border" required />
-                    <input type="date" value={nextPaymentDate} onChange={e => setNextPaymentDate(e.target.value)} className="p-3 rounded-xl border" required />
-                    <button type="submit" className="md:col-span-2 bg-emerald-600 text-white font-black py-3 rounded-xl hover:bg-emerald-700">Salvar</button>
-                </form>
-            )}
-
-            <div className="space-y-4">
-                {mensalistas.map(m => (
-                    <div key={m.id} className="border rounded-2xl overflow-hidden">
-                        <div className="flex justify-between items-center p-4">
-                            <div>
-                                <p className="font-bold text-gray-800">{m.name}</p>
-                                <p className="text-xs text-gray-500">{m.phone} | Saldo: <span className="font-black text-red-600">R$ {m.balance.toFixed(2)}</span></p>
+                    {/* 1. Como Funciona para os Garçons */}
+                    <section className="space-y-3">
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-xl bg-orange-100 flex items-center justify-center font-black text-orange-600 text-sm">1</div>
+                            <h4 className="font-black text-gray-800 text-lg">Acesso e Uso no Celular do Garçom</h4>
+                        </div>
+                        <p className="text-sm text-gray-600 leading-relaxed">
+                            Os garçons podem acessar o sistema diretamente pelo navegador de seus celulares (ou instalando o aplicativo PWA). O sistema possui um <strong>Modo Garçom dedicado</strong> que simplifica a interface:
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="p-4 bg-white border border-gray-200 rounded-xl shadow-sm">
+                                <h5 className="font-black text-gray-800 text-sm mb-1 flex items-center gap-1.5">
+                                    <span>🔐</span>
+                                    <span>PIN de Acesso Rápido</span>
+                                </h5>
+                                <p className="text-xs text-gray-600 leading-relaxed">
+                                    Cada garçom pode ter seu código PIN individual de 4 dígitos. Ao digitar o PIN, o garçom assume a comanda e todos os pedidos lançados ficam registrados com seu nome para fins de comissão e controle.
+                                </p>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <button onClick={() => toggleExpand(m.id)} className="bg-gray-200 text-gray-700 text-[10px] font-black px-3 py-2 rounded-lg hover:bg-gray-300 uppercase">
-                                    {expandedId === m.id ? 'Ocultar' : 'Pedidos'}
-                                </button>
-                                <button onClick={() => handleSettle(m)} className="bg-emerald-600 text-white text-[10px] font-black px-3 py-2 rounded-lg hover:bg-emerald-700 uppercase">Dar Baixa</button>
-                                <button onClick={() => handleDelete(m.id)} className="text-red-500 hover:text-red-700 text-xs">Remover</button>
+                            <div className="p-4 bg-white border border-gray-200 rounded-xl shadow-sm">
+                                <h5 className="font-black text-gray-800 text-sm mb-1 flex items-center gap-1.5">
+                                    <span>⚡</span>
+                                    <span>Sem Papel ou Erros de Letra</span>
+                                </h5>
+                                <p className="text-xs text-gray-600 leading-relaxed">
+                                    O garçom não precisa mais de bloco de notas ou caneta. O pedido é digitado com opções claras de sabores, adicionais e observações, evitando erros de interpretação na cozinha.
+                                </p>
                             </div>
                         </div>
-                        {expandedId === m.id && (
-                            <div className="p-4 border-t bg-gray-50">
-                                <h4 className="font-bold text-gray-700 mb-2">Últimos Pedidos</h4>
-                                {ordersMap[m.id]?.length > 0 ? (
-                                    <ul className="space-y-2">
-                                        {ordersMap[m.id].map(order => (
-                                            <li key={order.id} className="text-xs flex justify-between">
-                                                <span>{new Date(order.timestamp).toLocaleDateString()} - {order.status}</span>
-                                                <span className="font-bold">R$ {order.totalPrice.toFixed(2)}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                ) : (
-                                    <p className="text-xs text-gray-500">Nenhum pedido encontrado.</p>
-                                )}
+                    </section>
+
+                    {/* 2. Mapa de Mesas em Tempo Real */}
+                    <section className="space-y-3">
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-xl bg-orange-100 flex items-center justify-center font-black text-orange-600 text-sm">2</div>
+                            <h4 className="font-black text-gray-800 text-lg">Mapa Visual do Salão em Tempo Real</h4>
+                        </div>
+                        <p className="text-sm text-gray-600 leading-relaxed">
+                            Ao acessar a aba <strong>Mesas</strong>, o salão é exibido em um grid intuitivo com mesas numeradas. O status de cada mesa é identificado por cores dinâmicas:
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                            <div className="p-4 bg-emerald-50 border-2 border-emerald-200 rounded-xl">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                    <span className="font-black text-xs text-emerald-800 uppercase">Mesa Livre (Verde)</span>
+                                </div>
+                                <p className="text-xs text-emerald-700 font-medium">Mesa desocupada e pronta para receber novos clientes com 1 clique.</p>
                             </div>
-                        )}
+                            <div className="p-4 bg-orange-50 border-2 border-orange-200 rounded-xl">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="w-3.5 h-3.5 rounded-full bg-orange-500"></span>
+                                    <span className="font-black text-xs text-orange-800 uppercase">Mesa Ocupada (Laranja)</span>
+                                </div>
+                                <p className="text-xs text-orange-700 font-medium">Contém comanda aberta. Mostra o tempo de permanência e o total consumido em tempo real.</p>
+                            </div>
+                            <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-xl">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="w-3.5 h-3.5 rounded-full bg-blue-500"></span>
+                                    <span className="font-black text-xs text-blue-800 uppercase">Conta Solicitada (Azul)</span>
+                                </div>
+                                <p className="text-xs text-blue-700 font-medium">Cliente pediu a pré-conta ou está aguardando fechamento e pagamento.</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* 3. Abertura de Mesas e Múltiplas Comandas */}
+                    <section className="space-y-3">
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-xl bg-orange-100 flex items-center justify-center font-black text-orange-600 text-sm">3</div>
+                            <h4 className="font-black text-gray-800 text-lg">Abertura de Mesas e Múltiplas Comandas por Mesa</h4>
+                        </div>
+                        <p className="text-sm text-gray-600 leading-relaxed">
+                            O garçom pode abrir uma mesa de forma rápida e organizar o atendimento mesmo em grupos grandes:
+                        </p>
+                        <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl space-y-3 text-sm text-gray-700">
+                            <div className="flex items-start gap-2">
+                                <span className="font-bold text-orange-600">✓</span>
+                                <div><strong>Abrir Mesa com 1 Toque:</strong> Basta clicar sobre o número da mesa vazia. A comanda é criada instantaneamente.</div>
+                            </div>
+                            <div className="flex items-start gap-2">
+                                <span className="font-bold text-orange-600">✓</span>
+                                <div><strong>Identificação do Cliente / Garçom:</strong> Opcionalmente, adicione o nome do cliente ou o número de pessoas para facilitar o atendimento.</div>
+                            </div>
+                            <div className="flex items-start gap-2">
+                                <span className="font-bold text-orange-600">✓</span>
+                                <div><strong>Múltiplas Comandas na Mesma Mesa (Comanda Individual):</strong> Uma mesma mesa pode conter várias comandas separadas (ex: <em>Mesa 04 - Comanda Lucas</em> e <em>Mesa 04 - Comanda Juliana</em>). Isso permite que cada amigo acompanhe e pague apenas o que consumiu!</div>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* 4. Lançamento Ágil de Itens e Venda por Quilo */}
+                    <section className="space-y-3">
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-xl bg-orange-100 flex items-center justify-center font-black text-orange-600 text-sm">4</div>
+                            <h4 className="font-black text-gray-800 text-lg">Lançamento de Pedidos, Observações e Venda por Peso</h4>
+                        </div>
+                        <p className="text-sm text-gray-600 leading-relaxed">
+                            Ao tocar em <strong>"Adicionar Itens"</strong> na comanda aberta:
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="p-4 bg-white border border-gray-200 rounded-xl shadow-sm">
+                                <h5 className="font-black text-gray-800 text-sm mb-1">🔍 Busca Ágil e Complementos</h5>
+                                <p className="text-xs text-gray-600 leading-relaxed">
+                                    Encontre produtos em milissegundos digitando qualquer parte do nome ou filtrando por categoria. Personalize tamanhos, sabores múltiplos de pizza (meia a meia) e adicionais extras.
+                                </p>
+                            </div>
+                            <div className="p-4 bg-white border border-gray-200 rounded-xl shadow-sm">
+                                <h5 className="font-black text-gray-800 text-sm mb-1">📝 Observações Especiais para a Cozinha</h5>
+                                <p className="text-xs text-gray-600 leading-relaxed">
+                                    Adicione notas detalhadas em cada item com facilidade (ex: <em>"sem cebola"</em>, <em>"ao ponto para mal"</em>, <em>"copo com gelo e limão"</em>).
+                                </p>
+                            </div>
+                            <div className="p-4 bg-white border border-gray-200 rounded-xl shadow-sm md:col-span-2">
+                                <h5 className="font-black text-gray-800 text-sm mb-1">⚖️ Venda por Peso / Balança (Self-Service e Marmitex)</h5>
+                                <p className="text-xs text-gray-600 leading-relaxed">
+                                    O GuaraFood possui suporte nativo a comida por quilo. Ao selecionar itens configurados por peso, basta digitar a quantidade em gramas (ex: <strong>480g</strong>) e o sistema calcula o valor monetário exato automaticamente.
+                                </p>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* 5. Envio Inteligente para a Cozinha */}
+                    <section className="space-y-3">
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-xl bg-orange-100 flex items-center justify-center font-black text-orange-600 text-sm">5</div>
+                            <h4 className="font-black text-gray-800 text-lg">Disparo Inteligente para Cozinha e Bar (Impressão Sem Duplicidade)</h4>
+                        </div>
+                        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-sm leading-relaxed space-y-2">
+                            <div className="flex items-center gap-2 font-black text-amber-800">
+                                <span>👨‍🍳</span>
+                                <span>Como Funciona o Envio Diferencial de Itens:</span>
+                            </div>
+                            <p className="text-xs text-amber-800 leading-relaxed">
+                                Quando o garçom clica em <strong>"Enviar para Cozinha"</strong>, o GuaraFood filtra e envia para a impressora ou tela KDS <strong>apenas os itens que foram adicionados nesta nova rodada</strong>.
+                            </p>
+                            <p className="text-xs text-amber-800 leading-relaxed">
+                                Itens de rodadas anteriores que já foram preparados <strong>nunca saem duplicados</strong>, mantendo a cozinha 100% organizada e economizando bobina de papel!
+                            </p>
+                        </div>
+                    </section>
+
+                    {/* 6. Fechamento, Divisão de Pagamentos e Mensalistas */}
+                    <section className="space-y-3">
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-xl bg-orange-100 flex items-center justify-center font-black text-orange-600 text-sm">6</div>
+                            <h4 className="font-black text-gray-800 text-lg">Fechamento de Conta, Divisão de Pagamentos e Mensalistas</h4>
+                        </div>
+                        <p className="text-sm text-gray-600 leading-relaxed">
+                            O processo de fechamento e cobrança foi projetado para ser flexível e seguro:
+                        </p>
+                        <div className="space-y-2 text-sm">
+                            <div className="p-3 bg-gray-50 border rounded-xl">
+                                <strong>📄 Conferência de Mesa (Pré-Conta):</strong> Clique no botão <em>"Imprimir Conta"</em> para gerar o cupom detalhado de conferência e levar à mesa do cliente com todos os itens consumidos, subtotal e chave Pix QR Code.
+                            </div>
+                            <div className="p-3 bg-gray-50 border rounded-xl">
+                                <strong>💳 Pagamentos Múltiplos e Parciais:</strong> Se a conta der R$ 120,00, a mesa pode pagar R$ 50 no Pix, R$ 40 no Cartão e R$ 30 em Dinheiro. O sistema abate os valores e exibe o saldo devedor restante em tempo real até zerar a conta.
+                            </div>
+                            <div className="p-3 bg-gray-50 border rounded-xl">
+                                <strong>💵 Cálculo de Troco Automático:</strong> Digite o valor entregue pelo cliente em dinheiro e o sistema calcula instantaneamente o troco exato a ser devolvido.
+                            </div>
+                            <div className="p-3 bg-gray-50 border rounded-xl">
+                                <strong>🤝 Transferência para Mensalista ("Fiado" Corporativo):</strong> Se o cliente for mensalista ou empresa cadastrada, o saldo da mesa pode ser transferido diretamente para a conta dele pelo telefone/nome, acumulando no extrato mensal.
+                            </div>
+                            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-800">
+                                <strong>🔒 Trava de Segurança:</strong> O sistema não permite encerrar a mesa se ainda houver saldo pendente, prevenindo perdas financeiras no salão.
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* 7. Autoatendimento por QR Code na Mesa */}
+                    <section className="space-y-3">
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-xl bg-orange-100 flex items-center justify-center font-black text-orange-600 text-sm">7</div>
+                            <h4 className="font-black text-gray-800 text-lg">Autoatendimento por QR Code na Mesa</h4>
+                        </div>
+                        <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl text-purple-900 text-sm leading-relaxed">
+                            Coloque um display acrílico ou adesivo com o QR Code na mesa. O cliente aponta a câmera do celular, o cardápio abre automaticamente identificado com o número daquela mesa, e os pedidos enviados entram direto na comanda do salão e na tela do KDS/Cozinha!
+                        </div>
+                    </section>
+                </div>
+            )
+        },
+        {
+            id: 'impressao',
+            title: 'Impressão Térmica Automática (Chrome Kiosk-Printing)',
+            icon: '🖨️',
+            badge: 'Essencial',
+            content: (
+                <div className="space-y-8">
+                    {/* Destaque Inicial */}
+                    <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6 rounded-2xl text-white shadow-xl">
+                        <div className="flex items-center gap-3 mb-2">
+                            <span className="text-3xl">⚡</span>
+                            <h3 className="text-xl font-black tracking-tight">Impressão Silenciosa e Instantânea via Chrome Kiosk-Printing</h3>
+                        </div>
+                        <p className="text-gray-300 text-sm leading-relaxed">
+                            O <strong>GuaraFood</strong> utiliza o recurso nativo de <strong>Kiosk Printing do Google Chrome</strong>. Isso significa que você <strong>NÃO precisa instalar programas intermediários pesados ou de terceiros (como QZ Tray ou PrintNode)</strong>.
+                            <br/><br/>
+                            Com o parâmetro <code className="bg-orange-600/30 text-orange-300 px-2 py-0.5 rounded font-mono">--kiosk-printing</code> configurado no atalho do Chrome, os cupons são enviados <strong>diretamente para a impressora padrão em milissegundos, sem abrir nenhuma janela ou pop-up de confirmação na tela!</strong>
+                        </p>
                     </div>
-                ))}
+
+                    {/* Vantagens */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl">
+                            <p className="font-black text-xs text-orange-800 uppercase mb-1">🚀 100% Automático</p>
+                            <p className="text-xs text-orange-700">Novos pedidos saem sozinhos na impressora térmica assim que chegam.</p>
+                        </div>
+                        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+                            <p className="font-black text-xs text-emerald-800 uppercase mb-1">🔇 Zero Pop-ups</p>
+                            <p className="text-xs text-emerald-700">Não abre caixas de diálogo do Windows para confirmar a impressão.</p>
+                        </div>
+                        <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                            <p className="font-black text-xs text-blue-800 uppercase mb-1">📶 Centralizado</p>
+                            <p className="text-xs text-blue-700">Garçons pedem no celular e o computador do caixa imprime na hora.</p>
+                        </div>
+                    </div>
+
+                    {/* Passo a Passo de Configuração */}
+                    <section className="space-y-4">
+                        <h4 className="font-black text-gray-800 text-lg">Guia Passo a Passo de Configuração no Computador do Caixa</h4>
+
+                        {/* Passo 1 */}
+                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl space-y-2">
+                            <div className="flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-full bg-orange-600 text-white font-black text-xs flex items-center justify-center">1</span>
+                                <h5 className="font-black text-gray-800 text-sm">Definir a Impressora Térmica como Padrão no Windows</h5>
+                            </div>
+                            <p className="text-xs text-gray-600 leading-relaxed ml-8">
+                                Conecte sua impressora térmica (USB, Rede Ethernet ou Bluetooth) ao computador. No Windows:
+                                <br/><span className="font-semibold text-gray-800">Menu Iniciar &rarr; Configurações &rarr; Dispositivos (ou Bluetooth e dispositivos) &rarr; Impressoras e Scanners</span>.
+                                <br/>Clique sobre a sua impressora térmica e escolha <strong>"Definir como Padrão"</strong>.
+                            </p>
+                        </div>
+
+                        {/* Passo 2 */}
+                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl space-y-3">
+                            <div className="flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-full bg-orange-600 text-white font-black text-xs flex items-center justify-center">2</span>
+                                <h5 className="font-black text-gray-800 text-sm">Configurar o Parâmetro --kiosk-printing no Atalho do Chrome</h5>
+                            </div>
+                            <p className="text-xs text-gray-600 leading-relaxed ml-8">
+                                Na Área de Trabalho do seu computador:
+                                <br/>1. Clique com o <strong>botão direito</strong> no ícone do <strong>Google Chrome</strong> e selecione <strong>Propriedades</strong>.
+                                <br/>2. Na aba <strong>Atalho</strong>, localize o campo <strong>Destino (Target)</strong>.
+                                <br/>3. Vá até o final da linha (após as aspas finais <code className="bg-gray-200 px-1 rounded text-gray-800">...chrome.exe"</code>), dê <strong>um espaço</strong> e adicione o parâmetro:
+                            </p>
+
+                            <div className="ml-8 bg-gray-900 text-orange-400 p-3 rounded-xl font-mono text-xs flex items-center justify-between">
+                                <span>--kiosk-printing</span>
+                                <button
+                                    onClick={() => handleCopyCommand('--kiosk-printing', 'flag')}
+                                    className="bg-orange-600 hover:bg-orange-500 text-white px-3 py-1 rounded text-[11px] font-sans font-bold transition-all"
+                                >
+                                    {copiedCommand === 'flag' ? 'Copiado!' : 'Copiar'}
+                                </button>
+                            </div>
+
+                            <div className="ml-8 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-900">
+                                <p className="font-bold mb-1">📌 Exemplo de como deve ficar o campo "Destino":</p>
+                                <code className="block bg-white p-2 rounded border border-blue-200 font-mono text-[11px] text-gray-800 overflow-x-auto">
+                                    "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing
+                                </code>
+                            </div>
+
+                            <p className="text-xs text-gray-500 ml-8">
+                                4. Clique em <strong>Aplicar</strong> e depois em <strong>OK</strong>.
+                                <br/>5. <strong>IMPORTANTE:</strong> Feche todas as janelas abertas do Google Chrome antes de abrir pelo novo atalho para que a configuração entre em vigor.
+                            </p>
+                        </div>
+
+                        {/* Passo 3 */}
+                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl space-y-2">
+                            <div className="flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-full bg-orange-600 text-white font-black text-xs flex items-center justify-center">3</span>
+                                <h5 className="font-black text-gray-800 text-sm">Ajustar Margens e Cabeçalhos na Primeira Impressão</h5>
+                            </div>
+                            <p className="text-xs text-gray-600 leading-relaxed ml-8">
+                                Na primeira vez que for imprimir um cupom pelo Chrome:
+                            </p>
+                            <ul className="list-disc list-inside text-xs text-gray-600 space-y-1 ml-8">
+                                <li>Em <strong>Destino</strong>: Verifique se sua impressora térmica está selecionada.</li>
+                                <li>Em <strong>Mais Definições</strong>:
+                                    <ul className="list-circle list-inside ml-4 mt-0.5 space-y-0.5">
+                                        <li>Defina <strong>Margens</strong> como: <strong>Nenhuma</strong> (ou Mínima).</li>
+                                        <li>Desmarque a caixa <strong>"Cabeçalhos e rodapés"</strong> (para não imprimir data e URL no topo/rodapé da bobina).</li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </div>
+
+                        {/* Passo 4 */}
+                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl space-y-2">
+                            <div className="flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-full bg-orange-600 text-white font-black text-xs flex items-center justify-center">4</span>
+                                <h5 className="font-black text-gray-800 text-sm">Ativar o "Modo Servidor de Impressão" no GuaraFood</h5>
+                            </div>
+                            <p className="text-xs text-gray-600 leading-relaxed ml-8">
+                                Abra o GuaraFood pelo atalho configurado e acesse o menu <strong>Configurações (Config)</strong>:
+                            </p>
+                            <ul className="list-disc list-inside text-xs text-gray-600 space-y-1 ml-8">
+                                <li>Selecione a largura correta da sua bobina: <strong>80mm</strong> (padrão de balcão) ou <strong>58mm</strong> (bobina portátil).</li>
+                                <li>Ative a chave <strong>"Modo Servidor de Impressão"</strong> (ative apenas no computador conectado à impressora).</li>
+                                <li>Clique no botão <strong>"Imprimir Cupom de Teste"</strong> para validar a saída automática imediata do papel.</li>
+                            </ul>
+                        </div>
+                    </section>
+
+                    {/* Dica para Modo Totem / Tela Cheia */}
+                    <div className="p-4 bg-gray-900 text-white rounded-2xl space-y-2 shadow-md">
+                        <div className="flex items-center gap-2">
+                            <span className="text-xl">💡</span>
+                            <h5 className="font-bold text-sm text-orange-400">Dica Pro: Modo Quiosque em Tela Cheia (Caixa/Totem)</h5>
+                        </div>
+                        <p className="text-xs text-gray-300 leading-relaxed">
+                            Se você deseja que o Chrome abra o sistema em tela cheia sem barras de endereço ou abas (ideal para terminais de caixa dedicados), adicione também o parâmetro <code className="text-orange-300 font-mono">--kiosk</code>:
+                        </p>
+                        <div className="bg-black/50 p-2.5 rounded-lg font-mono text-[11px] text-orange-300 flex items-center justify-between">
+                            <span className="overflow-x-auto">--kiosk --kiosk-printing</span>
+                            <button
+                                onClick={() => handleCopyCommand('--kiosk --kiosk-printing', 'kiosk')}
+                                className="bg-orange-600 hover:bg-orange-500 text-white px-2 py-0.5 rounded text-[10px] font-sans font-bold ml-2 shrink-0"
+                            >
+                                {copiedCommand === 'kiosk' ? 'Copiado!' : 'Copiar'}
+                            </button>
+                        </div>
+                        <p className="text-[11px] text-gray-400">
+                            Para fechar o modo quiosque em tela cheia no teclado do computador, basta pressionar <strong>Alt + F4</strong>.
+                        </p>
+                    </div>
+
+                    {/* Dúvidas Frequentes da Impressão */}
+                    <section className="space-y-3">
+                        <h4 className="font-black text-gray-800 text-base">Solução de Dúvidas Frequentes</h4>
+                        <div className="space-y-2 text-xs">
+                            <div className="p-3 bg-gray-50 border rounded-xl">
+                                <p className="font-bold text-gray-800">P: A tela de visualização de impressão ainda está aparecendo?</p>
+                                <p className="text-gray-600 mt-1">R: Certifique-se de que fechou completamente o Google Chrome (inclusive no ícone ao lado do relógio do Windows) antes de abrir pelo atalho com o parâmetro <code className="bg-gray-200 px-1 rounded">--kiosk-printing</code>.</p>
+                            </div>
+                            <div className="p-3 bg-gray-50 border rounded-xl">
+                                <p className="font-bold text-gray-800">P: O texto está saindo cortado nas laterais do papel?</p>
+                                <p className="text-gray-600 mt-1">R: No painel do GuaraFood (Configurações), altere a largura do papel para <strong>58mm</strong> ou <strong>80mm</strong> de acordo com a sua impressora física.</p>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            )
+        },
+        {
+            id: 'configuracoes',
+            title: 'Configurações do Estabelecimento',
+            icon: '⚙️',
+            content: (
+                <div className="space-y-6">
+                    <section>
+                        <h4 className="font-black text-gray-800 mb-2">1. Dados da Empresa e Cardápio Online</h4>
+                        <p className="text-sm text-gray-600 mb-2">No painel Administrativo (Menu Lateral &rarr; Config), estruture sua operação:</p>
+                        <div className="bg-gray-50 p-4 rounded-xl space-y-3">
+                            <div>
+                                <p className="font-bold text-gray-800 text-xs uppercase mb-1">Informações Básicas e Contato</p>
+                                <p className="text-xs text-gray-500">Nome fantasia, endereço físico, cidade atendida e o WhatsApp do restaurante.</p>
+                            </div>
+                            <div>
+                                <p className="font-bold text-gray-800 text-xs uppercase mb-1">Taxa de Entrega (Delivery)</p>
+                                <p className="text-xs text-gray-500">Defina o valor fixo cobrado por entrega ou deixe 0 para entrega grátis.</p>
+                            </div>
+                            <div>
+                                <p className="font-bold text-gray-800 text-xs uppercase mb-1">Horário de Funcionamento</p>
+                                <p className="text-xs text-gray-500">Configure horários de abertura e fechamento por dia da semana (com suporte a turnos duplos de almoço e jantar). Fora do horário, o cardápio online bloqueia pedidos automaticamente.</p>
+                            </div>
+                        </div>
+                    </section>
+                    <section>
+                        <h4 className="font-black text-gray-800 mb-2">2. Chave Pix e Integração de Pagamento</h4>
+                        <p className="text-sm text-gray-600 leading-relaxed">
+                            Configure sua chave Pix nas configurações. O GuaraFood gera o QR Code Pix Dinâmico e o código "Copia e Cola" instantaneamente tanto no Checkout online do cliente quanto nos cupons de mesa impressos.
+                        </p>
+                    </section>
+                    <section>
+                        <h4 className="font-black text-gray-800 mb-2">3. Segurança e Controle de Acessos</h4>
+                        <p className="text-sm text-gray-600 mb-2">Crie usuários para sua equipe com permissões restritas e seguras:</p>
+                        <ul className="list-disc list-inside text-xs text-gray-500 space-y-1">
+                            <li><strong>Garçom:</strong> Acesso restrito ao mapa de mesas, comandas e autoatendimento do salão.</li>
+                            <li><strong>Cozinha:</strong> Acesso à tela de pedidos em preparo (KDS) para despachar pratos.</li>
+                            <li><strong>Gerente/Administrador:</strong> Acesso total às configurações, cardápio, relatórios e financeiro.</li>
+                        </ul>
+                    </section>
+                </div>
+            )
+        },
+        {
+            id: 'operacao',
+            title: 'Operação (KDS e Cozinha)',
+            icon: '📋',
+            content: (
+                <div className="space-y-6">
+                    <section>
+                        <h4 className="font-black text-gray-800 mb-2">Painel de Pedidos (KDS em Tempo Real)</h4>
+                        <p className="text-sm text-gray-600 mb-4">
+                            Substitua o papel pelo digital. Coloque uma tela, monitor ou tablet na cozinha para acompanhar os pedidos em colunas organizadas:
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                            <div className="p-3 bg-blue-50 rounded-xl border border-blue-100">
+                                <p className="text-[10px] font-black text-blue-800 uppercase">1. Pendentes</p>
+                                <p className="text-xs text-blue-600 font-bold">Aceite o pedido.</p>
+                            </div>
+                            <div className="p-3 bg-orange-50 rounded-xl border border-orange-100">
+                                <p className="text-[10px] font-black text-orange-800 uppercase">2. Em Preparo</p>
+                                <p className="text-xs text-orange-600 font-bold">Foco na produção.</p>
+                            </div>
+                            <div className="p-3 bg-green-50 rounded-xl border border-green-100">
+                                <p className="text-[10px] font-black text-green-800 uppercase">3. Pronto / Despacho</p>
+                                <p className="text-xs text-green-600 font-bold">Aguardando entrega.</p>
+                            </div>
+                            <div className="p-3 bg-purple-50 rounded-xl border border-purple-100">
+                                <p className="text-[10px] font-black text-purple-800 uppercase">4. Finalizado</p>
+                                <p className="text-xs text-purple-600 font-bold">Entregue com sucesso.</p>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            )
+        },
+        {
+            id: 'cardapio',
+            title: 'Gestão de Cardápio e Preços',
+            icon: '🍕',
+            content: (
+                <div className="space-y-6">
+                    <section>
+                        <h4 className="font-black text-gray-800 mb-2">1. Categorias, Pizzas e Complementos</h4>
+                        <p className="text-sm text-gray-600">Organize seu menu por categorias (Bebidas, Lanches, Sobremesas). Em cada produto, configure:</p>
+                        <ul className="list-disc list-inside text-xs text-gray-500 space-y-1 mt-2">
+                            <li><strong>Fotos Atraentes:</strong> Imagens de qualidade aumentam em até 40% a taxa de conversão dos clientes.</li>
+                            <li><strong>Pausar Item (Esgotado):</strong> Desmarque "Disponível" para que o item suma do cardápio online imediatamente em caso de falta no estoque.</li>
+                            <li><strong>Pizzas e Tamanhos:</strong> Configure múltiplos tamanhos (Brotinho, Média, Grande, Família) com precificação dinâmica.</li>
+                            <li><strong>Marmitex e Açaís:</strong> Crie grupos de complementos com limites de escolhas gratuitas e valores adicionais para itens extras.</li>
+                        </ul>
+                    </section>
+                </div>
+            )
+        },
+        {
+            id: 'mensalistas',
+            title: 'Mensalistas e Fidelidade',
+            icon: '🤝',
+            content: (
+                <div className="space-y-6">
+                    <section>
+                        <h4 className="font-black text-gray-800 mb-2">Mensalistas ("Fiado" Profissional e Controlado)</h4>
+                        <p className="text-sm text-gray-600 leading-relaxed">
+                            Cadastre empresas, funcionários ou clientes fiéis que pagam quinzenalmente ou no fim do mês. O sistema acumula as compras automaticamente e permite emitir um extrato completo com data, hora, itens e valores para conferência e quitação rápida.
+                        </p>
+                    </section>
+                    <section>
+                        <h4 className="font-black text-gray-800 mb-2">Clube de Fidelidade Automático</h4>
+                        <p className="text-sm text-gray-600 leading-relaxed">
+                            Habilite nas configurações. O cliente acumula pontos a cada pedido identificado pelo telefone. Ao atingir a meta estipulada, o próprio sistema concede a recompensa (desconto ou item grátis) no Checkout.
+                        </p>
+                    </section>
+                </div>
+            )
+        },
+        {
+            id: 'financeiro',
+            title: 'Financeiro e Caixa',
+            icon: '💰',
+            content: (
+                <div className="space-y-6">
+                    <section>
+                        <h4 className="font-black text-gray-800 mb-2">Fechamento de Caixa e Lucro Líquido</h4>
+                        <p className="text-sm text-gray-600 mb-4">
+                            O GuaraFood separa as vendas por canal (Delivery vs Salão/Mesas) e por modalidade de pagamento (Dinheiro, Pix, Cartão de Crédito, Cartão de Débito, Mensalista).
+                        </p>
+                        <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
+                            <h5 className="text-emerald-800 font-bold text-xs uppercase mb-2">💡 Gestão de Despesas</h5>
+                            <p className="text-xs text-emerald-700">
+                                Lance suas contas a pagar e despesas diárias (fornecedores, gás, embalagens, folha de pagamento) na aba <strong>Financeiro &rarr; Despesas</strong> para obter o <strong>Lucro Líquido Real</strong> do restaurante.
+                            </p>
+                        </div>
+                    </section>
+                </div>
+            )
+        }
+    ];
+
+    return (
+        <div className="flex flex-col h-full bg-gray-50">
+            {/* Header */}
+            <div className="bg-white px-6 py-4 flex items-center justify-between border-b border-gray-100 sticky top-0 z-20 shadow-sm">
+                <div className="flex items-center gap-4">
+                    <button 
+                        onClick={onBack}
+                        className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                        title="Voltar ao Painel"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6 text-gray-700">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+                        </svg>
+                    </button>
+                    <div>
+                        <h1 className="text-xl md:text-2xl font-black text-gray-800 tracking-tight">Manual & Central de Ajuda</h1>
+                        <p className="text-xs text-gray-400 font-medium">Instruções completas de operação e configurações do GuaraFood</p>
+                    </div>
+                </div>
+                <div className="hidden sm:flex items-center gap-2">
+                    <span className="px-3 py-1 bg-orange-100 text-orange-800 font-bold text-xs rounded-full">
+                        GuaraFood v{APP_VERSION}
+                    </span>
+                </div>
+            </div>
+
+            <div className="flex-grow flex flex-col md:flex-row overflow-hidden">
+                {/* Sidebar Navigation */}
+                <div className="w-full md:w-80 bg-white border-r border-gray-100 overflow-y-auto p-4 space-y-1.5 flex-shrink-0">
+                    <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest px-3 mb-2">Tópicos do Sistema</p>
+                    {sections.map(section => (
+                        <button
+                            key={section.id}
+                            onClick={() => setActiveSection(section.id)}
+                            className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-bold transition-all text-left ${
+                                activeSection === section.id 
+                                ? 'bg-orange-600 text-white shadow-md shadow-orange-200 translate-x-1' 
+                                : 'text-gray-600 hover:bg-orange-50 hover:text-orange-600'
+                            }`}
+                        >
+                            <div className="flex items-center gap-3 min-w-0">
+                                <span className="text-xl flex-shrink-0">{section.icon}</span>
+                                <span className="truncate">{section.title}</span>
+                            </div>
+                            {section.badge && (
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase flex-shrink-0 ${
+                                    activeSection === section.id 
+                                    ? 'bg-white/20 text-white' 
+                                    : 'bg-orange-100 text-orange-800'
+                                }`}>
+                                    {section.badge}
+                                </span>
+                            )}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Content Area */}
+                <div className="flex-grow overflow-y-auto p-6 md:p-10 bg-white">
+                    <div className="max-w-4xl mx-auto">
+                        <div className="flex items-center gap-4 mb-8 pb-6 border-b border-gray-100">
+                            <div className="w-16 h-16 bg-orange-100 rounded-3xl flex items-center justify-center text-3xl shadow-inner">
+                                {sections.find(s => s.id === activeSection)?.icon}
+                            </div>
+                            <div>
+                                <h2 className="text-2xl md:text-3xl font-black text-gray-800 tracking-tight">
+                                    {sections.find(s => s.id === activeSection)?.title}
+                                </h2>
+                                <p className="text-gray-400 font-bold text-xs uppercase tracking-widest mt-1">Guia Prático & Operacional</p>
+                            </div>
+                        </div>
+
+                        <div className="prose prose-orange max-w-none">
+                            {sections.find(s => s.id === activeSection)?.content}
+                        </div>
+
+                        {/* Footer Help */}
+                        <div className="mt-16 pt-8 border-t border-gray-100 flex flex-col md:flex-row items-center justify-between gap-6 bg-gray-50 p-6 rounded-2xl">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600 flex-shrink-0">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h4 className="font-black text-gray-800 text-sm">Precisa de assistência técnica ou treinamento?</h4>
+                                    <p className="text-xs text-gray-500">Nosso time de suporte está disponível para ajudar no seu estabelecimento.</p>
+                                </div>
+                            </div>
+                            <a 
+                                href="https://wa.me/5535999999999" 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="w-full md:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm rounded-xl shadow-md hover:scale-105 transition-all text-center"
+                            >
+                                Falar no WhatsApp
+                            </a>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     );
 };
 
-export default MensalistasManager;
+export default HelpCenter;

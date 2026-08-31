@@ -1,174 +1,214 @@
-import type { Restaurant } from '../types';
 
-// Helper to convert "HH:MM" string to minutes from midnight
-export const timeToMinutes = (timeString: string): number => {
-    if (!timeString || !timeString.includes(':')) return 0; // Guard against invalid format
-    const [hours, minutes] = timeString.split(':').map(Number);
-    if (isNaN(hours) || isNaN(minutes)) return 0;
-    return hours * 60 + minutes;
-};
+import { supabase } from '../services/api';
+import { createCategory, createMenuItem } from '../services/databaseService';
 
-// This function is fine as it is. The calling logic needs to be fixed.
-export const checkTimeRange = (currentTime: number, openStr: string, closeStr: string): boolean => {
-    if (!openStr || !closeStr) return false;
-    const openTime = timeToMinutes(openStr);
-    const closeTime = timeToMinutes(closeStr);
+export const importDuGrillRestaurant = async () => {
+    const restaurantData = {
+        name: "Hambúrgueria Du grill",
+        category: "Lanches, Pizza, Bebidas",
+        delivery_time: "40-60 min",
+        rating: 5.0,
+        image_url: "",
+        payment_gateways: ["Pix", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"],
+        address: "Endereço a confirmar",
+        phone: "(00) 00000-0000",
+        opening_hours: "18:00",
+        closing_hours: "23:00",
+        delivery_fee: 0,
+        active: true,
+        operating_hours: [
+            { dayOfWeek: 0, opens: '18:00', closes: '23:00', isOpen: true },
+            { dayOfWeek: 1, opens: '18:00', closes: '23:00', isOpen: true },
+            { dayOfWeek: 2, opens: '18:00', closes: '23:00', isOpen: true },
+            { dayOfWeek: 3, opens: '18:00', closes: '23:00', isOpen: true },
+            { dayOfWeek: 4, opens: '18:00', closes: '23:00', isOpen: true },
+            { dayOfWeek: 5, opens: '18:00', closes: '23:00', isOpen: true },
+            { dayOfWeek: 6, opens: '18:00', closes: '23:00', isOpen: true }
+        ]
+    };
 
-    if (closeTime < openTime) {
-        // Overnight shift (e.g. 18:00 to 02:00)
-        return currentTime >= openTime || currentTime < closeTime;
-    }
-    return currentTime >= openTime && currentTime < closeTime;
-};
+    const userData = {
+        email: `dugrill${Date.now()}@guarafood.com`, // Unique email
+        password: "password123" // Default password
+    };
 
-export const isRestaurantOpen = (restaurant: Restaurant): boolean => {
-    const { operatingHours, openingHours, closingHours } = restaurant;
-    const now = new Date();
-    const currentDay = now.getDay(); // 0 for Sunday
-    const currentTimeInMinutes = now.getHours() * 60 + now.getMinutes();
-
-    // New logic using detailed operating hours
-    if (operatingHours && operatingHours.length === 7) {
-        try {
-            const todaySchedule = operatingHours[currentDay];
-            const yesterdayIndex = currentDay === 0 ? 6 : currentDay - 1;
-            const yesterdaySchedule = operatingHours[yesterdayIndex];
-
-            // 1. Check if we are currently within a shift that started TODAY.
-            if (todaySchedule?.isOpen) {
-                // Check shift 1 of today
-                if (todaySchedule.opens && todaySchedule.closes) {
-                    const openTime = timeToMinutes(todaySchedule.opens);
-                    const closeTime = timeToMinutes(todaySchedule.closes);
-                    if (closeTime > openTime) { // It's a same-day shift
-                        if (currentTimeInMinutes >= openTime && currentTimeInMinutes < closeTime) {
-                            return true;
-                        }
-                    } else { // It's an overnight shift that STARTS today
-                        if (currentTimeInMinutes >= openTime) { // It's open from open time until midnight
-                            return true;
-                        }
-                    }
-                }
-                // Check shift 2 of today
-                if (todaySchedule.opens2 && todaySchedule.closes2) {
-                    const openTime = timeToMinutes(todaySchedule.opens2);
-                    const closeTime = timeToMinutes(todaySchedule.closes2);
-                    if (closeTime > openTime) { // It's a same-day shift
-                        if (currentTimeInMinutes >= openTime && currentTimeInMinutes < closeTime) {
-                            return true;
-                        }
-                    } else { // It's an overnight shift that STARTS today
-                        if (currentTimeInMinutes >= openTime) {
-                            return true;
-                        }
-                    }
-                }
-            }
-
-            // 2. Check if we are in the "spill-over" part of an overnight shift from YESTERDAY.
-            if (yesterdaySchedule?.isOpen) {
-                // Check shift 1 from yesterday
-                if (yesterdaySchedule.opens && yesterdaySchedule.closes) {
-                    const openTime = timeToMinutes(yesterdaySchedule.opens);
-                    const closeTime = timeToMinutes(yesterdaySchedule.closes);
-                    if (closeTime < openTime) { // Was it an overnight shift?
-                        if (currentTimeInMinutes < closeTime) { // Are we in the early morning hours of it?
-                            return true;
-                        }
-                    }
-                }
-                // Check shift 2 from yesterday
-                if (yesterdaySchedule.opens2 && yesterdaySchedule.closes2) {
-                    const openTime = timeToMinutes(yesterdaySchedule.opens2);
-                    const closeTime = timeToMinutes(yesterdaySchedule.closes2);
-                    if (closeTime < openTime) { // Was it an overnight shift?
-                        if (currentTimeInMinutes < closeTime) { // Are we in the early morning hours of it?
-                            return true;
-                        }
-                    }
-                }
-            }
-
-            // If neither of the above conditions were met, the restaurant is closed.
-            return false;
-
-        } catch (e) {
-            console.error("Error parsing detailed restaurant hours:", restaurant.name, e);
-            return true; // Fallback to open on error
-        }
-    }
-
-    // Fallback logic for old data structure (this part is correct because it uses the generic checkTimeRange)
-    if (!openingHours || !closingHours) {
-        return true; // Assume open if data is missing
-    }
     try {
-       return checkTimeRange(currentTimeInMinutes, openingHours, closingHours);
-    } catch (e) {
-        console.error("Error parsing simple restaurant hours:", restaurant.name, e);
-        return true;
-    }
-};
+        // 0. Check if restaurant already exists
+        const { data: existingRestaurant } = await supabase
+            .from('restaurants')
+            .select('id')
+            .eq('name', restaurantData.name)
+            .single();
 
-const checkSingleTimeRange = (openStr: string, closeStr: string): { isAvailable: boolean; message?: string } => {
-    const now = new Date();
-    const currentMins = now.getHours() * 60 + now.getMinutes();
-
-    if (openStr && closeStr) {
-        const isAvailable = checkTimeRange(currentMins, openStr, closeStr);
-        return {
-            isAvailable,
-            message: isAvailable ? undefined : `Disponível das ${openStr} às ${closeStr}`
-        };
-    } else if (openStr) {
-        const openMins = timeToMinutes(openStr);
-        const isAvailable = currentMins >= openMins;
-        return {
-            isAvailable,
-            message: isAvailable ? undefined : `Disponível a partir das ${openStr}`
-        };
-    } else if (closeStr) {
-        const closeMins = timeToMinutes(closeStr);
-        const isAvailable = currentMins < closeMins;
-        return {
-            isAvailable,
-            message: isAvailable ? undefined : `Disponível até às ${closeStr}`
-        };
-    }
-
-    return { isAvailable: true };
-};
-
-export const isMenuItemAvailableByTime = (
-    item: { availableStartTime?: string; availableEndTime?: string },
-    category?: { availableStartTime?: string; availableEndTime?: string; name?: string }
-): { isAvailable: boolean; message?: string } => {
-    // 1. Check item-level restrictions first if present
-    const itemOpen = item.availableStartTime?.trim() || '';
-    const itemClose = item.availableEndTime?.trim() || '';
-    if (itemOpen || itemClose) {
-        const itemResult = checkSingleTimeRange(itemOpen, itemClose);
-        if (!itemResult.isAvailable) {
-            return itemResult;
+        if (existingRestaurant) {
+            return { success: false, error: `O restaurante "${restaurantData.name}" já existe (ID: ${existingRestaurant.id}). Exclua o anterior se quiser recriar.` };
         }
-    }
 
-    // 2. Check category-level restrictions if present
-    if (category) {
-        const catOpen = category.availableStartTime?.trim() || '';
-        const catClose = category.availableEndTime?.trim() || '';
-        if (catOpen || catClose) {
-            const catResult = checkSingleTimeRange(catOpen, catClose);
-            if (!catResult.isAvailable) {
-                return {
-                    isAvailable: false,
-                    message: catResult.message ? `Categoria "${category.name || ''}": ${catResult.message}` : `Categoria indisponível no momento`
-                };
+        // 1. Create Restaurant and User
+        const { data, error } = await supabase.functions.invoke('create-restaurant-with-user', {
+            body: { restaurantData, userData }
+        });
+
+        if (error) throw error;
+
+        let restaurantId = data?.restaurantId || data?.id;
+
+        if (!restaurantId) {
+             console.log("Restaurant ID not returned directly, fetching by name...");
+             // Fallback: Fetch by name (order by id desc to get latest)
+             const { data: restData, error: restError } = await supabase
+                .from('restaurants')
+                .select('id')
+                .eq('name', restaurantData.name)
+                .order('id', { ascending: false })
+                .limit(1)
+                .single();
+             
+             if (restError || !restData) {
+                 console.error("Fetch Error:", restError);
+                 throw new Error("Could not retrieve created restaurant ID. Please check if the restaurant was created.");
+             }
+             restaurantId = restData.id;
+        }
+
+        console.log("Restaurant Created:", restaurantId);
+
+        // 2. Define Menu Data
+        const menuData = [
+            {
+                category: "Hambúrguer Artesanal 150g",
+                items: [
+                    { name: "1- GRILL BURGUER", description: "Hambúrguer artesanal 150g, duplo queijo cheddar e pão brioche" },
+                    { name: "2- GRILL SALADA", description: "Hambúrguer artesanal 150g, queijo cheddar, alface, tomate e pão brioche" },
+                    { name: "3- GRILL BACON", description: "Hambúrguer artesanal 150g, queijo cheddar, bacon, alface, tomate e pão brioche" },
+                    { name: "4- GRILL EGG", description: "Hambúrguer artesanal 150g, queijo cheddar, ovo, alface, tomate e pão brioche" },
+                    { name: "5- GRILL BACON EGG", description: "Hambúrguer artesanal 150g, queijo cheddar, ovo, bacon, alface, tomate e pão brioche" },
+                    { name: "6- GRILL GULOSEIMA", description: "Hambúrguer artesanal 150g, queijo cheddar, cebola caramelizada, batata palha e pão brioche" },
+                    { name: "7- GRILL FRANGÃO", description: "Frango empanado, queijo cheddar, alface, tomate e pão brioche" },
+                    { name: "8- GRILL SALADA DUPLO", description: "2 Hambúrguer artesanal 150g, 2 queijo cheddar, alface, tomate e pão brioche" },
+                    { name: "9- GRILL BURGUER DUPLO", description: "2 Hambúrguer artesanal 150g, 2 queijo cheddar e pão brioche" },
+                    { name: "10- GRILL CALABRESA", description: "Hambúrguer artesanal 150g, queijo cheddar , calabresa, alface, tomate e pão brioche" },
+                    { name: "11- GRILL TUDO", description: "Hambúrguer artesanal 150g, queijo cheddar, ovo, .bacon, calabresa, catupiry, milho, batata palha, alface, tomate e pão brioche." },
+                    { name: "Adicional de Batata Frita", description: "Porção adicional" }
+                ]
+            },
+            {
+                category: "Hambúrguer Industrial 90g",
+                items: [
+                    { name: "12- X- BURGUER", description: "Hambúrguer 90 gramas, queijo mussarela e pão de hambúrguer" },
+                    { name: "13- X- SALADA", description: "Hambúrguer 90 gramas, queijo mussarela, alface, tomate e pão de hambúrguer" },
+                    { name: "14- X- BACON", description: "Hambúrguer 90 gramas, queijo mussarela, bacon, alface, tomate e pão de hambúrguer" },
+                    { name: "15- X- EGG", description: "Hambúrguer 90 gramas, ovo, queijo mussarela, alface, tomate e pão de hambúrguer" },
+                    { name: "16- X- BACON EGG", description: "Hambúrguer 90 gramas, ovo, bacon, queijo mussarela, alface, tomate e pão de hambúrguer" },
+                    { name: "17- X- FRANGO", description: "Filé de frango, queijo mussarela, alface, tomate e pão de hambúrguer" },
+                    { name: "18- X - VEGETARIANO", description: "Ovo, queijo mussarela, catupiry, milho, batata palha, alface, tomate e pão de hambúrguer" },
+                    { name: "19- X - SALADA DUPLO", description: "2 Hambúrguer 90 gramas, 2 queijo mussarela, alface, tomate e pão de hambúrguer" },
+                    { name: "20- X - BURGUER DUPLO", description: "2 Hambúrguer 90 gramas, 2 queijo mussarela e pão de hambúrguer" },
+                    { name: "21- X - SALADÃO", description: "Hambúrguer 90 gramas, queijo mussarela, catupiry, milho, batata palha, alface, tomate e pão de hambúrguer" },
+                    { name: "22- X-CALABRESA", description: "Hambúrguer 90 gramas, queijo mussarela, calabresa, alface, tomate e pão de hambúrguer" },
+                    { name: "23- X-DOG", description: "2 Salsichas, bacon, calabresa, queijo mussarela, milho, batata palha, alface, tomate e pão de hambúrguer" },
+                    { name: "24- X - TUDO", description: "Hambúrguer 90g , queijo mussarela, ovo, .bacon, calabresa, catupiry, milho, batata palha, alface, tomate e pão de hambúrguer." },
+                    { name: "Adicional de Batata Frita", description: "Porção adicional" }
+                ]
+            },
+            {
+                category: "Porções",
+                items: [
+                    { name: "25- BATATA FRITA", description: "Porção Quente" },
+                    { name: "26- BATATA FRITA C/CALABRESA", description: "Porção Quente" },
+                    { name: "27- BATATA FRITA C/BACON", description: "Porção Quente" },
+                    { name: "28- BATATA FRITA C/MUSSARELA E BACON", description: "Porção Quente" },
+                    { name: "29- BATATA MALUCA", description: "Mussarela, bacon e calabresa" },
+                    { name: "30- FRANGO À PASSARINHO C/BATATA FRITA", description: "Porção Quente" },
+                    { name: "31- CALABRESA ACEBOLADA C/FRITAS", description: "Porção Quente" },
+                    { name: "32- CONTRA FILÉ ACEBOLADO C/FRITAS", description: "Porção Quente" },
+                    { name: "33- PROVOLONE À MILANESA", description: "Porção Quente" },
+                    { name: "34- ÍSCAS DE FILÉ DE FRANGO EMPANADO C/FRITAS", description: "Porção Quente" },
+                    { name: "35- TORRESMO C/MANDIOCA", description: "Porção Quente" },
+                    { name: "36- SALAME C/ AZEITONAS", description: "Porção Fria" },
+                    { name: "37- PROVOLONE C/ AZEITONAS", description: "Porção Fria" },
+                    { name: "38- TÁBUA DE FRIOS", description: "Mussarela, presunto, salame, azeitona e provolone" }
+                ]
+            },
+            {
+                category: "Crepes",
+                items: [
+                    { name: "39- CREPES SALGADOS", description: "Opções: Presunto e Queijo, Calabresa e Queijo, Frango e Queijo, Salsicha e Queijo" },
+                    { name: "40- CREPES DOCES", description: "Opções: Batom Preto, Batom Branco, Prestígio, Romeu e Julieta" }
+                ]
+            },
+            {
+                category: "Salgados",
+                items: [
+                    { name: "41- COXINHA", description: "" },
+                    { name: "42- RISOLE", description: "" },
+                    { name: "43- SALSICHA", description: "" },
+                    { name: "44- PRESUNTO E QUEIJO", description: "" }
+                ]
+            },
+            {
+                category: "Pastéis",
+                items: [
+                    { name: "Pastéis Sabores", description: "Queijo, Carne, Calabresa, Pizza, Frango" },
+                    { name: "Adicionais de Pastel", description: "Catupiry, Queijo, Bacon, Milho, Azeitona, Cheddar" }
+                ]
+            },
+            {
+                category: "Bebidas",
+                items: [
+                    { name: "Garrafas Cervejas 600ml", description: "Brahma, Skol, Antártica" },
+                    { name: "Latas Cervejas", description: "Brahma, Skol, Antártica" },
+                    { name: "Refrigerantes 2 Litros", description: "Coca-Cola, Fanta, Guaraná, Sprite" },
+                    { name: "Refrigerantes Lata", description: "Coca-Cola, Fanta, Guaraná, Sprite" },
+                    { name: "Suco Natural", description: "Laranja" },
+                    { name: "Suco de Polpa", description: "Abacaxi, Acerola, Maracujá, Goiaba, Caju, Morango, Uva, Abacaxi c/ Hortelã" }
+                ]
+            },
+            {
+                category: "Comidas",
+                items: [
+                    { name: "Pratos Executivos", description: "Salada, Arroz, Feijão, Batata Frita, Carnes (Bovina, Suína, Frango)" },
+                    { name: "Marmitex P", description: "Arroz, Feijão, Batata Frita, Carnes" },
+                    { name: "Marmitex M", description: "Arroz, Feijão, Batata Frita, Carnes" },
+                    { name: "Marmitex G", description: "Arroz, Feijão, Batata Frita, Carnes" },
+                    { name: "Panquecas", description: "Molho Vermelho. Sabores: Queijo, Carne, Frango, Presunto e Mussarela" }
+                ]
+            },
+            {
+                category: "Combos",
+                items: [
+                    { name: "Combo Casal - 2 Lanches X-Saladão", description: "Ganhe + 2 caixinhas de batata frita" },
+                    { name: "Combo Casal - 2 Lanches X-Burguer", description: "Ganhe + 2 caixinhas de batata frita" },
+                    { name: "Combo Casal - 2 Lanches X-Tudo", description: "Ganhe + 2 caixinhas de batata frita" },
+                    { name: "Combo Família - 4 Lanches X-Saladão", description: "Ganhe + 1 porção de batata frita" },
+                    { name: "Combo Família - 4 Lanches X-Burguer", description: "Ganhe + 1 porção de batata frita" },
+                    { name: "Combo Família - 4 Lanches X-Tudo", description: "Ganhe + 1 porção de batata frita" }
+                ]
+            }
+        ];
+
+        // 3. Insert Data
+        for (const cat of menuData) {
+            console.log(`Creating category: ${cat.category}`);
+            await createCategory(restaurantId, cat.category);
+            
+            for (const item of cat.items) {
+                console.log(`Creating item: ${item.name}`);
+                await createMenuItem(restaurantId, {
+                    name: item.name,
+                    description: item.description,
+                    price: 0,
+                    originalPrice: 0,
+                    imageUrl: "",
+                    category: cat.category,
+                    available: true
+                });
             }
         }
+
+        return { success: true, restaurantId };
+    } catch (err) {
+        console.error("Import Error:", err);
+        return { success: false, error: err };
     }
-
-    return { isAvailable: true };
 };
-

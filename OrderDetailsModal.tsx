@@ -1,504 +1,307 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import type { Order, CartItem, MenuItem, Combo, Addon } from '../types';
+import React, { useEffect, useRef, useState } from 'react';
+import type { Order, OrderStatus, PaymentEntry } from '../types';
+import PrintableOrder from './PrintableOrder';
+import OrderEditorModal from './OrderEditorModal'; // Import the new modal
+import { recordOrderPayment } from '../services/orderService';
 import { useNotification } from '../hooks/useNotification';
-import { updateOrderDetails } from '../services/orderService';
-import { getMensalistaByPhone } from '../services/mensalistaService';
-import { fetchMenuForRestaurant, fetchAddonsForRestaurant, fetchRestaurantByIdSecure } from '../services/databaseService';
-import Spinner from './Spinner';
-import OptimizedImage from './OptimizedImage';
-import AddItemToOrderModal from './AddItemToOrderModal';
-import PizzaCustomizationModal from './PizzaCustomizationModal';
-import AcaiCustomizationModal from './AcaiCustomizationModal';
-import GenericCustomizationModal from './GenericCustomizationModal';
-
-interface OrderEditorModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    order: Order;
-    onSave: (updatedOrder: Order) => void;
-    restaurantId: number;
-    restaurantName: string;
-    playNotification?: () => void;
-}
 
 const XIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+  </svg>
+);
+const PrintIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.253 1.464 2.405 3.06 2.405 4.5 0 1.356-1.07 2.448-2.384 2.448H6.384C5.07 24.948 4 23.856 4 22.5c0-1.44 1.152-3.036 2.405-4.5m11.318 0c.397-1.362.63-2.826.63-4.342 0-1.44-1.152-3.036-2.405-4.5l-1.050-1.242A3.375 3.375 0 0 0 14.25 6H9.75a3.375 3.375 0 0 0-2.345 1.05L6.34 8.292c-1.253 1.464-2.405 3.06-2.405 4.5 0 1.516.233 2.98.63 4.342m6.78-4.571a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z" />
     </svg>
 );
-const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+const EditIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
 );
-const PlusIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+const LeafIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+        <path fillRule="evenodd" d="M12.963 2.286a.75.75 0 00-1.071-.136 9.742 9.742 0 00-3.539 6.177 7.547 7.547 0 01-1.705-1.715.75.75 0 00-1.152-.082A9 9 0 1015.68 4.534a7.46 7.46 0 01-2.717-2.248zM15.75 14.25a3.75 3.75 0 11-7.313-1.172c.628.465 1.35.81 2.133 1a5.99 5.99 0 011.925-3.545 3.75 3.75 0 013.255 3.717z" clipRule="evenodd" />
+    </svg>
+);
+const StoreIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+        <path fillRule="evenodd" d="M7.5 6v.75H5.513c-.96 0-1.764.724-1.865 1.679l-1.263 12A1.875 1.875 0 004.25 22.5h15.5a1.875 1.875 0 001.865-2.071l-1.263-12a1.875 1.875 0 00-1.865-1.679H16.5V6a4.5 4.5 0 10-9 0zM12 3a3 3 0 00-3 3v.75h6V6a3 3 0 00-3-3zm-3 8.25a3 3 0 106 0v-.75a.75.75 0 011.5 0v.75a4.5 4.5 0 11-9 0v-.75a.75.75 0 011.5v.75z" clipRule="evenodd" />
     </svg>
 );
 
-const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, order, onSave, restaurantId, restaurantName, playNotification }) => {
-    const { addToast, prompt } = useNotification();
-    const [editedItems, setEditedItems] = useState<CartItem[]>([]);
-    const [editedPaymentMethod, setEditedPaymentMethod] = useState(order.paymentMethod);
-    const [editedCustomerName, setEditedCustomerName] = useState(order.customerName);
-    const [editedCustomerPhone, setEditedCustomerPhone] = useState(order.customerPhone);
-    const [isSaving, setIsSaving] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+const statusConfig: { [key in OrderStatus]: { text: string; color: string; } } = {
+    'Aguardando Pagamento': { text: 'Aguardando Pagamento', color: 'bg-gray-400' },
+    'Novo Pedido': { text: 'Novo Pedido', color: 'bg-blue-500' },
+    'Preparando': { text: 'Em Preparo', color: 'bg-yellow-500' },
+    'A Caminho': { text: 'A Caminho', color: 'bg-orange-500' },
+    'Entregue': { text: 'Entregue', color: 'bg-green-500' },
+    'Cancelado': { text: 'Cancelado', color: 'bg-red-500' },
+    'Mesa Aberta': { text: 'Mesa Aberta', color: 'bg-purple-600' },
+};
 
-    // States for adding new items
-    const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
-    const [allRestaurantMenuItems, setAllRestaurantMenuItems] = useState<MenuItem[]>([]);
-    const [allRestaurantCombos, setAllRestaurantCombos] = useState<Combo[]>([]);
-    const [allRestaurantAddons, setAllRestaurantAddons] = useState<Addon[]>([]);
+interface OrderDetailsModalProps { 
+    order: Order; 
+    onClose: () => void; 
+    printerWidth?: number; // Keep printerWidth for printable order
+}
 
-    // States for item customization modals
-    const [isPizzaModalOpen, setIsPizzaModalOpen] = useState(false);
-    const [isAcaiModalOpen, setIsAcaiModalOpen] = useState(false);
-    const [isGenericModalOpen, setIsGenericModalOpen] = useState(false);
-    const [itemToCustomize, setItemToCustomize] = useState<MenuItem | null>(null);
-    const [hasMensalistas, setHasMensalistas] = useState(false);
-    const [hasKiloService, setHasKiloService] = useState(false);
-    const [pricePerKilo, setPricePerKilo] = useState(0);
+const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, printerWidth = 80 }) => {
+    const { addToast } = useNotification();
+    const { text, color } = statusConfig[order.status];
+    const [isEditing, setIsEditing] = useState(false); // State to control editing modal
+    const [currentOrder, setCurrentOrder] = useState<Order>(order); // Use internal state for order
 
     useEffect(() => {
-        const fetchRestaurant = async () => {
-            try {
-                const rest = await fetchRestaurantByIdSecure(restaurantId);
-                if (rest) {
-                    setHasMensalistas(rest.hasMensalistas || false);
-                    setHasKiloService(rest.hasKiloService || false);
-                    setPricePerKilo(rest.pricePerKilo || 0);
-                }
-            } catch (error) {
-                console.error("Error fetching restaurant:", error);
-            }
-        };
-        fetchRestaurant();
-    }, [restaurantId]);
-
-    useEffect(() => {
-        if (isOpen) {
-            setEditedItems(order.items.map(item => ({ ...item }))); // Deep copy
-            setEditedPaymentMethod(order.paymentMethod);
-            setEditedCustomerName(order.customerName);
-            setEditedCustomerPhone(order.customerPhone);
-            setError(null);
-            setIsSaving(false);
-        }
-    }, [order, isOpen]);
-
-    // Load full menu and addons for the restaurant
-    useEffect(() => {
-        if (!restaurantId || !isOpen) return;
-
-        const loadRestaurantData = async () => {
-            try {
-                // Pass true to ignore day filter, so admin can add ANY item to the order manually
-                const [menuData, addonsData] = await Promise.all([
-                    fetchMenuForRestaurant(restaurantId, true), 
-                    fetchAddonsForRestaurant(restaurantId),
-                ]);
-                setAllRestaurantMenuItems(menuData.flatMap(c => c.items));
-                setAllRestaurantCombos(menuData.flatMap(c => c.combos || []));
-                setAllRestaurantAddons(addonsData);
-            } catch (err) {
-                console.error("Failed to load restaurant menu/addons:", err);
-                addToast({ message: "Erro ao carregar cardápio do restaurante para edição.", type: "error" });
-            }
-        };
-        loadRestaurantData();
-    }, [restaurantId, isOpen, addToast]);
-
-    const handleQuantityChange = useCallback((itemId: string, newQuantity: number) => {
-        setEditedItems(prevItems => {
-            const updated = prevItems.map(item =>
-                item.id === itemId ? { ...item, quantity: Math.max(0, newQuantity) } : item
-            );
-            return updated.filter(item => item.quantity > 0);
-        });
-    }, []);
-
-    const handleRemoveItem = useCallback((itemId: string) => {
-        setEditedItems(prevItems => prevItems.filter(item => item.id !== itemId));
-    }, []);
-
-    const handleAddItemToOrder = useCallback((newItem: CartItem) => {
-        setEditedItems(prevItems => {
-            // Check if it's the exact same custom item (same ID)
-            const existingItemIndex = prevItems.findIndex(item => item.id === newItem.id);
-
-            if (existingItemIndex > -1) {
-                // If it exists, just increment quantity
-                return prevItems.map((item, index) =>
-                    index === existingItemIndex ? { ...item, quantity: item.quantity + newItem.quantity } : item
-                );
-            } else {
-                // Otherwise, add as a new item
-                return [...prevItems, { ...newItem }];
-            }
-        });
-        addToast({ message: `${newItem.name} adicionado!`, type: "success" });
-        setIsAddItemModalOpen(false); // Close item selection modal
-        setIsPizzaModalOpen(false); // Close customization modals
-        setIsAcaiModalOpen(false);
-        setIsGenericModalOpen(false);
-        setItemToCustomize(null);
-    }, [addToast]);
-
-    const { subtotal, totalItems } = useMemo(() => {
-        const currentSubtotal = editedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-        const currentTotalItems = editedItems.reduce((sum, item) => sum + item.quantity, 0);
-        return { subtotal: currentSubtotal, totalItems: currentTotalItems };
-    }, [editedItems]);
-
-    const deliveryFee = order.deliveryFee || 0;
-    const discountAmount = order.discountAmount || 0;
-
-    const finalTotalPrice = useMemo(() => {
-        return Math.max(0, (subtotal - discountAmount) + deliveryFee);
-    }, [subtotal, discountAmount, deliveryFee]);
-
-    const handleSave = async () => {
-        setError(null);
-        if (editedItems.length === 0) {
-            setError('O pedido não pode ficar sem itens. Se desejar cancelar, use a opção de cancelar pedido.');
-            return;
-        }
-
-        setIsSaving(true);
-        try {
-            let mensalistaIdToUpdate: string | null | undefined = undefined;
-            let finalPaymentMethod = editedPaymentMethod;
-
-            if (editedPaymentMethod === 'Mensalista') {
-                if (!editedCustomerPhone.trim()) {
-                    setError('O WhatsApp é obrigatório para pedidos de Mensalista.');
-                    setIsSaving(false);
-                    return;
-                }
-                const mensalista = await getMensalistaByPhone(editedCustomerPhone.replace(/\D/g, ''), restaurantId);
-                if (mensalista) {
-                    mensalistaIdToUpdate = mensalista.id;
-                    finalPaymentMethod = `Mensalista (${mensalista.name})`;
-                } else {
-                    setError('Mensalista não encontrado com este WhatsApp.');
-                    setIsSaving(false);
-                    return;
-                }
-            } else if (order.mensalista_id) {
-                // Se era mensalista e mudou para outra forma, removemos o ID do mensalista
-                mensalistaIdToUpdate = null;
-            }
-
-            const updatedOrder = await updateOrderDetails(order.id, {
-                items: editedItems,
-                subtotal: subtotal,
-                totalPrice: finalTotalPrice,
-                discountAmount: discountAmount,
-                paymentMethod: finalPaymentMethod,
-                customerName: editedCustomerName,
-                customerPhone: editedCustomerPhone,
-                mensalistaId: mensalistaIdToUpdate,
-            });
-            
-            // Play notification if it's a table order
-            if (order.tableNumber && playNotification) {
-                playNotification();
-            }
-
-            addToast({ message: 'Pedido atualizado com sucesso!', type: 'success' });
-            onSave(updatedOrder);
-            onClose();
-        } catch (err: any) {
-            console.error("Failed to update order:", err);
-            setError(`Erro ao salvar alterações: ${err.message || JSON.stringify(err)}`);
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const handleSelectMenuItemForCustomization = useCallback((item: MenuItem) => {
-        setItemToCustomize(item);
-        if (item.isPizza) {
-            setIsPizzaModalOpen(true);
-        } else if (item.isAcai) {
-            setIsAcaiModalOpen(true);
-        } else {
-            setIsGenericModalOpen(true);
-        }
-    }, [handleAddItemToOrder]);
+        setCurrentOrder(order); // Update internal state if parent order changes
+    }, [order]);
     
-    const handleAddComboToOrder = useCallback((combo: Combo) => {
-        const comboCartItem: CartItem = {
-            id: `combo-${combo.id}-${Date.now()}`, // Unique ID
-            restaurantId: order.restaurantId, name: combo.name,
-            price: combo.price,
-            basePrice: combo.price,
-            imageUrl: combo.imageUrl,
-            quantity: 1,
-            description: combo.description,
+    useEffect(() => {
+        const handleEsc = (event: KeyboardEvent) => {
+           if (event.key === 'Escape') {
+              onClose();
+           }
         };
-        handleAddItemToOrder(comboCartItem);
-    }, [handleAddItemToOrder]);
-
-    const handleAddKiloItem = async () => {
-        if (!hasKiloService || !pricePerKilo) return;
-
-        const weightStr = await prompt({
-            title: 'Adicionar Peso',
-            message: `Valor do Kg: R$ ${pricePerKilo.toFixed(2)}\nDigite o peso em KG (ex: 0.450):`,
-            placeholder: '0.000',
-            submitText: 'Adicionar ao Pedido',
-            cancelText: 'Cancelar'
-        });
-
-        if (!weightStr) return;
-        const weight = parseFloat(weightStr.replace(',', '.'));
-        if (isNaN(weight) || weight <= 0) {
-            addToast({ message: 'Peso inválido.', type: 'error' });
-            return;
-        }
-
-        const itemPrice = weight * pricePerKilo;
-
-        const kiloItem: CartItem = {
-            id: `kilo-${Date.now()}`,
-            restaurantId: order.restaurantId, name: 'Prato por Kilo',
-            price: itemPrice,
-            basePrice: itemPrice,
-            imageUrl: '',
-            quantity: 1,
-            description: `Peso: ${weight.toFixed(3)}kg (R$ ${pricePerKilo.toFixed(2)}/kg)`,
-            weight: weight,
-            isKiloItem: true,
-            served: true
+        window.addEventListener('keydown', handleEsc);
+        return () => {
+            window.removeEventListener('keydown', handleEsc);
         };
+    }, [onClose]);
 
-        handleAddItemToOrder(kiloItem);
+    const handlePrint = () => {
+        window.print();
     };
 
+    const handleOrderUpdated = (updatedOrder: Order) => {
+        setCurrentOrder(updatedOrder); // Update local state when editing modal saves
+        setIsEditing(false); // Close editing modal
+    };
 
-    if (!isOpen) return null;
+    const canEditOrder = ['Novo Pedido', 'Preparando', 'Mesa Aberta'].includes(currentOrder.status);
+
+    const displayOrderNum = currentOrder.order_number 
+        ? `#${String(currentOrder.order_number).padStart(3, '0')}`
+        : `#${currentOrder.id.substring(currentOrder.id.length - 4).toUpperCase()}`;
+
+    const totalPaid = (currentOrder.paymentHistory || []).reduce((acc, p) => acc + p.amount, 0);
 
     return (
         <>
-            <div className="fixed inset-0 bg-black bg-opacity-60 z-[70] flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="order-editor-modal-title">
-                <div className="bg-white p-4 sm:p-6 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div
+                className="fixed inset-0 bg-black/60 z-[100] flex justify-center items-center p-4 backdrop-blur-sm transition-opacity duration-200"
+                onClick={onClose}
+                aria-modal="true"
+                role="dialog"
+            >
+                <div
+                    className="bg-white p-4 sm:p-6 rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col transform transition-transform duration-200 scale-100"
+                    onClick={(e) => e.stopPropagation()}
+                >
                     <div className="flex justify-between items-center border-b pb-3 mb-4">
-                        <h2 id="order-editor-modal-title" className="text-xl sm:text-2xl font-bold text-gray-800">Editar Pedido #{order.id.substring(0, 6)}</h2>
-                        <button onClick={onClose} className="text-gray-500 hover:text-gray-800 p-1">
-                            <XIcon className="w-6 h-6" />
+                        <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Detalhes do Pedido</h2>
+                        <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-800 p-2 -mt-2 -mr-2 transition-colors active:scale-90">
+                            <XIcon className="w-7 h-7" />
                         </button>
                     </div>
 
-                    <div className="overflow-y-auto space-y-4 pr-2 -mr-2">
-                        <div className="grid grid-cols-2 gap-3">
+                    <div className="overflow-y-auto space-y-6 pr-2 -mr-2">
+                        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
                             <div>
-                                <label className="block text-[10px] font-black text-gray-400 uppercase">Nome do Cliente</label>
-                                <input 
-                                    type="text" 
-                                    value={editedCustomerName} 
-                                    onChange={e => setEditedCustomerName(e.target.value)}
-                                    className="w-full p-2 border rounded bg-gray-50 text-sm font-bold"
-                                />
+                                <p className="font-black text-2xl text-orange-600">Pedido {displayOrderNum}</p>
+                                <p className="text-sm text-gray-500">{new Date(currentOrder.timestamp).toLocaleString('pt-BR')}</p>
                             </div>
-                            <div>
-                                <label className="block text-[10px] font-black text-gray-400 uppercase">WhatsApp</label>
-                                <input 
-                                    type="text" 
-                                    value={editedCustomerPhone} 
-                                    onChange={e => setEditedCustomerPhone(e.target.value.replace(/\D/g, ''))}
-                                    className="w-full p-2 border rounded bg-gray-50 text-sm font-bold"
-                                />
+                            <div className="flex flex-col items-end gap-1">
+                                <span className={`px-4 py-1.5 text-sm font-semibold text-white rounded-full ${color} self-start sm:self-auto shadow-sm`}>{text}</span>
+                                {currentOrder.tableNumber && (
+                                    <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-lg text-xs font-black uppercase">Mesa {currentOrder.tableNumber}</span>
+                                )}
                             </div>
                         </div>
 
-                        <p className="text-sm text-gray-600 mb-4">Ajuste a quantidade, remova ou adicione itens a este pedido.</p>
-
-                        {editedItems.length === 0 ? (
-                            <div className="text-center py-8 text-gray-500">
-                                Nenhum item no pedido. Clique em "Adicionar Novo Item".
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-1">
+                                <h3 className="font-bold text-gray-700 border-b pb-1 mb-2">Cliente</h3>
+                                <p className="font-semibold text-gray-900">{currentOrder.customerName}</p>
+                                <p className="text-sm text-gray-600">Telefone: {currentOrder.customerPhone}</p>
+                                 {currentOrder.customerAddress && currentOrder.customerAddress.street !== 'Consumo Local' && (
+                                    <p className="text-sm text-gray-600 mt-1">
+                                        <strong>Endereço:</strong> {currentOrder.customerAddress.street}, {currentOrder.customerAddress.number} - {currentOrder.customerAddress.neighborhood}
+                                        {currentOrder.customerAddress.complement && `, ${currentOrder.customerAddress.complement}`}
+                                        <br/>
+                                        CEP: {currentOrder.customerAddress.zipCode}
+                                    </p>
+                                )}
+                                {currentOrder.tableNumber && (
+                                     <p className="text-sm text-purple-600 font-bold mt-1 flex items-center gap-1">
+                                         <StoreIcon className="w-4 h-4" /> CONSUMO LOCAL NA MESA {currentOrder.tableNumber}
+                                     </p>
+                                )}
+                                <p className="text-sm text-gray-600">Pagamento: <span className="font-medium text-gray-900">{currentOrder.paymentMethod}</span></p>
+                                {currentOrder.changeFor && (
+                                    <div className="mt-1 p-2 bg-orange-50 border border-orange-100 rounded-lg">
+                                        <p className="text-xs font-black text-orange-700 uppercase">Troco para: R$ {currentOrder.changeFor.toFixed(2)}</p>
+                                        <p className="text-xs font-bold text-orange-600">Troco: R$ {(currentOrder.changeFor - currentOrder.totalPrice).toFixed(2)}</p>
+                                    </div>
+                                )}
+                                <div className={`mt-2 p-2 rounded-lg border flex items-center gap-2 ${currentOrder.wantsSachets ? 'bg-green-50 border-green-100 text-green-700' : 'bg-gray-50 border-gray-100 text-gray-500'}`}>
+                                    <div className={`w-2 h-2 rounded-full ${currentOrder.wantsSachets ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                                    <span className="text-xs font-black uppercase">
+                                        {currentOrder.wantsSachets ? 'Enviar Sachês: SIM' : 'Não enviar sachês'}
+                                    </span>
+                                </div>
                             </div>
-                        ) : (
-                            <div className="space-y-3">
-                                {editedItems.map(item => (
-                                    <div key={item.id} className="flex items-start space-x-3 p-2 bg-gray-50 rounded-lg border border-gray-100">
-                                        <OptimizedImage src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-md object-cover flex-shrink-0" />
+                            <div className="space-y-1">
+                                <h3 className="font-bold text-gray-700 border-b pb-1 mb-2">Restaurante</h3>
+                                <p className="font-semibold text-gray-900">{currentOrder.restaurantName}</p>
+                                <p className="text-sm text-gray-600">{currentOrder.restaurantAddress}</p>
+                                <p className="text-sm text-gray-600">Telefone: {currentOrder.restaurantPhone}</p>
+                            </div>
+                        </div>
+                        
+                        {/* CONDIMENTS PREFERENCE HIGHLIGHT */}
+                        {!currentOrder.tableNumber && (
+                            <div className={`p-4 rounded-xl border-2 flex items-center gap-4 transition-all shadow-sm ${currentOrder.wantsSachets ? 'bg-emerald-50 border-emerald-500' : 'bg-gray-50 border-gray-100 opacity-70'}`}>
+                                <div className={`p-3 rounded-full ${currentOrder.wantsSachets ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-200 text-gray-400'}`}>
+                                    <LeafIcon className="w-6 h-6" />
+                                </div>
+                                <div className="flex-grow">
+                                    <p className="text-sm font-black text-gray-800 uppercase tracking-wide">
+                                        {currentOrder.wantsSachets ? '🌿 Enviar Sachês e Talheres' : '🚫 Não enviar sachês/talheres'}
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        <div>
+                            <h3 className="font-bold text-gray-700 border-b pb-1 mb-3">Itens do Pedido</h3>
+                            <ul className="space-y-3 text-gray-800">
+                                {currentOrder.items.length > 0 ? currentOrder.items.map(item => (
+                                    <li key={item.id} className="flex justify-between items-start border-b border-gray-100 pb-2 last:border-0">
                                         <div className="flex-grow">
-                                            <p className="font-semibold text-gray-800">
-                                                {item.isKiloItem && item.weight ? (
-                                                    <span className="text-emerald-600 mr-2">{item.weight.toFixed(3)}kg</span>
-                                                ) : null}
-                                                {item.name} {item.sizeName && `(${item.sizeName})`}
-                                            </p>
+                                            <p className="font-semibold">{item.quantity}x {item.name} {item.sizeName && `(${item.sizeName})`} {item.weight && item.isKiloItem && <span className="text-gray-500 font-normal">({Number(item.weight).toFixed(3)}kg)</span>}</p>
                                             
-                                            {/* SHOW CUSTOM OPTIONS */}
                                             {item.selectedOptions && item.selectedOptions.length > 0 && (
-                                                <ul className="text-xs text-blue-600 bg-blue-50 p-1 rounded mt-1">
+                                                <ul className="text-xs text-blue-600 mt-1 pl-2 border-l-2 border-blue-200 space-y-0.5">
                                                     {item.selectedOptions.map((opt, idx) => (
-                                                        <li key={idx}>• {opt.groupTitle}: {opt.optionName} {opt.price > 0 && `(+ R$ ${opt.price.toFixed(2)})`}</li>
+                                                        <li key={idx} className="font-medium">
+                                                            • {opt.groupTitle}: {opt.optionName}
+                                                            {opt.price > 0 && ` (+ R$ ${Number(opt.price).toFixed(2)})`}
+                                                        </li>
                                                     ))}
                                                 </ul>
                                             )}
 
                                             {item.halves && item.halves.length > 1 && (
-                                                <p className="text-xs text-gray-500 pl-1">
-                                                    (Meia {item.halves.map(h => h.name).join(' / Meia ')})
-                                                </p>
+                                                <p className="text-xs text-gray-500 pl-2">½ {item.halves[0].name} | ½ {item.halves[1].name}</p>
                                             )}
-                                            {item.selectedAddons && item.selectedAddons.length > 0 && (
-                                                <ul className="text-xs text-gray-500 pl-1 mt-1">
+
+                                            {item.selectedAddons && (
+                                                <ul className="text-xs text-gray-500 pl-2 mt-1">
                                                     {item.selectedAddons.map(addon => (
-                                                        <li key={addon.id}>
-                                                            + {addon.name} {addon.price > 0 && `(R$ ${addon.price.toFixed(2)})`}
-                                                        </li>
+                                                        <li key={addon.id}>+ {addon.name} {addon.price > 0 && `(+ R$ ${Number(addon.price).toFixed(2)})`}</li>
                                                     ))}
                                                 </ul>
                                             )}
-                                            {item.notes && (
-                                                <p className="text-xs text-orange-500 italic mt-1 bg-orange-50 p-1 rounded">
-                                                    Obs: {item.notes}
-                                                </p>
-                                            )}
-                                            <p className="text-sm text-orange-600 font-bold mt-1">R$ {(item.price * item.quantity).toFixed(2)}</p>
+                                            
+                                            {item.notes && <p className="text-xs text-orange-600 font-bold mt-1">Nota: {item.notes}</p>}
                                         </div>
-                                        <div className="flex flex-col items-end space-y-2">
-                                            <button onClick={() => handleRemoveItem(item.id)} className="text-gray-400 hover:text-red-500 p-1">
-                                                <TrashIcon className="w-5 h-5"/>
-                                            </button>
-                                            <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
-                                                {!item.isKiloItem ? (
-                                                    <>
-                                                        <button onClick={() => handleQuantityChange(item.id, item.quantity - 1)} className="w-6 h-6 flex items-center justify-center font-bold text-gray-600 hover:bg-white rounded">-</button>
-                                                        <span className="font-bold w-4 text-center text-sm">{item.quantity}</span>
-                                                        <button onClick={() => handleQuantityChange(item.id, item.quantity + 1)} className="w-6 h-6 flex items-center justify-center font-bold text-gray-600 hover:bg-white rounded">+</button>
-                                                    </>
-                                                ) : (
-                                                    <span className="px-2 text-[10px] font-black text-emerald-600 uppercase">PESO</span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        <div className="flex gap-2">
-                            {hasKiloService && (
-                                <button
-                                    onClick={handleAddKiloItem}
-                                    className="flex-1 py-3 mt-2 border-2 border-dashed border-emerald-300 rounded-lg text-emerald-600 font-semibold hover:bg-emerald-50 flex items-center justify-center gap-2"
-                                >
-                                    <PlusIcon className="w-5 h-5" />
-                                    Pesar Prato
-                                </button>
-                            )}
-                            <button
-                                onClick={() => setIsAddItemModalOpen(true)}
-                                className="flex-1 py-3 mt-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 font-semibold hover:bg-gray-50 flex items-center justify-center gap-2"
-                            >
-                                <PlusIcon className="w-5 h-5" />
-                                Adicionar Novo Item
-                            </button>
-                        </div>
-
-                        <div className="space-y-2">
-                            <label className="block text-xs font-black text-gray-500 uppercase">Forma de Pagamento</label>
-                            <div className="grid grid-cols-2 gap-2">
-                                {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Mensalista'].filter(m => m !== 'Mensalista' || hasMensalistas).map(m => (
-                                    <button 
-                                        key={m}
-                                        type="button"
-                                        onClick={() => setEditedPaymentMethod(m)}
-                                        className={`py-2 rounded-lg text-[10px] font-black uppercase border-2 transition-all ${
-                                            editedPaymentMethod.startsWith(m)
-                                            ? 'bg-blue-600 border-blue-600 text-white' 
-                                            : 'bg-white border-gray-100 text-gray-500 hover:border-blue-100'
-                                        }`}
-                                    >
-                                        {m}
-                                    </button>
-                                ))}
-                            </div>
+                                        <p className="font-semibold ml-4 whitespace-nowrap">R$ {(Number(item.price) * item.quantity).toFixed(2)}</p>
+                                    </li>
+                                )) : (
+                                    <li className="text-center py-4 text-gray-400 italic">Comanda vazia</li>
+                                )}
+                            </ul>
                         </div>
 
                         <div className="border-t pt-4 space-y-2">
-                            <div className="flex justify-between text-gray-600 text-sm">
-                                <span>Subtotal (Itens)</span>
-                                <span>R$ {subtotal.toFixed(2)}</span>
-                            </div>
-                            {order.deliveryFee != null && (
+                            {currentOrder.subtotal && (
+                              <div className="flex justify-between text-gray-600 text-sm">
+                                <span>Subtotal</span>
+                                <span>R$ {Number(currentOrder.subtotal).toFixed(2)}</span>
+                              </div>
+                            )}
+                            {currentOrder.discountAmount && Number(currentOrder.discountAmount) > 0 && (
+                              <div className="flex justify-between text-green-600 text-sm font-semibold">
+                                <span>Desconto ({currentOrder.couponCode})</span>
+                                <span>- R$ {Number(currentOrder.discountAmount).toFixed(2)}</span>
+                              </div>
+                            )}
+                            {currentOrder.deliveryFee != null && Number(currentOrder.deliveryFee) > 0 && (
                                 <div className="flex justify-between text-gray-600 text-sm">
                                     <span>Taxa de Entrega</span>
-                                    <span>R$ {order.deliveryFee.toFixed(2)}</span>
+                                    <span>R$ {Number(currentOrder.deliveryFee).toFixed(2)}</span>
                                 </div>
                             )}
-                            {order.discountAmount && order.discountAmount > 0 && (
-                                <div className="flex justify-between text-green-600 text-sm">
-                                    <span>Desconto</span>
-                                    <span>- R$ {order.discountAmount.toFixed(2)}</span>
-                                </div>
-                            )}
-                            <div className="flex justify-between items-center font-bold text-lg text-gray-900 border-t pt-2 mt-1">
-                                <span>Total Atualizado</span>
-                                <span>R$ {finalTotalPrice.toFixed(2)}</span>
+                            <div className="flex justify-between items-center font-bold text-lg sm:text-xl text-gray-900 border-t pt-2 mt-1">
+                                <span>Total do Pedido</span>
+                                <span>R$ {Number(currentOrder.totalPrice).toFixed(2)}</span>
                             </div>
+                            
+                            {/* EXIBIÇÃO DE PAGAMENTOS PARCIAIS SE HOUVER */}
+                            {currentOrder.paymentHistory && currentOrder.paymentHistory.length > 0 && (
+                                <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-100 space-y-1 mt-4">
+                                    <div className="flex justify-between text-emerald-800 text-xs font-bold uppercase">
+                                        <span>Total Já Pago:</span>
+                                        <span>R$ {totalPaid.toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-red-600 text-sm font-black uppercase">
+                                        <span>Restante:</span>
+                                        <span>R$ {(currentOrder.totalPrice - totalPaid).toFixed(2)}</span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
 
-                    {error && <p className="text-red-500 text-sm mt-4 text-center">{error}</p>}
-
-                    <div className="mt-6 pt-4 border-t flex justify-end space-x-3">
-                        <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300" disabled={isSaving}>Cancelar</button>
-                        <button onClick={handleSave} className="px-6 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 disabled:bg-blue-400" disabled={isSaving}>
-                            {isSaving ? <Spinner message="Salvando..." /> : 'Salvar Alterações'}
+                    <div className="mt-6 pt-4 border-t flex justify-between items-center bg-white sticky bottom-0">
+                        <div className="flex space-x-2">
+                            {canEditOrder && (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsEditing(true)}
+                                    className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 transition-all active:scale-95 shadow-md"
+                                >
+                                    <EditIcon className="w-5 h-5"/>
+                                    <span className="hidden sm:inline">Editar</span>
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                onClick={handlePrint}
+                                className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gray-600 text-white font-bold hover:bg-gray-700 transition-all active:scale-95 shadow-md"
+                            >
+                                <PrintIcon className="w-5 h-5"/>
+                                <span className="hidden sm:inline">Imprimir</span>
+                            </button>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="px-6 py-2 rounded-lg bg-red-600 text-white font-bold hover:bg-red-700 transition-all active:scale-95 shadow-md"
+                        >
+                            Fechar
                         </button>
                     </div>
                 </div>
             </div>
+            <div className="hidden print:block">
+                <div id="printable-order">
+                    <PrintableOrder order={currentOrder} printerWidth={printerWidth} /> 
+                </div>
+            </div>
 
-            {isAddItemModalOpen && (
-                <AddItemToOrderModal
-                    isOpen={isAddItemModalOpen}
-                    onClose={() => setIsAddItemModalOpen(false)}
-                    restaurantName={restaurantName}
-                    allMenuItems={allRestaurantMenuItems}
-                    allCombos={allRestaurantCombos}
-                    onSelectMenuItem={handleSelectMenuItemForCustomization}
-                    onSelectCombo={handleAddComboToOrder}
-                />
-            )}
-
-            {isPizzaModalOpen && itemToCustomize && (
-                <PizzaCustomizationModal
-                    isOpen={isPizzaModalOpen}
-                    onClose={() => setIsPizzaModalOpen(false)}
-                    onAddToCart={handleAddItemToOrder}
-                    initialPizza={itemToCustomize}
-                    allPizzas={allRestaurantMenuItems.filter(i => i.isPizza)}
-                    allAddons={allRestaurantAddons}
-                />
-            )}
-            {isAcaiModalOpen && itemToCustomize && (
-                <AcaiCustomizationModal
-                    isOpen={isAcaiModalOpen}
-                    onClose={() => setIsAcaiModalOpen(false)}
-                    onAddToCart={handleAddItemToOrder}
-                    initialItem={itemToCustomize}
-                    allAddons={allRestaurantAddons}
-                />
-            )}
-            {isGenericModalOpen && itemToCustomize && (
-                <GenericCustomizationModal
-                    isOpen={isGenericModalOpen}
-                    onClose={() => setIsGenericModalOpen(false)}
-                    onAddToCart={handleAddItemToOrder}
-                    initialItem={itemToCustomize}
-                    allAddons={allRestaurantAddons}
+            {isEditing && (
+                <OrderEditorModal
+                    isOpen={isEditing}
+                    onClose={() => setIsEditing(false)}
+                    order={currentOrder}
+                    onSave={handleOrderUpdated}
+                    restaurantId={currentOrder.restaurantId}
+                    restaurantName={currentOrder.restaurantName}
                 />
             )}
         </>
     );
 };
 
-export default OrderEditorModal;
+export default OrderDetailsModal;

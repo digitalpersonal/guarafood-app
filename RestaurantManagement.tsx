@@ -1,201 +1,249 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import type { Restaurant } from '../types';
+// Import fetchRestaurantsSecure instead of fetchRestaurants
+import { fetchRestaurantsSecure, deleteRestaurant, updateRestaurant } from '../services/databaseService';
+import { useNotification } from '../hooks/useNotification';
+import Spinner from './Spinner';
+import { supabase, getErrorMessage } from '../services/api';
+// FIX: Add missing import for RestaurantEditorModal
+import RestaurantEditorModal from './RestaurantEditorModal';
 
-import React, { useState, useEffect } from 'react';
-import type { Promotion, MenuItem, Combo, MenuCategory } from '../types';
+const MenuBookIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+    </svg>
+);
+const EditIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
+);
+const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+);
+const ClipboardIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v3.043c0 .317-.135.619-.372.83h-9.312a1.125 1.125 0 01-1.125-1.125v-3.043c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" /></svg>
+);
 
-interface PromotionEditorModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    onSave: (promoData: Omit<Promotion, 'id' | 'restaurantId'>) => void;
-    existingPromotion: Promotion | null;
-    menuItems: MenuItem[];
-    combos: Combo[];
-    categories: MenuCategory[];
+
+const CogIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+);
+
+
+interface RestaurantManagementProps {
+    onEditMenu: (restaurant: Restaurant) => void;
+    onEditSettings: (restaurant: Restaurant) => void;
 }
 
-const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOpen, onClose, onSave, existingPromotion, menuItems, combos, categories }) => {
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [discountType, setDiscountType] = useState<'PERCENTAGE' | 'FIXED'>('PERCENTAGE');
-    const [discountValue, setDiscountValue] = useState('');
-    
-    // Multi-select states
-    const [itemIds, setItemIds] = useState<Set<number>>(new Set());
-    const [comboIds, setComboIds] = useState<Set<number>>(new Set());
-    const [categoryIds, setCategoryIds] = useState<Set<number>>(new Set());
-    
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [error, setError] = useState('');
-    const [activeTab, setActiveTab] = useState<'ITEMS' | 'COMBOS' | 'CATEGORIES'>('ITEMS');
+const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu, onEditSettings }) => {
+    const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [isEditorOpen, setIsEditorOpen] = useState(false);
+    const [editingRestaurant, setEditingRestaurant] = useState<Restaurant | null>(null);
+    const { addToast, confirm } = useNotification();
+
+    const loadRestaurants = useCallback(async () => {
+        try {
+            setIsLoading(true);
+            // Use the secure fetch to ensure admin can see credentials if needed for editing
+            const data = await fetchRestaurantsSecure();
+            setRestaurants(data);
+            setError(null); // Clear previous errors on successful load
+        } catch (err) {
+            console.error("Failed to load restaurants:", err);
+            setError(`Falha ao carregar restaurantes: ${getErrorMessage(err)}`);
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
 
     useEffect(() => {
-        const today = new Date().toISOString().split('T')[0];
-        if (existingPromotion) {
-            setName(existingPromotion.name);
-            setDescription(existingPromotion.description);
-            setDiscountType(existingPromotion.discountType);
-            setDiscountValue(existingPromotion.discountValue.toString());
-            setItemIds(new Set(existingPromotion.itemIds || []));
-            setComboIds(new Set(existingPromotion.comboIds || []));
-            setCategoryIds(new Set(existingPromotion.categoryIds || []));
-            setStartDate(existingPromotion.startDate.split('T')[0]);
-            setEndDate(existingPromotion.endDate.split('T')[0]);
-        } else {
-            setName('');
-            setDescription('');
-            setDiscountType('PERCENTAGE');
-            setDiscountValue('');
-            setItemIds(new Set());
-            setComboIds(new Set());
-            setCategoryIds(new Set());
-            setStartDate(today);
-            setEndDate(today);
-        }
-        setError('');
-    }, [existingPromotion, isOpen]);
+        loadRestaurants();
+    }, [loadRestaurants]);
 
-    const toggleSelection = (id: number, type: 'ITEMS' | 'COMBOS' | 'CATEGORIES') => {
-        const setter = type === 'ITEMS' ? setItemIds : type === 'COMBOS' ? setComboIds : setCategoryIds;
-        setter(prev => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-        });
+    const handleOpenEditor = (restaurant: Restaurant | null) => {
+        setEditingRestaurant(restaurant);
+        setIsEditorOpen(true);
     };
 
-    const handleSubmit = () => {
-        if (!name || !discountValue || !startDate || !endDate) {
-            setError('Campos obrigatórios: Nome, Valor e Datas.');
-            return;
-        }
-
-        if (itemIds.size === 0 && comboIds.size === 0 && categoryIds.size === 0) {
-            setError('Selecione pelo menos um item, combo ou categoria.');
-            return;
-        }
-
-        const numericDiscount = parseFloat(discountValue);
-        if (isNaN(numericDiscount) || numericDiscount <= 0) {
-            setError('O valor do desconto deve ser um número positivo.');
-            return;
-        }
-        if (new Date(startDate) > new Date(endDate)) {
-            setError('A data de início não pode ser posterior à data de término.');
-            return;
-        }
-
-        onSave({
-            name,
-            description,
-            discountType,
-            discountValue: numericDiscount,
-            itemIds: Array.from(itemIds),
-            comboIds: Array.from(comboIds),
-            categoryIds: Array.from(categoryIds),
-            startDate: new Date(startDate).toISOString(),
-            endDate: new Date(endDate).toISOString(),
-        });
+    const handleCloseEditor = () => {
+        setEditingRestaurant(null);
+        setIsEditorOpen(false);
     };
 
-    if (!isOpen) return null;
+    const handleToggleActive = async (restaurant: Restaurant) => {
+        try {
+            const newStatus = !restaurant.active;
+            await updateRestaurant(restaurant.id, { active: newStatus });
+            addToast({ message: `Restaurante ${newStatus ? 'ativado' : 'bloqueado'} com sucesso.`, type: 'success' });
+            await loadRestaurants();
+        } catch (err: any) {
+            console.error("Failed to toggle restaurant status", err);
+            addToast({ message: `Erro ao alterar status: ${getErrorMessage(err)}`, type: 'error' });
+        }
+    };
+
+    const generateDeleteSQL = (restaurantId: number, restaurantName: string) => {
+        const sql = `
+-- SQL para excluir o restaurante "${restaurantName}" (ID: ${restaurantId}) e seus dados
+BEGIN;
+  DELETE FROM combos WHERE restaurant_id = ${restaurantId};
+  DELETE FROM menu_items WHERE restaurant_id = ${restaurantId};
+  DELETE FROM menu_categories WHERE restaurant_id = ${restaurantId};
+  DELETE FROM addons WHERE restaurant_id = ${restaurantId};
+  DELETE FROM promotions WHERE restaurant_id = ${restaurantId};
+  DELETE FROM coupons WHERE restaurant_id = ${restaurantId};
+  DELETE FROM expenses WHERE restaurant_id = ${restaurantId};
+  DELETE FROM orders WHERE restaurant_id = ${restaurantId};
+  DELETE FROM restaurants WHERE id = ${restaurantId};
+COMMIT;
+`;
+        navigator.clipboard.writeText(sql);
+        addToast({ message: 'SQL de exclusão copiado para a área de transferência!', type: 'info' });
+    };
+
+    const handleDeleteRestaurant = async (restaurant: Restaurant) => {
+        const confirmed = await confirm({
+            title: 'Excluir Restaurante',
+            message: `Tem certeza que deseja excluir "${restaurant.name}"? Esta ação é irreversível.`,
+            confirmText: 'Excluir',
+            isDestructive: true,
+        });
+
+        if (confirmed) {
+            try {
+                await deleteRestaurant(restaurant.id);
+                addToast({ message: 'Restaurante excluído.', type: 'info' });
+                await loadRestaurants();
+            } catch (err: any) {
+                console.error("Failed to delete restaurant", err);
+                const errorMsg = getErrorMessage(err);
+                addToast({ message: `Erro ao excluir: ${errorMsg}`, type: 'error' });
+                
+                // Offer SQL workaround
+                const useSql = await confirm({
+                    title: 'Falha na Exclusão Automática',
+                    message: 'O sistema não conseguiu excluir automaticamente (provavelmente devido a restrições de segurança ou dados vinculados). Deseja copiar o SQL para excluir manualmente no Supabase?',
+                    confirmText: 'Copiar SQL',
+                    cancelText: 'Cancelar'
+                });
+                
+                if (useSql) {
+                    generateDeleteSQL(restaurant.id, restaurant.name);
+                }
+            }
+        }
+    };
+    
+    const handleCopyLink = (restaurantId: number) => {
+        const url = `${window.location.origin}?r=${restaurantId}`; // Reverted to query param for restaurant link
+        navigator.clipboard.writeText(url);
+        addToast({ message: 'Link copiado para a área de transferência!', type: 'success' });
+    };
+
+    if (isLoading) return <Spinner message="Carregando restaurantes..." />;
+    if (error) return <p className="text-center text-red-500 p-8 bg-red-50 rounded-lg">{error}</p>;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose}>
-            <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                <h2 className="text-2xl font-bold mb-4">{existingPromotion ? 'Editar Promoção' : 'Criar Nova Promoção'}</h2>
-                
-                <div className="overflow-y-auto space-y-4 pr-2 -mr-2">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nome da Promoção</label>
-                            <input type="text" placeholder="Ex: Happy Hour" value={name} onChange={e => setName(e.target.value)} className="w-full p-2 border rounded-lg bg-gray-50"/>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Descrição Curta</label>
-                            <input type="text" placeholder="Ex: Todos os pastéis com 10% OFF" value={description} onChange={e => setDescription(e.target.value)} className="w-full p-2 border rounded-lg bg-gray-50"/>
-                        </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Data de Início</label>
-                            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full p-2 border rounded-lg bg-gray-50"/>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Data de Término</label>
-                            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full p-2 border rounded-lg bg-gray-50"/>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                         <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Tipo de Desconto</label>
-                            <select value={discountType} onChange={e => setDiscountType(e.target.value as any)} className="w-full p-2 border rounded-lg bg-gray-50">
-                                <option value="PERCENTAGE">Porcentagem (%)</option>
-                                <option value="FIXED">Valor Fixo (R$)</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Valor do Desconto</label>
-                            <input type="number" placeholder="0.00" value={discountValue} onChange={e => setDiscountValue(e.target.value)} className="w-full p-2 border rounded-lg bg-gray-50"/>
-                        </div>
-                    </div>
-
-                    <div className="border rounded-xl overflow-hidden mt-4">
-                        <div className="flex bg-gray-100 p-1">
-                            <button onClick={() => setActiveTab('ITEMS')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'ITEMS' ? 'bg-white shadow text-orange-600' : 'text-gray-500 hover:bg-gray-200'}`}>ITENS ({itemIds.size})</button>
-                            <button onClick={() => setActiveTab('COMBOS')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'COMBOS' ? 'bg-white shadow text-orange-600' : 'text-gray-500 hover:bg-gray-200'}`}>COMBOS ({comboIds.size})</button>
-                            <button onClick={() => setActiveTab('CATEGORIES')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'CATEGORIES' ? 'bg-white shadow text-orange-600' : 'text-gray-500 hover:bg-gray-200'}`}>CATEGORIAS ({categoryIds.size})</button>
-                        </div>
-                        
-                        <div className="p-4 bg-gray-50 h-48 overflow-y-auto">
-                            {activeTab === 'ITEMS' && (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    {menuItems.map(item => (
-                                        <label key={item.id} className="flex items-center space-x-3 p-2 bg-white rounded-lg border cursor-pointer hover:bg-orange-50 has-[:checked]:border-orange-300">
-                                            <input type="checkbox" checked={itemIds.has(item.id)} onChange={() => toggleSelection(item.id, 'ITEMS')} className="h-4 w-4 rounded text-orange-600"/>
-                                            <span className="text-sm truncate">{item.name}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            )}
-                            {activeTab === 'COMBOS' && (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    {combos.map(combo => (
-                                        <label key={combo.id} className="flex items-center space-x-3 p-2 bg-white rounded-lg border cursor-pointer hover:bg-orange-50 has-[:checked]:border-orange-300">
-                                            <input type="checkbox" checked={comboIds.has(combo.id)} onChange={() => toggleSelection(combo.id, 'COMBOS')} className="h-4 w-4 rounded text-orange-600"/>
-                                            <span className="text-sm truncate">{combo.name}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            )}
-                            {activeTab === 'CATEGORIES' && (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    {categories.map(cat => (
-                                        <label key={cat.id} className="flex items-center space-x-3 p-2 bg-white rounded-lg border cursor-pointer hover:bg-orange-50 has-[:checked]:border-orange-300">
-                                            <input type="checkbox" checked={categoryIds.has(cat.id)} onChange={() => toggleSelection(cat.id, 'CATEGORIES')} className="h-4 w-4 rounded text-orange-600"/>
-                                            <span className="text-sm truncate">{cat.name}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            )}
-                            {(activeTab === 'ITEMS' && menuItems.length === 0) && <p className="text-center text-gray-400 py-10">Nenhum item disponível.</p>}
-                            {(activeTab === 'COMBOS' && combos.length === 0) && <p className="text-center text-gray-400 py-10">Nenhum combo disponível.</p>}
-                            {(activeTab === 'CATEGORIES' && categories.length === 0) && <p className="text-center text-gray-400 py-10">Nenhuma categoria disponível.</p>}
-                        </div>
-                    </div>
-                </div>
-
-                {error && <p className="text-red-500 text-sm mt-4 font-bold">{error}</p>}
-                
-                <div className="mt-6 pt-4 border-t flex justify-end space-x-3">
-                    <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300">Cancelar</button>
-                    <button onClick={handleSubmit} className="px-6 py-2 rounded-lg bg-orange-600 text-white font-bold hover:bg-orange-700">Salvar Promoção</button>
+        <div className="bg-white p-4 rounded-lg shadow-md">
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-800">Gerenciar Restaurantes</h2>
+                <div className="flex gap-2">
+                    <button
+                        onClick={() => handleOpenEditor(null)}
+                        className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 transition-colors"
+                    >
+                        Adicionar Novo Restaurante
+                    </button>
                 </div>
             </div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left text-gray-600">
+                    <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                        <tr>
+                            <th scope="col" className="px-6 py-3">Status</th>
+                            <th scope="col" className="px-6 py-3">Nome</th>
+                            <th scope="col" className="px-6 py-3">Cidade</th>
+                            <th scope="col" className="px-6 py-3">Categoria</th>
+                            <th scope="col" className="px-6 py-3">Telefone</th>
+                            <th scope="col" className="px-6 py-3 min-w-[250px]">Link da Loja</th>
+                            <th scope="col" className="px-6 py-3">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {restaurants.map(restaurant => (
+                            <tr key={restaurant.id} className={`bg-white border-b hover:bg-gray-50 ${!restaurant.active ? 'opacity-60 grayscale-[0.5]' : ''}`}>
+                                <td className="px-6 py-4">
+                                    <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${restaurant.active ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
+                                        {restaurant.active ? 'Ativo' : 'Suspenso'}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 font-semibold text-gray-900">{restaurant.name}</td>
+                                <td className="px-6 py-4">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-orange-50 text-orange-700 border border-orange-200">
+                                        📍 {restaurant.city || 'Guaranésia'}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4">{restaurant.category}</td>
+                                <td className="px-6 py-4">{restaurant.phone}</td>
+                                <td className="px-6 py-4 min-w-[250px]">
+                                    <div className="flex items-center gap-2">
+                                        <input 
+                                            type="text" 
+                                            readOnly 
+                                            value={`${window.location.origin}?r=${restaurant.id}`} 
+                                            className="flex-grow p-1 border rounded bg-gray-50 text-xs truncate"
+                                            onClick={(e) => (e.target as HTMLInputElement).select()} 
+                                            aria-label={`Link da loja ${restaurant.name}`}
+                                        />
+                                        <button 
+                                            onClick={() => handleCopyLink(restaurant.id)} 
+                                            className="p-1.5 text-gray-500 hover:text-orange-600" 
+                                            title="Copiar Link"
+                                        >
+                                            <ClipboardIcon className="w-4 h-4"/>
+                                        </button>
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                    <div className="flex space-x-2">
+                                        <button 
+                                            onClick={() => handleToggleActive(restaurant)} 
+                                            className={`p-2 hover:text-white rounded transition-colors ${restaurant.active ? 'text-green-600 hover:bg-green-600' : 'text-red-500 hover:bg-red-500'}`} 
+                                            title={restaurant.active ? "Bloquear Restaurante" : "Ativar Restaurante"}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M5.636 5.636a9 9 0 1012.728 0M12 3v9" />
+                                            </svg>
+                                        </button>
+                                        <button onClick={() => onEditMenu(restaurant)} className="p-2 text-gray-500 hover:text-green-600" title="Gerenciar Cardápio">
+                                            <MenuBookIcon className="w-5 h-5"/>
+                                        </button>
+                                        <button onClick={() => onEditSettings(restaurant)} className="p-2 text-gray-500 hover:text-orange-600" title="Configurações do Restaurante">
+                                            <CogIcon className="w-5 h-5"/>
+                                        </button>
+                                        <button onClick={() => handleOpenEditor(restaurant)} className="p-2 text-gray-500 hover:text-blue-600" title="Editar Restaurante"><EditIcon className="w-5 h-5"/></button>
+                                        <button onClick={() => handleDeleteRestaurant(restaurant)} className="p-2 text-gray-500 hover:text-red-600" title="Excluir Restaurante"><TrashIcon className="w-5 h-5"/></button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+             {isEditorOpen && (
+                <RestaurantEditorModal
+                    isOpen={isEditorOpen}
+                    onClose={handleCloseEditor}
+                    onSaveSuccess={loadRestaurants}
+                    existingRestaurant={editingRestaurant}
+                />
+            )}
         </div>
     );
 };
 
-export default PromotionEditorModal;
+export default RestaurantManagement;

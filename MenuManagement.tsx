@@ -1,951 +1,1187 @@
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import type { MenuItem, SizeOption, Addon, OptionGroup, CustomizationOption } from '../types';
-import { supabase } from '../services/api';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../services/authService';
+import { useNotification } from '../hooks/useNotification';
+import type { MenuItem, Combo, MenuCategory, Promotion, Coupon, Addon } from '../types';
+import {
+    fetchMenuForRestaurant,
+    createCombo,
+    updateCombo,
+    deleteCombo,
+    createMenuItem,
+    updateMenuItem,
+    deleteMenuItem,
+    createCategory,
+    updateCategory,
+    deleteCategory,
+    updateCategoryOrder,
+    updateMenuItemOrder,
+    fetchPromotionsForRestaurant,
+    createPromotion,
+    updatePromotion,
+    deletePromotion,
+    fetchCouponsForRestaurant,
+    createCoupon,
+    updateCoupon,
+    deleteCoupon,
+    fetchAddonsForRestaurant,
+    createAddon,
+    updateAddon,
+    deleteAddon,
+} from '../services/databaseService';
+import Spinner from './Spinner';
+import ComboEditorModal from './ComboEditorModal';
+import MenuItemEditorModal from './MenuItemEditorModal';
+import PromotionEditorModal from './PromotionEditorModal';
+import CouponEditorModal from './CouponEditorModal';
+import AddonEditorModal from './AddonEditorModal';
+import { getErrorMessage, supabase } from '../services/api';
+import { seedRestaurantMenu, TOKA_DO_PASTEL_MENU, PASTELARIA_RENOVACAO_MENU } from '../utils/menuSeeds';
 
-// Icon for the Combobox dropdown
-const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-    </svg>
+const EditIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
 );
 const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
 );
-const PlusIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-    </svg>
+const ChevronUpIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 15.75 7.5-7.5 7.5 7.5" /></svg>
+);
+const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
+);
+const CheckIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
 );
 const XIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
 );
+const ClipboardIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v3.043c0 .317-.135.619-.372.83h-9.312a1.125 1.125 0 01-1.125-1.125v-3.043c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" /></svg>
+);
+const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+  </svg>
+);
+const DuplicateIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
+    </svg>
+);
+const DragHandleIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+    </svg>
+);
 
-const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-const dayAbbreviations = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 
-// A reusable Combobox component for category selection
-interface ComboboxProps {
-    options: string[];
-    value: string;
-    onChange: (value: string) => void;
-    placeholder?: string;
-}
-
-const Combobox: React.FC<ComboboxProps> = ({ options, value, onChange, placeholder }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const wrapperRef = useRef<HTMLDivElement>(null);
-
-    // Close dropdown on outside click
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
-                setIsOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
+const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> = ({ restaurantId: propRestaurantId, onBack }) => {
+    const { currentUser } = useAuth();
+    const { addToast, confirm, prompt } = useNotification();
+    const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([]);
+    const [promotions, setPromotions] = useState<Promotion[]>([]);
+    const [coupons, setCoupons] = useState<Coupon[]>([]);
+    const [addons, setAddons] = useState<Addon[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     
-    // Filter options based on user input
-    const filteredOptions = useMemo(() => 
-        value ? options.filter(option => option.toLowerCase().includes(value.toLowerCase())) : options,
-        [options, value]
-    );
+    // Modals State
+    const [isComboModalOpen, setIsComboModalOpen] = useState(false);
+    const [editingCombo, setEditingCombo] = useState<Combo | null>(null);
+    const [isItemModalOpen, setIsItemModalOpen] = useState(false);
+    const [editingItem, setEditingItem] = useState<{ item: MenuItem; categoryName: string } | null>(null);
+    const [isPromoModalOpen, setIsPromoModalOpen] = useState(false);
+    const [editingPromo, setEditingPromo] = useState<Promotion | null>(null);
+    const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
+    const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
+    const [isAddonModalOpen, setIsAddonModalOpen] = useState(false);
+    const [editingAddon, setEditingAddon] = useState<Addon | null>(null);
 
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        onChange(e.target.value);
-        if (!isOpen) setIsOpen(true);
-    };
-    
-    const handleOptionClick = (option: string) => {
-        onChange(option);
-        setIsOpen(false);
-    };
+    // Drag and Drop State
+    const [draggedCategoryIndex, setDraggedCategoryIndex] = useState<number | null>(null);
+    const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
+    const [isReorderingMode, setIsReorderingMode] = useState(false);
+    const [reorderingItemsCategoryId, setReorderingItemsCategoryId] = useState<number | null>(null);
 
-    // Check if the current value is a new category
-    const isNewCategory = value && !options.some(opt => opt.toLowerCase() === value.toLowerCase());
+    // Category editing state
+    const [editingCategory, setEditingCategory] = useState<{ id: number; oldName: string; newName: string; newIconUrl: string | null; newAvailableStartTime: string | null; newAvailableEndTime: string | null } | null>(null);
+    const [restaurantName, setRestaurantName] = useState<string | null>(null);
+    const [isSeeding, setIsSeeding] = useState(false);
 
-    return (
-        <div className="relative" ref={wrapperRef}>
-            <input
-                type="text"
-                value={value}
-                onChange={handleInputChange}
-                onFocus={() => setIsOpen(true)}
-                placeholder={placeholder}
-                className="w-full p-3 border rounded-lg bg-gray-50 pr-10"
-                autoComplete="off"
-            />
-            <button type="button" onClick={() => setIsOpen(!isOpen)} className="absolute inset-y-0 right-0 flex items-center pr-3" aria-label="Toggle category list">
-                <ChevronDownIcon className={`w-5 h-5 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-            </button>
-            {isOpen && (
-                <ul className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
-                    {filteredOptions.map(option => (
-                        <li key={option} onClick={() => handleOptionClick(option)} className="cursor-pointer px-4 py-2 text-gray-700 hover:bg-orange-50 hover:text-orange-700">
-                            {option}
-                        </li>
-                    ))}
-                    {isNewCategory && (
-                        <li className="px-4 py-2 text-sm text-gray-500 border-t">
-                           Criar nova categoria: <span className="font-semibold text-gray-800">{`"${value}"`}</span>
-                        </li>
-                    )}
-                    {filteredOptions.length === 0 && !isNewCategory && (
-                         <li className="px-4 py-2 text-sm text-gray-500">Nenhuma categoria encontrada.</li>
-                    )}
-                </ul>
-            )}
-        </div>
-    );
-};
+    const restaurantId = propRestaurantId || currentUser?.restaurantId;
 
+    const allMenuItems = menuCategories.flatMap(c => c.items);
+    const allCombos = menuCategories.flatMap(c => c.combos || []);
 
-interface MenuItemEditorModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    onSave: (itemData: Omit<MenuItem, 'id' | 'restaurantId'>, category: string) => Promise<void>;
-    existingItem?: MenuItem;
-    initialCategory?: string;
-    restaurantCategories: string[];
-    allAddons: Addon[];
-    restaurantId: number;
-}
-
-const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClose, onSave, existingItem, initialCategory = '', restaurantCategories, allAddons, restaurantId }) => {
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [price, setPrice] = useState('');
-    const [originalPrice, setOriginalPrice] = useState('');
-    const [category, setCategory] = useState('');
-    const [isAcai, setIsAcai] = useState(false);
-    const [isPizza, setIsPizza] = useState(false);
-    const [isDailySpecial, setIsDailySpecial] = useState(false);
-    const [isWeeklySpecial, setIsWeeklySpecial] = useState(false);
-    const [isMarmita, setIsMarmita] = useState(false);
-    const [marmitaOptions, setMarmitaOptions] = useState<string[]>(['']);
-    const [sizes, setSizes] = useState<SizeOption[]>([]);
-    const [optionGroups, setOptionGroups] = useState<OptionGroup[]>([]);
-    const [availableDays, setAvailableDays] = useState<number[]>([]);
-    const [availableStartTime, setAvailableStartTime] = useState('');
-    const [availableEndTime, setAvailableEndTime] = useState('');
-    const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
-    const [addonSearchTerm, setAddonSearchTerm] = useState('');
-    const [isCopyingGroups, setIsCopyingGroups] = useState(false);
-    const [copySearchTerm, setCopySearchTerm] = useState('');
-    const [allItemsForCopy, setAllItemsForCopy] = useState<MenuItem[]>([]);
-    const [error, setError] = useState('');
-    const [available, setAvailable] = useState(true);
-
-    const [imageFile, setImageFile] = useState<File | null>(null);
-    const [imagePreview, setImagePreview] = useState<string | null>(null);
-    const [isSaving, setIsSaving] = useState(false);
-
-
-    useEffect(() => {
-        const fetchAllItems = async () => {
-            if (!restaurantId || !isOpen) return;
-            try {
-                const { data, error } = await supabase
-                    .from('menu_items')
-                    .select('*')
-                    .eq('restaurant_id', restaurantId);
-                
-                if (error) throw error;
-                if (data) {
-                    setAllItemsForCopy(data.map(item => ({
-                        ...item,
-                        restaurantId: item.restaurant_id,
-                        marmitaOptions: item.marmita_options,
-                        availableAddonIds: item.available_addon_ids,
-                        isMarmita: item.is_marmita,
-                        isDailySpecial: item.is_daily_special,
-                        isWeeklySpecial: item.is_weekly_special,
-                        availableDays: item.available_days,
-                        optionGroups: item.option_groups
-                    } as MenuItem)));
-                }
-            } catch (err) {
-                console.error("Erro ao buscar itens para cópia:", err);
-            }
-        };
-
-        fetchAllItems();
-    }, [restaurantId, isOpen]);
-
-    const handleCopyGroupsFromItem = (sourceItem: MenuItem) => {
-        if (!sourceItem.optionGroups || sourceItem.optionGroups.length === 0) {
-            alert('Este produto não possui grupos de opções para copiar.');
+    const loadData = useCallback(async () => {
+        if (!restaurantId) {
+            setIsLoading(false);
             return;
         }
+        try {
+            setIsLoading(true);
+            
+            // Try fetching restaurant name with 2.5s maximum timeout
+            const restNameData = await Promise.race([
+                supabase.from('restaurants').select('name').eq('id', restaurantId).single(),
+                new Promise<any>((resolve) => setTimeout(() => resolve({ data: null, error: new Error('Timeout') }), 2500))
+            ]).catch(() => null);
+            
+            if (restNameData?.data) setRestaurantName(restNameData.data.name);
 
-        if (confirm(`Deseja copiar os ${sourceItem.optionGroups.length} grupos de opções de "${sourceItem.name}"? Isso substituirá os grupos atuais.`)) {
-            const copiedGroups: OptionGroup[] = sourceItem.optionGroups.map(group => ({
-                ...group,
-                id: crypto.randomUUID(),
-                options: group.options.map(opt => ({ ...opt }))
-            }));
-            setOptionGroups(copiedGroups);
-            setIsCopyingGroups(false);
-            setCopySearchTerm('');
-        }
-    };
+            // Fetch menu components concurrently with a 3.5s timeout race
+            const results = await Promise.race([
+                Promise.all([
+                    fetchMenuForRestaurant(restaurantId, true), // Pass true to ignore day filter
+                    fetchPromotionsForRestaurant(restaurantId),
+                    fetchCouponsForRestaurant(restaurantId),
+                    fetchAddonsForRestaurant(restaurantId)
+                ]),
+                new Promise<any[]>((_, reject) => setTimeout(() => reject(new Error('Fetch timeout')), 3500))
+            ]).catch(err => {
+                console.warn("[GuaraFood Offline Mode] Menu fetch timed out or failed. Attempting to fall back to local storage cache.", err);
+                const cachedMenu = localStorage.getItem(`guarafood-cached-menu-${restaurantId}`);
+                const cachedPromo = localStorage.getItem(`guarafood-cached-promo-${restaurantId}`);
+                const cachedCoupon = localStorage.getItem(`guarafood-cached-coupon-${restaurantId}`);
+                const cachedAddon = localStorage.getItem(`guarafood-cached-addon-${restaurantId}`);
+                
+                return [
+                    cachedMenu ? JSON.parse(cachedMenu) : [],
+                    cachedPromo ? JSON.parse(cachedPromo) : [],
+                    cachedCoupon ? JSON.parse(cachedCoupon) : [],
+                    cachedAddon ? JSON.parse(cachedAddon) : []
+                ];
+            });
 
-    useEffect(() => {
-        if (existingItem) {
-            setName(existingItem.name);
-            setDescription(existingItem.description);
-            setPrice(String(existingItem.price));
-            setOriginalPrice(String(existingItem.originalPrice || ''));
-            setImagePreview(existingItem.imageUrl || null);
-            setCategory(initialCategory);
-            setIsAcai(existingItem.isAcai || false);
-            setIsPizza(existingItem.isPizza || false);
-            setIsDailySpecial(existingItem.isDailySpecial || false);
-            setIsWeeklySpecial(existingItem.isWeeklySpecial || false);
-            setIsMarmita(existingItem.isMarmita || false);
-            setMarmitaOptions(existingItem.marmitaOptions && existingItem.marmitaOptions.length > 0 ? existingItem.marmitaOptions : ['']);
-            setSizes(existingItem.sizes || []);
-            setOptionGroups(existingItem.optionGroups || []);
-            setAvailableDays(existingItem.availableDays || []);
-            setAvailableStartTime(existingItem.availableStartTime || '');
-            setAvailableEndTime(existingItem.availableEndTime || '');
-            setSelectedAddonIds(new Set(existingItem.availableAddonIds || []));
-            setAvailable(existingItem.available !== false);
-        } else {
-            // Reset form for new item
-            setName('');
-            setDescription('');
-            setPrice('');
-            setOriginalPrice('');
-            setImagePreview(null);
-            setCategory(initialCategory);
-            setIsAcai(false);
-            setIsPizza(false);
-            setIsDailySpecial(false);
-            setIsWeeklySpecial(false);
-            setIsMarmita(false);
-            setMarmitaOptions(['']);
-            setSizes([]);
-            setOptionGroups([]);
-            setAvailableDays([]);
-            setAvailableStartTime('');
-            setAvailableEndTime('');
-            setSelectedAddonIds(new Set());
-            setAvailable(true);
-        }
-        setAddonSearchTerm('');
-        setImageFile(null);
-        setError('');
-        setIsSaving(false);
-    }, [existingItem, initialCategory, isOpen]);
+            const [menuData, promoData, couponData, addonData] = results;
 
-    // Cleanup for image preview object URL
-    useEffect(() => {
-        return () => {
-            if (imagePreview && imagePreview.startsWith('blob:')) {
-                URL.revokeObjectURL(imagePreview);
+            setMenuCategories(menuData || []);
+            setPromotions(promoData || []);
+            setCoupons(couponData || []);
+            setAddons(addonData || []);
+
+            // Save successfully fetched data to local storage for offline tolerance
+            if (menuData && menuData.length > 0) {
+                localStorage.setItem(`guarafood-cached-menu-${restaurantId}`, JSON.stringify(menuData));
             }
-        };
-    }, [imagePreview]);
+            if (promoData && promoData.length > 0) {
+                localStorage.setItem(`guarafood-cached-promo-${restaurantId}`, JSON.stringify(promoData));
+            }
+            if (couponData && couponData.length > 0) {
+                localStorage.setItem(`guarafood-cached-coupon-${restaurantId}`, JSON.stringify(couponData));
+            }
+            if (addonData && addonData.length > 0) {
+                localStorage.setItem(`guarafood-cached-addon-${restaurantId}`, JSON.stringify(addonData));
+            }
 
-    // --- COMPRESSÃO DE IMAGEM ULTRA LEVE ---
-    const compressImage = async (file: File): Promise<File> => {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.src = URL.createObjectURL(file);
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                if (!ctx) {
-                    URL.revokeObjectURL(img.src);
-                    reject(new Error("Não foi possível processar a imagem."));
+            setError(null);
+        } catch (err) {
+            console.error("Failed to load menu management data:", err);
+            // Fallback inside catch as a safety net
+            try {
+                const cachedMenu = localStorage.getItem(`guarafood-cached-menu-${restaurantId}`);
+                if (cachedMenu) {
+                    setMenuCategories(JSON.parse(cachedMenu));
+                    setError(null);
                     return;
                 }
-
-                // Configurações de otimização AGRESSIVA (Foco em mobile)
-                const MAX_WIDTH = 600; 
-                const MAX_HEIGHT = 600;
-                let width = img.width;
-                let height = img.height;
-
-                if (width > height) {
-                    if (width > MAX_WIDTH) {
-                        height *= MAX_WIDTH / width;
-                        width = MAX_WIDTH;
-                    }
-                } else {
-                    if (height > MAX_HEIGHT) {
-                        width *= MAX_HEIGHT / height;
-                        height = MAX_HEIGHT;
-                    }
-                }
-
-                canvas.width = width;
-                canvas.height = height;
-                ctx.drawImage(img, 0, 0, width, height);
-
-                // JPEG 50% de qualidade - Extremamente leve para listas de comida
-                canvas.toBlob((blob) => {
-                    URL.revokeObjectURL(img.src);
-                    if (blob) {
-                        const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
-                            type: 'image/jpeg',
-                            lastModified: Date.now(),
-                        });
-                        resolve(compressedFile);
-                    } else {
-                        reject(new Error("Falha na compressão."));
-                    }
-                }, 'image/jpeg', 0.5); 
-            };
-            img.onerror = (err) => {
-                URL.revokeObjectURL(img.src);
-                reject(err);
-            };
-        });
-    };
-
-
-    const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const originalFile = e.target.files[0];
-            try {
-                const compressedFile = await compressImage(originalFile);
-                setImageFile(compressedFile);
-                
-                if (imagePreview && imagePreview.startsWith('blob:')) {
-                    URL.revokeObjectURL(imagePreview);
-                }
-                setImagePreview(URL.createObjectURL(compressedFile));
-            } catch (err) {
-                console.error("Erro ao otimizar imagem:", err);
-                setError("Erro ao processar imagem. Tente outra.");
+            } catch (innerErr) {
+                console.error("Second-level fallback failed:", innerErr);
             }
+            setError(`Falha ao carregar os dados do cardápio e promoções: ${getErrorMessage(err)}`);
+        } finally {
+            setIsLoading(false);
         }
-    };
+    }, [restaurantId]);
 
-    const handlePriceChange = (value: string, setter: React.Dispatch<React.SetStateAction<string>>) => {
-        setter((value || '').replace(',', '.'));
-    };
-
-    const handleSizeChange = (index: number, field: keyof SizeOption, value: string) => {
-        const newSizes = [...sizes];
-        let processedValue: string | number = value;
-        
-        if (field === 'price') {
-             processedValue = parseFloat((value || '').replace(',', '.'));
-        } else if (field === 'freeAddonCount') {
-             processedValue = parseInt(value, 10);
+    useEffect(() => {
+        // Prevent infinite loading if no ID
+        if (restaurantId) {
+            setIsLoading(true);
+            loadData();
+        } else {
+            setIsLoading(false);
         }
+    }, [loadData, restaurantId]);
 
-        (newSizes[index] as any)[field] = isNaN(processedValue as number) && field !== 'name' ? value : processedValue;
-        setSizes(newSizes);
+    // --- Promotion Handlers ---
+    const handleOpenPromoModal = (promo: Promotion | null = null) => {
+        setEditingPromo(promo);
+        setIsPromoModalOpen(true);
     };
-
-    const addSize = () => {
-        setSizes([...sizes, { name: '', price: 0, freeAddonCount: 0 }]);
-    };
-
-    const removeSize = (index: number) => {
-        setSizes(sizes.filter((_, i) => i !== index));
-    };
-
-    const addOptionGroup = () => {
-        const newGroup: OptionGroup = {
-            id: crypto.randomUUID(),
-            title: '',
-            minSelections: 0,
-            maxSelections: 1,
-            options: [{ name: '', price: 0 }]
-        };
-        setOptionGroups([...optionGroups, newGroup]);
-    };
-
-    const removeOptionGroup = (groupId: string) => {
-        setOptionGroups(optionGroups.filter(g => g.id !== groupId));
-    };
-
-    const updateOptionGroup = (groupId: string, field: keyof OptionGroup, value: any) => {
-        setOptionGroups(optionGroups.map(g => g.id === groupId ? { ...g, [field]: value } : g));
-    };
-
-    const addOptionToGroup = (groupId: string) => {
-        setOptionGroups(optionGroups.map(g => {
-            if (g.id === groupId) {
-                return { ...g, options: [...g.options, { name: '', price: 0 }] };
-            }
-            return g;
-        }));
-    };
-
-    const removeOptionFromGroup = (groupId: string, optionIndex: number) => {
-        setOptionGroups(optionGroups.map(g => {
-            if (g.id === groupId) {
-                return { ...g, options: g.options.filter((_, i) => i !== optionIndex) };
-            }
-            return g;
-        }));
-    };
-
-    const updateOptionInGroup = (groupId: string, optionIndex: number, field: keyof CustomizationOption, value: any) => {
-        setOptionGroups(optionGroups.map(g => {
-            if (g.id === groupId) {
-                const newOptions = [...g.options];
-                newOptions[optionIndex] = { ...newOptions[optionIndex], [field]: value };
-                return { ...g, options: newOptions };
-            }
-            return g;
-        }));
-    };
-
-    const handleDayToggle = (dayIndex: number) => {
-        setAvailableDays(prev => 
-            prev.includes(dayIndex) 
-                ? prev.filter(d => d !== dayIndex) 
-                : [...prev, dayIndex]
-        );
-    };
-
-    const handleAddonToggle = (addonId: number) => {
-        setSelectedAddonIds(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(addonId)) {
-                newSet.delete(addonId);
+    const handleSavePromo = async (promoData: Omit<Promotion, 'id' | 'restaurantId'>) => {
+        if (!restaurantId) return;
+        try {
+            if (editingPromo) {
+                await updatePromotion(restaurantId, editingPromo.id, promoData);
+                 addToast({ message: 'Promoção atualizada!', type: 'success' });
             } else {
-                newSet.add(addonId);
+                await createPromotion(restaurantId, promoData);
+                addToast({ message: 'Promoção criada!', type: 'success' });
             }
-            return newSet;
+            setIsPromoModalOpen(false);
+            await loadData();
+        } catch (error) { 
+            console.error("Failed to save promotion:", error);
+            addToast({ message: `Erro ao salvar promoção: ${getErrorMessage(error)}`, type: 'error' });
+        }
+    };
+     const handleDeletePromo = async (promoId: number) => {
+        if (!restaurantId) return;
+        const confirmed = await confirm({
+            title: 'Excluir Promoção',
+            message: 'Tem certeza que deseja excluir esta promoção?',
+            confirmText: 'Excluir',
+            isDestructive: true,
         });
-    };
-    
-    const handleMarmitaOptionChange = (index: number, value: string) => {
-        const newOptions = [...marmitaOptions];
-        newOptions[index] = value;
-        setMarmitaOptions(newOptions);
-    };
-    const addMarmitaOption = () => {
-        setMarmitaOptions([...marmitaOptions, '']);
-    };
-    const removeMarmitaOption = (index: number) => {
-        setMarmitaOptions(marmitaOptions.filter((_, i) => i !== index));
-    };
-
-
-    const filteredAddons = useMemo(() => {
-        if (!addonSearchTerm) return allAddons;
-        return allAddons.filter(addon => addon.name.toLowerCase().includes(addonSearchTerm.toLowerCase()));
-    }, [allAddons, addonSearchTerm]);
-
-    const handleSubmit = async () => {
-        const hasSizes = sizes.length > 0;
-        if (!name || (!hasSizes && !price) || !category) {
-            setError('Nome, Preço de Venda e Categoria são obrigatórios.');
-            return;
-        }
-
-        const basePrice = hasSizes ? (sizes[0]?.price || 0) : parseFloat(price);
-        if (isNaN(basePrice) || basePrice <= 0) {
-            setError('O preço de venda deve ser um número válido e maior que zero.');
-            return;
-        }
-        if (!restaurantId) {
-             setError('ID do restaurante não encontrado.');
-             return;
-        }
-
-        setIsSaving(true);
-        let finalImageUrl = existingItem?.imageUrl || '';
+        if (!confirmed) return;
 
         try {
-            if (imageFile) {
-                try {
-                    const fileExt = 'jpg'; 
-                    const fileName = `${crypto.randomUUID()}.${fileExt}`;
-                    const filePath = `${restaurantId}/${fileName}`;
-
-                    const { error: uploadError } = await supabase.storage
-                        .from('product-images')
-                        .upload(filePath, imageFile, {
-                            contentType: 'image/jpeg',
-                            cacheControl: '3600',
-                            upsert: false
-                        });
-
-                    if (uploadError) throw uploadError;
-
-                    const { data } = supabase.storage
-                        .from('product-images')
-                        .getPublicUrl(filePath);
-
-                    finalImageUrl = data.publicUrl;
-                } catch (uploadError: any) {
-                    setError(`Erro no upload: ${uploadError.message}`);
-                    return; 
-                }
-            }
-
-
-            const numericOriginalPrice = parseFloat(originalPrice);
-
-            await onSave({
-                name,
-                description,
-                price: basePrice,
-                originalPrice: numericOriginalPrice > 0 ? numericOriginalPrice : undefined,
-                imageUrl: finalImageUrl,
-                isAcai,
-                isPizza,
-                isDailySpecial,
-                isWeeklySpecial,
-                isMarmita,
-                marmitaOptions: isMarmita ? marmitaOptions.filter(opt => opt.trim() !== '') : null,
-                availableDays,
-                availableStartTime: availableStartTime.trim() || undefined,
-                availableEndTime: availableEndTime.trim() || undefined,
-                sizes: hasSizes ? sizes : null,
-                optionGroups: optionGroups.length > 0 ? optionGroups : null,
-                availableAddonIds: Array.from(selectedAddonIds),
-                available: available
-            }, category);
-        } catch (err: any) {
-            console.error("Failed to save:", err);
-            setError(`Erro: ${err.message || String(err)}`);
-        } finally {
-            setIsSaving(false);
+            await deletePromotion(restaurantId, promoId);
+            addToast({ message: 'Promoção excluída.', type: 'info' });
+            await loadData();
+        } catch (error) { 
+            console.error("Failed to delete promotion:", error);
+            addToast({ message: `Erro ao excluir promoção: ${getErrorMessage(error)}`, type: 'error' });
         }
     };
 
-    if (!isOpen) return null;
+    // --- Coupon Handlers ---
+    const handleOpenCouponModal = (coupon: Coupon | null = null) => {
+        setEditingCoupon(coupon);
+        setIsCouponModalOpen(true);
+    };
 
-    const hasSizes = sizes.length > 0;
+    const handleSaveCoupon = async (couponData: Omit<Coupon, 'id' | 'restaurantId'>) => {
+        if (!restaurantId) return;
+        try {
+            if (editingCoupon) {
+                await updateCoupon(restaurantId, editingCoupon.id, couponData);
+                addToast({ message: 'Cupom atualizado!', type: 'success' });
+            } else {
+                await createCoupon(restaurantId, couponData);
+                addToast({ message: 'Cupom criado!', type: 'success' });
+            }
+            setIsCouponModalOpen(false);
+            await loadData();
+        } catch (error) {
+            console.error("Failed to save coupon:", error);
+            addToast({ message: `Erro ao salvar cupom: ${getErrorMessage(error)}`, type: 'error' });
+        }
+    };
+
+    const handleDeleteCoupon = async (couponId: number) => {
+        if (!restaurantId) return;
+        const confirmed = await confirm({ title: 'Excluir Cupom', message: 'Tem certeza?', confirmText: 'Excluir', isDestructive: true });
+        if (!confirmed) return;
+
+        try {
+            await deleteCoupon(restaurantId, couponId);
+            addToast({ message: 'Cupom excluído.', type: 'info' });
+            await loadData();
+        } catch (error) {
+            console.error("Failed to delete coupon:", error);
+            addToast({ message: `Erro ao excluir cupom: ${getErrorMessage(error)}`, type: 'error' });
+        }
+    };
+    
+    const handleCopyCode = (code: string) => {
+        navigator.clipboard.writeText(code)
+            .then(() => addToast({ message: `Código "${code}" copiado!`, type: 'success' }))
+            .catch(err => addToast({ message: 'Falha ao copiar código.', type: 'error' }));
+    };
+
+    // --- ADDON HANDLERS ---
+    const handleOpenAddonModal = (addon: Addon | null = null) => {
+        setEditingAddon(addon);
+        setIsAddonModalOpen(true);
+    };
+
+    const handleSaveAddon = async (addonData: Omit<Addon, 'id' | 'restaurantId'>) => {
+        if (!restaurantId) {
+            addToast({ message: 'Erro: ID do restaurante não encontrado. Recarregue a página.', type: 'error' });
+            return;
+        }
+        try {
+            if (editingAddon) {
+                await updateAddon(restaurantId, editingAddon.id, addonData);
+                addToast({ message: 'Adicional atualizado!', type: 'success' });
+            } else {
+                await createAddon(restaurantId, addonData);
+                addToast({ message: 'Adicional criado!', type: 'success' });
+            }
+            setIsAddonModalOpen(false);
+            await loadData();
+        } catch (error) {
+            console.error("Failed to save addon:", error);
+            addToast({ message: `Erro ao salvar adicional: ${getErrorMessage(error)}`, type: 'error' });
+        }
+    };
+
+    const handleDeleteAddon = async (addonId: number) => {
+        if (!restaurantId) return;
+        const confirmed = await confirm({ title: 'Excluir Adicional', message: 'Tem certeza?', confirmText: 'Excluir', isDestructive: true });
+        if (!confirmed) return;
+
+        try {
+            await deleteAddon(restaurantId, addonId);
+            addToast({ message: 'Adicional excluído.', type: 'info' });
+            await loadData();
+        } catch (error) {
+            console.error("Failed to delete addon:", error);
+            addToast({ message: `Erro ao excluir adicional: ${getErrorMessage(error)}`, type: 'error' });
+        }
+    };
+
+
+    // --- Combo Handlers ---
+    const handleOpenComboModal = (combo: Combo | null = null) => {
+        setEditingCombo(combo);
+        setIsComboModalOpen(true);
+    };
+    const handleSaveCombo = async (comboData: Omit<Combo, 'id' | 'restaurantId'>) => {
+        if (!restaurantId) return;
+        try {
+            if (editingCombo) {
+                await updateCombo(restaurantId, editingCombo.id, comboData);
+                addToast({ message: 'Combo atualizado!', type: 'success' });
+            } else {
+                await createCombo(restaurantId, comboData);
+                addToast({ message: 'Combo criado!', type: 'success' });
+            }
+            setIsComboModalOpen(false);
+            await loadData();
+        } catch (error) { 
+            console.error("Failed to save combo:", error);
+            addToast({ message: `Erro ao salvar combo: ${getErrorMessage(error)}`, type: 'error' });
+        }
+    };
+    const handleDeleteCombo = async (comboId: number) => {
+        if (!restaurantId) return;
+        const confirmed = await confirm({ title: 'Excluir Combo', message: 'Tem certeza?', confirmText: 'Excluir', isDestructive: true });
+        if (!confirmed) return;
+
+        try {
+            await deleteCombo(restaurantId, comboId);
+            addToast({ message: 'Combo excluído.', type: 'info' });
+            await loadData();
+        } catch (error) {
+            console.error("Failed to delete combo:", error);
+            addToast({ message: `Erro ao excluir combo: ${getErrorMessage(error)}`, type: 'error' });
+        }
+    };
+
+    // --- Menu Item Handlers ---
+    const handleOpenItemModal = (item: MenuItem | null = null, categoryName: string = '') => {
+        setEditingItem(item ? { item, categoryName } : null);
+        setIsItemModalOpen(true);
+    };
+    const handleSaveItem = async (itemData: Omit<MenuItem, 'id' | 'restaurantId'>, category: string) => {
+        if (!restaurantId) return;
+        try {
+            const payload = { ...itemData, category };
+            if (editingItem) {
+                await updateMenuItem(restaurantId, editingItem.item.id, payload);
+                addToast({ message: 'Item atualizado!', type: 'success' });
+            } else {
+                await createMenuItem(restaurantId, payload);
+                addToast({ message: 'Item criado!', type: 'success' });
+            }
+            setIsItemModalOpen(false);
+            await loadData();
+        } catch (error) {
+            console.error("Failed to save menu item:", error);
+            addToast({ message: `Erro ao salvar item: ${getErrorMessage(error)}`, type: 'error' });
+        }
+    };
+    const handleDeleteItem = async (itemId: number) => {
+        if (!restaurantId) return;
+        const confirmed = await confirm({ title: 'Excluir Item', message: 'Tem certeza?', confirmText: 'Excluir', isDestructive: true });
+        if (!confirmed) return;
+
+        try {
+            await deleteMenuItem(restaurantId, itemId);
+            addToast({ message: 'Item excluído.', type: 'info' });
+            await loadData();
+        } catch (error) {
+            console.error("Failed to delete menu item:", error);
+            addToast({ message: `Erro ao excluir item: ${getErrorMessage(error)}`, type: 'error' });
+        }
+    };
+
+    const handleDuplicateItem = async (item: MenuItem, categoryName: string) => {
+        if (!restaurantId) return;
+
+        const confirmed = await confirm({
+            title: 'Duplicar Item',
+            message: `Deseja criar uma cópia de "${item.name}"?`,
+            confirmText: 'Duplicar',
+        });
+
+        if (!confirmed) return;
+
+        try {
+            // Prepare data for the new item (removing ID and adjusting details if needed)
+            const { id: _, ...itemData } = item;
+
+            // Encontrar os itens da categoria correspondente para determinar o próximo displayOrder
+            const category = menuCategories.find(c => c.name === categoryName);
+            const itemsInCategory = category ? category.items : [];
+            let maxDisplayOrder = 0;
+            if (itemsInCategory.length > 0) {
+                // Mapeia os displayOrder garantindo que sejam convertidos para número
+                maxDisplayOrder = Math.max(...itemsInCategory.map(i => Number(i.displayOrder || 0)));
+            }
+            const nextDisplayOrder = maxDisplayOrder + 1;
+
+            const duplicatedItem = {
+                ...itemData,
+                name: `${item.name} (Cópia)`,
+                category: categoryName,
+                displayOrder: nextDisplayOrder,
+            };
+
+            await createMenuItem(restaurantId, duplicatedItem);
+            addToast({ message: 'Item duplicado com sucesso!', type: 'success' });
+            await loadData();
+        } catch (error) {
+            console.error("Failed to duplicate menu item:", error);
+            addToast({ message: `Erro ao duplicar item: ${getErrorMessage(error)}`, type: 'error' });
+        }
+    };
+
+    const handleReorderItem = async (categoryId: number, itemIndex: number, direction: 'up' | 'down') => {
+        const categoryIndex = menuCategories.findIndex(c => c.id === categoryId);
+        if (categoryIndex === -1) return;
+
+        const category = menuCategories[categoryIndex];
+        const newItems = [...category.items];
+        const swapIndex = direction === 'up' ? itemIndex - 1 : itemIndex + 1;
+
+        if (swapIndex < 0 || swapIndex >= newItems.length) return;
+
+        // Swap items locally
+        [newItems[itemIndex], newItems[swapIndex]] = [newItems[swapIndex], newItems[itemIndex]];
+
+        // Update local state for optimistic UI
+        const newCategories = [...menuCategories];
+        newCategories[categoryIndex] = { ...category, items: newItems };
+        setMenuCategories(newCategories);
+
+        try {
+            if (!restaurantId) return;
+            await updateMenuItemOrder(restaurantId, newItems);
+        } catch (error) {
+            addToast({ message: `Erro ao reordenar: ${getErrorMessage(error)}`, type: 'error' });
+            loadData(); // Revert on failure
+        }
+    };
+
+    const handleItemDrop = async (categoryId: number, targetIndex: number) => {
+        if (draggedItemIndex === null || draggedItemIndex === targetIndex) return;
+
+        const categoryIndex = menuCategories.findIndex(c => c.id === categoryId);
+        if (categoryIndex === -1) return;
+
+        const category = menuCategories[categoryIndex];
+        const newItems = [...category.items];
+        const [movedItem] = newItems.splice(draggedItemIndex, 1);
+        newItems.splice(targetIndex, 0, movedItem);
+
+        // Update local state primarily
+        const newCategories = [...menuCategories];
+        newCategories[categoryIndex] = { ...category, items: newItems };
+        setMenuCategories(newCategories);
+        setDraggedItemIndex(null);
+
+        try {
+            if (!restaurantId) return;
+            await updateMenuItemOrder(restaurantId, newItems);
+            addToast({ message: 'Ordem dos itens salva!', type: 'success' });
+        } catch (error) {
+            console.error("Failed to update item order:", error);
+            addToast({ message: `Erro ao salvar ordem: ${getErrorMessage(error)}`, type: 'error' });
+            loadData(); // Revert
+        }
+    };
+
+
+    // --- Category Handlers ---
+    const handleCreateCategory = async () => {
+        const name = await prompt({
+            title: "Nova Categoria",
+            message: "Digite o nome da nova categoria (ex: Bebidas, Lanches):",
+            placeholder: "Nome da categoria"
+        });
+        if (name?.trim() && restaurantId) {
+            try {
+                await createCategory(restaurantId, name.trim()); // No iconUrl for initial creation
+                await loadData();
+                addToast({ message: 'Categoria criada!', type: 'success' });
+            } catch (error) {
+                addToast({ message: `Erro: ${getErrorMessage(error)}`, type: 'error' });
+            }
+        }
+    };
+
+    const handleEditCategory = (category: MenuCategory) => {
+        setEditingCategory({ 
+            id: category.id,
+            oldName: category.name,
+            newName: category.name,
+            newIconUrl: category.iconUrl || null,
+            newAvailableStartTime: category.availableStartTime || null,
+            newAvailableEndTime: category.availableEndTime || null
+        });
+    };
+
+    const handleCategoryIconChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0 || !restaurantId || !editingCategory) return;
+        
+        const file = e.target.files[0];
+        
+        try {
+            // Upload to Supabase storage
+            const fileExt = 'jpg'; 
+            const fileName = `${crypto.randomUUID()}.${fileExt}`;
+            const filePath = `${restaurantId}/categories/${fileName}`;
+            
+            const { error: uploadError } = await supabase.storage
+                .from('product-images')
+                .upload(filePath, file, {
+                    contentType: 'image/jpeg',
+                    cacheControl: '3600',
+                    upsert: false
+                });
+            
+            if (uploadError) throw uploadError;
+            
+            const { data } = supabase.storage
+                .from('product-images')
+                .getPublicUrl(filePath);
+            
+            setEditingCategory({...editingCategory, newIconUrl: data.publicUrl});
+            
+        } catch (error) {
+            console.error("Error uploading category icon:", error);
+            addToast({ message: `Erro ao enviar imagem: ${getErrorMessage(error)}`, type: 'error' });
+        }
+    };
+
+    const handleSaveCategoryChanges = async () => {
+        if (!editingCategory || !restaurantId) return;
+        const { id, oldName, newName, newIconUrl, newAvailableStartTime, newAvailableEndTime } = editingCategory;
+        if (newName.trim() === '' || (newName === oldName && newIconUrl === (menuCategories.find(c => c.id === id)?.iconUrl || null) && newAvailableStartTime === (menuCategories.find(c => c.id === id)?.availableStartTime || null) && newAvailableEndTime === (menuCategories.find(c => c.id === id)?.availableEndTime || null))) {
+            setEditingCategory(null); // No changes made
+            return;
+        }
+        try {
+            await updateCategory(restaurantId, id, newName.trim(), newIconUrl, newAvailableStartTime || undefined, newAvailableEndTime || undefined);
+            setEditingCategory(null);
+            await loadData();
+            addToast({ message: 'Categoria atualizada!', type: 'success' });
+        } catch (error) {
+            addToast({ message: `Erro ao salvar categoria: ${getErrorMessage(error)}`, type: 'error' });
+        }
+    };
+
+    const handleDeleteCategory = async (categoryName: string) => {
+        const category = menuCategories.find(c => c.name === categoryName);
+        if (!category || category.items.length > 0 || (category.combos || []).length > 0) {
+            addToast({ message: "Apenas categorias vazias podem ser excluídas.", type: 'error' });
+            return;
+        }
+        if (!restaurantId) return;
+
+        const confirmed = await confirm({
+            title: 'Excluir Categoria',
+            message: `Tem certeza que deseja excluir a categoria "${categoryName}"?`,
+            confirmText: 'Excluir',
+            isDestructive: true,
+        });
+        if (confirmed) {
+            try {
+                await deleteCategory(restaurantId, categoryName);
+                await loadData();
+            } catch (error) {
+                addToast({ message: `Erro ao excluir: ${getErrorMessage(error)}`, type: 'error' });
+            }
+        }
+    };
+    
+    // --- Category Reordering (Button & Drag) ---
+    const handleReorderCategory = async (index: number, direction: 'up' | 'down') => {
+        const newOrder = [...menuCategories];
+        const swapIndex = direction === 'up' ? index - 1 : index + 1;
+        if (swapIndex < 0 || swapIndex >= newOrder.length) return;
+        [newOrder[index], newOrder[swapIndex]] = [newOrder[swapIndex], newOrder[index]]; // Swap
+        setMenuCategories(newOrder); // Optimistic update
+        try {
+            if (!restaurantId) return;
+            await updateCategoryOrder(restaurantId, newOrder);
+        } catch (error) {
+            addToast({ message: `Erro ao reordenar: ${getErrorMessage(error)}`, type: 'error' });
+            loadData(); // Revert on failure
+        }
+    };
+
+    // DRAG HANDLERS
+    const handleDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+        // UX: Only allow drag if the specific handle area is targeted
+        // This prevents accidental drags when interacting with form inputs
+        const target = e.target as HTMLElement;
+        if (!target.closest('.drag-handle-area')) {
+            e.preventDefault();
+            return;
+        }
+
+        setDraggedCategoryIndex(index);
+        // Required for Firefox
+        e.dataTransfer.effectAllowed = 'move';
+        // Set a transparent drag image if desired, or let browser handle it
+    };
+
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+        e.preventDefault(); // Necessary to allow dropping
+        e.dataTransfer.dropEffect = 'move';
+    };
+
+    const handleDrop = async (e: React.DragEvent<HTMLDivElement>, targetIndex: number) => {
+        e.preventDefault();
+        
+        if (draggedCategoryIndex === null || draggedCategoryIndex === targetIndex) {
+            setDraggedCategoryIndex(null);
+            return;
+        }
+
+        const newCategories = [...menuCategories];
+        const [movedItem] = newCategories.splice(draggedCategoryIndex, 1);
+        newCategories.splice(targetIndex, 0, movedItem);
+
+        setMenuCategories(newCategories); // Optimistic Update
+        setDraggedCategoryIndex(null);
+
+        if (restaurantId) {
+            try {
+                await updateCategoryOrder(restaurantId, newCategories);
+            } catch (error) {
+                console.error(error);
+                addToast({ message: "Erro ao reordenar.", type: 'error' });
+                loadData(); // Revert
+            }
+        }
+    };
+
+
+    const handleSeedMenu = async () => {
+        if (!restaurantId || !restaurantName) return;
+        
+        let seedData = null;
+        if (restaurantName.toLowerCase().includes('toka')) {
+            seedData = TOKA_DO_PASTEL_MENU;
+        } else if (restaurantName.toLowerCase().includes('renovação')) {
+            seedData = PASTELARIA_RENOVACAO_MENU;
+        }
+
+        if (!seedData) {
+            addToast({ message: 'Nenhum backup encontrado para este restaurante.', type: 'error' });
+            return;
+        }
+
+        if (!window.confirm(`Deseja restaurar o cardápio original de "${restaurantName}"? Isso adicionará as categorias e itens padrão.`)) {
+            return;
+        }
+
+        setIsSeeding(true);
+        const result = await seedRestaurantMenu(restaurantId, seedData);
+        setIsSeeding(false);
+
+        if (result.success) {
+            addToast({ message: 'Cardápio restaurado com sucesso!', type: 'success' });
+            loadData();
+        } else {
+            addToast({ message: 'Erro ao restaurar cardápio.', type: 'error' });
+        }
+    };
+
+    if (isLoading) return <Spinner message="Carregando cardápio..." />;
+    if (error) return <div className="p-4 text-red-500 text-center">{error}</div>;
+
+    const isPromoActiveToday = (promo: Promotion) => {
+        const now = new Date();
+        now.setHours(0,0,0,0);
+        const startDate = new Date(promo.startDate);
+        startDate.setHours(0,0,0,0);
+        const endDate = new Date(promo.endDate);
+        endDate.setHours(23,59,59,999);
+        return now >= startDate && now <= endDate;
+    }
+
+    const isCouponActive = (coupon: Coupon) => {
+        const now = new Date();
+        const expirationDate = new Date(coupon.expirationDate);
+        expirationDate.setHours(23, 59, 59, 999);
+        return coupon.isActive && now <= expirationDate;
+    };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog" aria-labelledby="menuitem-editor-modal-title">
-            <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                <h2 id="menuitem-editor-modal-title" className="text-2xl font-bold mb-4">{existingItem ? 'Editar Item' : 'Adicionar Item'}</h2>
-                
-                <div className="overflow-y-auto space-y-4 pr-2 -mr-2">
-                    
-                    {/* DISPONIBILIDADE (ESTOQUE) */}
-                    <div className="p-4 bg-orange-50 border-2 border-orange-100 rounded-xl flex items-center justify-between">
-                         <div className="flex items-center gap-3">
-                            <div className={`w-3 h-3 rounded-full ${available ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-                            <div>
-                                <p className="text-sm font-black text-gray-800 uppercase tracking-tight">Status de Venda</p>
-                                <p className="text-[10px] text-gray-500 font-bold uppercase">{available ? 'Disponível no cardápio' : 'Esgotado / Pausado'}</p>
-                            </div>
-                         </div>
-                         <label className="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" checked={available} onChange={(e) => setAvailable(e.target.checked)} className="sr-only peer" />
-                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
-                        </label>
-                    </div>
-
-                    <div className="flex flex-col md:flex-row items-start gap-4">
-                         <div className="flex-shrink-0">
-                            {imagePreview ? (
-                                <img src={imagePreview} alt="Preview" className="w-24 h-24 rounded-md object-cover" loading="lazy" />
-                            ) : (
-                                <div className="w-24 h-24 rounded-md bg-gray-100 flex items-center justify-center text-gray-400 text-sm text-center p-2">
-                                    Sem Imagem
-                                </div>
-                            )}
-                        </div>
-                        <div className="flex-grow">
-                             <label htmlFor="imageUpload" className="block text-sm font-medium text-gray-700 mb-1">
-                                Foto do Produto
-                            </label>
-                            <input
-                                id="imageUpload"
-                                type="file"
-                                accept="image/*"
-                                onChange={handleImageChange}
-                                className="block w-full text-sm text-gray-500
-                                    file:mr-4 file:py-2 file:px-4
-                                    file:rounded-full file:border-0
-                                    file:text-sm file:font-semibold
-                                    file:bg-orange-50 file:text-orange-700
-                                    hover:file:bg-orange-100"
-                            />
-                            <p className="text-[10px] text-orange-600 font-bold mt-1 uppercase tracking-tighter">O App reduzirá o peso da foto automaticamente para economizar espaço.</p>
-                        </div>
-                    </div>
-
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Item</label>
-                        <input type="text" placeholder="ex: X-Bacon" value={name} onChange={(e) => setName(e.target.value)} className="w-full p-3 border rounded-lg bg-gray-50"/>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Descrição do Item</label>
-                        <textarea placeholder="Descreva os ingredientes ou detalhes do produto" value={description} onChange={(e) => setDescription(e.target.value)} className="w-full p-3 border rounded-lg bg-gray-50" rows={3}/>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Preço Original (Racionado / Riscado)</label>
-                            <input
-                                type="text"
-                                placeholder="0,00"
-                                value={originalPrice}
-                                onChange={(e) => handlePriceChange(e.target.value, setOriginalPrice)}
-                                className="w-full p-3 border rounded-lg bg-gray-50"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">{hasSizes ? "Defina o preço nos tamanhos" : "Preço de Venda"}</label>
-                            <input
-                                type="text"
-                                placeholder="0,00"
-                                value={price}
-                                onChange={(e) => handlePriceChange(e.target.value, setPrice)}
-                                className="w-full p-3 border rounded-lg bg-gray-50 disabled:bg-gray-200"
-                                disabled={hasSizes}
-                            />
-                        </div>
-                    </div>
-                    
-                    {/* --- SIZES MANAGEMENT --- */}
-                    <div className="p-3 bg-gray-50 rounded-lg border">
-                        <h3 className="font-bold text-gray-700 mb-3">Tamanhos / Porções</h3>
-                        {sizes.map((size, index) => (
-                            <div key={index} className="grid grid-cols-12 gap-2 mb-2 items-center">
-                                <input type="text" placeholder="Nome (ex: 500ml)" value={size.name} onChange={(e) => handleSizeChange(index, 'name', e.target.value)} className="col-span-5 p-2 border rounded-md"/>
-                                <input type="number" placeholder="Preço" value={size.price} onChange={(e) => handleSizeChange(index, 'price', e.target.value)} className="col-span-3 p-2 border rounded-md"/>
-                                
-                                {isAcai ? (
-                                    <input 
-                                        type="number" 
-                                        placeholder="Grátis" 
-                                        value={size.freeAddonCount || ''} 
-                                        onChange={(e) => handleSizeChange(index, 'freeAddonCount', e.target.value)} 
-                                        className="col-span-3 p-2 border rounded-md bg-white border-purple-300 focus:ring-purple-500"
-                                    />
-                                ) : (
-                                    <div className="col-span-3"></div> 
-                                )}
-                                
-                                <button onClick={() => removeSize(index)} className="col-span-1 p-2 text-red-500 hover:text-red-700"><TrashIcon className="w-5 h-5"/></button>
-                            </div>
-                        ))}
-                        <button onClick={addSize} className="w-full text-sm font-semibold text-blue-600 p-2 rounded-md hover:bg-blue-100 border-dashed border-2 mt-2">
-                            + Adicionar Tamanho
-                        </button>
-                    </div>
-
-                    {/* --- OPTION GROUPS MANAGEMENT (GENERIC CUSTOMIZATION) --- */}
-                    <div className="p-3 bg-white rounded-lg border-2 border-dashed border-gray-200">
-                        <div className="flex justify-between items-center mb-3">
-                            <h3 className="font-bold text-gray-700 uppercase text-xs tracking-wider">Grupos de Escolha (Personalização)</h3>
-                            <div className="flex gap-2">
-                                <button 
-                                    onClick={() => setIsCopyingGroups(!isCopyingGroups)} 
-                                    className="text-xs font-black bg-emerald-600 text-white px-2 py-1 rounded hover:bg-emerald-700 uppercase flex items-center gap-1"
-                                    type="button"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3 h-3"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" /></svg>
-                                    Copiar de Outro
-                                </button>
-                                <button onClick={addOptionGroup} className="text-xs font-black bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 uppercase" type="button">
-                                    + Novo Grupo
-                                </button>
-                            </div>
-                        </div>
-
-                        {isCopyingGroups && (
-                            <div className="mb-4 p-4 bg-emerald-50 rounded-xl border border-emerald-100 animate-fadeIn">
-                                <div className="flex justify-between items-center mb-2">
-                                    <h4 className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Selecionar Produto Origem</h4>
-                                    <button onClick={() => setIsCopyingGroups(false)} className="text-emerald-500 hover:text-emerald-700">
-                                        <XIcon className="w-4 h-4" />
-                                    </button>
-                                </div>
-                                <input 
-                                    type="text" 
-                                    placeholder="Pesquisar produto..." 
-                                    value={copySearchTerm}
-                                    onChange={(e) => setCopySearchTerm(e.target.value)}
-                                    className="w-full p-2 text-sm border-2 border-emerald-100 rounded-lg bg-white mb-2 focus:border-emerald-400 outline-none"
-                                />
-                                <div className="max-h-40 overflow-y-auto space-y-1">
-                                    {allItemsForCopy
-                                        .filter(item => 
-                                            item.id !== existingItem?.id && 
-                                            item.name.toLowerCase().includes(copySearchTerm.toLowerCase()) &&
-                                            item.optionGroups && item.optionGroups.length > 0
-                                        )
-                                        .map(item => (
-                                            <button 
-                                                key={item.id}
-                                                onClick={() => handleCopyGroupsFromItem(item)}
-                                                className="w-full text-left p-2 hover:bg-emerald-100 rounded-lg flex justify-between items-center transition-colors border border-transparent hover:border-emerald-200"
-                                                type="button"
-                                            >
-                                                <span className="text-sm font-bold text-emerald-900">{item.name}</span>
-                                                <span className="text-[10px] font-black bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-full uppercase">
-                                                    {item.optionGroups?.length} Grupos
-                                                </span>
-                                            </button>
-                                        ))
-                                    }
-                                    {allItemsForCopy.filter(item => 
-                                        item.id !== existingItem?.id && 
-                                        item.name.toLowerCase().includes(copySearchTerm.toLowerCase()) &&
-                                        item.optionGroups && item.optionGroups.length > 0
-                                    ).length === 0 && (
-                                        <p className="text-[10px] text-emerald-600 font-bold italic py-2 text-center">Nenhum produto com grupos encontrado.</p>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                        
-                        {optionGroups.length === 0 && (
-                            <p className="text-[10px] text-gray-400 font-bold uppercase text-center py-4">Nenhum grupo de personalização definido.</p>
-                        )}
-
-                        <div className="space-y-4">
-                            {optionGroups.map((group, gIdx) => (
-                                <div key={group.id} className="p-4 bg-gray-50 border rounded-xl relative group/card">
-                                    <button 
-                                        onClick={() => removeOptionGroup(group.id)}
-                                        className="absolute -top-2 -right-2 bg-red-100 text-red-600 p-1.5 rounded-full hover:bg-red-200 shadow-sm opacity-0 group-hover/card:opacity-100 transition-opacity"
-                                    >
-                                        <TrashIcon className="w-4 h-4" />
-                                    </button>
-
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                                        <div>
-                                            <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Título do Grupo</label>
-                                            <input 
-                                                type="text" 
-                                                placeholder="Ex: Escolha o Sabor" 
-                                                value={group.title} 
-                                                onChange={(e) => updateOptionGroup(group.id, 'title', e.target.value)}
-                                                className="w-full p-2 text-sm border rounded-lg bg-white font-bold"
-                                            />
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <div>
-                                                <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Mínimo</label>
-                                                <input 
-                                                    type="number" 
-                                                    value={group.minSelections} 
-                                                    onChange={(e) => updateOptionGroup(group.id, 'minSelections', parseInt(e.target.value))}
-                                                    className="w-full p-2 text-sm border rounded-lg bg-white"
-                                                    min="0"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Máximo</label>
-                                                <input 
-                                                    type="number" 
-                                                    value={group.maxSelections} 
-                                                    onChange={(e) => updateOptionGroup(group.id, 'maxSelections', parseInt(e.target.value))}
-                                                    className="w-full p-2 text-sm border rounded-lg bg-white"
-                                                    min="1"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Opções do Grupo</label>
-                                        {group.options.map((opt, oIdx) => (
-                                            <div key={oIdx} className="grid grid-cols-12 gap-2 items-center">
-                                                <input 
-                                                    type="text" 
-                                                    placeholder="Nome da Opção" 
-                                                    value={opt.name} 
-                                                    onChange={(e) => updateOptionInGroup(group.id, oIdx, 'name', e.target.value)}
-                                                    className="col-span-7 p-2 text-sm border rounded-lg bg-white"
-                                                />
-                                                <input 
-                                                    type="number" 
-                                                    placeholder="Preço" 
-                                                    value={opt.price} 
-                                                    onChange={(e) => updateOptionInGroup(group.id, oIdx, 'price', parseFloat(e.target.value))}
-                                                    className="col-span-4 p-2 text-sm border rounded-lg bg-white"
-                                                    step="0.01"
-                                                />
-                                                <button 
-                                                    onClick={() => removeOptionFromGroup(group.id, oIdx)}
-                                                    className="col-span-1 p-1 text-red-400 hover:text-red-600"
-                                                >
-                                                    <TrashIcon className="w-4 h-4" />
-                                                </button>
-                                            </div>
-                                        ))}
-                                        <button 
-                                            onClick={() => addOptionToGroup(group.id)}
-                                            className="text-xs font-bold text-blue-600 hover:underline"
-                                        >
-                                            + Adicionar Opção
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                        <p className="text-[10px] text-gray-500 mt-2 font-medium italic">O cliente poderá escolher entre o mínimo e o máximo de opções configuradas acima.</p>
-                    </div>
-
-                    {/* --- ADDONS MANAGEMENT --- */}
-                    {allAddons.length > 0 && (
-                        <div className="p-3 bg-gray-50 rounded-lg border">
-                            <h3 className="font-bold text-gray-700 mb-2">Adicionais Disponíveis</h3>
-                            <input
-                                type="text"
-                                placeholder="Buscar adicional..."
-                                value={addonSearchTerm}
-                                onChange={(e) => setAddonSearchTerm(e.target.value)}
-                                className="w-full p-2 border rounded-md mb-2 bg-white"
-                            />
-                            <div className="max-h-40 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                {filteredAddons.map(addon => (
-                                    <label key={addon.id} className="flex items-center space-x-3 p-2 rounded-md hover:bg-gray-100 cursor-pointer has-[:checked]:bg-orange-50">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedAddonIds.has(addon.id)}
-                                            onChange={() => handleAddonToggle(addon.id)}
-                                            className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
-                                        />
-                                        <span>{addon.name} (+ R$ {addon.price.toFixed(2)})</span>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* --- WEEKDAY AVAILABILITY --- */}
-                    <div className="p-3 bg-gray-50 rounded-lg border">
-                        <h3 className="font-bold text-gray-700 mb-2">Menu do Dia (Visibilidade por Dia)</h3>
-                        <div className="flex justify-around">
-                            {dayAbbreviations.map((day, index) => (
-                                <button
-                                    key={index}
-                                    type="button"
-                                    onClick={() => handleDayToggle(index)}
-                                    className={`w-10 h-10 rounded-full font-bold text-sm transition-colors ${
-                                        availableDays.includes(index)
-                                            ? 'bg-orange-600 text-white'
-                                            : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                                    }`}
-                                >
-                                    {day}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* --- TIME WINDOW AVAILABILITY --- */}
-                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-2">
-                        <div className="flex items-center justify-between">
-                            <h3 className="font-bold text-blue-900 text-sm flex items-center gap-1.5">
-                                <span className="text-base">⏰</span> Horário de Disponibilidade (Opcional)
-                            </h3>
-                            <span className="text-[10px] bg-blue-100 text-blue-800 font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">Por Turno</span>
-                        </div>
-                        <p className="text-xs text-blue-800 leading-relaxed">
-                            Deixe em branco para vender durante todo o expediente (ex: Açaí). Se este item só for vendido à noite ou num horário específico (ex: Lanches a partir das 18:30), defina abaixo:
-                        </p>
-                        <div className="grid grid-cols-2 gap-3 pt-1">
-                            <div>
-                                <label className="block text-xs font-bold text-blue-900 mb-1">Disponível a partir de:</label>
-                                <input
-                                    type="time"
-                                    value={availableStartTime}
-                                    onChange={(e) => setAvailableStartTime(e.target.value)}
-                                    className="w-full p-2 border border-blue-300 rounded-lg bg-white text-sm font-semibold text-gray-800 focus:ring-2 focus:ring-blue-500"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-blue-900 mb-1">Disponível até:</label>
-                                <input
-                                    type="time"
-                                    value={availableEndTime}
-                                    onChange={(e) => setAvailableEndTime(e.target.value)}
-                                    className="w-full p-2 border border-blue-300 rounded-lg bg-white text-sm font-semibold text-gray-800 focus:ring-2 focus:ring-blue-500"
-                                />
-                            </div>
-                        </div>
-                        {(availableStartTime || availableEndTime) && (
-                            <div className="flex justify-between items-center pt-1 text-xs font-medium text-blue-900">
-                                <span>
-                                    No cardápio: {availableStartTime && availableEndTime ? `Disponível das ${availableStartTime} às ${availableEndTime}` : availableStartTime ? `Disponível a partir das ${availableStartTime}` : `Disponível até às ${availableEndTime}`}
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={() => { setAvailableStartTime(''); setAvailableEndTime(''); }}
-                                    className="text-red-600 hover:underline font-bold text-xs"
-                                >
-                                    Limpar horário
-                                </button>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="space-y-3">
-                         <div className="flex flex-col p-3 bg-gray-100 rounded-lg">
-                            <div className="flex items-center space-x-3">
-                                <input type="checkbox" id="is-marmita-toggle" checked={isMarmita} onChange={(e) => setIsMarmita(e.target.checked)} className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500"/>
-                                <label htmlFor="is-marmita-toggle" className="font-semibold text-gray-700">É Prato do Dia?</label>
-                            </div>
-                             {isMarmita && (
-                                <div className="mt-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg animate-fadeIn">
-                                    <div className="space-y-2 mb-3">
-                                        {marmitaOptions.map((option, index) => (
-                                            <div key={index} className="flex items-center gap-2 group">
-                                                <input
-                                                    type="text"
-                                                    placeholder={`Opção ${index + 1}`}
-                                                    value={option}
-                                                    onChange={(e) => handleMarmitaOptionChange(index, e.target.value)}
-                                                    className="flex-grow p-2 text-sm border border-yellow-300 rounded-md"
-                                                />
-                                                <button type="button" onClick={() => removeMarmitaOption(index)} className="p-2 text-red-500"><TrashIcon className="w-4 h-4"/></button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <button type="button" onClick={addMarmitaOption} className="w-full py-2 text-sm font-bold text-yellow-700 bg-yellow-100 rounded-md">+ Add Opção</button>
-                                </div>
-                            )}
-                        </div>
-                         <div className="flex items-center space-x-3 p-3 bg-purple-100 rounded-lg">
-                            <input type="checkbox" id="is-acai-toggle" checked={isAcai} onChange={(e) => setIsAcai(e.target.checked)} className="h-5 w-5 rounded border-purple-300 text-purple-600 focus:ring-purple-500"/>
-                            <label htmlFor="is-acai-toggle" className="font-semibold text-purple-700">Açaí (Montar Copo)?</label>
-                        </div>
-                         <div className="flex items-center space-x-3 p-3 bg-red-100 rounded-lg">
-                            <input type="checkbox" id="is-pizza-toggle" checked={isPizza} onChange={(e) => setIsPizza(e.target.checked)} className="h-5 w-5 rounded border-red-300 text-red-600 focus:ring-red-500"/>
-                            <label htmlFor="is-pizza-toggle" className="font-semibold text-red-700">É Pizza (Meia-Meia)?</label>
-                        </div>
-                         <div className="flex items-center space-x-3 p-3 bg-gray-100 rounded-lg">
-                            <input type="checkbox" id="is-daily-special-toggle" checked={isDailySpecial} onChange={(e) => setIsDailySpecial(e.target.checked)} className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500"/>
-                            <label htmlFor="is-daily-special-toggle" className="font-semibold text-gray-700">É Destaque?</label>
-                        </div>
-                    </div>
-
-                    {/* Only show category selection if we don't have an initial category context (new item from top level) 
-                        or if we are editing an existing item (to allow moving it) */}
-                    {(!initialCategory || existingItem) && (
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
-                            <Combobox options={restaurantCategories} value={category} onChange={setCategory} placeholder="Selecione..."/>
-                        </div>
-                    )}
+        <main className="p-4 space-y-8">
+            {onBack && (
+                <div className="flex items-center space-x-2 mb-4">
+                    <button onClick={onBack} className="bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition-colors">
+                        <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
+                    </button>
+                    <h2 className="text-xl font-bold text-gray-800">Gerenciar Cardápio do Restaurante</h2>
                 </div>
+            )}
 
-                {error && <p className="text-red-500 text-sm mt-4">{error}</p>}
-                
-                <div className="mt-6 pt-4 border-t flex justify-end space-x-3">
-                    <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300" disabled={isSaving}>Cancelar</button>
-                    <button onClick={handleSubmit} className="px-6 py-2 rounded-lg bg-orange-600 text-white font-bold hover:bg-orange-700 disabled:bg-orange-300" disabled={isSaving}>
-                        {isSaving ? 'Salvando...' : 'Salvar'}
+            {/* --- PROMOTIONS --- */}
+            <div className="bg-white rounded-lg shadow-md p-6">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-gray-800">Promoções de Itens</h2>
+                        {menuCategories.length === 0 && (restaurantName?.toLowerCase().includes('toka') || restaurantName?.toLowerCase().includes('renovação')) && (
+                            <button
+                                onClick={handleSeedMenu}
+                                disabled={isSeeding}
+                                className="flex items-center gap-2 px-3 py-1 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-all font-bold text-xs"
+                            >
+                                {isSeeding ? 'Restaurando...' : 'Restaurar Cardápio Original'}
+                            </button>
+                        )}
+                    </div>
+                    <button onClick={() => handleOpenPromoModal()} className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 w-full sm:w-auto">
+                        Criar Promoção
                     </button>
                 </div>
+                 {promotions.length > 0 ? (
+                    <div className="space-y-3">
+                        {promotions.map(promo => (
+                            <div key={promo.id} className="bg-gray-50 p-3 rounded-lg border flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                                <div>
+                                    <div className="flex items-center gap-3">
+                                        {isPromoActiveToday(promo) && <span className="text-xs font-bold bg-orange-500 text-white px-2 py-0.5 rounded-full">ATIVA HOJE</span>}
+                                        <h4 className="font-bold text-gray-900">{promo.name}</h4>
+                                    </div>
+                                    <p className="text-sm text-gray-600 mt-1">{promo.description}</p>
+                                    <p className="text-xs text-gray-500 mt-1 font-mono">
+                                        {new Date(promo.startDate).toLocaleDateString()} - {new Date(promo.endDate).toLocaleDateString()}
+                                    </p>
+                                </div>
+                                <div className="flex space-x-2 flex-shrink-0 self-end sm:self-center">
+                                    <button onClick={() => handleOpenPromoModal(promo)} className="p-2 text-gray-500 hover:text-blue-600"><EditIcon className="w-5 h-5"/></button>
+                                    <button onClick={() => handleDeletePromo(promo.id)} className="p-2 text-gray-500 hover:text-red-600"><TrashIcon className="w-5 h-5"/></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                 ) : (
+                     <div className="text-center py-10 bg-gray-100 rounded-lg"><p className="text-gray-500">Nenhuma promoção de item cadastrada.</p></div>
+                 )}
             </div>
-        </div>
+
+            {/* --- COUPONS --- */}
+            <div className="bg-white rounded-lg shadow-md p-6">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+                    <h2 className="text-2xl font-bold text-gray-800">Cupons de Desconto</h2>
+                    <button onClick={() => handleOpenCouponModal()} className="bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-700 w-full sm:w-auto">
+                        Criar Cupom
+                    </button>
+                </div>
+                 {coupons.length > 0 ? (
+                    <div className="space-y-3">
+                        {coupons.map(coupon => (
+                            <div key={coupon.id} className="bg-gray-50 p-4 rounded-lg border flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                                <div className="flex-grow">
+                                    <div className="flex items-center gap-3 mb-1">
+                                        <span className={`text-xs font-bold text-white px-2 py-0.5 rounded-full ${isCouponActive(coupon) ? 'bg-green-500' : 'bg-gray-500'}`}>{isCouponActive(coupon) ? 'ATIVO' : 'INATIVO'}</span>
+                                        <div className="flex items-center gap-2">
+                                            <h4 className="text-lg font-bold text-gray-900 font-mono tracking-wider">{coupon.code}</h4>
+                                            <button onClick={() => handleCopyCode(coupon.code)} className="p-1 text-gray-400 hover:text-blue-600" title="Copiar código">
+                                                <ClipboardIcon className="w-4 h-4"/>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <p className="text-sm text-gray-600">{coupon.description}</p>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        {coupon.discountType === 'PERCENTAGE' ? `${coupon.discountValue}% OFF` : `R$ ${coupon.discountValue.toFixed(2)} OFF`}
+                                        {coupon.minOrderValue && ` | Pedido Mínimo: R$ ${coupon.minOrderValue.toFixed(2)}`}
+                                        | Expira em: {new Date(coupon.expirationDate).toLocaleDateString()}
+                                    </p>
+                                </div>
+                                <div className="flex space-x-2 flex-shrink-0 self-end sm:self-center">
+                                    <button onClick={() => handleOpenCouponModal(coupon)} className="p-2 text-gray-500 hover:text-blue-600" title="Editar Cupom"><EditIcon className="w-5 h-5"/></button>
+                                    <button onClick={() => handleDeleteCoupon(coupon.id)} className="p-2 text-gray-500 hover:text-red-600" title="Excluir Cupom"><TrashIcon className="w-5 h-5"/></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                 ) : (
+                     <div className="text-center py-10 bg-gray-100 rounded-lg"><p className="text-gray-500">Nenhum cupom cadastrado.</p></div>
+                 )}
+            </div>
+
+            {/* --- ADDONS --- */}
+            <div className="bg-white rounded-lg shadow-md p-6">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+                    <h2 className="text-2xl font-bold text-gray-800">Banco de Adicionais</h2>
+                    <button onClick={() => handleOpenAddonModal()} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 w-full sm:w-auto">
+                        Criar Adicional
+                    </button>
+                </div>
+                <p className="text-sm text-gray-600 mb-4">
+                    Crie aqui os ingredientes extras (ex: Bacon, Ovo, Queijo) que poderão ser adicionados aos seus lanches e pizzas. Depois, edite cada item para selecionar quais adicionais ele aceita.
+                </p>
+                {addons.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {addons.map(addon => (
+                            <div key={addon.id} className="bg-gray-50 p-3 rounded-lg border flex justify-between items-center">
+                                <div>
+                                    <h4 className="font-bold text-gray-900">{addon.name}</h4>
+                                    <p className="text-sm text-gray-600">R$ {addon.price.toFixed(2)}</p>
+                                </div>
+                                <div className="flex space-x-1">
+                                    <button onClick={() => handleOpenAddonModal(addon)} className="p-1.5 text-gray-500 hover:text-blue-600"><EditIcon className="w-4 h-4"/></button>
+                                    <button onClick={() => handleDeleteAddon(addon.id)} className="p-1.5 text-gray-500 hover:text-red-600"><TrashIcon className="w-4 h-4"/></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-center py-6 bg-gray-100 rounded-lg"><p className="text-gray-500">Nenhum adicional cadastrado.</p></div>
+                )}
+            </div>
+
+            {/* --- COMBOS --- */}
+            <div className="bg-white rounded-lg shadow-md p-6">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+                    <h2 className="text-2xl font-bold text-gray-800">Combos</h2>
+                    {/* The button was moved to the top of the menu items section for better accessibility */}
+                </div>
+                {allCombos.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {allCombos.map(combo => (
+                            <div key={combo.id} className="bg-gray-50 p-4 rounded-lg border">
+                                {combo.imageUrl ? (
+                                    <img src={combo.imageUrl} alt={combo.name} className="w-full h-32 object-cover rounded-md mb-3" loading="lazy" />
+                                ) : (
+                                    <div className="w-full h-32 bg-gray-200 rounded-md mb-3 flex items-center justify-center text-gray-400">
+                                        <span className="text-xs">Sem imagem</span>
+                                    </div>
+                                )}
+                                <h3 className="font-bold text-lg">{combo.name}</h3>
+                                <div className="text-xs text-gray-600 border-t pt-2 mt-2">
+                                    <div className="space-y-2 mt-1">
+                                        {combo.menuItemIds.map(id => allMenuItems.find(item => item.id === id)).filter(Boolean).map(item => (
+                                            <div key={item!.id} className="flex items-center space-x-2">
+                                                {item!.imageUrl ? (
+                                                    <img src={item!.imageUrl} alt={item!.name} className="w-6 h-6 rounded-full object-cover" loading="lazy"/>
+                                                ) : (
+                                                    <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-[8px] text-gray-500 font-bold">
+                                                        {item!.name.charAt(0)}
+                                                    </div>
+                                                )}
+                                                <span className="text-gray-700">{item!.name}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="flex justify-end space-x-2 mt-4">
+                                    <button onClick={() => handleOpenComboModal(combo)} className="p-2 text-gray-500 hover:text-blue-600"><EditIcon className="w-5 h-5"/></button>
+                                    <button onClick={() => handleDeleteCombo(combo.id)} className="p-2 text-gray-500 hover:text-red-600"><TrashIcon className="w-5 h-5"/></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-center py-10 bg-gray-100 rounded-lg"><p className="text-gray-500">Nenhum combo cadastrado.</p></div>
+                )}
+            </div>
+
+            {/* --- MENU ITEMS & CATEGORIES --- */}
+            <div>
+                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+                    <h2 className="text-2xl font-bold text-gray-800">Itens do Cardápio</h2>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                        <button onClick={() => handleOpenItemModal(null)} disabled={menuCategories.length === 0} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 w-full sm:w-auto disabled:bg-blue-400 disabled:cursor-not-allowed">
+                            Criar Item
+                        </button>
+                        <button onClick={() => handleOpenComboModal(null)} disabled={menuCategories.flatMap(c => c.items).length === 0} className="bg-yellow-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-yellow-600 w-full sm:w-auto disabled:bg-yellow-300 disabled:cursor-not-allowed">
+                            Criar Combo
+                        </button>
+                        <button onClick={handleCreateCategory} className="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 w-full sm:w-auto">
+                            Criar Categoria
+                        </button>
+                        <button 
+                            onClick={() => setIsReorderingMode(!isReorderingMode)} 
+                            className={`${isReorderingMode ? 'bg-orange-600' : 'bg-gray-700'} text-white font-bold py-2 px-4 rounded-lg hover:opacity-90 w-full sm:w-auto flex items-center justify-center gap-2`}
+                        >
+                            <DragHandleIcon className="w-5 h-5" />
+                            {isReorderingMode ? 'Sair da Reordenação' : 'Reordenar Categorias'}
+                        </button>
+                    </div>
+                </div>
+
+                {isReorderingMode && (
+                    <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-4 mb-6 animate-fadeIn">
+                        <div className="flex justify-between items-center mb-4">
+                            <div>
+                                <h3 className="font-black text-orange-800 uppercase tracking-tight">Modo de Reordenação</h3>
+                                <p className="text-xs text-orange-600 font-bold">Arraste as categorias ou use as setas para definir a ordem de exibição.</p>
+                            </div>
+                            <button onClick={() => setIsReorderingMode(false)} className="bg-white text-orange-600 px-3 py-1 rounded-full font-black text-xs shadow-sm hover:bg-orange-100 uppercase">Pronto</button>
+                        </div>
+                        <div className="space-y-2">
+                            {menuCategories.map((category, index) => (
+                                <div 
+                                    key={`reorder-${category.id}`}
+                                    className="bg-white p-3 rounded-lg border-2 border-transparent hover:border-orange-300 shadow-sm flex items-center justify-between group cursor-move"
+                                    draggable
+                                    onDragStart={(e) => {
+                                        setDraggedCategoryIndex(index);
+                                        e.dataTransfer.effectAllowed = 'move';
+                                    }}
+                                    onDragOver={(e) => handleDragOver(e, index)}
+                                    onDrop={(e) => handleDrop(e, index)}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <DragHandleIcon className="w-5 h-5 text-gray-400 group-hover:text-orange-500" />
+                                        <span className="font-bold text-gray-700">{category.name}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <button onClick={() => handleReorderCategory(index, 'up')} disabled={index === 0} className="p-1.5 rounded-full hover:bg-gray-100 disabled:opacity-20 text-gray-500"><ChevronUpIcon className="w-5 h-5"/></button>
+                                        <button onClick={() => handleReorderCategory(index, 'down')} disabled={index === menuCategories.length - 1} className="p-1.5 rounded-full hover:bg-gray-100 disabled:opacity-20 text-gray-500"><ChevronDownIcon className="w-5 h-5"/></button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {menuCategories.length === 0 ? (
+                    <div className="bg-white rounded-lg shadow-md p-10 text-center border-2 border-dashed border-gray-300">
+                        <div className="text-gray-400 mb-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-16 h-16 mx-auto">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+                            </svg>
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-800 mb-2">Seu cardápio está vazio</h3>
+                        <p className="text-gray-600 mb-6">Para adicionar itens (como pizzas, lanches ou bebidas), você precisa criar uma categoria primeiro.</p>
+                        <button 
+                            onClick={handleCreateCategory}
+                            className="bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 shadow-lg animate-pulse"
+                        >
+                            + Criar Primeira Categoria
+                        </button>
+                    </div>
+                ) : (
+                    <div className="space-y-6">
+                        {menuCategories.map((category, index) => (
+                            <div 
+                                key={category.id} 
+                                className={`bg-white rounded-lg shadow-md transition-all duration-200 ${draggedCategoryIndex === index ? 'opacity-40 scale-95 border-2 border-dashed border-orange-300' : ''}`}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, index)}
+                                onDragOver={(e) => handleDragOver(e, index)}
+                                onDrop={(e) => handleDrop(e, index)}
+                            >
+                                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-t-lg border-b group">
+                                    <div className="flex items-center gap-2 flex-grow">
+                                        {/* Drag Handle & Buttons */}
+                                        <div className="flex items-center gap-1 mr-2 text-gray-400 drag-handle-area cursor-grab active:cursor-grabbing hover:text-orange-500 p-1 rounded">
+                                            <div className="flex flex-col mr-1">
+                                                <button onClick={() => handleReorderCategory(index, 'up')} disabled={index === 0} className="disabled:opacity-20 hover:text-black p-0.5"><ChevronUpIcon className="w-3 h-3"/></button>
+                                                <button onClick={() => handleReorderCategory(index, 'down')} disabled={index === menuCategories.length - 1} className="disabled:opacity-20 hover:text-black p-0.5"><ChevronDownIcon className="w-3 h-3"/></button>
+                                            </div>
+                                            <DragHandleIcon className="w-6 h-6" />
+                                        </div>
+
+                                        {editingCategory?.id === category.id ? (
+                                            <div className="flex flex-col w-full max-w-sm gap-2">
+                                                <input 
+                                                    type="text" 
+                                                    value={editingCategory.newName} 
+                                                    onChange={(e) => setEditingCategory({...editingCategory, newName: e.target.value})}
+                                                    onKeyDown={(e) => e.key === 'Enter' && handleSaveCategoryChanges()}
+                                                    autoFocus
+                                                    className="text-xl font-bold p-1 border rounded-md"
+                                                    placeholder="Nome da Categoria"
+                                                />
+                                                <div className="flex items-center gap-2">
+                                                    <input 
+                                                        type="file" 
+                                                        accept="image/*" 
+                                                        onChange={handleCategoryIconChange}
+                                                        className="text-sm p-1 border rounded-md w-full"
+                                                    />
+                                                    {editingCategory.newIconUrl && (
+                                                        <img src={editingCategory.newIconUrl} alt="Icon preview" className="w-8 h-8 object-contain" />
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <div className="flex flex-col w-1/2">
+                                                        <label className="text-[10px] font-bold text-gray-500 uppercase">Início (Opcional)</label>
+                                                        <input 
+                                                            type="time" 
+                                                            value={editingCategory.newAvailableStartTime || ''} 
+                                                            onChange={(e) => setEditingCategory({...editingCategory, newAvailableStartTime: e.target.value})}
+                                                            className="text-sm p-1 border rounded-md"
+                                                        />
+                                                    </div>
+                                                    <div className="flex flex-col w-1/2">
+                                                        <label className="text-[10px] font-bold text-gray-500 uppercase">Fim (Opcional)</label>
+                                                        <input 
+                                                            type="time" 
+                                                            value={editingCategory.newAvailableEndTime || ''} 
+                                                            onChange={(e) => setEditingCategory({...editingCategory, newAvailableEndTime: e.target.value})}
+                                                            className="text-sm p-1 border rounded-md"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-col">
+                                                <h3 className="text-xl font-bold text-gray-700 flex items-center gap-2">
+                                                    {category.iconUrl && category.iconUrl.trim() !== '' && <img src={category.iconUrl} alt={category.name} className="w-6 h-6 object-contain" />}
+                                                    {category.name}
+                                                </h3>
+                                                {(category.availableStartTime || category.availableEndTime) && (
+                                                    <p className="text-[10px] font-bold text-orange-600 uppercase mt-0.5">
+                                                        ⏰ Disponível 
+                                                        {category.availableStartTime && category.availableEndTime ? ` das ${category.availableStartTime} às ${category.availableEndTime}` : category.availableStartTime ? ` a partir das ${category.availableStartTime}` : ` até às ${category.availableEndTime}`}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        {editingCategory?.id === category.id ? (
+                                            <>
+                                                <button onClick={handleSaveCategoryChanges} className="p-2 text-green-600 hover:text-green-800"><CheckIcon className="w-5 h-5"/></button>
+                                                <button onClick={() => setEditingCategory(null)} className="p-2 text-red-600 hover:text-red-800"><XIcon className="w-5 h-5"/></button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <button 
+                                                    onClick={() => setReorderingItemsCategoryId(reorderingItemsCategoryId === category.id ? null : category.id)}
+                                                    className={`p-2 rounded-lg transition-colors ${reorderingItemsCategoryId === category.id ? 'bg-orange-100 text-orange-600' : 'text-gray-500 hover:text-orange-600'}`}
+                                                    title="Reordenar itens desta categoria"
+                                                >
+                                                    <DragHandleIcon className="w-5 h-5" />
+                                                </button>
+                                                <button onClick={() => handleEditCategory(category)} className="p-2 text-gray-500 hover:text-blue-600"><EditIcon className="w-5 h-5"/></button>
+                                                <button onClick={() => handleDeleteCategory(category.name)} disabled={category.items.length > 0 || (category.combos || []).length > 0} className="p-2 text-gray-500 hover:text-red-600 disabled:opacity-20 disabled:cursor-not-allowed" title={category.items.length > 0 ? "Esvazie a categoria para excluí-la" : "Excluir categoria"}><TrashIcon className="w-5 h-5"/></button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                                {reorderingItemsCategoryId === category.id && (
+                                    <div className="p-4 bg-orange-50 border-b-2 border-orange-100 animate-fadeIn">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <p className="text-xs font-black text-orange-800 uppercase tracking-widest">Arraste para reordenar os itens de {category.name}</p>
+                                            <button onClick={() => setReorderingItemsCategoryId(null)} className="text-[10px] font-black text-orange-600 uppercase">Fechar</button>
+                                        </div>
+                                        <div className="space-y-2">
+                                            {category.items.map((item, idx) => (
+                                                <div 
+                                                    key={`reorder-item-${item.id}`}
+                                                    className="bg-white p-3 rounded-xl border-2 border-transparent hover:border-orange-300 shadow-sm flex items-center justify-between cursor-move group"
+                                                    draggable
+                                                    onDragStart={() => setDraggedItemIndex(idx)}
+                                                    onDragOver={(e) => e.preventDefault()}
+                                                    onDrop={() => handleItemDrop(category.id, idx)}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <DragHandleIcon className="w-4 h-4 text-gray-300 group-hover:text-orange-500" />
+                                                        <span className="font-bold text-gray-700 text-sm">{item.name}</span>
+                                                    </div>
+                                                    <div className="flex gap-1">
+                                                        <button onClick={() => handleReorderItem(category.id, idx, 'up')} disabled={idx === 0} className="p-1 text-gray-400 hover:text-orange-600 disabled:opacity-20"><ChevronUpIcon className="w-4 h-4"/></button>
+                                                        <button onClick={() => handleReorderItem(category.id, idx, 'down')} disabled={idx === category.items.length - 1} className="p-1 text-gray-400 hover:text-orange-600 disabled:opacity-20"><ChevronDownIcon className="w-4 h-4"/></button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                <div className="overflow-x-auto">
+                                    {category.items.length > 0 ? (
+                                        <table className="w-full text-sm text-left text-gray-600">
+                                            <thead>
+                                                <tr className="border-b bg-gray-50 text-xs text-gray-500 uppercase">
+                                                    <th className="px-4 py-2 w-16 text-center">Ord.</th>
+                                                    <th className="px-4 py-2">Item</th>
+                                                    <th className="px-4 py-2 text-center">Status</th>
+                                                    <th className="px-4 py-2 text-right">Preço</th>
+                                                    <th className="px-4 py-2 text-right">Ações</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {category.items.map((item, itemIndex) => (
+                                                    <tr key={item.id} className={`border-b hover:bg-gray-50 ${item.available === false ? 'bg-gray-50 opacity-60' : ''}`}>
+                                                        <td className="p-2 text-center">
+                                                            <div className="flex flex-col items-center">
+                                                                <button 
+                                                                    onClick={() => handleReorderItem(category.id, itemIndex, 'up')} 
+                                                                    disabled={itemIndex === 0} 
+                                                                    className="text-gray-400 hover:text-black disabled:opacity-20 p-0.5"
+                                                                >
+                                                                    <ChevronUpIcon className="w-4 h-4"/>
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => handleReorderItem(category.id, itemIndex, 'down')} 
+                                                                    disabled={itemIndex === category.items.length - 1} 
+                                                                    className="text-gray-400 hover:text-black disabled:opacity-20 p-0.5"
+                                                                >
+                                                                    <ChevronDownIcon className="w-4 h-4"/>
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                        <td className="p-4">
+                                                            <div className="font-semibold text-gray-900">{item.name}</div>
+                                                            <div className="text-xs text-gray-500">{item.description}</div>
+                                                        </td>
+                                                        <td className="p-4 text-center">
+                                                            <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${item.available !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                {item.available !== false ? 'Em Estoque' : 'Esgotado'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="p-4 font-semibold text-right whitespace-nowrap">R$ {item.price.toFixed(2)}</td>
+                                                        <td className="p-4">
+                                                            <div className="flex justify-end space-x-2">
+                                                                <button onClick={() => handleDuplicateItem(item, category.name)} className="p-2 text-gray-500 hover:text-emerald-600" title="Duplicar produto"><DuplicateIcon className="w-5 h-5"/></button>
+                                                                <button onClick={() => handleOpenItemModal(item, category.name)} className="p-2 text-gray-500 hover:text-blue-600"><EditIcon className="w-5 h-5"/></button>
+                                                                <button onClick={() => handleDeleteItem(item.id)} className="p-2 text-gray-500 hover:text-red-600"><TrashIcon className="w-5 h-5"/></button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    ) : (
+                                        <p className="text-center py-6 text-gray-500 text-sm">Esta categoria está vazia.</p>
+                                    )}
+                                </div>
+                                <div className="p-2 bg-gray-50 rounded-b-lg">
+                                    <button onClick={() => handleOpenItemModal(null, category.name)} className="w-full text-center text-sm font-semibold text-blue-600 hover:bg-blue-100 p-2 rounded-md">
+                                        + Adicionar Item a esta Categoria
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {isComboModalOpen && <ComboEditorModal isOpen={isComboModalOpen} onClose={() => setIsComboModalOpen(false)} onSave={handleSaveCombo} existingCombo={editingCombo} menuItems={allMenuItems} />}
+            {isItemModalOpen && restaurantId && <MenuItemEditorModal isOpen={isItemModalOpen} onClose={() => setIsItemModalOpen(false)} onSave={handleSaveItem} existingItem={editingItem?.item} initialCategory={editingItem?.categoryName} restaurantCategories={menuCategories.map(c => c.name)} allAddons={addons} restaurantId={restaurantId} />}
+            {isPromoModalOpen && <PromotionEditorModal isOpen={isPromoModalOpen} onClose={() => setIsPromoModalOpen(false)} onSave={handleSavePromo} existingPromotion={editingPromo} menuItems={allMenuItems} combos={allCombos} categories={menuCategories}/>}
+            {isCouponModalOpen && <CouponEditorModal isOpen={isCouponModalOpen} onClose={() => setIsCouponModalOpen(false)} onSave={handleSaveCoupon} existingCoupon={editingCoupon} />}
+            {isAddonModalOpen && <AddonEditorModal isOpen={isAddonModalOpen} onClose={() => setIsAddonModalOpen(false)} onSave={handleSaveAddon} existingAddon={editingAddon} />}
+        </main>
     );
 };
 
-export default MenuItemEditorModal;
+export default MenuManagement;
