@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import multer from "multer";
+import cors from "cors";
 import { GoogleGenAI, Type } from "@google/genai";
 
 // Use memory storage for quick and safe processing without disk IO bottlenecks
@@ -87,7 +88,9 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  app.use(cors());
   app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   app.post("/api/import-menu", upload.array("files"), async (req, res) => {
     try {

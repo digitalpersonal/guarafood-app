@@ -532,7 +532,7 @@ export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilt
 export const createCategory = async (restaurantId: number, name: string): Promise<MenuCategory> => {
     const { data, error } = await supabase.from('menu_categories').insert({ restaurant_id: restaurantId, name }).select().single();
     handleSupabaseError({ error, customMessage: 'Failed to create category' });
-    return mapCategory(data);
+    return normalizeCategory(data);
 };
 
 export const updateCategory = async (restaurantId: number, id: number, name: string, iconUrl?: string | null, availableStartTime?: string, availableEndTime?: string): Promise<void> => {

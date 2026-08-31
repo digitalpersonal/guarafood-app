@@ -7,9 +7,66 @@ interface AiMenuImporterProps {
   onCancel: () => void;
 }
 
+// Client-side image optimizer to keep uploads fast, crisp and prevent network timeouts
+async function optimizeImageForUpload(file: File): Promise<File> {
+  if (!file.type.startsWith('image/')) {
+    return file; // Return PDFs without modification
+  }
+
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX_DIMENSION = 1800;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+          if (width > height) {
+            height = Math.round((height * MAX_DIMENSION) / width);
+            width = MAX_DIMENSION;
+          } else {
+            width = Math.round((width * MAX_DIMENSION) / height);
+            height = MAX_DIMENSION;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          return resolve(file);
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) return resolve(file);
+            const safeName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
+            const optimizedFile = new File([blob], safeName, {
+              type: 'image/jpeg',
+              lastModified: Date.now(),
+            });
+            resolve(optimizedFile);
+          },
+          'image/jpeg',
+          0.85
+        );
+      };
+      img.onerror = () => resolve(file);
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}
+
 const AiMenuImporter: React.FC<AiMenuImporterProps> = ({ restaurantId, onImportComplete, onCancel }) => {
   const [files, setFiles] = useState<File[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string>('');
   const [previewData, setPreviewData] = useState<any[] | null>(null);
   const [failedFiles, setFailedFiles] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -36,7 +93,7 @@ const AiMenuImporter: React.FC<AiMenuImporterProps> = ({ restaurantId, onImportC
       }
       return newFiles;
     });
-  }
+  };
 
   const handleAnalyze = async () => {
     if (files.length === 0) {
@@ -45,38 +102,61 @@ const AiMenuImporter: React.FC<AiMenuImporterProps> = ({ restaurantId, onImportC
     }
 
     setIsProcessing(true);
+    setStatusMessage('Otimizando e preparando arquivos...');
     setPreviewData(null);
     setFailedFiles([]);
 
-    const formData = new FormData();
-    files.forEach((file) => {
-      formData.append('files', file);
-    });
-
     try {
+      // Optimize images on client to avoid large payload timeouts
+      const preparedFiles: File[] = [];
+      for (let i = 0; i < files.length; i++) {
+        setStatusMessage(`Preparando arquivo ${i + 1} de ${files.length}...`);
+        const opt = await optimizeImageForUpload(files[i]);
+        preparedFiles.push(opt);
+      }
+
+      setStatusMessage('Enviando para análise com Inteligência Artificial...');
+
+      const formData = new FormData();
+      preparedFiles.forEach((file) => {
+        formData.append('files', file);
+      });
+
       const response = await fetch('/api/import-menu', {
         method: 'POST',
         body: formData,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Erro ao processar arquivos');
+      const responseText = await response.text();
+      let data: any;
+
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseErr) {
+        if (responseText.includes('The page') || response.status === 504 || response.status === 502) {
+          throw new Error('Tempo limite excedido no processamento. Tente enviar menos arquivos de cada vez.');
+        }
+        throw new Error(`Erro inesperado do servidor (${response.status}): ${responseText.slice(0, 120)}`);
       }
 
-      const data = await response.json();
-      setPreviewData(data.categories);
+      if (!response.ok) {
+        throw new Error(data?.error || 'Erro ao processar arquivos do cardápio');
+      }
+
+      setPreviewData(data.categories || []);
       setFailedFiles(data.failedFiles || []);
       
       if (data.failedFiles && data.failedFiles.length > 0) {
-          addToast({ message: `Análise concluída com avisos: ${data.failedFiles.length} arquivo(s) falharam.`, type: 'warning' });
+        addToast({ message: `Análise concluída com avisos: ${data.failedFiles.length} arquivo(s) não puderam ser lidos.`, type: 'warning' });
       } else {
-          addToast({ message: 'Análise concluída com sucesso', type: 'success' });
+        addToast({ message: 'Análise concluída com sucesso!', type: 'success' });
       }
     } catch (error: any) {
+      console.error('Import error:', error);
       addToast({ message: error.message || 'Erro na comunicação com o servidor', type: 'error' });
     } finally {
       setIsProcessing(false);
+      setStatusMessage('');
     }
   };
 
@@ -170,31 +250,41 @@ const AiMenuImporter: React.FC<AiMenuImporterProps> = ({ restaurantId, onImportC
               </div>
             )}
 
-            <div className="flex justify-end gap-3 mt-8">
-              <button
-                onClick={onCancel}
-                disabled={isProcessing}
-                className="px-6 py-2 rounded-lg text-gray-600 hover:bg-gray-100 disabled:opacity-50"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleAnalyze}
-                disabled={files.length === 0 || isProcessing}
-                className="px-6 py-2 rounded-lg bg-orange-600 text-white font-bold hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2"
-              >
-                {isProcessing ? (
-                  <>
-                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Analisando cardápio...
-                  </>
-                ) : (
-                  'Analisar Cardápio'
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-4 border-t">
+              <div className="text-sm text-gray-500 font-medium">
+                {isProcessing && statusMessage && (
+                  <span className="flex items-center gap-2 text-orange-600 animate-pulse">
+                    <span className="w-2 h-2 rounded-full bg-orange-600"></span>
+                    {statusMessage}
+                  </span>
                 )}
-              </button>
+              </div>
+              <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                <button
+                  onClick={onCancel}
+                  disabled={isProcessing}
+                  className="px-6 py-2 rounded-lg text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleAnalyze}
+                  disabled={files.length === 0 || isProcessing}
+                  className="px-6 py-2 rounded-lg bg-orange-600 text-white font-bold hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isProcessing ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Processando...
+                    </>
+                  ) : (
+                    'Analisar Cardápio'
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         )}
