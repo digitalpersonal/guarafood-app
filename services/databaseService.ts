@@ -824,8 +824,12 @@ const normalizeFeaturedPromo = (data: any): FeaturedPromo => ({
     active: data.active !== false
 });
 
-export const fetchFeaturedPromos = async (restaurantId?: number): Promise<FeaturedPromo[]> => {
-    let query = supabaseAnon.from('featured_promos').select('*').eq('active', true);
+export const fetchFeaturedPromos = async (restaurantId?: number, onlyActive?: boolean): Promise<FeaturedPromo[]> => {
+    let query = supabaseAnon.from('featured_promos').select('*').order('created_at', { ascending: false });
+    const shouldFilterActive = onlyActive !== undefined ? onlyActive : !restaurantId;
+    if (shouldFilterActive) {
+        query = query.eq('active', true);
+    }
     if (restaurantId) {
         query = query.eq('restaurant_id', restaurantId);
     }

@@ -32,7 +32,7 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
         setIsLoading(true);
         try {
             const [fetchedPromos, fetchedMenu] = await Promise.all([
-                fetchFeaturedPromos(restaurantId),
+                fetchFeaturedPromos(restaurantId, false),
                 fetchMenuForRestaurant(restaurantId)
             ]);
             setPromos(fetchedPromos);
@@ -166,41 +166,76 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {promos.map(promo => (
-                        <div key={promo.id} className="border border-gray-200 rounded-2xl overflow-hidden shadow-sm bg-white flex flex-col justify-between">
-                            <div className="relative h-40 bg-gray-100">
-                                <OptimizedImage src={promo.imageUrl || 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=800'} alt={promo.title} className="w-full h-full object-cover" />
-                                <div className="absolute top-3 left-3 bg-orange-600 text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow">
-                                    R$ {promo.fixedPrice.toFixed(2)}
-                                </div>
-                                {promo.includeFreeDelivery && (
-                                    <div className="absolute top-3 right-3 bg-green-600 text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow">
-                                        Frete Grátis
+                    {promos.map(promo => {
+                        const isActive = promo.active !== false;
+                        return (
+                            <div 
+                                key={promo.id} 
+                                className={`border rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between transition-all ${
+                                    isActive ? 'border-gray-200 bg-white' : 'border-gray-200 bg-gray-50/80 opacity-80 hover:opacity-100'
+                                }`}
+                            >
+                                <div className="relative h-40 bg-gray-100">
+                                    <OptimizedImage 
+                                        src={promo.imageUrl || 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=800'} 
+                                        alt={promo.title} 
+                                        className={`w-full h-full object-cover ${!isActive ? 'grayscale-[40%]' : ''}`} 
+                                    />
+                                    <div className="absolute top-3 left-3 bg-orange-600 text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow">
+                                        R$ {promo.fixedPrice.toFixed(2)}
                                     </div>
-                                )}
-                            </div>
-                            <div className="p-4 space-y-2 flex-grow">
-                                <h3 className="font-bold text-gray-900 text-base">{promo.title}</h3>
-                                <p className="text-xs text-gray-500 line-clamp-2">{promo.description}</p>
-                                <p className="text-[11px] font-medium text-orange-600">
-                                    {promo.itemIds.length} produtos participantes
-                                </p>
-                            </div>
-                            <div className="p-4 border-t bg-gray-50 flex items-center justify-between">
-                                <button onClick={() => handleToggleActive(promo)} className={`text-[10px] font-bold px-2.5 py-1 rounded-full transition-all ${promo.active ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
-                                    {promo.active ? 'Ativo na Home' : 'Inativo'}
-                                </button>
-                                <div className="flex items-center gap-2">
-                                    <button onClick={() => handleOpenEdit(promo)} className="px-3 py-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50 rounded-lg transition-all">
-                                        Editar
+                                    {promo.includeFreeDelivery && (
+                                        <div className="absolute top-3 right-3 bg-green-600 text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow">
+                                            Frete Grátis
+                                        </div>
+                                    )}
+                                    {!isActive && (
+                                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center pointer-events-none">
+                                            <span className="bg-gray-900/85 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow backdrop-blur-sm">
+                                                ⏸ Oculto na Home (Inativo)
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="p-4 space-y-2 flex-grow">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <h3 className="font-bold text-gray-900 text-base">{promo.title}</h3>
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${
+                                            isActive ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-gray-200 text-gray-700'
+                                        }`}>
+                                            {isActive ? '● Ativo' : '○ Inativo'}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-gray-500 line-clamp-2">{promo.description}</p>
+                                    <p className="text-[11px] font-medium text-orange-600">
+                                        {promo.itemIds.length} produtos participantes
+                                    </p>
+                                </div>
+                                <div className="p-4 border-t bg-gray-50 flex items-center justify-between gap-2">
+                                    <button 
+                                        type="button"
+                                        onClick={() => handleToggleActive(promo)} 
+                                        className={`text-xs font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shadow-sm ${
+                                            isActive 
+                                                ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300' 
+                                                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                        }`}
+                                        title={isActive ? 'Ocultar da tela inicial sem apagar' : 'Ativar e exibir na tela inicial'}
+                                    >
+                                        {isActive ? '⏸ Pausar Promoção' : '▶ Ativar na Home'}
                                     </button>
-                                    <button onClick={() => handleDelete(promo.id)} className="px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 rounded-lg transition-all">
-                                        Excluir
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={() => handleOpenEdit(promo)} className="px-3 py-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50 rounded-lg transition-all">
+                                            Editar
+                                        </button>
+                                        <button onClick={() => handleDelete(promo.id)} className="px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 rounded-lg transition-all">
+                                            Excluir
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 
