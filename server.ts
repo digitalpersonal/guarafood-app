@@ -143,7 +143,7 @@ async function startServer() {
         return res.status(400).json({ error: "Nenhum dos arquivos enviados pôde ser lido." });
       }
 
-      // Process batches concurrently in parallel using Promise.all
+      // Process batches with retry and fallback model support
       const BATCH_SIZE = 2;
       const batches: typeof validParts[] = [];
       for (let i = 0; i < validParts.length; i += BATCH_SIZE) {
@@ -156,54 +156,76 @@ Regras:
 2. Para cada item: "name", "description" (se houver) e "price" (número em reais).
 3. Não invente produtos.`;
 
+      // Helper function to call Gemini with model fallback and exponential backoff retry for 503/429
+      const callGeminiWithRetry = async (batchParts: any[], maxAttempts = 3) => {
+        const candidateModels = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-flash-latest"];
+        
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          const modelName = candidateModels[attempt % candidateModels.length];
+          try {
+            const response = await ai.models.generateContent({
+              model: modelName,
+              contents: [
+                ...batchParts,
+                prompt,
+              ],
+              config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      name: {
+                        type: Type.STRING,
+                        description: "Nome da categoria",
+                      },
+                      items: {
+                        type: Type.ARRAY,
+                        items: {
+                          type: Type.OBJECT,
+                          properties: {
+                            name: {
+                              type: Type.STRING,
+                              description: "Nome do item",
+                            },
+                            description: {
+                              type: Type.STRING,
+                              description: "Descrição",
+                            },
+                            price: {
+                              type: Type.NUMBER,
+                              description: "Preço numérico",
+                            },
+                          },
+                          required: ["name", "price"],
+                        },
+                      },
+                    },
+                    required: ["name", "items"],
+                  },
+                },
+              },
+            });
+
+            return response;
+          } catch (err: any) {
+            console.warn(`Attempt ${attempt + 1} with model ${modelName} failed:`, err?.message || err);
+            if (attempt < maxAttempts - 1) {
+              // Wait 1.5s before retry with next model
+              await new Promise(resolve => setTimeout(resolve, 1500 * (attempt + 1)));
+            } else {
+              throw err;
+            }
+          }
+        }
+        throw new Error("Falha ao gerar conteúdo após múltiplas tentativas.");
+      };
+
       const batchPromises = batches.map(async (currentBatch) => {
         const batchParts = currentBatch.map(b => b.part);
         try {
-          const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: [
-              ...batchParts,
-              prompt,
-            ],
-            config: {
-              responseMimeType: "application/json",
-              responseSchema: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    name: {
-                      type: Type.STRING,
-                      description: "Nome da categoria",
-                    },
-                    items: {
-                      type: Type.ARRAY,
-                      items: {
-                        type: Type.OBJECT,
-                        properties: {
-                          name: {
-                            type: Type.STRING,
-                            description: "Nome do item",
-                          },
-                          description: {
-                            type: Type.STRING,
-                            description: "Descrição",
-                          },
-                          price: {
-                            type: Type.NUMBER,
-                            description: "Preço numérico",
-                          },
-                        },
-                        required: ["name", "price"],
-                      },
-                    },
-                  },
-                  required: ["name", "items"],
-                },
-              },
-            },
-          });
-
+          const response = await callGeminiWithRetry(batchParts);
           const responseText = response.text;
           if (responseText) {
             const parsed = JSON.parse(responseText);
@@ -248,6 +270,77 @@ Regras:
       return res.status(500).json({
         error: error.message || "Ocorreu um erro interno ao processar os arquivos do cardápio."
       });
+    }
+  });
+
+  // API endpoint for smart AI product suggestions (complements like drinks, desserts, sides)
+  app.post("/api/product-suggestions", async (req, res) => {
+    try {
+      const { itemName, itemDescription } = req.body;
+      if (!itemName) {
+        return res.status(400).json({ error: "itemName é obrigatório." });
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: "GEMINI_API_KEY não configurada." });
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+
+      const prompt = `Com base no item de cardápio "${itemName}" (descrição: "${itemDescription || 'N/A'}"), sugira 2 ou 3 itens complementares perfeitos para acompanhar (como bebidas, sobremesas ou acompanhamentos). Retorne um array JSON com objetos contendo:
+1. "name": Nome do item sugerido (ex: "Coca-Cola 2L", "Pudim de Leite").
+2. "description": Breve descrição apetitosa.
+3. "price": Preço médio estimado em reais (número).
+4. "category": Categoria (ex: "Bebidas", "Sobremesas", "Acompanhamentos").`;
+
+      const candidateModels = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-flash-latest"];
+      let responseText = "";
+
+      for (let attempt = 0; attempt < candidateModels.length; attempt++) {
+        const modelName = candidateModels[attempt];
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: [prompt],
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    name: { type: Type.STRING },
+                    description: { type: Type.STRING },
+                    price: { type: Type.NUMBER },
+                    category: { type: Type.STRING }
+                  },
+                  required: ["name", "price", "category"]
+                }
+              }
+            }
+          });
+          responseText = response.text || "";
+          if (responseText) break;
+        } catch (err: any) {
+          console.warn(`Attempt ${attempt + 1} with model ${modelName} failed for suggestions:`, err?.message || err);
+        }
+      }
+
+      if (!responseText) {
+        return res.json({
+          suggestions: [
+            { name: "Coca-Cola 2L", description: "Refrigerante gelado", price: 14.00, category: "Bebidas" },
+            { name: "Pudim de Leite", description: "Sobremesa caseira", price: 10.00, category: "Sobremesas" }
+          ]
+        });
+      }
+
+      const parsed = JSON.parse(responseText);
+      return res.json({ suggestions: Array.isArray(parsed) ? parsed : [] });
+    } catch (error: any) {
+      console.error("Error in /api/product-suggestions:", error);
+      return res.status(500).json({ error: error.message || "Erro ao gerar sugestões." });
     }
   });
 

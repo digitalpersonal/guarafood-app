@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import type { MenuItem, Addon, CartItem, SizeOption, OptionGroup } from '../types';
 import OptimizedImage from './OptimizedImage';
+import { ProductSuggestions } from './ProductSuggestions';
 
 interface PizzaCustomizationModalProps {
     isOpen: boolean;
@@ -390,6 +391,12 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                             rows={2}
                         />
                     </div>
+
+                    <ProductSuggestions 
+                        itemName={firstHalf.name} 
+                        itemDescription={firstHalf.description} 
+                        restaurantId={initialPizza.restaurantId} 
+                    />
                 </div>
 
                 <div className="p-4 border-t bg-gray-50 flex justify-between items-center">

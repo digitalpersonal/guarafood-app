@@ -375,7 +375,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         return { finalPrice: Math.max(0, totalNum - discount), discountAmount: discount };
     }, [totalPrice, appliedCoupon, loyaltyRedeemed, restaurant.loyaltyProgram]);
 
-    const effectiveDeliveryFee = deliveryMethod === 'PICKUP' ? 0 : Number(restaurant.deliveryFee || 0);
+    const hasFreeDeliveryPromo = cartItems.some(item => item.id.startsWith('featured-promo-'));
+    const effectiveDeliveryFee = (deliveryMethod === 'PICKUP' || hasFreeDeliveryPromo) ? 0 : Number(restaurant.deliveryFee || 0);
     const finalPriceWithFee = Number(finalPrice) + Number(effectiveDeliveryFee);
     
     const handleAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {

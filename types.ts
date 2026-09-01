@@ -201,6 +201,19 @@ export interface Promotion {
   restaurantId: number;
 }
 
+export interface FeaturedPromo {
+  id: number;
+  restaurantId: number;
+  title: string;
+  description: string;
+  fixedPrice: number;
+  originalPrice?: number;
+  imageUrl: string;
+  itemIds: number[];
+  includeFreeDelivery: boolean;
+  active: boolean;
+}
+
 export interface Coupon {
   id: number;
   code: string;

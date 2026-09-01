@@ -11,6 +11,7 @@ import Spinner from './Spinner';
 import PrintableOrder from './PrintableOrder';
 import MensalistasManager from './MensalistasManager';
 import MercadoPagoGuide from './MercadoPagoGuide';
+import { FeaturedPromoManager } from './FeaturedPromoManager';
 import { getErrorMessage } from '../services/api';
 import ChromeMemorySaverGuide from './ChromeMemorySaverGuide';
 import { KNOWN_CITIES } from '../utils/locationService';
@@ -750,6 +751,12 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                         loyaltyProgram={restaurant.loyaltyProgram} 
                         onChange={(loyaltyProgram) => setRestaurant({ ...restaurant, loyaltyProgram })} 
                     />
+
+                    {restaurantId && (
+                        <div className="border-t pt-8">
+                            <FeaturedPromoManager restaurantId={restaurantId} />
+                        </div>
+                    )}
 
                     <div className="border-t pt-8">
                         <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Configuração de Marmitas</h3>

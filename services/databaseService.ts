@@ -1,6 +1,6 @@
 
 import { supabase, supabaseAnon, handleSupabaseError } from './api';
-import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory, Expense, Order, OperatingHours } from '../types';
+import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory, Expense, Order, OperatingHours, FeaturedPromo } from '../types';
 
 // ==============================================================================
 // 🔄 NORMALIZADORES (Banco de Dados -> App)
@@ -809,4 +809,66 @@ export const updateAd = async (id: string, ad: any): Promise<void> => {
 export const deleteAd = async (id: string): Promise<void> => {
     const { error } = await supabase.from('ads').delete().eq('id', id);
     handleSupabaseError({ error, customMessage: 'Failed to delete ad' });
+};
+
+const normalizeFeaturedPromo = (data: any): FeaturedPromo => ({
+    id: data.id,
+    restaurantId: data.restaurant_id,
+    title: data.title,
+    description: data.description,
+    fixedPrice: Number(data.fixed_price || 0),
+    originalPrice: data.original_price ? Number(data.original_price) : undefined,
+    imageUrl: data.image_url,
+    itemIds: data.item_ids || [],
+    includeFreeDelivery: data.include_free_delivery ?? true,
+    active: data.active !== false
+});
+
+export const fetchFeaturedPromos = async (restaurantId?: number): Promise<FeaturedPromo[]> => {
+    let query = supabaseAnon.from('featured_promos').select('*').eq('active', true);
+    if (restaurantId) {
+        query = query.eq('restaurant_id', restaurantId);
+    }
+    const { data, error } = await query;
+    if (error) {
+        console.warn("Featured promos table might not exist yet or failed to fetch:", error.message);
+        return [];
+    }
+    return (data || []).map(normalizeFeaturedPromo);
+};
+
+export const createFeaturedPromo = async (restaurantId: number, promo: Omit<FeaturedPromo, 'id' | 'restaurantId'>): Promise<void> => {
+    const payload = {
+        restaurant_id: restaurantId,
+        title: promo.title,
+        description: promo.description,
+        fixed_price: promo.fixedPrice,
+        original_price: promo.originalPrice,
+        image_url: promo.imageUrl,
+        item_ids: promo.itemIds,
+        include_free_delivery: promo.includeFreeDelivery,
+        active: promo.active
+    };
+    const { error } = await supabase.from('featured_promos').insert(payload);
+    handleSupabaseError({ error, customMessage: 'Failed to create featured promo' });
+};
+
+export const updateFeaturedPromo = async (restaurantId: number, id: number, promo: Partial<FeaturedPromo>): Promise<void> => {
+    const payload: any = {};
+    if (promo.title !== undefined) payload.title = promo.title;
+    if (promo.description !== undefined) payload.description = promo.description;
+    if (promo.fixedPrice !== undefined) payload.fixed_price = promo.fixedPrice;
+    if (promo.originalPrice !== undefined) payload.original_price = promo.originalPrice;
+    if (promo.imageUrl !== undefined) payload.image_url = promo.imageUrl;
+    if (promo.itemIds !== undefined) payload.item_ids = promo.itemIds;
+    if (promo.includeFreeDelivery !== undefined) payload.include_free_delivery = promo.includeFreeDelivery;
+    if (promo.active !== undefined) payload.active = promo.active;
+
+    const { error } = await supabase.from('featured_promos').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to update featured promo' });
+};
+
+export const deleteFeaturedPromo = async (restaurantId: number, id: number): Promise<void> => {
+    const { error } = await supabase.from('featured_promos').delete().eq('id', id).eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to delete featured promo' });
 };

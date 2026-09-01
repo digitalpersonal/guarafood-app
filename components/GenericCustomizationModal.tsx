@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import type { MenuItem, Addon, CartItem, SizeOption, OptionGroup } from '../types';
 import OptimizedImage from './OptimizedImage';
+import { ProductSuggestions } from './ProductSuggestions';
 
 interface GenericCustomizationModalProps {
     isOpen: boolean;
@@ -280,6 +281,12 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
                             rows={2}
                         />
                     </div>
+
+                    <ProductSuggestions 
+                        itemName={initialItem.name} 
+                        itemDescription={initialItem.description} 
+                        restaurantId={initialItem.restaurantId} 
+                    />
                 </div>
 
                 <div className="p-4 border-t bg-gray-50 flex justify-between items-center mt-auto">
