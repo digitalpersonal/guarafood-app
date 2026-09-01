@@ -145,8 +145,8 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-4">
                 <div>
-                    <h2 className="text-xl font-bold text-gray-800">Banner e Promoção Destaque na Home</h2>
-                    <p className="text-xs text-gray-500">Crie campanhas promocionais em destaque com preço único e frete grátis opcional.</p>
+                    <h2 className="text-xl font-bold text-gray-800">Banner e Promoções em Destaque no Cardápio</h2>
+                    <p className="text-xs text-gray-500">Crie campanhas e combos promocionais em destaque exibidos no topo do cardápio do seu restaurante.</p>
                 </div>
                 <button
                     onClick={handleOpenNew}
@@ -192,7 +192,7 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
                                     {!isActive && (
                                         <div className="absolute inset-0 bg-black/20 flex items-center justify-center pointer-events-none">
                                             <span className="bg-gray-900/85 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow backdrop-blur-sm">
-                                                ⏸ Oculto na Home (Inativo)
+                                                ⏸ Oculto no Cardápio (Inativo)
                                             </span>
                                         </div>
                                     )}
@@ -203,7 +203,7 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
                                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${
                                             isActive ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-gray-200 text-gray-700'
                                         }`}>
-                                            {isActive ? '● Ativo' : '○ Inativo'}
+                                            {isActive ? '● Ativo no Cardápio' : '○ Inativo'}
                                         </span>
                                     </div>
                                     <p className="text-xs text-gray-500 line-clamp-2">{promo.description}</p>
@@ -220,9 +220,9 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
                                                 ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300' 
                                                 : 'bg-emerald-600 hover:bg-emerald-700 text-white'
                                         }`}
-                                        title={isActive ? 'Ocultar da tela inicial sem apagar' : 'Ativar e exibir na tela inicial'}
+                                        title={isActive ? 'Ocultar do cardápio sem apagar' : 'Ativar e exibir no topo do cardápio'}
                                     >
-                                        {isActive ? '⏸ Pausar Promoção' : '▶ Ativar na Home'}
+                                        {isActive ? '⏸ Pausar Promoção' : '▶ Ativar no Cardápio'}
                                     </button>
                                     <div className="flex items-center gap-2">
                                         <button onClick={() => handleOpenEdit(promo)} className="px-3 py-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50 rounded-lg transition-all">

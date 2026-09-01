@@ -16,6 +16,7 @@ import LoginScreen from './components/LoginScreen';
 import AdminDashboard from './components/AdminDashboard';
 import OrderManagement from './components/OrderManagement';
 import HomePromotionalBanner from './components/HomePromotionalBanner';
+import { RestaurantPromotionalBanner } from './components/RestaurantPromotionalBanner';
 import { CartProvider, useCart } from './hooks/useCart';
 import { AnimationProvider } from './hooks/useAnimation';
 import { NotificationProvider, useNotification } from './hooks/useNotification';
@@ -284,6 +285,12 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                     </div>
                 )}
             </div>
+
+            {/* Banner de Promoções em Destaque do Próprio Restaurante */}
+            <RestaurantPromotionalBanner 
+                restaurant={restaurant} 
+                isOpen={isRestaurantOpen(restaurant)} 
+            />
             
             {dailySpecials.length > 0 && (
                  <div className="p-4 bg-yellow-50 border-b-4 border-yellow-200">
