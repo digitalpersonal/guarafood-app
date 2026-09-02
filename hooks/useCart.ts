@@ -2,6 +2,7 @@
 import React, { createContext, useState, useContext, useMemo, useCallback, useEffect } from 'react';
 import type { CartItem, MenuItem, Combo } from '../types';
 import { useNotification } from './useNotification';
+import { triggerHapticFeedback } from '../utils/haptic';
 
 interface CartContextType {
   cartItems: CartItem[];
@@ -34,6 +35,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [cartItems]);
 
   const addToCart = useCallback((item: MenuItem | Combo | CartItem) => {
+    triggerHapticFeedback(30);
     const itemRestaurantId = ('restaurantId' in item) ? item.restaurantId : undefined;
 
     if (itemRestaurantId !== undefined && cartItems.length > 0) {
@@ -83,10 +85,12 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [cartItems, addToast]);
 
   const removeFromCart = useCallback((itemId: string) => {
+    triggerHapticFeedback(30);
     setCartItems(prevItems => prevItems.filter(item => item.id !== itemId));
   }, []);
 
   const updateQuantity = useCallback((itemId: string, quantity: number) => {
+    triggerHapticFeedback(30);
     if (quantity <= 0) {
       removeFromCart(itemId);
     } else {
@@ -107,6 +111,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const clearCart = useCallback(() => {
+    triggerHapticFeedback(50);
     setCartItems([]);
   }, []);
 

@@ -388,43 +388,62 @@ const HelpCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         },
         {
             id: 'configuracoes',
-            title: 'Configurações do Estabelecimento',
+            title: 'Configurações e Otimização',
             icon: '⚙️',
             content: (
                 <div className="space-y-6">
-                    <section>
-                        <h4 className="font-black text-gray-800 mb-2">1. Dados da Empresa e Cardápio Online</h4>
-                        <p className="text-sm text-gray-600 mb-2">No painel Administrativo (Menu Lateral &rarr; Config), estruture sua operação:</p>
-                        <div className="bg-gray-50 p-4 rounded-xl space-y-3">
-                            <div>
-                                <p className="font-bold text-gray-800 text-xs uppercase mb-1">Informações Básicas e Contato</p>
-                                <p className="text-xs text-gray-500">Nome fantasia, endereço físico, cidade atendida e o WhatsApp do restaurante.</p>
-                            </div>
-                            <div>
-                                <p className="font-bold text-gray-800 text-xs uppercase mb-1">Taxa de Entrega (Delivery)</p>
-                                <p className="text-xs text-gray-500">Defina o valor fixo cobrado por entrega ou deixe 0 para entrega grátis.</p>
-                            </div>
-                            <div>
-                                <p className="font-bold text-gray-800 text-xs uppercase mb-1">Horário de Funcionamento</p>
-                                <p className="text-xs text-gray-500">Configure horários de abertura e fechamento por dia da semana (com suporte a turnos duplos de almoço e jantar). Fora do horário, o cardápio online bloqueia pedidos automaticamente.</p>
-                            </div>
-                        </div>
-                    </section>
-                    <section>
-                        <h4 className="font-black text-gray-800 mb-2">2. Chave Pix e Integração de Pagamento</h4>
-                        <p className="text-sm text-gray-600 leading-relaxed">
-                            Configure sua chave Pix nas configurações. O GuaraFood gera o QR Code Pix Dinâmico e o código "Copia e Cola" instantaneamente tanto no Checkout online do cliente quanto nos cupons de mesa impressos.
+                    <div className="bg-gradient-to-r from-gray-800 to-gray-700 p-6 rounded-2xl text-white shadow-xl mb-8">
+                        <h3 className="text-lg font-black mb-2">O que o GuaraFood faz por você?</h3>
+                        <p className="text-sm text-gray-300 leading-relaxed">
+                            O GuaraFood centraliza toda a gestão do seu restaurante: desde o recebimento de pedidos via delivery e QR Code nas mesas, até o controle financeiro, gestão de estoque e fidelização de clientes. O menu de <strong>Configurações</strong> é o coração operacional onde você molda o sistema para o seu modelo de negócio.
                         </p>
-                    </section>
-                    <section>
-                        <h4 className="font-black text-gray-800 mb-2">3. Segurança e Controle de Acessos</h4>
-                        <p className="text-sm text-gray-600 mb-2">Crie usuários para sua equipe com permissões restritas e seguras:</p>
-                        <ul className="list-disc list-inside text-xs text-gray-500 space-y-1">
-                            <li><strong>Garçom:</strong> Acesso restrito ao mapa de mesas, comandas e autoatendimento do salão.</li>
-                            <li><strong>Cozinha:</strong> Acesso à tela de pedidos em preparo (KDS) para despachar pratos.</li>
-                            <li><strong>Gerente/Administrador:</strong> Acesso total às configurações, cardápio, relatórios e financeiro.</li>
-                        </ul>
-                    </section>
+                    </div>
+                    
+                    <h4 className="font-black text-gray-800 mb-4 text-lg">Central de Configurações Operacionais</h4>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Alertas Sonoros */}
+                        <div className="bg-orange-100 border-l-4 border-orange-500 p-4 rounded-r-xl shadow-sm">
+                            <h5 className="font-black text-orange-900 text-sm mb-1">🔔 Alertas Sonoros</h5>
+                            <p className="text-xs text-orange-800 mb-2">Ative o som de campainha para não perder nenhum pedido novo.</p>
+                            <p className="text-[11px] text-orange-800"><strong>Uso:</strong> Ideal para cozinhas ou caixas movimentados que não podem ficar olhando a tela o tempo todo.</p>
+                        </div>
+
+                        {/* Pagamentos */}
+                        <div className="bg-emerald-100 border-l-4 border-emerald-500 p-4 rounded-r-xl shadow-sm">
+                            <h5 className="font-black text-emerald-900 text-sm mb-1">💳 Pagamentos (Pix Dinâmico)</h5>
+                            <p className="text-xs text-emerald-800 mb-2">Configure sua chave Pix ou gateway (Mercado Pago/Asaas) para receber pagamentos automáticos.</p>
+                            <p className="text-[11px] text-emerald-800"><strong>Uso:</strong> O sistema gera o QR Code Pix automático no checkout online e nos cupons impressos.</p>
+                        </div>
+
+                        {/* Impressora */}
+                        <div className="bg-blue-100 border-l-4 border-blue-500 p-4 rounded-r-xl shadow-sm">
+                            <h5 className="font-black text-blue-900 text-sm mb-1">🖨️ Impressora Térmica</h5>
+                            <p className="text-xs text-blue-800 mb-2">Ajuste a largura (58mm/80mm) e ative a impressão automática para cozinha.</p>
+                            <p className="text-[11px] text-blue-800"><strong>Dica:</strong> Use o modo "Servidor de Impressão" no PC do caixa para imprimir pedidos de celulares dos garçons.</p>
+                        </div>
+
+                        {/* Banners Promocionais */}
+                        <div className="bg-yellow-100 border-l-4 border-yellow-500 p-4 rounded-r-xl shadow-sm">
+                            <h5 className="font-black text-yellow-900 text-sm mb-1">📢 Banners Promocionais</h5>
+                            <p className="text-xs text-yellow-800 mb-2">Configure banners de destaque que aparecem no topo do cardápio online do cliente.</p>
+                            <p className="text-[11px] text-yellow-800"><strong>Como configurar:</strong> Vá em <em>Marketing</em> &rarr; <em>Banners</em>. Suba uma imagem atraente, coloque um título e um link (opcional) para aumentar a conversão de ofertas.</p>
+                        </div>
+
+                        {/* Mensalistas */}
+                        <div className="bg-purple-100 border-l-4 border-purple-500 p-4 rounded-r-xl shadow-sm">
+                            <h5 className="font-black text-purple-900 text-sm mb-1">🤝 Mensalistas</h5>
+                            <p className="text-xs text-purple-800 mb-2">Gerencie clientes fiéis, funcionários ou empresas que pagam mensalmente.</p>
+                            <p className="text-[11px] text-purple-800"><strong>Exemplo:</strong> Clientes que almoçam todo dia e acertam a conta no fim do mês.</p>
+                        </div>
+                        
+                        {/* Venda por Peso */}
+                        <div className="bg-rose-100 border-l-4 border-rose-500 p-4 rounded-r-xl shadow-sm">
+                            <h5 className="font-black text-rose-900 text-sm mb-1">⚖️ Venda por Peso</h5>
+                            <p className="text-xs text-rose-800 mb-2">Habilite a venda por peso para buffets ou marmitas personalizadas.</p>
+                            <p className="text-[11px] text-rose-800"><strong>Uso:</strong> Garçom digita "480g" e o sistema calcula o valor baseado no preço do kg configurado.</p>
+                        </div>
+                    </div>
                 </div>
             )
         },

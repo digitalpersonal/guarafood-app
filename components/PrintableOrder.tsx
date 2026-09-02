@@ -278,18 +278,18 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
 
                 {/* DADOS DO CLIENTE / ENTREGA */}
                 {(order.customerName || order.customerPhone) && (
-                    <div style={{ marginTop: '3px', marginBottom: '6px', fontSize: baseFontSize, border: '1.5px solid #000', padding: '5px' }}>
-                        <div style={{ fontWeight: '900', textDecoration: 'underline', marginBottom: '4px', fontSize: headerFontSize, textAlign: 'center' }}>
+                    <div style={{ marginTop: '1px', marginBottom: '3px', fontSize: baseFontSize, border: '1px solid #000', padding: '2px' }}>
+                        <div style={{ fontWeight: '900', textDecoration: 'underline', marginBottom: '1px', fontSize: baseFontSize, textAlign: 'center' }}>
                             {isPickup ? 'DADOS DO CLIENTE' : 'DADOS DE ENTREGA'}
                         </div>
-                        {order.customerName && <div style={{ marginBottom: '2px' }}><strong>CLIENTE:</strong> {order.customerName.toUpperCase()}</div>}
-                        {order.customerPhone && <div style={{ marginBottom: '2px' }}><strong>FONE:</strong> {order.customerPhone}</div>}
+                        {order.customerName && <div style={{ marginBottom: '1px' }}><strong>CLIENTE:</strong> {order.customerName.toUpperCase()}</div>}
+                        {order.customerPhone && <div style={{ marginBottom: '1px' }}><strong>FONE:</strong> {order.customerPhone}</div>}
                         
                         {!isPickup && order.customerAddress && (
                             <>
-                                <div style={{ marginBottom: '2px' }}><strong>RUA:</strong> {order.customerAddress.street.toUpperCase()}, {order.customerAddress.number}</div>
-                                {order.customerAddress.complement && <div style={{ marginBottom: '2px' }}><strong>COMPL:</strong> {order.customerAddress.complement.toUpperCase()}</div>}
-                                <div style={{ marginBottom: '2px' }}><strong>BAIRRO:</strong> {order.customerAddress.neighborhood.toUpperCase()}</div>
+                                <div style={{ marginBottom: '1px' }}><strong>RUA:</strong> {order.customerAddress.street.toUpperCase()}, {order.customerAddress.number}</div>
+                                {order.customerAddress.complement && <div style={{ marginBottom: '1px' }}><strong>COMPL:</strong> {order.customerAddress.complement.toUpperCase()}</div>}
+                                <div style={{ marginBottom: '1px' }}><strong>BAIRRO:</strong> {order.customerAddress.neighborhood.toUpperCase()}</div>
                             </>
                         )}
                     </div>
@@ -312,10 +312,10 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         {itemsToPrint.map((item, index) => (
                             <React.Fragment key={index}>
                                 <tr>
-                                    <td style={{ textAlign: 'left', verticalAlign: 'top', textTransform: 'uppercase', fontSize: baseFontSize, paddingBottom: '3px', paddingRight: '4px', fontWeight: '900' }}>
+                                    <td style={{ textAlign: 'left', verticalAlign: 'top', textTransform: 'uppercase', fontSize: headerFontSize, paddingBottom: '3px', paddingRight: '4px', fontWeight: '900' }}>
                                         {item.quantity}x {item.name} {item.sizeName && `(${item.sizeName})`} {item.weight && item.isKiloItem && `(${Number(item.weight).toFixed(3)}kg)`}
                                     </td>
-                                    <td style={{ textAlign: 'right', verticalAlign: 'top', fontSize: baseFontSize, whiteSpace: 'nowrap', paddingBottom: '3px', fontWeight: '900' }}>
+                                    <td style={{ textAlign: 'right', verticalAlign: 'top', fontSize: headerFontSize, whiteSpace: 'nowrap', paddingBottom: '3px', fontWeight: '900' }}>
                                         {(Number(item.price) * item.quantity).toFixed(2)}
                                     </td>
                                 </tr>

@@ -876,3 +876,15 @@ export const deleteFeaturedPromo = async (restaurantId: number, id: number): Pro
     const { error } = await supabase.from('featured_promos').delete().eq('id', id).eq('restaurant_id', restaurantId);
     handleSupabaseError({ error, customMessage: 'Failed to delete featured promo' });
 };
+
+export const fetchPopularItems = async (restaurantId: number, limit = 5): Promise<MenuItem[]> => {
+    const { data, error } = await supabaseAnon
+        .from('menu_items')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('available', true)
+        .limit(limit);
+        
+    handleSupabaseError({ error, customMessage: 'Failed to fetch popular items' });
+    return (data || []).map(normalizeItem);
+};

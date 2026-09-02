@@ -6,6 +6,7 @@ import { useNotification } from '../hooks/useNotification';
 import { isRestaurantOpen } from '../utils/restaurantUtils';
 import CheckoutModal from './CheckoutModal';
 import OptimizedImage from './OptimizedImage';
+import { CartUpsellSuggestions } from './CartUpsellSuggestions';
 
 
 const CartIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -215,6 +216,7 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
                                     </div>
                                 </div>
                             )})}
+                            {restaurant && <CartUpsellSuggestions restaurantId={restaurant.id} />}
                         </div>
                     )}
 

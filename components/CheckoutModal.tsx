@@ -9,6 +9,7 @@ import { supabase } from '../services/api';
 import { isRestaurantOpen } from '../utils/restaurantUtils';
 import Spinner from './Spinner';
 import OptimizedImage from './OptimizedImage';
+import { triggerHapticFeedback } from '../utils/haptic';
 
 const CheckCircleIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
@@ -591,6 +592,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
 
     const handleSubmitDetails = async (e: React.FormEvent) => {
         e.preventDefault();
+        triggerHapticFeedback();
         if (isSubmittingRef.current || currentStep !== 'DETAILS' || stepTransitionLock) return;
         
         isSubmittingRef.current = true;
