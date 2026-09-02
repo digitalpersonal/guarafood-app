@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useCart } from '../hooks/useCart';
-import { fetchPopularItems } from '../services/databaseService';
-import type { MenuItem } from '../types';
+import { fetchPopularItems, fetchAddonsForRestaurant, fetchMenuForRestaurant } from '../services/databaseService';
+import type { MenuItem, Addon, CartItem, MenuCategory } from '../types';
 import OptimizedImage from './OptimizedImage';
+import PizzaCustomizationModal from './PizzaCustomizationModal';
+import AcaiCustomizationModal from './AcaiCustomizationModal';
+import GenericCustomizationModal from './GenericCustomizationModal';
 
 const DRINK_KEYWORDS = ['suco', 'refrigerante', 'coca', 'fanta', 'água', 'cerveja', 'guaraná', 'mate', 'chá'];
 
@@ -14,32 +17,68 @@ const isDrink = (item: { name: string; description: string }) => {
 export const CartUpsellSuggestions: React.FC<{ restaurantId: number }> = ({ restaurantId }) => {
     const { addToCart, cartItems } = useCart();
     const [suggestions, setSuggestions] = useState<MenuItem[]>([]);
+    const [allAddons, setAllAddons] = useState<Addon[]>([]);
+    const [allPizzas, setAllPizzas] = useState<MenuItem[]>([]);
+    
+    const [isPizzaModalOpen, setIsPizzaModalOpen] = useState(false);
+    const [isAcaiModalOpen, setIsAcaiModalOpen] = useState(false);
+    const [isGenericModalOpen, setIsGenericModalOpen] = useState(false);
+    const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
 
     useEffect(() => {
-        const fetchSuggestions = async () => {
-            // Fetch a larger pool to allow for better filtering and randomness
-            const allItems = await fetchPopularItems(restaurantId, 50);
+        const fetchData = async () => {
+            const [allItems, addons, menu] = await Promise.all([
+                fetchPopularItems(restaurantId, 50),
+                fetchAddonsForRestaurant(restaurantId),
+                fetchMenuForRestaurant(restaurantId)
+            ]);
             
+            setAllAddons(addons);
+            
+            // Extract pizzas
+            const pizzas: MenuItem[] = [];
+            menu.forEach(cat => pizzas.push(...cat.items.filter(item => item.isPizza)));
+            setAllPizzas(pizzas);
+
             const cartHasFood = cartItems.some(item => !isDrink(item));
             
-            // Filter candidates based on whether the cart has food (suggest drinks) or not (suggest food)
             let candidates = allItems.filter(item => {
                 const itemIsDrink = isDrink(item);
                 return cartHasFood ? itemIsDrink : !itemIsDrink;
             });
 
-            // Filter out items already in cart
             candidates = candidates.filter(item => 
                 !cartItems.some(cartItem => cartItem.name === item.name)
             );
 
-            // Randomize candidates
             candidates.sort(() => 0.5 - Math.random());
-
             setSuggestions(candidates.slice(0, 3));
         };
-        fetchSuggestions();
+        fetchData();
     }, [restaurantId, cartItems]);
+
+    const handleAddToCartClick = (item: MenuItem) => {
+        setSelectedItem(item);
+        if (item.isPizza) {
+            setIsPizzaModalOpen(true);
+        } else if (item.isAcai) {
+            setIsAcaiModalOpen(true);
+        } else if ((item.optionGroups && item.optionGroups.length > 0) || 
+                   (item.availableAddonIds && item.availableAddonIds.length > 0) || 
+                   (item.sizes && item.sizes.length > 0)) {
+            setIsGenericModalOpen(true);
+        } else {
+            addToCart(item);
+        }
+    };
+
+    const handleCustomizedItemAddToCart = (customizedItem: CartItem) => {
+        addToCart(customizedItem);
+        setIsPizzaModalOpen(false);
+        setIsAcaiModalOpen(false);
+        setIsGenericModalOpen(false);
+        setSelectedItem(null);
+    };
 
     if (suggestions.length === 0) return null;
 
@@ -57,7 +96,7 @@ export const CartUpsellSuggestions: React.FC<{ restaurantId: number }> = ({ rest
                             </div>
                         </div>
                         <button 
-                            onClick={() => addToCart(item)}
+                            onClick={() => handleAddToCartClick(item)}
                             className="bg-orange-100 text-orange-700 text-xs font-bold px-3 py-1 rounded hover:bg-orange-200"
                         >
                             Adicionar
@@ -65,6 +104,35 @@ export const CartUpsellSuggestions: React.FC<{ restaurantId: number }> = ({ rest
                     </div>
                 ))}
             </div>
+
+            {selectedItem && isPizzaModalOpen && (
+                <PizzaCustomizationModal
+                    isOpen={isPizzaModalOpen}
+                    onClose={() => setIsPizzaModalOpen(false)}
+                    onAddToCart={handleCustomizedItemAddToCart}
+                    initialPizza={selectedItem}
+                    allPizzas={allPizzas}
+                    allAddons={allAddons}
+                />
+            )}
+            {selectedItem && isAcaiModalOpen && (
+                <AcaiCustomizationModal
+                    isOpen={isAcaiModalOpen}
+                    onClose={() => setIsAcaiModalOpen(false)}
+                    onAddToCart={handleCustomizedItemAddToCart}
+                    initialItem={selectedItem}
+                    allAddons={allAddons}
+                />
+            )}
+            {selectedItem && isGenericModalOpen && (
+                <GenericCustomizationModal
+                    isOpen={isGenericModalOpen}
+                    onClose={() => setIsGenericModalOpen(false)}
+                    onAddToCart={handleCustomizedItemAddToCart}
+                    initialItem={selectedItem}
+                    allAddons={allAddons}
+                />
+            )}
         </div>
     );
 };

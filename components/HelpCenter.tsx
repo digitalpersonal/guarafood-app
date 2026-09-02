@@ -10,7 +10,7 @@ interface HelpSection {
 }
 
 const HelpCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
-    const [activeSection, setActiveSection] = useState('mesas');
+    const [activeSection, setActiveSection] = useState('como-usar');
     const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
 
     const handleCopyCommand = (text: string, label: string) => {
@@ -20,6 +20,53 @@ const HelpCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     };
 
     const sections: HelpSection[] = [
+        {
+            id: 'como-usar',
+            title: 'Como usar o GuaraFood',
+            icon: '🚀',
+            badge: 'Iniciante',
+            content: (
+                <div className="space-y-8">
+                    <div className="bg-gradient-to-r from-orange-600 to-amber-500 p-8 rounded-3xl text-white shadow-2xl">
+                        <h3 className="text-3xl font-black mb-3">Bem-vindo ao GuaraFood!</h3>
+                        <p className="text-lg opacity-90 leading-relaxed">
+                            Vamos transformar a operação do seu restaurante? Aqui está um guia prático para você dominar as funcionalidades essenciais e faturar mais com o nosso sistema.
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-white border-2 border-orange-100 p-6 rounded-3xl shadow-sm hover:shadow-md transition-shadow">
+                            <span className="text-4xl mb-4 block">📦</span>
+                            <h4 className="font-black text-gray-900 text-lg mb-2">1. Gestão de Pedidos (Delivery e Salão)</h4>
+                            <p className="text-sm text-gray-600 leading-relaxed">
+                                Acompanhe tudo em tempo real. No painel de pedidos, aceite novas solicitações, monitore o tempo de preparo na cozinha (KDS) e despache para entrega ou mesa. Mantenha o cliente sempre atualizado.
+                            </p>
+                        </div>
+                        <div className="bg-white border-2 border-emerald-100 p-6 rounded-3xl shadow-sm hover:shadow-md transition-shadow">
+                            <span className="text-4xl mb-4 block">🍕</span>
+                            <h4 className="font-black text-gray-900 text-lg mb-2">2. Configuração do Cardápio</h4>
+                            <p className="text-sm text-gray-600 leading-relaxed">
+                                Mantenha seu menu irresistível! Vá em <em>Menu</em> para cadastrar pratos com fotos, preços, tamanhos e adicionais. Pause itens indisponíveis instantaneamente para evitar pedidos frustrados.
+                            </p>
+                        </div>
+                        <div className="bg-white border-2 border-blue-100 p-6 rounded-3xl shadow-sm hover:shadow-md transition-shadow">
+                            <span className="text-4xl mb-4 block">📢</span>
+                            <h4 className="font-black text-gray-900 text-lg mb-2">3. Ativar Promoções</h4>
+                            <p className="text-sm text-gray-600 leading-relaxed">
+                                Aumente as vendas! Em <em>Marketing</em> &rarr; <em>Banners</em>, suba artes de promoções que aparecem no topo do cardápio online do cliente. Use cupons de desconto para fidelizar.
+                            </p>
+                        </div>
+                        <div className="bg-white border-2 border-purple-100 p-6 rounded-3xl shadow-sm hover:shadow-md transition-shadow">
+                            <span className="text-4xl mb-4 block">💰</span>
+                            <h4 className="font-black text-gray-900 text-lg mb-2">4. Controle Financeiro</h4>
+                            <p className="text-sm text-gray-600 leading-relaxed">
+                                Veja o que entra e sai. Monitore as vendas por canal, controle o fluxo de caixa, lance despesas diárias e entenda seu lucro líquido real ao final de cada dia.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )
+        },
         {
             id: 'mesas',
             title: 'Gestão de Mesas, Comandas e Garçons',

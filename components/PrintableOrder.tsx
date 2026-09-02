@@ -287,9 +287,9 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         
                         {!isPickup && order.customerAddress && (
                             <>
-                                <div style={{ marginBottom: '1px' }}><strong>RUA:</strong> {order.customerAddress.street.toUpperCase()}, {order.customerAddress.number}</div>
-                                {order.customerAddress.complement && <div style={{ marginBottom: '1px' }}><strong>COMPL:</strong> {order.customerAddress.complement.toUpperCase()}</div>}
-                                <div style={{ marginBottom: '1px' }}><strong>BAIRRO:</strong> {order.customerAddress.neighborhood.toUpperCase()}</div>
+                                <div style={{ marginBottom: '1px', wordWrap: 'break-word' }}><strong>RUA: </strong>{order.customerAddress.street.toUpperCase()}, {order.customerAddress.number}</div>
+                                {order.customerAddress.complement && <div style={{ marginBottom: '1px', wordWrap: 'break-word' }}><strong>COMPL: </strong>{order.customerAddress.complement.toUpperCase()}</div>}
+                                <div style={{ marginBottom: '1px', wordWrap: 'break-word' }}><strong>BAIRRO: </strong>{order.customerAddress.neighborhood.toUpperCase()}</div>
                             </>
                         )}
                     </div>
