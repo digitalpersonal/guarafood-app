@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useCart } from '../hooks/useCart';
 import { useNotification } from '../hooks/useNotification';
 import Spinner from './Spinner';
+import { fetchMenuForRestaurant } from '../services/databaseService';
+import type { MenuItem } from '../types';
 
 interface SuggestionItem {
     name: string;
@@ -28,6 +30,13 @@ export const ProductSuggestions: React.FC<ProductSuggestionsProps> = ({ itemName
         const fetchSuggestions = async () => {
             setLoading(true);
             try {
+                // Fetch menu to filter suggestions if restaurantId is provided
+                let menuItems: MenuItem[] = [];
+                if (restaurantId) {
+                    const categories = await fetchMenuForRestaurant(restaurantId, true);
+                    menuItems = categories.flatMap(cat => cat.items);
+                }
+
                 const res = await fetch('/api/product-suggestions', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -35,12 +44,26 @@ export const ProductSuggestions: React.FC<ProductSuggestionsProps> = ({ itemName
                 });
                 if (!res.ok) throw new Error('Falha ao carregar sugestões');
                 const data = await res.json();
+                
                 if (isMounted && data.suggestions) {
-                    setSuggestions(data.suggestions);
+                    let filteredSuggestions = data.suggestions;
+
+                    // Filter suggestions by restaurant menu if available
+                    if (restaurantId && menuItems.length > 0) {
+                        filteredSuggestions = filteredSuggestions.filter((sug: SuggestionItem) => 
+                            menuItems.some(item => 
+                                item.name.toLowerCase().includes(sug.name.toLowerCase()) || 
+                                sug.name.toLowerCase().includes(item.name.toLowerCase())
+                            )
+                        );
+                    }
+                    
+                    setSuggestions(filteredSuggestions);
                 }
             } catch (err) {
                 console.error("Error fetching AI suggestions:", err);
                 if (isMounted) {
+                    // Fallback to basic suggestions if fetch fails
                     setSuggestions([
                         { name: "Coca-Cola 2L", description: "Refrigerante gelado 2 litros", price: 14.00, category: "Bebidas" },
                         { name: "Pudim de Leite", description: "Fatia generosa de pudim caseiro", price: 10.00, category: "Sobremesas" }
@@ -58,7 +81,7 @@ export const ProductSuggestions: React.FC<ProductSuggestionsProps> = ({ itemName
         return () => {
             isMounted = false;
         };
-    }, [itemName, itemDescription]);
+    }, [itemName, itemDescription, restaurantId]);
 
     const handleAddSuggestion = (sug: SuggestionItem, index: number) => {
         const cartItemPayload = {
