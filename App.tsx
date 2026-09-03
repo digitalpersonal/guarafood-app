@@ -5,7 +5,7 @@ import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from
 import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant, fetchRestaurantById } from './services/databaseService';
 import { AuthProvider, useAuth } from './services/authService';
 import { getInitializationError, getErrorMessage } from './services/api';
-import { isRestaurantOpen, isAvailableByTime } from './utils/restaurantUtils';
+import { isRestaurantOpen, isAvailableByTime } from './utils/restaurantTimeUtils';
 
 import RestaurantCard from './components/RestaurantCard';
 import Spinner from './components/Spinner';

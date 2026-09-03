@@ -6,7 +6,7 @@ import {
     formatGreetingMessage,
     saveWhatsAppGreetingConfig 
 } from '../services/whatsappService';
-import { getRestaurantOperatingStatus } from '../utils/restaurantUtils';
+import { getRestaurantOperatingStatus } from '../utils/restaurantTimeUtils';
 import { useNotification } from '../hooks/useNotification';
 
 interface WhatsAppGreetingSettingsProps {
