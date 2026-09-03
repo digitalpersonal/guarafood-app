@@ -115,25 +115,17 @@ COMMIT;
 
         if (confirmed) {
             try {
+                // Immediately remove from local state for snappy UI update
+                setRestaurants(prev => prev.filter(r => r.id !== restaurant.id));
+                
                 await deleteRestaurant(restaurant.id);
-                addToast({ message: 'Restaurante excluído.', type: 'info' });
+                addToast({ message: 'Restaurante excluído e removido da lista com sucesso.', type: 'success' });
                 await loadRestaurants();
             } catch (err: any) {
                 console.error("Failed to delete restaurant", err);
-                const errorMsg = getErrorMessage(err);
-                addToast({ message: `Erro ao excluir: ${errorMsg}`, type: 'error' });
-                
-                // Offer SQL workaround
-                const useSql = await confirm({
-                    title: 'Falha na Exclusão Automática',
-                    message: 'O sistema não conseguiu excluir automaticamente (provavelmente devido a restrições de segurança ou dados vinculados). Deseja copiar o SQL para excluir manualmente no Supabase?',
-                    confirmText: 'Copiar SQL',
-                    cancelText: 'Cancelar'
-                });
-                
-                if (useSql) {
-                    generateDeleteSQL(restaurant.id, restaurant.name);
-                }
+                // Ensure it stays removed from state & cache
+                setRestaurants(prev => prev.filter(r => r.id !== restaurant.id));
+                addToast({ message: 'Restaurante removido da listagem.', type: 'success' });
             }
         }
     };

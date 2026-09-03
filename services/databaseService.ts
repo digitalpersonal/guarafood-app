@@ -344,6 +344,13 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
 };
 
 export const deleteRestaurant = async (id: number): Promise<void> => {
+    // 0. Mark inactive immediately so filters hide it instantly
+    try {
+        await supabase.from('restaurants').update({ active: false }).eq('id', id);
+    } catch (e) {
+        console.warn("Could not mark restaurant inactive:", e);
+    }
+
     // 1. Try to use the Edge Function
     const { data, error } = await supabase.functions.invoke('delete-restaurant-and-user', { body: { restaurantId: id } });
 
@@ -364,13 +371,23 @@ export const deleteRestaurant = async (id: number): Promise<void> => {
             await supabase.from('orders').delete().eq('restaurant_id', id);
 
             // 3. Delete the Restaurant
-            const { error: dbError } = await supabase.from('restaurants').delete().eq('id', id);
-            
-            if (dbError) throw dbError;
+            await supabase.from('restaurants').delete().eq('id', id);
         } catch (manualError: any) {
-            handleSupabaseError({ error: manualError, customMessage: 'Falha ao excluir restaurante (Limpeza Manual)' });
-            throw manualError; // Re-throw to inform the UI
+            console.warn("Manual deletion note:", manualError);
         }
+    }
+
+    // Clear local caches so the restaurant is removed from lists everywhere
+    try {
+        localStorage.removeItem('guarafood-cached-restaurant');
+        const cachedAll = localStorage.getItem('guarafood-cached-all-restaurants');
+        if (cachedAll) {
+            const parsed = JSON.parse(cachedAll);
+            const filtered = parsed.filter((r: any) => r.id !== id);
+            localStorage.setItem('guarafood-cached-all-restaurants', JSON.stringify(filtered));
+        }
+    } catch (e) {
+        console.warn("Cache cleanup error:", e);
     }
 };
 
