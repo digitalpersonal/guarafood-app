@@ -67,6 +67,54 @@ export interface StaffMember {
     active: boolean;
 }
 
+export interface WhatsAppConnection {
+  id?: string;
+  restaurantId: number;
+  restaurantPhone?: string; // Telefone oficial do restaurante para ligação compatível
+  status: 'connected' | 'disconnected' | 'pending';
+  active?: boolean;
+  phoneNumber?: string;
+  displayPhoneNumber?: string;
+  businessName?: string;
+  displayName?: string;
+  wabaId?: string; // WhatsApp Business Account ID da Meta
+  phoneNumberId?: string; // ID do número de telefone na Meta
+  configId: string; // Ex: '1500115125487483'
+  greetingMessageEnabled?: boolean; // Se a resposta automática de saudação está ativada
+  greetingMessage?: string; // Mensagem personalizada com tags dinâmicas como {link_cardapio}
+  greetingOnlyDuringHours?: boolean; // Se as respostas com link do menu só serão enviadas dentro do horário de funcionamento
+  connectedAt?: string;
+  updatedAt?: string;
+}
+
+export interface WhatsAppConversation {
+  id: string;
+  restaurantId: number;
+  restaurantPhone?: string;
+  customerPhone: string;
+  customerName?: string;
+  lastMessage?: string;
+  lastMessageAt?: string;
+  unreadCount?: number;
+  status: 'open' | 'closed' | 'archived';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WhatsAppMessage {
+  id: string;
+  conversationId: string;
+  restaurantId: number;
+  restaurantPhone?: string;
+  customerPhone: string;
+  direction: 'inbound' | 'outbound';
+  message: string;
+  type: 'text' | 'image' | 'audio' | 'video' | 'document' | 'location' | 'contacts' | 'interactive' | 'button' | 'reaction' | 'unknown';
+  metaMessageId?: string;
+  status?: 'received' | 'sent' | 'delivered' | 'read' | 'failed';
+  createdAt: string;
+}
+
 export interface Restaurant {
   id: number;
   name: string;
@@ -106,6 +154,10 @@ export interface Restaurant {
   fiscalProvider?: string;
   staff?: StaffMember[]; // NEW: List of staff members
   loyaltyProgram?: LoyaltyProgram; // NEW: Fidelity Program
+  whatsappConnection?: WhatsAppConnection | null; // NEW: Conexão oficial com Meta WhatsApp
+  whatsappGreetingEnabled?: boolean; // NEW: Resposta automática de saudação ativada
+  whatsappGreetingMessage?: string; // NEW: Mensagem personalizada de saudação com o cardápio
+  whatsappGreetingOnlyDuringHours?: boolean; // NEW: Respostas com link do menu restritas ao horário de funcionamento
 }
 
 export interface Addon {

@@ -470,6 +470,13 @@ const HelpCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             <p className="text-[11px] text-blue-800"><strong>Dica:</strong> Use o modo "Servidor de Impressão" no PC do caixa para imprimir pedidos de celulares dos garçons.</p>
                         </div>
 
+                        {/* WhatsApp Meta Oficial */}
+                        <div className="bg-teal-100 border-l-4 border-teal-600 p-4 rounded-r-xl shadow-sm">
+                            <h5 className="font-black text-teal-950 text-sm mb-1">💬 WhatsApp (API Oficial Meta)</h5>
+                            <p className="text-xs text-teal-900 mb-2">Conecte o WhatsApp do seu restaurante à API oficial da Meta para receber e gerenciar mensagens.</p>
+                            <p className="text-[11px] text-teal-800"><strong>Como usar:</strong> Vá em <em>Configurações &rarr; WhatsApp</em> e clique em <em>Conectar meu WhatsApp</em> para iniciar a integração com o Cadastro Incorporado da Meta.</p>
+                        </div>
+
                         {/* Banners Promocionais */}
                         <div className="bg-yellow-100 border-l-4 border-yellow-500 p-4 rounded-r-xl shadow-sm">
                             <h5 className="font-black text-yellow-900 text-sm mb-1">📢 Banners Promocionais</h5>
