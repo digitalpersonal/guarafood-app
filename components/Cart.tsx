@@ -3,7 +3,7 @@ import { useCart } from '../hooks/useCart';
 import type { Restaurant } from '../types';
 import { useAnimation } from '../hooks/useAnimation';
 import { useNotification } from '../hooks/useNotification';
-import { isRestaurantOpen } from '../utils/restaurantTimeUtils';
+import { isRestaurantOpen } from '../utils/restaurantUtils';
 import CheckoutModal from './CheckoutModal';
 import OptimizedImage from './OptimizedImage';
 import { CartUpsellSuggestions } from './CartUpsellSuggestions';

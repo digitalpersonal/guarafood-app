@@ -2,7 +2,7 @@
 import React from 'react';
 import type { Restaurant } from '../types';
 import OptimizedImage from './OptimizedImage';
-import { timeToMinutes } from '../utils/restaurantTimeUtils';
+import { timeToMinutes } from '../utils/restaurantUtils';
 
 interface RestaurantCardProps {
   restaurant: Restaurant;

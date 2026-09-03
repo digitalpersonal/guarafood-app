@@ -7,7 +7,7 @@ import { fetchMensalistas } from '../services/mensalistaService';
 import type { Order, Expense, Restaurant, OperatingHours, StaffMember, Mensalista } from '../types';
 import Spinner from './Spinner';
 import { useNotification } from '../hooks/useNotification';
-import { timeToMinutes } from '../utils/restaurantTimeUtils';
+import { timeToMinutes } from '../utils/restaurantUtils';
 
 const ChevronLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>

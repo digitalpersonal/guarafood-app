@@ -109,10 +109,7 @@ const normalizeRestaurant = (data: any): Restaurant => {
         ie: data.ie || undefined,
         im: data.im || undefined,
         blingApiKey: data.bling_api_key || undefined,
-        fiscalProvider: data.fiscal_provider || undefined,
-        whatsappGreetingEnabled: data.whatsapp_greeting_enabled,
-        whatsappGreetingMessage: data.whatsapp_greeting_message,
-        whatsappGreetingOnlyDuringHours: data.whatsapp_greeting_only_during_hours !== undefined ? Boolean(data.whatsapp_greeting_only_during_hours) : true
+        fiscalProvider: data.fiscal_provider || undefined
     };
 };
 
@@ -166,10 +163,7 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         ie: data.ie || undefined,
         im: data.im || undefined,
         blingApiKey: data.bling_api_key || undefined,
-        fiscalProvider: data.fiscal_provider || undefined,
-        whatsappGreetingEnabled: data.whatsapp_greeting_enabled,
-        whatsappGreetingMessage: data.whatsapp_greeting_message,
-        whatsappGreetingOnlyDuringHours: data.whatsapp_greeting_only_during_hours !== undefined ? Boolean(data.whatsapp_greeting_only_during_hours) : true
+        fiscalProvider: data.fiscal_provider || undefined
     };
 };
 
@@ -330,17 +324,13 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     if (updates.staff !== undefined) dbUpdates.staff = updates.staff;
     if (updates.loyaltyProgram !== undefined) dbUpdates.loyalty_program = updates.loyaltyProgram;
     if (updates.disableDelivery !== undefined) dbUpdates.disable_delivery = updates.disableDelivery;
-    if (updates.whatsappGreetingEnabled !== undefined) dbUpdates.whatsapp_greeting_enabled = updates.whatsappGreetingEnabled;
-    if (updates.whatsappGreetingMessage !== undefined) dbUpdates.whatsapp_greeting_message = updates.whatsappGreetingMessage;
-    if (updates.whatsappGreetingOnlyDuringHours !== undefined) dbUpdates.whatsapp_greeting_only_during_hours = updates.whatsappGreetingOnlyDuringHours;
 
     // Clean up all camelCase keys to prevent Supabase "column does not exist" errors
     const keysToRemove = [
         'deliveryTime', 'imageUrl', 'paymentGateways', 'openingHours', 
         'closingHours', 'deliveryFee', 'operatingHours', 'manualPixKey', 
         'hasPixConfigured', 'printerWidth', 'printerName', 'selectedPaymentGateway', 'bannerImageUrl', 'marmitaStartTime', 'marmitaEndTime',
-        'hasMensalistas', 'hasKiloService', 'pricePerKilo', 'loyaltyProgram', 'disableDelivery',
-        'whatsappGreetingEnabled', 'whatsappGreetingMessage', 'whatsappGreetingOnlyDuringHours', 'whatsappConnection'
+        'hasMensalistas', 'hasKiloService', 'pricePerKilo', 'loyaltyProgram', 'disableDelivery'
     ];
     keysToRemove.forEach(key => delete dbUpdates[key]);
 

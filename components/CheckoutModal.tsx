@@ -6,7 +6,7 @@ import { checkIfMensalista, getMensalistaByPhone, getMensalistaById, updateMensa
 import { createOrder, type NewOrderData } from '../services/orderService';
 import { validateCouponByCode, fetchCouponsForRestaurant, fetchCustomerLoyalty } from '../services/databaseService';
 import { supabase } from '../services/api';
-import { isRestaurantOpen } from '../utils/restaurantTimeUtils';
+import { isRestaurantOpen } from '../utils/restaurantUtils';
 import Spinner from './Spinner';
 import OptimizedImage from './OptimizedImage';
 import { triggerHapticFeedback } from '../utils/haptic';
