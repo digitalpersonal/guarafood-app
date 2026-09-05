@@ -379,6 +379,7 @@ interface CustomerViewProps {
     onCityChange: (newCity: string) => void;
     onOpenCityModal: () => void;
     onRestaurantsLoaded?: (restaurants: Restaurant[]) => void;
+    onBack?: () => void;
 }
 
 const CustomerView: React.FC<CustomerViewProps> = ({ 
@@ -387,7 +388,8 @@ const CustomerView: React.FC<CustomerViewProps> = ({
     currentCity, 
     onCityChange, 
     onOpenCityModal,
-    onRestaurantsLoaded 
+    onRestaurantsLoaded,
+    onBack
 }) => {
     const { cartItems } = useCart();
     const [restaurants, setRestaurants] = useState<Restaurant[]>(() => {
@@ -490,7 +492,7 @@ const CustomerView: React.FC<CustomerViewProps> = ({
 
     if (selectedRestaurant) return (
         <>
-            <RestaurantMenu restaurant={selectedRestaurant} onBack={() => onSelectRestaurant(null)} />
+            <RestaurantMenu restaurant={selectedRestaurant} onBack={onBack || (() => onSelectRestaurant(null))} />
             <Cart restaurant={effectiveRestaurant} />
         </>
     );
@@ -626,6 +628,8 @@ const CustomerView: React.FC<CustomerViewProps> = ({
 const AppContent: React.FC = () => {
     const [view, setView] = useState<'customer' | 'login' | 'history' | 'help'>('customer');
     const { currentUser, loading } = useAuth();
+    const { cartItems } = useCart();
+    const { confirm } = useNotification();
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
     const [selectedCity, setSelectedCity] = useState<string>(() => getSelectedCity());
     const [isCityModalOpen, setIsCityModalOpen] = useState(false);
@@ -637,6 +641,23 @@ const AppContent: React.FC = () => {
             return [];
         }
     });
+
+    const handleBack = async () => {
+        if (cartItems.length > 0) {
+            const proceed = await confirm({
+                title: 'Tem certeza?',
+                message: 'Você tem itens no carrinho. Se sair, seu pedido será perdido. Deseja continuar?',
+                confirmText: 'Sair e perder',
+                cancelText: 'Ficar no restaurante',
+                isDestructive: true
+            });
+            if (proceed) {
+                setSelectedRestaurant(null);
+            }
+        } else {
+            setSelectedRestaurant(null);
+        }
+    };
 
     useEffect(() => {
         window.scrollTo(0, 0);
@@ -703,6 +724,7 @@ const AppContent: React.FC = () => {
                 onCityChange={handleCityChange}
                 onOpenCityModal={() => setIsCityModalOpen(true)}
                 onRestaurantsLoaded={setAllRestaurants}
+                onBack={handleBack}
             />
         );
     };
