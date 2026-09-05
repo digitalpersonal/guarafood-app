@@ -251,13 +251,13 @@ const normalizeRestaurantCategory = (data: any): RestaurantCategory => data;
 // ==============================================================================
 
 export const fetchRestaurants = async (): Promise<Restaurant[]> => {
-    const { data, error } = await supabaseAnon.from('restaurants').select('*');
+    const { data, error } = await supabaseAnon.from('restaurants').select('*').eq('active', true);
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants' });
     return (data || []).map(normalizeRestaurant);
 };
 
 export const fetchRestaurantsSecure = async (): Promise<Restaurant[]> => {
-    const { data, error } = await supabase.from('restaurants').select('*');
+    const { data, error } = await supabase.from('restaurants').select('*').eq('active', true);
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants (secure)' });
     return (data || []).map(normalizeRestaurantSecure);
 };
@@ -398,7 +398,8 @@ export const deleteRestaurant = async (id: number): Promise<void> => {
 export const fetchAllOrdersAdmin = async (): Promise<Order[]> => {
     const { data, error } = await supabase
         .from('orders')
-        .select('*')
+        .select('*, restaurants!inner(active)')
+        .eq('restaurants.active', true)
         .order('timestamp', { ascending: false })
         .limit(5000); // Increased limit for global admin stats
     

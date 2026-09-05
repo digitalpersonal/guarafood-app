@@ -31,16 +31,16 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
         return null; 
     }
 
-    // Precise side padding tailored for thermal print heads (avoiding 58mm right clipping)
-    // 58mm paper has ~48mm printable width. 1.5mm padding on each side guarantees max printable width without clipping.
-    const sidePadding = printerWidth === 58 ? '1.5mm' : '3mm';
+    // Precise side padding tailored for thermal print heads (avoiding right clipping)
+    // 58mm paper has ~48mm printable width. 1.5mm padding guarantees max width without clipping.
+    const sidePadding = printerWidth === 58 ? '1mm' : '2mm';
     
     // Increased and balanced font sizes for instant reading in kitchen/rush operations
-    const baseFontSize = printerWidth === 58 ? '14.5px' : '15px';
-    const headerFontSize = printerWidth === 58 ? '16px' : '17px';
-    const titleFontSize = printerWidth === 58 ? '19px' : '21px';
-    const smallFontSize = printerWidth === 58 ? '12.5px' : '13px';
-    const lineHeight = printerWidth === 58 ? '1.18' : '1.15';
+    const baseFontSize = printerWidth === 58 ? '13px' : '14px';
+    const headerFontSize = printerWidth === 58 ? '14px' : '15px';
+    const titleFontSize = printerWidth === 58 ? '17px' : '19px';
+    const smallFontSize = printerWidth === 58 ? '11px' : '12px';
+    const lineHeight = printerWidth === 58 ? '1.2' : '1.15';
 
     const isPixPaid = order.paymentMethod.toLowerCase().includes('pix') && order.paymentStatus === 'paid';
     
@@ -248,18 +248,18 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                 {/* CABEÇALHO */}
                 <div className="receipt-header">
                     <div style={{ fontSize: headerFontSize, fontWeight: '900', marginBottom: '2px' }}>{sanitizePrintText(order.restaurantName).toUpperCase()}</div>
-                    <div style={{ fontSize: smallFontSize, fontWeight: 'bold' }}>
+                    <div style={{ fontSize: smallFontSize, fontWeight: 'bold', marginBottom: '4px' }}>
                         {new Date(order.timestamp).toLocaleDateString('pt-BR')} - {new Date(order.timestamp).toLocaleTimeString('pt-BR').substring(0,5)}
                     </div>
                     <div className="order-number-box">
-                        {printMode === 'kitchen' ? 'COZINHA / BAR' : printMode === 'admin' ? 'VIA ADMINISTRADOR' : `PEDIDO: #${displayOrderNum}`}
+                        {printMode === 'kitchen' ? 'COZINHA / BAR' : printMode === 'admin' ? 'VIA ADMINISTRADOR' : `PEDIDO: ${displayOrderNum}`}
                     </div>
                 </div>
 
                 <div className="section-divider"></div>
 
                 {/* MODO DE ENTREGA */}
-                <div className="mode-indicator">
+                <div className="mode-indicator" style={{ border: '2px solid #000', margin: '4px 0', padding: '4px' }}>
                     {order.tableNumber 
                         ? `>> MESA ${order.tableNumber} <<` 
                         : isPickup 
@@ -269,28 +269,29 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
 
                 {/* SACHÊS / CONDIMENTOS */}
                 {printMode === 'full' && (
-                    <div className="condiments-box">
+                    <div className="condiments-box" style={{ border: '2px solid #000', margin: '4px 0', padding: '4px', textAlign: 'center' }}>
                         {order.wantsSachets 
-                            ? ">>> ENVIAR SACHÊS: SIM <<<" 
+                            ? ">>> ENVIAR SACHÊS <<<" 
                             : ">>> NÃO ENVIAR SACHÊS <<<"}
                     </div>
                 )}
 
                 {/* DADOS DO CLIENTE / ENTREGA */}
                 {(order.customerName || order.customerPhone) && (
-                    <div style={{ marginTop: '1px', marginBottom: '3px', fontSize: baseFontSize, border: '1px solid #000', padding: '2px' }}>
-                        <div style={{ fontWeight: '900', textDecoration: 'underline', marginBottom: '1px', fontSize: baseFontSize, textAlign: 'center' }}>
+                    <div style={{ marginTop: '2px', marginBottom: '4px', fontSize: baseFontSize, border: '2px solid #000', padding: '3px' }}>
+                        <div style={{ fontWeight: '900', textAlign: 'center', borderBottom: '2px solid #000', paddingBottom: '2px', marginBottom: '3px' }}>
                             {isPickup ? 'DADOS DO CLIENTE' : 'DADOS DE ENTREGA'}
                         </div>
-                        {order.customerName && <div style={{ marginBottom: '1px' }}><strong>CLIENTE:</strong> {order.customerName.toUpperCase()}</div>}
-                        {order.customerPhone && <div style={{ marginBottom: '1px' }}><strong>FONE:</strong> {order.customerPhone}</div>}
+                        <div style={{ marginBottom: '1px' }}><strong>CLIENTE:</strong> {order.customerName?.toUpperCase()}</div>
+                        <div style={{ marginBottom: '1px' }}><strong>FONE:</strong> {order.customerPhone}</div>
                         
                         {!isPickup && order.customerAddress && (
-                            <>
-                                <div style={{ marginBottom: '1px', wordWrap: 'break-word' }}><strong>RUA: </strong>{order.customerAddress.street.toUpperCase()}, {order.customerAddress.number}</div>
-                                {order.customerAddress.complement && <div style={{ marginBottom: '1px', wordWrap: 'break-word' }}><strong>COMPL: </strong>{order.customerAddress.complement.toUpperCase()}</div>}
-                                <div style={{ marginBottom: '1px', wordWrap: 'break-word' }}><strong>BAIRRO: </strong>{order.customerAddress.neighborhood.toUpperCase()}</div>
-                            </>
+                            <div style={{ marginBottom: '1px', wordWrap: 'break-word' }}>
+                                <strong>END: </strong>
+                                {order.customerAddress.street.toUpperCase()}, {order.customerAddress.number}
+                                {order.customerAddress.complement && `, ${order.customerAddress.complement.toUpperCase()}`}
+                                {order.customerAddress.neighborhood && ` - ${order.customerAddress.neighborhood.toUpperCase()}`}
+                            </div>
                         )}
                     </div>
                 )}

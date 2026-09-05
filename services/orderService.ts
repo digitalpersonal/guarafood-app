@@ -152,9 +152,11 @@ export const subscribeToOrders = (
 };
 
 export const fetchOrders = async (restaurantId?: number, options?: { limit?: number }): Promise<Order[]> => {
-    let query = supabase.from('orders').select('*');
+    let query = supabase.from('orders').select('*, restaurants!inner(active)');
     if (restaurantId) {
         query = query.eq('restaurant_id', restaurantId);
+    } else {
+        query = query.eq('restaurants.active', true);
     }
     
     // Se não houver limite definido, usamos 150 como limite seguro e leve para evitar travamento em dispositivos móveis.
