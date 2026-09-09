@@ -257,7 +257,7 @@ export const fetchRestaurants = async (): Promise<Restaurant[]> => {
 };
 
 export const fetchRestaurantsSecure = async (): Promise<Restaurant[]> => {
-    const { data, error } = await supabase.from('restaurants').select('*').eq('active', true);
+    const { data, error } = await supabase.from('restaurants').select('*');
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants (secure)' });
     return (data || []).map(normalizeRestaurantSecure);
 };

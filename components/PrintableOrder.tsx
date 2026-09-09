@@ -286,7 +286,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         <div style={{ marginBottom: '1px' }}><strong>FONE:</strong> {order.customerPhone}</div>
                         
                         {!isPickup && order.customerAddress && (
-                            <div style={{ marginBottom: '1px', wordWrap: 'break-word' }}>
+                            <div style={{ marginBottom: '1px' }}>
                                 <strong>END: </strong>
                                 {order.customerAddress.street.toUpperCase()}, {order.customerAddress.number}
                                 {order.customerAddress.complement && `, ${order.customerAddress.complement.toUpperCase()}`}
@@ -308,15 +308,31 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                 <div className="label-center">ITENS DO PEDIDO</div>
                 <div className="section-divider"></div>
 
-                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '6px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '6px', tableLayout: 'fixed' }}>
                     <tbody>
                         {itemsToPrint.map((item, index) => (
                             <React.Fragment key={index}>
                                 <tr>
-                                    <td style={{ textAlign: 'left', verticalAlign: 'top', textTransform: 'uppercase', fontSize: headerFontSize, paddingBottom: '3px', paddingRight: '4px', fontWeight: '900' }}>
+                                    <td style={{ 
+                                        textAlign: 'left', 
+                                        verticalAlign: 'top', 
+                                        textTransform: 'uppercase', 
+                                        fontSize: headerFontSize, 
+                                        paddingBottom: '3px', 
+                                        paddingRight: '4px', 
+                                        fontWeight: '900'
+                                    }}>
                                         {item.quantity}x {item.name} {item.sizeName && `(${item.sizeName})`} {item.weight && item.isKiloItem && `(${Number(item.weight).toFixed(3)}kg)`}
                                     </td>
-                                    <td style={{ textAlign: 'right', verticalAlign: 'top', fontSize: headerFontSize, whiteSpace: 'nowrap', paddingBottom: '3px', fontWeight: '900' }}>
+                                    <td style={{ 
+                                        textAlign: 'right', 
+                                        verticalAlign: 'top', 
+                                        fontSize: headerFontSize, 
+                                        whiteSpace: 'nowrap', 
+                                        paddingBottom: '3px', 
+                                        fontWeight: '900',
+                                        width: '60px'
+                                    }}>
                                         {(Number(item.price) * item.quantity).toFixed(2)}
                                     </td>
                                 </tr>
@@ -330,7 +346,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                                                 <div key={i} style={{ fontSize: smallFontSize }}>+ {a.name.toUpperCase()}</div>
                                             ))}
                                             {item.notes && (
-                                                <div style={{ fontSize: baseFontSize, borderLeft: '3px solid #000', paddingLeft: '2mm', marginTop: '2px', fontWeight: '900' }}>
+                                                <div style={{ fontSize: baseFontSize, borderLeft: '3px solid #000', paddingLeft: '2mm', marginTop: '2px', fontWeight: '900', whiteSpace: 'normal' }}>
                                                     OBS: {item.notes.toUpperCase()}
                                                 </div>
                                             )}

@@ -1,8 +1,6 @@
 {
   "name": "GuaraFood",
-  "description": "Aplicativo de delivery e gestão de restaurantes com cardápio digital, mesas, comandas e localização por cidades.",
+  "description": "Sistema de gestão para restaurantes com integração de pedidos e impressão.",
   "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
