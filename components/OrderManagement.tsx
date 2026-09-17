@@ -11,6 +11,7 @@ import MenuManagement from './MenuManagement';
 import RestaurantSettings from './RestaurantSettings';
 import PrintableOrder from './PrintableOrder';
 import TableManagement from './TableManagement';
+import ComandaManagement from './ComandaManagement';
 import StaffManagement from './StaffManagement';
 import MensalistasManager from './MensalistasManager';
 import PinPadModal from './PinPadModal';
@@ -41,7 +42,7 @@ const CustomerList = React.lazy(() => import('./CustomerList'));
 
 const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { currentUser, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'help' | 'mensalistas'>('orders');
+    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'comandas' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'help' | 'mensalistas'>('orders');
     const [orders, setOrders] = useState<Order[]>(() => {
         try {
             const cached = localStorage.getItem('guarafood-cached-orders');
@@ -223,16 +224,16 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     // Determine visible tabs based on role and lock state
     const visibleTabs = useMemo(() => {
-        const allTabs = ['orders', 'tables', 'menu', 'financial', 'customers', 'staff', 'settings', 'help', 'mensalistas'] as const;
+        const allTabs = ['orders', 'tables', 'comandas', 'menu', 'financial', 'customers', 'staff', 'settings', 'help', 'mensalistas'] as const;
         
-        // Se o usuário logado for garçom, ele só vê mesas
+        // Se o usuário logado for garçom, ele só vê mesas e comandas
         if (currentUser?.role === 'waiter') {
-            return ['tables', 'help'];
+            return ['tables', 'comandas', 'help'];
         }
 
-        // Se o painel estiver travado (Modo Garçom compartilhado), só mostra mesas
+        // Se o painel estiver travado (Modo Garçom compartilhado), só mostra mesas e comandas
         if (isLocked) {
-            return ['tables', 'help'];
+            return ['tables', 'comandas', 'help'];
         }
         
         // Manager ou Merchant (Dono) vê tudo
@@ -241,7 +242,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     // Force tab if current is not allowed
     useEffect(() => {
-        if ((isLocked || currentUser?.role === 'waiter') && activeTab !== 'tables') {
+        if ((isLocked || currentUser?.role === 'waiter') && !['tables', 'comandas', 'help'].includes(activeTab)) {
             setActiveTab('tables');
         }
     }, [currentUser, isLocked, activeTab]);
@@ -579,6 +580,8 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 return <OrdersView orders={orders} printerWidth={printerWidth} onPrint={handleManualPrint} currentStaffUser={currentStaffUser} restaurant={restaurant} />;
             case 'tables':
                 return <TableManagement orders={orders} currentStaffUser={currentStaffUser} onPrint={handleManualPrint} restaurant={restaurant} />;
+            case 'comandas':
+                return <ComandaManagement orders={orders} currentStaffUser={currentStaffUser} restaurant={restaurant} />;
             case 'menu': return <MenuManagement />;
             case 'financial':
                 return (
@@ -710,7 +713,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     <div className="flex space-x-2 rounded-xl bg-gray-200 p-1 min-w-max">
                         {visibleTabs.map((tab) => {
                             const labels: Record<string, string> = { 
-                                orders: 'Pedidos', tables: 'Mesas', menu: 'Cardápio', 
+                                orders: 'Pedidos', tables: 'Mesas', comandas: 'Comandas', menu: 'Cardápio', 
                                 financial: 'Financeiro', customers: 'Clientes', staff: 'Equipe', 
                                 settings: 'Config', help: 'Ajuda', mensalistas: 'Mensalistas'
                             };
