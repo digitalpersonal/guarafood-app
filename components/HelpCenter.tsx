@@ -393,6 +393,80 @@ const HelpCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         </div>
                     </section>
 
+                    {/* Guia de Múltiplas Impressoras: Balcão e Cozinha + Celulares */}
+                    <section className="space-y-4 p-5 bg-gradient-to-br from-orange-50 to-amber-50/50 border-2 border-orange-200 rounded-2xl">
+                        <div className="flex items-center gap-2">
+                            <span className="text-2xl">🔀</span>
+                            <div>
+                                <h4 className="font-black text-gray-900 text-base">
+                                    Como Usar Múltiplas Impressoras (Balcão e Cozinha) e Celulares
+                                </h4>
+                                <p className="text-xs text-orange-800 font-medium">
+                                    Roteamento automático de comandas de produção e fechamentos de conta
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                            <div className="p-4 bg-white rounded-xl border border-orange-200 space-y-2 shadow-xs">
+                                <p className="font-black text-gray-900 flex items-center gap-1.5 text-sm">
+                                    <span>🍳</span> 1. Impressora da Cozinha / Bar
+                                </p>
+                                <p className="text-gray-600 leading-relaxed">
+                                    No computador, mini-PC ou tablet da Cozinha que está conectado à impressora dos cozinheiros:
+                                </p>
+                                <ul className="list-disc list-inside text-gray-700 space-y-1 pl-1">
+                                    <li>Abra o GuaraFood e vá em <strong>Configurações</strong>.</li>
+                                    <li>Ative <strong>"Estação de Impressão Automática"</strong>.</li>
+                                    <li>Selecione a função: <strong>"Cozinha / Bar"</strong>.</li>
+                                    <li><em>Pronto!</em> Este terminal imprimirá apenas as comandas com os pratos e bebidas a preparar.</li>
+                                </ul>
+                            </div>
+
+                            <div className="p-4 bg-white rounded-xl border border-orange-200 space-y-2 shadow-xs">
+                                <p className="font-black text-gray-900 flex items-center gap-1.5 text-sm">
+                                    <span>🛎️</span> 2. Impressora do Balcão / Caixa
+                                </p>
+                                <p className="text-gray-600 leading-relaxed">
+                                    No computador do Caixa que está conectado à impressora de atendimento/balcão:
+                                </p>
+                                <ul className="list-disc list-inside text-gray-700 space-y-1 pl-1">
+                                    <li>Abra o GuaraFood e vá em <strong>Configurações</strong>.</li>
+                                    <li>Ative <strong>"Estação de Impressão Automática"</strong>.</li>
+                                    <li>Selecione a função: <strong>"Balcão / Caixa"</strong>.</li>
+                                    <li><em>Pronto!</em> Este terminal imprimirá os pedidos de delivery, pedidos de balcão e as pré-contas de conferência das mesas.</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div className="p-4 bg-white rounded-xl border border-blue-200 text-xs text-gray-800 space-y-2">
+                            <div className="flex items-center gap-2 font-black text-blue-900">
+                                <span>📱</span>
+                                <span>Como Funciona a Impressão Feita Pelos Garçons no Celular:</span>
+                            </div>
+                            <p className="text-gray-600 leading-relaxed">
+                                Os garçons <strong>NÃO</strong> precisam ter impressora no celular e nem ativar o modo estação.
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                                <div className="p-2.5 bg-blue-50/60 rounded-lg border border-blue-100">
+                                    <p className="font-black text-blue-900">1. Para Enviar à Cozinha:</p>
+                                    <p className="text-gray-600 mt-0.5">
+                                        Ao lançar o pedido na Mesa ou Comanda, o garçom clica em <strong>"Enviar Cozinha"</strong>. A comanda sai instantaneamente no papel da impressora da cozinha!
+                                    </p>
+                                </div>
+                                <div className="p-2.5 bg-blue-50/60 rounded-lg border border-blue-100">
+                                    <p className="font-black text-blue-900">2. Para Pedir a Conta:</p>
+                                    <p className="text-gray-600 mt-0.5">
+                                        Quando o cliente pede a conta na mesa, o garçom clica em <strong>"Pedir Conta (Balcão)"</strong>. O cupom de conferência sai sozinho na impressora do caixa!
+                                    </p>
+                                </div>
+                            </div>
+                            <p className="text-[11px] text-gray-500 italic mt-1">
+                                * Se o garçom utilizar uma mini-impressora térmica Bluetooth portátil presa à cintura (58mm), ele também pode imprimir direto pelo celular usando o aplicativo RawBT Print Service para Android.
+                            </p>
+                        </div>
+                    </section>
+
                     {/* Dica para Modo Totem / Tela Cheia */}
                     <div className="p-4 bg-gray-900 text-white rounded-2xl space-y-2 shadow-md">
                         <div className="flex items-center gap-2">

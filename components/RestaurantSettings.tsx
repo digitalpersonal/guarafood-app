@@ -9,6 +9,7 @@ import { clearTodayTableOrders } from '../services/orderService';
 import type { Restaurant, OperatingHours, Order } from '../types';
 import Spinner from './Spinner';
 import PrintableOrder from './PrintableOrder';
+import PrinterManagement from './PrinterManagement';
 import MensalistasManager from './MensalistasManager';
 import MercadoPagoGuide from './MercadoPagoGuide';
 import { FeaturedPromoManager } from './FeaturedPromoManager';
@@ -336,6 +337,7 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
     const [enableFiscal, setEnableFiscal] = useState(false);
     const [printerWidth, setPrinterWidth] = useState(80);
     const [isPrintServer, setIsPrintServer] = useState(false);
+    const [printServerRole, setPrintServerRole] = useState<'all' | 'kitchen' | 'counter'>('all');
     const [operatingHours, setOperatingHours] = useState<OperatingHours[]>(getDefaultOperatingHours());
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -385,6 +387,8 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                 
                 const savedIsPrintServer = localStorage.getItem('guarafood-is-print-server') === 'true';
                 setIsPrintServer(savedIsPrintServer);
+                const savedRole = (localStorage.getItem('guarafood-print-server-role') as 'all' | 'kitchen' | 'counter') || 'all';
+                setPrintServerRole(savedRole);
             }
         } catch (err) { 
             console.error(err); 
@@ -427,6 +431,7 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
             });
             localStorage.setItem('guarafood-printer-width', printerWidth.toString());
             localStorage.setItem('guarafood-is-print-server', isPrintServer.toString());
+            localStorage.setItem('guarafood-print-server-role', printServerRole);
             addToast({ message: 'Configurações salvas e sincronizadas!', type: 'success' });
         } catch (err: any) {
             console.error("Save Error:", err);
@@ -563,64 +568,32 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                     </div>
                 </div>
 
-                {/* --- SELETOR DE IMPRESSORA - DESTAQUE NO TOPO --- */}
-                <div className="mb-10 bg-orange-50 p-6 rounded-2xl border-2 border-orange-100 shadow-sm">
-                    <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-md font-black text-orange-800 uppercase tracking-tight flex items-center gap-2">
-                            <span>🖨️</span> Configuração da Impressora Térmica
-                        </h3>
-                        <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-orange-200 text-orange-800 rounded-md">
-                            Chrome Kiosk Printing
-                        </span>
-                    </div>
-                    <p className="text-xs text-orange-700/80 mb-4 font-medium">
-                        Selecione o tamanho da bobina para ajustar o layout de impressão dos cupons e comandas:
-                    </p>
-                    <div className="grid grid-cols-2 gap-4">
-                        <button 
-                            type="button"
-                            onClick={() => setPrinterWidth(80)}
-                            className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-1 ${printerWidth === 80 ? 'bg-white border-orange-600 shadow-md scale-105' : 'bg-transparent border-orange-100 text-orange-300'}`}
-                        >
-                            <span className="font-black text-lg">80mm</span>
-                            <span className="text-[9px] font-black uppercase">Padrão (Mesa/USB)</span>
-                        </button>
-                        <button 
-                            type="button"
-                            onClick={() => setPrinterWidth(58)}
-                            className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-1 ${printerWidth === 58 ? 'bg-white border-orange-600 shadow-md scale-105' : 'bg-transparent border-orange-100 text-orange-300'}`}
-                        >
-                            <span className="font-black text-lg">58mm</span>
-                            <span className="text-[9px] font-black uppercase">Portátil (Bluetooth)</span>
-                        </button>
-                    </div>
-                    <button 
-                        type="button"
-                        onClick={() => handleTestPrint(printerWidth)} 
-                        className="w-full mt-4 py-3 text-[10px] font-black uppercase bg-gray-800 text-white rounded-xl hover:bg-black transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2"
-                    >
-                        <span>🖨️</span> Imprimir Cupom de Teste
-                    </button>
-                    
+                {/* --- CONFIGURAÇÃO DE MÚLTIPLAS IMPRESSORAS E ROTEAMENTO DE CATEGORIAS --- */}
+                {restaurant && (
+                    <div className="mb-10 space-y-6">
+                        <PrinterManagement 
+                            restaurant={restaurant} 
+                            onUpdateRestaurant={(updated) => setRestaurant(updated)} 
+                        />
 
-
-                    {/* Guia Rápido Chrome Kiosk */}
-                    <div className="mt-4 p-4 bg-white rounded-xl border border-orange-200 text-xs text-gray-700 space-y-2">
-                        <div className="flex items-center gap-1.5 font-black text-orange-800">
-                            <span>⚡</span>
-                            <span>Como ativar a Impressão Silenciosa e 100% Automática:</span>
+                        {/* Guia Rápido Chrome Kiosk */}
+                        <div className="p-4 bg-orange-50/60 rounded-2xl border-2 border-orange-100 text-xs text-gray-700 space-y-2">
+                            <div className="flex items-center gap-1.5 font-black text-orange-900">
+                                <span>⚡</span>
+                                <span>Como ativar a Impressão Silenciosa e 100% Automática em cada Terminal:</span>
+                            </div>
+                            <p className="text-[11px] text-gray-600 leading-relaxed">
+                                No atalho do Google Chrome na Área de Trabalho do Windows de cada computador conectado à impressora (Caixa, Cozinha ou Bar), clique com o botão direito &rarr; <strong>Propriedades</strong> &rarr; no campo <strong>Destino</strong> adicione ao final:
+                            </p>
+                            <code className="block p-2 bg-gray-900 text-orange-400 rounded-lg font-mono text-[11px]">
+                                --kiosk-printing
+                            </code>
+                            <p className="text-[11px] text-gray-500">
+                                Assim, todas as comandas e cupons saem instantaneamente sem abrir janelas de diálogo ou confirmação. Mais detalhes na aba <strong>Ajuda</strong>.
+                            </p>
                         </div>
-                        <p className="text-[11px] text-gray-600 leading-relaxed">
-                            No atalho do Google Chrome na Área de Trabalho do Windows, clique com o botão direito &rarr; <strong>Propriedades</strong> &rarr; no campo <strong>Destino</strong> adicione ao final:
-                        </p>
-                        <code className="block p-2 bg-gray-900 text-orange-400 rounded-lg font-mono text-[11px]">
-                            --kiosk-printing
-                        </code>
-                        <p className="text-[11px] text-gray-500">
-                            Assim, todos os novos pedidos e impressões de cozinha saem instantaneamente sem abrir janelas de confirmação. Mais detalhes na <strong>Central de Ajuda</strong>.
-                        </p>
                     </div>
-                </div>
+                )}
 
                 <div className="space-y-8">
                     <div>

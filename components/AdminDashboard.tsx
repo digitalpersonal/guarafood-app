@@ -11,6 +11,7 @@ import MenuManagement from './MenuManagement';
 import RestaurantSettings from './RestaurantSettings';
 import GlobalCustomerList from './GlobalCustomerList';
 import MensalistasManager from './MensalistasManager';
+import AdminSalesReport from './AdminSalesReport';
 import HelpCenter from './HelpCenter';
 
 
@@ -38,7 +39,7 @@ import { fetchRestaurantsSecure, deleteRestaurant } from '../services/databaseSe
 const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { logout } = useAuth();
     const { addToast } = useNotification();
-    const [activeTab, setActiveTab] = useState<'restaurants' | 'categories' | 'marketing' | 'ads' | 'customers' | 'settings' | 'help' | 'mensalistas'>('restaurants');
+    const [activeTab, setActiveTab] = useState<'restaurants' | 'sales' | 'categories' | 'marketing' | 'ads' | 'customers' | 'settings' | 'help' | 'mensalistas'>('restaurants');
     const [editingMenuRestaurantId, setEditingMenuRestaurantId] = useState<number | null>(null);
     const [editingSettingsRestaurantId, setEditingSettingsRestaurantId] = useState<number | null>(null);
 
@@ -129,6 +130,8 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         onEditSettings={(restaurant) => setEditingSettingsRestaurantId(restaurant.id)}
                     />
                 );
+            case 'sales':
+                return <AdminSalesReport />;
             case 'categories':
                 return <CategoryManagement />;
             case 'marketing':
@@ -169,6 +172,7 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <nav className="p-4 border-b bg-gray-50 sticky top-[89px] z-10">
                 <div className="flex space-x-2 rounded-lg bg-gray-200 p-1 overflow-x-auto no-scrollbar">
                     <button onClick={() => setActiveTab('restaurants')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'restaurants' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Restaurantes</button>
+                    <button onClick={() => setActiveTab('sales')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'sales' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Relatório Vendas</button>
                     <button onClick={() => setActiveTab('categories')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'categories' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Categorias</button>
                     <button onClick={() => setActiveTab('marketing')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'marketing' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Marketing</button>
                     <button onClick={() => setActiveTab('ads')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'ads' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Propagandas</button>

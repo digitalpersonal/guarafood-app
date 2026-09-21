@@ -197,6 +197,7 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
         const customizedPizza: CartItem = {
             id: cartId,
             restaurantId: initialPizza.restaurantId,
+            categoryId: initialPizza.categoryId,
             name,
             price: totalPrice,
             basePrice,

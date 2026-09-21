@@ -9,9 +9,11 @@ import type { Order, StaffMember, CartItem, Restaurant } from '../types';
 import OrdersView from './OrdersView';
 import MenuManagement from './MenuManagement';
 import RestaurantSettings from './RestaurantSettings';
+import PrinterManagement from './PrinterManagement';
 import PrintableOrder from './PrintableOrder';
 import TableManagement from './TableManagement';
 import ComandaManagement from './ComandaManagement';
+import WaiterMonitor from './WaiterMonitor';
 import StaffManagement from './StaffManagement';
 import MensalistasManager from './MensalistasManager';
 import PinPadModal from './PinPadModal';
@@ -42,7 +44,7 @@ const CustomerList = React.lazy(() => import('./CustomerList'));
 
 const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { currentUser, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'comandas' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'help' | 'mensalistas'>('orders');
+    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'comandas' | 'waiter_monitor' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'help' | 'mensalistas' | 'printers'>('orders');
     const [orders, setOrders] = useState<Order[]>(() => {
         try {
             const cached = localStorage.getItem('guarafood-cached-orders');
@@ -204,10 +206,10 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             setIsLocked(false);
             localStorage.setItem('guarafood-panel-locked', 'false');
         } else {
-            // Waiters are always locked to the Tables tab
+            // Waiters are locked to the Waiter Monitor tab (Unified Tables & Comandas)
             setIsLocked(true);
             localStorage.setItem('guarafood-panel-locked', 'true');
-            setActiveTab('tables');
+            setActiveTab('waiter_monitor');
         }
     };
 
@@ -215,7 +217,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setCurrentStaffUser(null);
         setIsLocked(true);
         localStorage.setItem('guarafood-panel-locked', 'true');
-        setActiveTab('tables');
+        setActiveTab('waiter_monitor');
     };
 
     const handleUnlockClick = () => {
@@ -224,16 +226,16 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     // Determine visible tabs based on role and lock state
     const visibleTabs = useMemo(() => {
-        const allTabs = ['orders', 'tables', 'comandas', 'menu', 'financial', 'customers', 'staff', 'settings', 'help', 'mensalistas'] as const;
+        const allTabs = ['orders', 'waiter_monitor', 'tables', 'comandas', 'menu', 'financial', 'customers', 'staff', 'printers', 'settings', 'help', 'mensalistas'] as const;
         
-        // Se o usuário logado for garçom, ele só vê mesas e comandas
+        // Se o usuário logado for garçom, ele vê Monitor Garçom, Mesas, Comandas e Ajuda
         if (currentUser?.role === 'waiter') {
-            return ['tables', 'comandas', 'help'];
+            return ['waiter_monitor', 'tables', 'comandas', 'help'];
         }
 
-        // Se o painel estiver travado (Modo Garçom compartilhado), só mostra mesas e comandas
+        // Se o painel estiver travado (Modo Garçom compartilhado), mostra Monitor Garçom, Mesas, Comandas e Ajuda
         if (isLocked) {
-            return ['tables', 'comandas', 'help'];
+            return ['waiter_monitor', 'tables', 'comandas', 'help'];
         }
         
         // Manager ou Merchant (Dono) vê tudo
@@ -242,8 +244,8 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     // Force tab if current is not allowed
     useEffect(() => {
-        if ((isLocked || currentUser?.role === 'waiter') && !['tables', 'comandas', 'help'].includes(activeTab)) {
-            setActiveTab('tables');
+        if ((isLocked || currentUser?.role === 'waiter') && !['waiter_monitor', 'tables', 'comandas', 'help'].includes(activeTab)) {
+            setActiveTab('waiter_monitor');
         }
     }, [currentUser, isLocked, activeTab]);
 
@@ -282,9 +284,23 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             if (ordersToAlert.length > 0) {
                 ordersToAlert.forEach(o => {
                     alertedOrderIdsRef.current.add(o.id);
-                    // Only auto-print delivery/balcão orders if they actually have items
+                    // Only auto-print delivery/balcão orders if this terminal is NOT exclusively a kitchen terminal
                     if (!o.tableNumber && o.items && o.items.length > 0) {
-                        setPrintQueue(prev => [...prev, { order: o, mode: 'full' }]);
+                        const isPrintServer = localStorage.getItem('guarafood-is-print-server') === 'true';
+                        const stationId = localStorage.getItem('guarafood-print-station-id') || localStorage.getItem('guarafood-print-server-role') || 'all';
+                        const matchedPrinter = restaurant?.printers?.find(p => p.id === stationId);
+
+                        let shouldAutoPrint = true;
+                        if (isPrintServer) {
+                            if (matchedPrinter) {
+                                shouldAutoPrint = !!matchedPrinter.printFullReceipt;
+                            } else if (stationId === 'kitchen') {
+                                shouldAutoPrint = false;
+                            }
+                        }
+                        if (shouldAutoPrint) {
+                            setPrintQueue(prev => [...prev, { order: o, mode: 'full' }]);
+                        }
                     }
                 });
 
@@ -483,10 +499,13 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }
     }, [printJob, printQueue, isPrintingCooldown]);
 
-    // MONITOR DE FILA DE IMPRESSÃO REMOTA (Para Mesas/Garçons)
+    // MONITOR DE FILA DE IMPRESSÃO REMOTA (Para Mesas/Garçons/Multi-Impressoras)
     useEffect(() => {
         const isPrintServer = localStorage.getItem('guarafood-is-print-server') === 'true';
+        const stationId = localStorage.getItem('guarafood-print-station-id') || localStorage.getItem('guarafood-print-server-role') || 'all';
         if (!isPrintServer || orders.length === 0) return;
+
+        const currentPrinterConfig = restaurant?.printers?.find(p => p.id === stationId);
 
         // Procuramos em todos os pedidos ativos por solicitações de impressão pendentes
         const pendingJobsToQueue: Array<{
@@ -502,12 +521,52 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             const pendingJobs = queue.filter((job: any) => job.status === 'pending');
             
             for (const pendingJob of pendingJobs) {
+                const jobType = pendingJob.type || 'kitchen';
+
+                // Se houver um targetPrinterId específico no job e não for este terminal
+                if (pendingJob.targetPrinterId && currentPrinterConfig && pendingJob.targetPrinterId !== currentPrinterConfig.id) {
+                    continue;
+                }
+
+                let jobItemsToPrint = pendingJob.items || order.items || [];
+
+                if (currentPrinterConfig) {
+                    // Impressora customizada cadastrada pelo lojista (Caixa, Cozinha, Bar, etc.)
+                    if (jobType === 'full' || jobType === 'admin' || jobType === 'bill') {
+                        if (!currentPrinterConfig.printFullReceipt) {
+                            continue;
+                        }
+                    } else if (jobType === 'kitchen') {
+                        if (!currentPrinterConfig.printKitchenReceipt) {
+                            continue;
+                        }
+                        // Roteamento inteligente por categorias mapeadas
+                        if (currentPrinterConfig.mappedCategoryIds && currentPrinterConfig.mappedCategoryIds.length > 0) {
+                            const filtered = jobItemsToPrint.filter((item: any) => 
+                                item.categoryId && currentPrinterConfig.mappedCategoryIds!.includes(item.categoryId)
+                            );
+                            if (filtered.length === 0) {
+                                // Nenhum item deste pedido pertence ao escopo desta impressora (ex: Bar ignorando pratos quentes)
+                                continue;
+                            }
+                            jobItemsToPrint = filtered;
+                        }
+                    }
+                } else {
+                    // Roteamento legado baseado em counter / kitchen
+                    if (stationId === 'kitchen' && jobType !== 'kitchen') {
+                        continue;
+                    }
+                    if (stationId === 'counter' && jobType === 'kitchen') {
+                        continue;
+                    }
+                }
+
                 // Se já processamos esse ID ou se já está em processamento, ignoramos
                 if (!processedJobIdsRef.current.has(pendingJob.id)) {
                     processedJobIdsRef.current.add(pendingJob.id);
                     
-                    const jobItems = pendingJob.items || order.items || [];
-                    if (jobItems.length === 0) {
+                    if (jobItemsToPrint.length === 0) {
                         import('../services/orderService').then(({ markPrintJobAsDone }) => {
                             markPrintJobAsDone(order.id, pendingJob.id);
                         }).catch(e => console.error(e));
@@ -518,7 +577,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     pendingJobsToQueue.push({
                         order: order,
                         mode: pendingJob.type || 'kitchen',
-                        items: pendingJob.items,
+                        items: jobItemsToPrint,
                         jobId: pendingJob.id
                     });
                 }
@@ -535,7 +594,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             // Enfilera no spooler local de forma limpa
             setPrintQueue(prev => [...prev, ...pendingJobsToQueue]);
         }
-    }, [orders, playNotification]);
+    }, [orders, playNotification, restaurant?.printers]);
 
     const handleManualPrint = (order: Order, mode: 'full' | 'kitchen' | 'admin' = 'full') => {
         if (!order.items || order.items.length === 0) {
@@ -578,6 +637,16 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         switch (activeTab) {
             case 'orders':
                 return <OrdersView orders={orders} printerWidth={printerWidth} onPrint={handleManualPrint} currentStaffUser={currentStaffUser} restaurant={restaurant} />;
+            case 'waiter_monitor':
+                return (
+                    <WaiterMonitor 
+                        orders={orders} 
+                        restaurant={restaurant} 
+                        currentStaffUser={currentStaffUser}
+                        onOpenTableDetail={(tableNumber) => setActiveTab('tables')}
+                        onOpenComandaDetail={(comandaNumber) => setActiveTab('comandas')}
+                    />
+                );
             case 'tables':
                 return <TableManagement orders={orders} currentStaffUser={currentStaffUser} onPrint={handleManualPrint} restaurant={restaurant} />;
             case 'comandas':
@@ -598,6 +667,15 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             case 'staff': return <StaffManagement />;
             case 'mensalistas': return <MensalistasManager />;
             case 'settings': return <RestaurantSettings />;
+            case 'printers':
+                return restaurant ? (
+                    <div className="max-w-6xl mx-auto p-4 sm:p-6">
+                        <PrinterManagement 
+                            restaurant={restaurant} 
+                            onUpdateRestaurant={(updated) => setRestaurant(updated)} 
+                        />
+                    </div>
+                ) : null;
             case 'help': return <HelpCenter onBack={() => setActiveTab('orders')} />;
             default: return null;
         }
@@ -663,6 +741,25 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                                     Tela Normal
                                 </span>
                             )}
+                            {localStorage.getItem('guarafood-is-print-server') === 'true' && (
+                                <span 
+                                    className="text-[9px] bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-1 shadow-xs"
+                                    title={`Este computador está ativo como Estação de Impressão Automática (${
+                                        localStorage.getItem('guarafood-print-server-role') === 'kitchen' 
+                                            ? 'Apenas Cozinha' 
+                                            : localStorage.getItem('guarafood-print-server-role') === 'counter' 
+                                                ? 'Apenas Balcão/Caixa' 
+                                                : 'Geral (Balcão + Cozinha)'
+                                    })`}
+                                >
+                                    <span>🖨️</span>
+                                    {localStorage.getItem('guarafood-print-server-role') === 'kitchen' 
+                                        ? 'Estação Cozinha' 
+                                        : localStorage.getItem('guarafood-print-server-role') === 'counter' 
+                                            ? 'Estação Balcão' 
+                                            : 'Estação Geral'}
+                                </span>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -713,9 +810,9 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     <div className="flex space-x-2 rounded-xl bg-gray-200 p-1 min-w-max">
                         {visibleTabs.map((tab) => {
                             const labels: Record<string, string> = { 
-                                orders: 'Pedidos', tables: 'Mesas', comandas: 'Comandas', menu: 'Cardápio', 
+                                orders: 'Pedidos', waiter_monitor: '👀 Monitor Garçom (Salão)', tables: 'Mesas', comandas: 'Comandas', menu: 'Cardápio', 
                                 financial: 'Financeiro', customers: 'Clientes', staff: 'Equipe', 
-                                settings: 'Config', help: 'Ajuda', mensalistas: 'Mensalistas'
+                                printers: '🖨️ Impressoras', settings: 'Config', help: 'Ajuda', mensalistas: 'Mensalistas'
                             };
                             return (
                                 <button 
@@ -735,13 +832,18 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
             <div className="hidden print:block">
                 <div id="printable-order">
-                    {printJob && (
-                        <PrintableOrder 
-                            order={printJob.items ? { ...printJob.order, items: printJob.items } : printJob.order} 
-                            printerWidth={printerWidth} 
-                            printMode={printJob.mode}
-                        />
-                    )}
+                    {printJob && (() => {
+                        const stationId = localStorage.getItem('guarafood-print-station-id') || localStorage.getItem('guarafood-print-server-role');
+                        const configuredPrinter = stationId && stationId !== 'all' ? restaurant?.printers?.find(p => p.id === stationId) : null;
+                        const activeWidth = configuredPrinter?.width || printerWidth;
+                        return (
+                            <PrintableOrder 
+                                order={printJob.items ? { ...printJob.order, items: printJob.items } : printJob.order} 
+                                printerWidth={activeWidth} 
+                                printMode={printJob.mode}
+                            />
+                        );
+                    })()}
                 </div>
             </div>
 

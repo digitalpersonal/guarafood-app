@@ -94,6 +94,7 @@ export interface Restaurant {
   printerName?: string; // Nome da impressora QZ Tray selecionada
   bannerImageUrl?: string; // NEW: Custom background for the menu header
   active?: boolean; // NEW: Field to suspend restaurant
+  isDeleted?: boolean; // NEW: Indica se o restaurante saiu do GuaraFood ou foi removido da listagem
   disableDelivery?: boolean; // NEW: Field to disable delivery and allow pickup only
   hasMensalistas?: boolean; // NEW: Field to enable/disable mensalistas
   hasKiloService?: boolean; // NEW: Field to enable/disable kilo service
@@ -106,6 +107,23 @@ export interface Restaurant {
   fiscalProvider?: string;
   staff?: StaffMember[]; // NEW: List of staff members
   loyaltyProgram?: LoyaltyProgram; // NEW: Fidelity Program
+  printers?: PrinterConfig[]; // NEW: Configuração de Múltiplas Impressoras e Roteamento de Categorias
+}
+
+export type PrinterType = 'cashier' | 'kitchen' | 'bar' | 'other';
+
+export interface PrinterConfig {
+  id: string; // Identificador único (ex: 'caixa', 'cozinha', 'bar', 'pizzaria')
+  name: string; // Nome descritivo (ex: 'Caixa Principal', 'Cozinha Quente', 'Bar / Bebidas')
+  type: PrinterType; // Tipo/Setor: cashier | kitchen | bar | other
+  width: 80 | 58; // Largura da bobina em mm (80 ou 58)
+  mappedCategoryIds: number[]; // IDs das categorias de produtos roteadas para esta impressora
+  isDefault?: boolean; // Se verdadeiro, recebe itens não mapeados
+  printFullReceipt?: boolean; // Se imprime cupom geral / conferência de conta / delivery
+  printKitchenReceipt?: boolean; // Se imprime comanda de produção de itens
+  deviceIdentifier?: string; // Nome do dispositivo no SO ou IP de rede (opcional)
+  notes?: string; // Informações adicionais / localização
+  active?: boolean; // Se está ativa
 }
 
 export interface Addon {
@@ -235,6 +253,8 @@ export interface Expense {
   date: string;
 }
 
+export type ItemPreparationStatus = 'Pendente' | 'Em Preparo' | 'Pronto' | 'Entregue';
+
 // Refactored CartItem to support custom pizzas and addons
 export interface CartItem {
   id: string; // Composite key like 'item-101' or 'pizza-201-202-addon-1'
@@ -248,6 +268,7 @@ export interface CartItem {
   originalPrice?: number;
   promotionName?: string;
   served?: boolean; // NEW: Flag to indicate if the item has been served to the table
+  itemStatus?: ItemPreparationStatus; // NEW: Fluxo em tempo real: 'Pendente' | 'Em Preparo' | 'Pronto' | 'Entregue'
   halves?: { name: string; price: number }[]; // For half-and-half pizzas
   selectedAddons?: Addon[]; // For addons
   sizeName?: string; // To display selected size, e.g., "Grande"
@@ -255,6 +276,7 @@ export interface CartItem {
   isKiloItem?: boolean; // NEW: Flag for "comida por kilo" items
   notes?: string; // User observations (e.g., "Sem cebola")
   selectedOptions?: { groupTitle: string; optionName: string; price: number }[]; // Generic customization options
+  categoryId?: number; // Categoria do produto para roteamento em múltiplas impressoras
 }
 
 export type OrderStatus = 'Aguardando Pagamento' | 'Novo Pedido' | 'Preparando' | 'A Caminho' | 'Entregue' | 'Cancelado' | 'Mesa Aberta';
@@ -347,4 +369,17 @@ export interface PromptOptions {
     cancelText?: string;
     onSubmit: (value: string) => void;
     onCancel: () => void;
+}
+
+export interface ComandaAtiva {
+    id: string;
+    restaurant_id: number;
+    customer_name: string;
+    status: 'aberta' | 'em_atendimento' | 'aguardando_pagamento' | 'fechada' | 'cancelada' | string;
+    total_value: number;
+    created_at: string;
+    comanda_number?: number;
+    table_number?: string;
+    notes?: string;
+    updated_at?: string;
 }

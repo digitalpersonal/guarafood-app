@@ -232,6 +232,24 @@ const ComandaManagement: React.FC<ComandaManagementProps> = ({ orders, currentSt
         })();
     };
 
+    const handleToggleItemServed = async (index: number) => {
+        if (!selectedComandaOrder) return;
+        try {
+            const newItems = [...selectedComandaOrder.items];
+            newItems[index] = { ...newItems[index], served: !newItems[index].served };
+
+            const updated = await updateOrderDetails(selectedComandaOrder.id, {
+                items: newItems,
+                totalPrice: selectedComandaOrder.totalPrice,
+                subtotal: selectedComandaOrder.subtotal || selectedComandaOrder.totalPrice,
+                discountAmount: selectedComandaOrder.discountAmount
+            });
+            setSelectedComandaOrder(updated);
+        } catch (e: any) {
+            addToast({ message: `Erro ao atualizar status do item: ${e.message}`, type: 'error' });
+        }
+    };
+
     const handleRemoveItem = async (index: number) => {
         if (!selectedComandaOrder) return;
         const confirmed = await confirm({
@@ -397,10 +415,15 @@ const ComandaManagement: React.FC<ComandaManagementProps> = ({ orders, currentSt
                 {comandaNumbers.map(num => {
                     const order = activeComandasMap[num];
                     const isOpen = !!order;
+                    const hasUnservedItems = isOpen && order.items && order.items.some(i => !i.served);
 
                     let btnStyle = 'bg-white border-gray-200 text-gray-600 hover:border-orange-300';
                     if (isOpen) {
-                        btnStyle = 'bg-orange-600 border-orange-700 text-white shadow-md shadow-orange-100';
+                        if (hasUnservedItems) {
+                            btnStyle = 'bg-red-500 border-red-600 text-white shadow-md shadow-red-100';
+                        } else {
+                            btnStyle = 'bg-orange-600 border-orange-700 text-white shadow-md shadow-orange-100';
+                        }
                     }
 
                     return (
@@ -409,7 +432,10 @@ const ComandaManagement: React.FC<ComandaManagementProps> = ({ orders, currentSt
                             onClick={() => handleComandaClick(num)}
                             className={`aspect-square rounded-xl flex flex-col items-center justify-between p-1.5 border transition-all active:scale-95 text-center ${btnStyle}`}
                         >
-                            <span className="text-[9px] font-black uppercase tracking-tighter opacity-70">Cmd</span>
+                            <div className="flex items-center justify-between w-full">
+                                <span className="text-[9px] font-black uppercase tracking-tighter opacity-70">Cmd</span>
+                                {hasUnservedItems && <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" title="Itens pendentes a servir"></span>}
+                            </div>
                             <span className="text-lg sm:text-xl font-black leading-none">{num}</span>
                             
                             {isOpen ? (
@@ -543,14 +569,32 @@ const ComandaManagement: React.FC<ComandaManagementProps> = ({ orders, currentSt
                                 ) : (
                                     <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                                         {selectedComandaOrder.items.map((item, idx) => (
-                                            <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border">
-                                                <div className="flex-1 pr-2">
-                                                    <p className="font-bold text-gray-800 text-sm">{item.quantity}x {item.name}</p>
-                                                    {item.description && <p className="text-xs text-gray-500">{item.description}</p>}
+                                            <div key={idx} className={`flex justify-between items-center p-3 rounded-xl border transition-colors ${item.served ? 'bg-green-50/50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+                                                <div className="flex items-center gap-3 flex-1 pr-2">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={!!item.served} 
+                                                        onChange={() => handleToggleItemServed(idx)}
+                                                        className="w-5 h-5 rounded text-green-600 focus:ring-green-500 border-gray-300 cursor-pointer flex-shrink-0"
+                                                        title={item.served ? "Item já servido (clique para desmarcar)" : "Marcar item como servido"}
+                                                    />
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <p className={`font-bold text-sm ${item.served ? 'text-gray-500 line-through decoration-gray-300' : 'text-gray-800'}`}>
+                                                                {item.quantity}x {item.name}
+                                                            </p>
+                                                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${item.served ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-800'}`}>
+                                                                {item.served ? '✓ Servido' : '⏳ Pendente'}
+                                                            </span>
+                                                        </div>
+                                                        {item.description && <p className="text-xs text-gray-500">{item.description}</p>}
+                                                    </div>
                                                 </div>
-                                                <div className="flex items-center gap-3">
-                                                    <span className="font-black text-gray-800 text-sm">R$ {(item.price * item.quantity).toFixed(2)}</span>
-                                                    <button onClick={() => handleRemoveItem(idx)} className="text-red-500 hover:text-red-700 p-1 font-bold text-xs">🗑️</button>
+                                                <div className="flex items-center gap-3 flex-shrink-0">
+                                                    <span className={`font-black text-sm ${item.served ? 'text-gray-400' : 'text-gray-800'}`}>
+                                                        R$ {(item.price * item.quantity).toFixed(2)}
+                                                    </span>
+                                                    <button onClick={() => handleRemoveItem(idx)} className="text-red-500 hover:text-red-700 p-1 font-bold text-xs" title="Remover item">🗑️</button>
                                                 </div>
                                             </div>
                                         ))}

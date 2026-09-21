@@ -145,6 +145,7 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
         const customizedItem: CartItem = {
             id: cartId,
             restaurantId: initialItem.restaurantId,
+            categoryId: initialItem.categoryId,
             name: name,
             price: totalPrice,
             basePrice: Number(selectedSize.price),
