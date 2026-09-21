@@ -1,10 +1,36 @@
 
 import { supabase, supabaseAnon, handleSupabaseError } from './api';
-import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory, Expense, Order, OperatingHours, FeaturedPromo } from '../types';
+import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory, Expense, Order, OperatingHours, FeaturedPromo, PrinterConfig, ComandaAtiva } from '../types';
 
 // ==============================================================================
 // 🔄 NORMALIZADORES (Banco de Dados -> App)
 // ==============================================================================
+
+const extractPrinters = (data: any): PrinterConfig[] => {
+    if (!data) return [];
+    if (data.printers && Array.isArray(data.printers)) {
+        return data.printers;
+    }
+    if (data.printer_name && typeof data.printer_name === 'string') {
+        try {
+            const parsed = JSON.parse(data.printer_name);
+            if (Array.isArray(parsed)) return parsed;
+            if (parsed && Array.isArray(parsed.printers)) return parsed.printers;
+        } catch {
+            // printer_name was a simple printer name string
+        }
+    }
+    if (data.id && typeof window !== 'undefined') {
+        try {
+            const cached = localStorage.getItem(`guarafood-printers-${data.id}`);
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed)) return parsed;
+            }
+        } catch {}
+    }
+    return [];
+};
 
 const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
@@ -93,6 +119,7 @@ const normalizeRestaurant = (data: any): Restaurant => {
         manualPixKey: data.manual_pix_key,
         hasPixConfigured: hasMpToken,
         active: data.active !== false,
+        isDeleted: getDeletedRestaurantIds().includes(data.id),
         disableDelivery: data.disable_delivery || false,
         printerWidth: data.printer_width,
         printerName: data.printer_name,
@@ -109,7 +136,8 @@ const normalizeRestaurant = (data: any): Restaurant => {
         ie: data.ie || undefined,
         im: data.im || undefined,
         blingApiKey: data.bling_api_key || undefined,
-        fiscalProvider: data.fiscal_provider || undefined
+        fiscalProvider: data.fiscal_provider || undefined,
+        printers: extractPrinters(data)
     };
 };
 
@@ -147,6 +175,7 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         manualPixKey: data.manual_pix_key,
         hasPixConfigured: hasMpToken,
         active: data.active !== false,
+        isDeleted: getDeletedRestaurantIds().includes(data.id),
         disableDelivery: data.disable_delivery || false,
         printerWidth: data.printer_width,
         printerName: data.printer_name,
@@ -163,7 +192,8 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         ie: data.ie || undefined,
         im: data.im || undefined,
         blingApiKey: data.bling_api_key || undefined,
-        fiscalProvider: data.fiscal_provider || undefined
+        fiscalProvider: data.fiscal_provider || undefined,
+        printers: extractPrinters(data)
     };
 };
 
@@ -253,13 +283,21 @@ const normalizeRestaurantCategory = (data: any): RestaurantCategory => data;
 export const fetchRestaurants = async (): Promise<Restaurant[]> => {
     const { data, error } = await supabaseAnon.from('restaurants').select('*').eq('active', true);
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants' });
-    return (data || []).map(normalizeRestaurant);
+    const deletedIds = getDeletedRestaurantIds();
+    return (data || [])
+        .filter(r => !deletedIds.includes(r.id))
+        .map(normalizeRestaurant);
 };
 
-export const fetchRestaurantsSecure = async (): Promise<Restaurant[]> => {
+export const fetchRestaurantsSecure = async (includeDeleted: boolean = false): Promise<Restaurant[]> => {
     const { data, error } = await supabase.from('restaurants').select('*');
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants (secure)' });
-    return (data || []).map(normalizeRestaurantSecure);
+    const deletedIds = getDeletedRestaurantIds();
+    let list = (data || []).map(normalizeRestaurantSecure);
+    if (!includeDeleted) {
+        list = list.filter(r => !deletedIds.includes(r.id));
+    }
+    return list;
 };
 
 export const fetchRestaurantById = async (id: number): Promise<Restaurant | null> => {
@@ -324,13 +362,21 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     if (updates.staff !== undefined) dbUpdates.staff = updates.staff;
     if (updates.loyaltyProgram !== undefined) dbUpdates.loyalty_program = updates.loyaltyProgram;
     if (updates.disableDelivery !== undefined) dbUpdates.disable_delivery = updates.disableDelivery;
+    if (updates.printers !== undefined) {
+        dbUpdates.printer_name = JSON.stringify(updates.printers);
+        if (id && typeof window !== 'undefined') {
+            try {
+                localStorage.setItem(`guarafood-printers-${id}`, JSON.stringify(updates.printers));
+            } catch {}
+        }
+    }
 
     // Clean up all camelCase keys to prevent Supabase "column does not exist" errors
     const keysToRemove = [
         'deliveryTime', 'imageUrl', 'paymentGateways', 'openingHours', 
         'closingHours', 'deliveryFee', 'operatingHours', 'manualPixKey', 
         'hasPixConfigured', 'printerWidth', 'printerName', 'selectedPaymentGateway', 'bannerImageUrl', 'marmitaStartTime', 'marmitaEndTime',
-        'hasMensalistas', 'hasKiloService', 'pricePerKilo', 'loyaltyProgram', 'disableDelivery'
+        'hasMensalistas', 'hasKiloService', 'pricePerKilo', 'loyaltyProgram', 'disableDelivery', 'printers'
     ];
     keysToRemove.forEach(key => delete dbUpdates[key]);
 
@@ -343,24 +389,85 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     return normalizeRestaurantSecure(data);
 };
 
-export const deleteRestaurant = async (id: number): Promise<void> => {
-    // 0. Mark inactive immediately so filters hide it instantly
+// ==============================================================================
+// 🗑️ DELETED / EXCLUDED RESTAURANTS MANAGEMENT
+// ==============================================================================
+export const getDeletedRestaurantIds = (): number[] => {
+    try {
+        const stored = localStorage.getItem('guarafood-deleted-restaurant-ids');
+        return stored ? JSON.parse(stored) : [];
+    } catch {
+        return [];
+    }
+};
+
+export const addDeletedRestaurantId = (id: number): void => {
+    try {
+        const ids = getDeletedRestaurantIds();
+        if (!ids.includes(id)) {
+            ids.push(id);
+            localStorage.setItem('guarafood-deleted-restaurant-ids', JSON.stringify(ids));
+        }
+    } catch (e) {
+        console.warn("Error saving deleted restaurant id:", e);
+    }
+};
+
+export const removeDeletedRestaurantId = (id: number): void => {
+    try {
+        const ids = getDeletedRestaurantIds().filter(existingId => existingId !== id);
+        localStorage.setItem('guarafood-deleted-restaurant-ids', JSON.stringify(ids));
+    } catch (e) {
+        console.warn("Error removing deleted restaurant id:", e);
+    }
+};
+
+export const restoreRestaurant = async (id: number): Promise<void> => {
+    removeDeletedRestaurantId(id);
+    try {
+        await supabase.from('restaurants').update({ active: true }).eq('id', id);
+    } catch (e) {
+        console.warn("Error re-activating restaurant in db:", e);
+    }
+    try {
+        localStorage.removeItem('guarafood-cached-all-restaurants');
+        localStorage.removeItem('guarafood-cached-restaurant');
+    } catch (e) {
+        console.warn("Error invalidating cache:", e);
+    }
+};
+
+export const deleteRestaurant = async (id: number, permanent: boolean = false): Promise<void> => {
+    // 0. Mark inactive immediately so filters hide it instantly in database
     try {
         await supabase.from('restaurants').update({ active: false }).eq('id', id);
     } catch (e) {
         console.warn("Could not mark restaurant inactive:", e);
     }
 
-    // 1. Try to use the Edge Function
-    const { data, error } = await supabase.functions.invoke('delete-restaurant-and-user', { body: { restaurantId: id } });
+    // Always register in deleted list so it disappears immediately from active views
+    addDeletedRestaurantId(id);
 
-    // Check for both network errors and application-level errors returned by the function
-    if (error || (data && data.error)) {
-        console.warn("Edge function 'delete-restaurant-and-user' failed or returned error. Attempting manual cleanup...", error || data.error);
-
-        // 2. Manual Cleanup (Fallback)
+    if (permanent) {
+        // 1. Try Database Cascade RPC function first
         try {
-            // Delete dependent data first
+            const { data: rpcData, error: rpcError } = await supabase.rpc('delete_restaurant_cascade', { p_restaurant_id: id });
+            if (!rpcError && rpcData?.success) {
+                console.log("Restaurant deleted via cascade RPC function successfully:", rpcData);
+            }
+        } catch (rpcErr) {
+            console.warn("RPC delete_restaurant_cascade attempt failed:", rpcErr);
+        }
+
+        // 2. Try Edge Function
+        try {
+            await supabase.functions.invoke('delete-restaurant-and-user', { body: { restaurantId: id } });
+        } catch (e) {
+            console.warn("Edge function invocation failed:", e);
+        }
+
+        // 2. Comprehensive manual cleanup in reverse dependency order
+        try {
             await supabase.from('combos').delete().eq('restaurant_id', id);
             await supabase.from('menu_items').delete().eq('restaurant_id', id);
             await supabase.from('menu_categories').delete().eq('restaurant_id', id);
@@ -368,10 +475,23 @@ export const deleteRestaurant = async (id: number): Promise<void> => {
             await supabase.from('promotions').delete().eq('restaurant_id', id);
             await supabase.from('coupons').delete().eq('restaurant_id', id);
             await supabase.from('expenses').delete().eq('restaurant_id', id);
+            await supabase.from('featured_promos').delete().eq('restaurant_id', id);
+            await supabase.from('customer_loyalty').delete().eq('restaurant_id', id);
+            await supabase.from('mensalistas').delete().eq('restaurant_id', id);
+            await supabase.from('comandas').delete().eq('restaurant_id', id);
+            await supabase.from('tables').delete().eq('restaurant_id', id);
             await supabase.from('orders').delete().eq('restaurant_id', id);
+            try {
+                await supabase.from('profiles').update({ restaurant_id: null }).eq('restaurant_id', id);
+            } catch {
+                // profiles might not have permission, continue
+            }
 
-            // 3. Delete the Restaurant
-            await supabase.from('restaurants').delete().eq('id', id);
+            // 3. Delete the Restaurant row
+            const { error: delError } = await supabase.from('restaurants').delete().eq('id', id);
+            if (delError) {
+                console.warn("Could not hard delete restaurant row from table:", delError.message);
+            }
         } catch (manualError: any) {
             console.warn("Manual deletion note:", manualError);
         }
@@ -906,3 +1026,82 @@ export const fetchPopularItems = async (restaurantId: number, limit = 5): Promis
     handleSupabaseError({ error, customMessage: 'Failed to fetch popular items' });
     return (data || []).map(normalizeItem);
 };
+
+// ==============================================================================
+// 📋 COMANDAS ATIVAS
+// ==============================================================================
+
+export const fetchComandasAtivas = async (restaurantId: number, status?: string): Promise<ComandaAtiva[]> => {
+    let query = supabase
+        .from('comandas_ativas')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .order('comanda_number', { ascending: true });
+
+    if (status) {
+        query = query.eq('status', status);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+        console.warn('Erro ao carregar comandas_ativas:', error);
+        return [];
+    }
+    return (data || []) as ComandaAtiva[];
+};
+
+export const createComandaAtiva = async (payload: {
+    restaurant_id: number;
+    customer_name: string;
+    status?: string;
+    total_value?: number;
+    comanda_number?: number;
+    table_number?: string;
+    notes?: string;
+}): Promise<ComandaAtiva | null> => {
+    const { data, error } = await supabase
+        .from('comandas_ativas')
+        .insert([{
+            restaurant_id: payload.restaurant_id,
+            customer_name: payload.customer_name,
+            status: payload.status || 'aberta',
+            total_value: payload.total_value || 0.00,
+            comanda_number: payload.comanda_number,
+            table_number: payload.table_number,
+            notes: payload.notes
+        }])
+        .select()
+        .single();
+
+    if (error) {
+        handleSupabaseError({ error, customMessage: 'Falha ao criar comanda ativa' });
+        return null;
+    }
+    return data as ComandaAtiva;
+};
+
+export const updateComandaAtiva = async (id: string, updates: Partial<ComandaAtiva>): Promise<void> => {
+    const { error } = await supabase
+        .from('comandas_ativas')
+        .update({
+            ...updates,
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
+
+    if (error) {
+        handleSupabaseError({ error, customMessage: 'Falha ao atualizar comanda ativa' });
+    }
+};
+
+export const deleteComandaAtiva = async (id: string): Promise<void> => {
+    const { error } = await supabase
+        .from('comandas_ativas')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        handleSupabaseError({ error, customMessage: 'Falha ao excluir comanda ativa' });
+    }
+};
+

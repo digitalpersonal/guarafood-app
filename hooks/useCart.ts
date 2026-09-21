@@ -70,6 +70,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const newCartItem: CartItem = {
             id: cartId,
             restaurantId: itemRestaurantId,
+            categoryId: ('categoryId' in item) ? item.categoryId : undefined,
             name: item.name,
             price: Number(item.price),
             basePrice: Number(item.price),

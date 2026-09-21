@@ -582,7 +582,7 @@ export const clearTodayTableOrders = async (restaurantId: number): Promise<void>
     window.dispatchEvent(new Event('guarafood:update-orders'));
 };
 
-export const requestKitchenPrint = async (orderId: string, itemsToPrint: CartItem[]): Promise<void> => {
+export const requestKitchenPrint = async (orderId: string, itemsToPrint: CartItem[], targetPrinterId?: string): Promise<void> => {
     return retryWithExponentialBackoff(async () => {
         const { data: currentOrder, error: fetchErr } = await supabase.from('orders').select('payment_details').eq('id', orderId).single();
         if (fetchErr) {
@@ -592,13 +592,17 @@ export const requestKitchenPrint = async (orderId: string, itemsToPrint: CartIte
         const currentDetails = currentOrder?.payment_details || {};
         const currentQueue = currentDetails.print_queue || [];
         
-        const newRequest = {
+        const newRequest: any = {
             id: crypto.randomUUID(),
             timestamp: new Date().toISOString(),
             items: itemsToPrint,
             status: 'pending',
-            type: 'kitchen'
+            type: 'kitchen',
         };
+
+        if (targetPrinterId) {
+            newRequest.targetPrinterId = targetPrinterId;
+        }
         
         const newDetails = {
             ...currentDetails,
