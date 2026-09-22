@@ -10,6 +10,8 @@ import { useNotification } from '../hooks/useNotification';
 import Spinner from './Spinner';
 import { getErrorMessage } from '../services/api';
 import RestaurantEditorModal from './RestaurantEditorModal';
+import { RestaurantShareModal } from './RestaurantShareModal';
+import { formatRestaurantWelcomeMessage, getRestaurantMenuUrl } from '../utils/restaurantUtils';
 
 const MenuBookIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -71,6 +73,7 @@ const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu,
     const [searchTerm, setSearchTerm] = useState('');
     const [restaurantToDelete, setRestaurantToDelete] = useState<Restaurant | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [selectedShareRestaurant, setSelectedShareRestaurant] = useState<Restaurant | null>(null);
 
     const { addToast } = useNotification();
 
@@ -196,9 +199,15 @@ COMMIT;
     };
 
     const handleCopyLink = (restaurantId: number) => {
-        const url = `${window.location.origin}?r=${restaurantId}`;
+        const url = getRestaurantMenuUrl(restaurantId);
         navigator.clipboard.writeText(url);
-        addToast({ message: 'Link copiado para a área de transferência!', type: 'success' });
+        addToast({ message: 'Link oficial do cardápio copiado!', type: 'success' });
+    };
+
+    const handleCopyWelcome = (restaurant: Restaurant) => {
+        const message = formatRestaurantWelcomeMessage(restaurant.name, restaurant.id);
+        navigator.clipboard.writeText(message);
+        addToast({ message: 'Mensagem oficial para WhatsApp copiada!', type: 'success' });
     };
 
     // Filter counts
@@ -414,22 +423,29 @@ COMMIT;
                                         <td className="px-4 py-3.5 text-xs font-mono text-gray-600">
                                             {restaurant.phone || '-'}
                                         </td>
-                                        <td className="px-4 py-3.5 min-w-[220px]">
+                                        <td className="px-4 py-3.5 min-w-[240px]">
                                             <div className="flex items-center gap-1.5">
                                                 <input 
                                                     type="text" 
                                                     readOnly 
-                                                    value={`${window.location.origin}?r=${restaurant.id}`} 
-                                                    className="flex-grow p-1.5 border border-gray-200 rounded-lg bg-gray-50 text-[11px] truncate focus:bg-white"
+                                                    value={getRestaurantMenuUrl(restaurant.id)} 
+                                                    className="flex-grow p-1.5 border border-gray-200 rounded-lg bg-gray-50 text-[11px] font-mono truncate focus:bg-white select-all"
                                                     onClick={(e) => (e.target as HTMLInputElement).select()} 
                                                     aria-label={`Link da loja ${restaurant.name}`}
                                                 />
                                                 <button 
                                                     onClick={() => handleCopyLink(restaurant.id)} 
                                                     className="p-1.5 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors flex-shrink-0" 
-                                                    title="Copiar Link da Loja"
+                                                    title="Copiar Link Oficial do Cardápio"
                                                 >
                                                     <ClipboardIcon className="w-4 h-4"/>
+                                                </button>
+                                                <button 
+                                                    onClick={() => setSelectedShareRestaurant(restaurant)} 
+                                                    className="p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors flex-shrink-0" 
+                                                    title="Divulgar Cardápio & Mensagem WhatsApp"
+                                                >
+                                                    💬
                                                 </button>
                                             </div>
                                         </td>
@@ -589,6 +605,15 @@ COMMIT;
                     onClose={handleCloseEditor}
                     onSaveSuccess={loadRestaurants}
                     existingRestaurant={editingRestaurant}
+                />
+            )}
+
+            {/* Modal de Divulgação & WhatsApp com dados do Supabase */}
+            {selectedShareRestaurant && (
+                <RestaurantShareModal
+                    isOpen={Boolean(selectedShareRestaurant)}
+                    onClose={() => setSelectedShareRestaurant(null)}
+                    restaurant={selectedShareRestaurant}
                 />
             )}
         </div>

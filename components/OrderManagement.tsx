@@ -18,6 +18,7 @@ import StaffManagement from './StaffManagement';
 import MensalistasManager from './MensalistasManager';
 import PinPadModal from './PinPadModal';
 import HelpCenter from './HelpCenter';
+import { RestaurantShareModal } from './RestaurantShareModal';
 import { useSound } from '../hooks/useSound';
 import { useNotification } from '../hooks/useNotification';
 
@@ -90,6 +91,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     });
     const [currentStaffUser, setCurrentStaffUser] = useState<StaffMember | null>(null);
     const [isPinPadOpen, setIsPinPadOpen] = useState(false);
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [isLocked, setIsLocked] = useState(localStorage.getItem('guarafood-panel-locked') === 'true');
 
     const lastSuccessfulSyncRef = useRef<number>(Date.now());
@@ -788,6 +790,16 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             )
                         )
                     )}
+                    {restaurant && (
+                        <button 
+                            onClick={() => setIsShareModalOpen(true)}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl transition-all font-black text-[11px] uppercase tracking-wider shadow-xs cursor-pointer border border-emerald-200"
+                            title="Divulgar Cardápio Oficial via WhatsApp"
+                        >
+                            <span>📲</span>
+                            <span className="hidden md:inline">Cardápio & WhatsApp</span>
+                        </button>
+                    )}
                     <button 
                         onClick={forceSync}
                         className={`p-2 rounded-lg transition-all ${isManualSyncing ? 'bg-orange-100 text-orange-600' : 'text-gray-400 hover:text-orange-600'}`}
@@ -867,6 +879,14 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 onSuccess={handleStaffLogin}
                 title={isLocked ? "Desbloquear Gerente" : "Acesso Restrito"}
             />
+
+            {restaurant && (
+                <RestaurantShareModal 
+                    isOpen={isShareModalOpen}
+                    onClose={() => setIsShareModalOpen(false)}
+                    restaurant={restaurant}
+                />
+            )}
 
             {printQueue.length > 0 && (
                 <div id="print-queue-indicator" className="fixed bottom-6 right-6 bg-gradient-to-r from-orange-600 to-red-600 text-white rounded-3xl p-5 shadow-2xl z-[80] flex items-center gap-4 animate-bounce max-w-sm border border-orange-500/30">

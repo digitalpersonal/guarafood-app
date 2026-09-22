@@ -16,6 +16,7 @@ import { FeaturedPromoManager } from './FeaturedPromoManager';
 import { getErrorMessage } from '../services/api';
 import ChromeMemorySaverGuide from './ChromeMemorySaverGuide';
 import { KNOWN_CITIES } from '../utils/locationService';
+import { WhatsAppBotSettings } from './WhatsAppBotSettings';
 
 const NotificationSettings: React.FC = () => {
     const { addToast } = useNotification();
@@ -501,6 +502,13 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                 <h2 className="text-xl font-black text-gray-800 border-b pb-4 mb-6 uppercase tracking-widest">Painel de Configuração</h2>
                 
                 <NotificationSettings />
+
+                {restaurantId && (
+                    <WhatsAppBotSettings
+                        restaurantId={restaurantId}
+                        restaurantName={restaurant.name}
+                    />
+                )}
 
                 <div className="mb-10 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
                     <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Configuração de Pagamento (Pix)</h3>

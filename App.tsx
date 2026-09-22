@@ -5,7 +5,7 @@ import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from
 import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant, fetchRestaurantById } from './services/databaseService';
 import { AuthProvider, useAuth } from './services/authService';
 import { getInitializationError, getErrorMessage } from './services/api';
-import { isRestaurantOpen, isAvailableByTime } from './utils/restaurantUtils';
+import { isRestaurantOpen, isAvailableByTime, formatRestaurantWelcomeMessage, getRestaurantMenuUrl } from './utils/restaurantUtils';
 
 import RestaurantCard from './components/RestaurantCard';
 import Spinner from './components/Spinner';
@@ -17,6 +17,7 @@ import AdminDashboard from './components/AdminDashboard';
 import OrderManagement from './components/OrderManagement';
 import HomePromotionalBanner from './components/HomePromotionalBanner';
 import { RestaurantPromotionalBanner } from './components/RestaurantPromotionalBanner';
+import { RestaurantShareModal } from './components/RestaurantShareModal';
 import { CartProvider, useCart } from './hooks/useCart';
 import { AnimationProvider } from './hooks/useAnimation';
 import { NotificationProvider, useNotification } from './hooks/useNotification';
@@ -104,34 +105,32 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
     const [isLoading, setIsLoading] = useState(true);
     const [activeCategory, setActiveCategory] = useState<string | null>(null);
     const [categoryNameMap, setCategoryNameMap] = useState<Map<number, string>>(new Map());
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
     const handleShare = async () => {
-        const shareUrl = `${window.location.origin}${window.location.pathname}?r=${restaurant.id}`;
+        const welcomeMessage = formatRestaurantWelcomeMessage(restaurant.name, restaurant.id);
+        const officialUrl = getRestaurantMenuUrl(restaurant.id);
         
         if (navigator.share) {
             try {
                 await navigator.share({
-                    title: `Peça agora em ${restaurant.name}`,
-                    text: `Veja o menu de ${restaurant.name} no GuaraFood!`,
-                    url: shareUrl,
+                    title: `Cardápio Oficial • ${restaurant.name}`,
+                    text: welcomeMessage,
+                    url: officialUrl,
                 });
                 return;
             } catch (error) {
-                // Ignore error if user cancelled sharing
+                // Se o usuário cancelou o compartilhamento nativo
                 if ((error as Error).name !== 'AbortError') {
                     console.error('Error sharing:', error);
+                    setIsShareModalOpen(true);
                 }
+                return;
             }
         }
         
-        // Fallback to copy to clipboard
-        try {
-            await navigator.clipboard.writeText(shareUrl);
-            addToast({ message: 'Link do restaurante copiado para a área de transferência!', type: 'success' });
-        } catch (error) {
-            addToast({ message: 'Não foi possível copiar o link.', type: 'error' });
-            console.error('Copy failed:', error);
-        }
+        // Abre o modal completo com visualização da mensagem, cópia para WhatsApp e QR Code
+        setIsShareModalOpen(true);
     };
 
     const bgImage = useMemo(() => {
@@ -368,6 +367,13 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                 )}
             </div>
             <AdRotator />
+
+            {/* Modal de Compartilhamento & Divulgação Oficial */}
+            <RestaurantShareModal
+                isOpen={isShareModalOpen}
+                onClose={() => setIsShareModalOpen(false)}
+                restaurant={restaurant}
+            />
         </div>
     );
 };

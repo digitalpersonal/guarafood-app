@@ -344,6 +344,191 @@ Regras:
     }
   });
 
+  // ==========================================
+  // WhatsApp & Typebot Evolution API Integration
+  // ==========================================
+  const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || "https://app.api.guarafood.com.br";
+  const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "token_secreto_guara_2026";
+  const TYPEBOT_URL = process.env.TYPEBOT_URL || "https://typebot.co/guarafood";
+  const TYPEBOT_NAME = process.env.TYPEBOT_NAME || "GuaraFood Oficial";
+
+  // Obter status da instância do restaurante
+  app.get("/api/whatsapp/status/:restaurantId", async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      const instanceName = `restaurante_${restaurantId}`;
+
+      const checkRes = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, {
+        headers: { apikey: EVOLUTION_API_KEY }
+      });
+
+      if (!checkRes.ok) {
+        return res.json({ connected: false, state: "disconnected", instanceName });
+      }
+
+      const checkData = await checkRes.json();
+      const state = checkData?.instance?.state || "disconnected";
+      const isConnected = state === "open";
+
+      // Se conectado, busca dados do perfil
+      let profile = null;
+      if (isConnected) {
+        try {
+          const instRes = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances?instanceName=${instanceName}`, {
+            headers: { apikey: EVOLUTION_API_KEY }
+          });
+          if (instRes.ok) {
+            const instList = await instRes.json();
+            const found = Array.isArray(instList) ? instList.find((i: any) => i.name === instanceName) : null;
+            if (found) {
+              profile = {
+                profileName: found.profileName || "",
+                profilePicUrl: found.profilePicUrl || "",
+                ownerJid: found.ownerJid || ""
+              };
+            }
+          }
+        } catch (_) {}
+      }
+
+      return res.json({
+        connected: isConnected,
+        state,
+        instanceName,
+        profile
+      });
+    } catch (err: any) {
+      console.error("Error in /api/whatsapp/status:", err);
+      return res.json({ connected: false, state: "disconnected", error: err.message });
+    }
+  });
+
+  // Conectar / Gerar QR Code para o restaurante
+  app.post("/api/whatsapp/connect/:restaurantId", async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      const instanceName = `restaurante_${restaurantId}`;
+
+      // 1. Verifica se a instância já existe
+      const fetchRes = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances`, {
+        headers: { apikey: EVOLUTION_API_KEY }
+      });
+      const instances = fetchRes.ok ? await fetchRes.json() : [];
+      const existing = Array.isArray(instances) ? instances.find((i: any) => i.name === instanceName) : null;
+
+      let qrCodeBase64: string | null = null;
+      let pairingCode: string | null = null;
+      let state = "connecting";
+
+      if (!existing) {
+        // Cria nova instância com QR Code habilitado
+        const createRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
+          method: "POST",
+          headers: {
+            apikey: EVOLUTION_API_KEY,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            instanceName,
+            qrcode: true,
+            integration: "WHATSAPP-BAILEYS"
+          })
+        });
+
+        if (!createRes.ok) {
+          const errData = await createRes.json().catch(() => ({}));
+          console.error("Error creating Evolution instance:", errData);
+          return res.status(400).json({ error: "Falha ao criar instância no WhatsApp", details: errData });
+        }
+
+        const createData = await createRes.json();
+        qrCodeBase64 = createData?.qrcode?.base64 || createData?.base64 || null;
+        pairingCode = createData?.qrcode?.pairingCode || createData?.pairingCode || null;
+      } else {
+        // Se já existe e está conectada
+        if (existing.connectionStatus === "open") {
+          return res.json({
+            connected: true,
+            state: "open",
+            instanceName,
+            profile: {
+              profileName: existing.profileName,
+              profilePicUrl: existing.profilePicUrl,
+              ownerJid: existing.ownerJid
+            }
+          });
+        }
+
+        // Se existe mas precisa de reconexão / novo QR Code
+        const connectRes = await fetch(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, {
+          headers: { apikey: EVOLUTION_API_KEY }
+        });
+        if (connectRes.ok) {
+          const connData = await connectRes.json();
+          qrCodeBase64 = connData?.base64 || connData?.qrcode?.base64 || null;
+          pairingCode = connData?.pairingCode || connData?.qrcode?.pairingCode || null;
+          state = connData?.instance?.state || "connecting";
+          if (state === "open") {
+            return res.json({ connected: true, state: "open", instanceName });
+          }
+        }
+      }
+
+      // 2. Garante que o Typebot está configurado na instância
+      try {
+        await fetch(`${EVOLUTION_API_URL}/typebot/create/${instanceName}`, {
+          method: "POST",
+          headers: {
+            apikey: EVOLUTION_API_KEY,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            url: TYPEBOT_URL,
+            typebot: TYPEBOT_NAME,
+            enabled: true,
+            triggerType: "all",
+            expire: 20,
+            keywordFinish: "atendente",
+            delayMessage: 1000,
+            unknownMessage: "",
+            listeningFromMe: false
+          })
+        });
+      } catch (tErr) {
+        console.warn("Typebot config error (may already be set):", tErr);
+      }
+
+      return res.json({
+        connected: false,
+        state,
+        instanceName,
+        qrcode: qrCodeBase64,
+        pairingCode
+      });
+    } catch (err: any) {
+      console.error("Error in /api/whatsapp/connect:", err);
+      return res.status(500).json({ error: err.message || "Erro ao conectar WhatsApp." });
+    }
+  });
+
+  // Desconectar instância do restaurante
+  app.post("/api/whatsapp/disconnect/:restaurantId", async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      const instanceName = `restaurante_${restaurantId}`;
+
+      await fetch(`${EVOLUTION_API_URL}/instance/logout/${instanceName}`, {
+        method: "DELETE",
+        headers: { apikey: EVOLUTION_API_KEY }
+      });
+
+      return res.json({ success: true, instanceName });
+    } catch (err: any) {
+      console.error("Error in /api/whatsapp/disconnect:", err);
+      return res.status(500).json({ error: err.message || "Erro ao desconectar WhatsApp." });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

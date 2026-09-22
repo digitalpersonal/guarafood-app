@@ -1,6 +1,7 @@
 
 import React, { useMemo, useState } from 'react';
 import type { Order } from '../types';
+import { formatRestaurantWelcomeMessage } from '../utils/restaurantUtils';
 
 const SearchIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -83,8 +84,18 @@ const CustomerList: React.FC<CustomerListProps> = ({ orders }) => {
     }, [customers, searchTerm]);
 
     const handleWhatsApp = (phone: string) => {
-        // FIX: Using official API endpoint for better reliability in native apps detection
-        const url = `https://api.whatsapp.com/send?phone=55${(phone || '').replace(/\D/g, '')}`;
+        let welcomeParam = '';
+        try {
+            const cached = localStorage.getItem('guarafood-cached-restaurant');
+            if (cached) {
+                const rest = JSON.parse(cached);
+                if (rest?.name && rest?.id) {
+                    welcomeParam = `&text=${encodeURIComponent(formatRestaurantWelcomeMessage(rest.name, rest.id))}`;
+                }
+            }
+        } catch {}
+
+        const url = `https://api.whatsapp.com/send?phone=55${(phone || '').replace(/\D/g, '')}${welcomeParam}`;
         const link = document.createElement('a');
         link.href = url;
         link.target = '_blank';
