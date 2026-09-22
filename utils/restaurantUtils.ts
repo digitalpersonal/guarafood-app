@@ -147,3 +147,26 @@ export const isAvailableByTime = (entity: { availableStartTime?: string; availab
     return { isAvailable: true };
 };
 
+/**
+ * Retorna o caminho relativo do cardápio do restaurante no GuaráFood (ex: "/?r=12")
+ */
+export const getRestaurantMenuPath = (restaurantId: number | string): string => {
+    return `/?r=${restaurantId}`;
+};
+
+/**
+ * Retorna o link oficial completo do cardápio do restaurante na plataforma GuaráFood
+ */
+export const getRestaurantMenuUrl = (restaurantId: number | string): string => {
+    return `https://guarafood.com.br${getRestaurantMenuPath(restaurantId)}`;
+};
+
+/**
+ * Gera a mensagem oficial de boas-vindas utilizando os dados do restaurante vindos do banco de dados do Supabase:
+ * "Olá! Seja muito bem-vindo ao {{nome_do_restaurante}}! 👋  Aqui está o nosso cardápio oficial para você fazer o seu pedido: 👉 https://guarafood.com.br{{link_do_cardapio}}"
+ */
+export const formatRestaurantWelcomeMessage = (restaurantName: string, restaurantId: number | string): string => {
+    const linkDoCardapio = getRestaurantMenuPath(restaurantId);
+    return `Olá! Seja muito bem-vindo ao ${restaurantName}! 👋  Aqui está o nosso cardápio oficial para você fazer o seu pedido: 👉 https://guarafood.com.br${linkDoCardapio}`;
+};
+
