@@ -376,7 +376,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         return { finalPrice: Math.max(0, totalNum - discount), discountAmount: discount };
     }, [totalPrice, appliedCoupon, loyaltyRedeemed, restaurant.loyaltyProgram]);
 
-    const hasFreeDeliveryPromo = cartItems.some(item => item.id.startsWith('featured-promo-'));
+    const hasFreeDeliveryPromo = cartItems.some(item => item.includeFreeDelivery === true);
     const effectiveDeliveryFee = (deliveryMethod === 'PICKUP' || hasFreeDeliveryPromo) ? 0 : Number(restaurant.deliveryFee || 0);
     const finalPriceWithFee = Number(finalPrice) + Number(effectiveDeliveryFee);
     
@@ -770,7 +770,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                         <div className="border-t pt-4 space-y-2 text-sm">
                             <div className="flex justify-between text-gray-600"><span>Subtotal</span><span>R$ {Number(totalPrice).toFixed(2)}</span></div>
                             {appliedCoupon && <div className="flex justify-between text-green-600 font-semibold"><span>Desconto</span><span>- R$ {Number(discountAmount).toFixed(2)}</span></div>}
-                            <div className="flex justify-between text-gray-600"><span>Entrega</span><span>{deliveryMethod === 'PICKUP' ? 'Grátis' : `R$ ${Number(restaurant.deliveryFee || 0).toFixed(2)}`}</span></div>
+                            <div className="flex justify-between text-gray-600"><span>Entrega</span><span>{deliveryMethod === 'PICKUP' ? 'Grátis' : (hasFreeDeliveryPromo ? 'Grátis (Promoção)' : `R$ ${Number(effectiveDeliveryFee).toFixed(2)}`)}</span></div>
                             <div className="flex justify-between font-bold text-lg text-gray-800 border-t pt-2"><span>Total</span><span>R$ {Number(finalPriceWithFee).toFixed(2)}</span></div>
                         </div>
                     </div>

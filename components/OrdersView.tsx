@@ -141,14 +141,17 @@ const OrderCard: React.FC<{
     onStatusUpdate: (id: string, status: OrderStatus) => void; 
     onNotify: (order: Order) => void; 
     onViewDetails: (order: Order) => void; 
-    onPrint: (order: Order) => void;
+    onPrint: (order: Order, mode?: 'full' | 'kitchen' | 'admin') => void;
     enableFiscal?: boolean;
     onToggleFiscal?: (id: string, currentVal: boolean) => void;
     updatingState?: UpdatingOrderState;
-}> = ({ order, onStatusUpdate, onNotify, onViewDetails, onPrint, enableFiscal, onToggleFiscal, updatingState }) => {
+    restaurant?: Restaurant | null;
+}> = ({ order, onStatusUpdate, onNotify, onViewDetails, onPrint, enableFiscal, onToggleFiscal, updatingState, restaurant }) => {
     const { confirm } = useNotification();
     const { text, color } = statusConfig[order.status];
     const [isExpanded, setIsExpanded] = useState(false);
+
+    const hasKitchenPrinter = Boolean(restaurant?.printers?.some(p => p.type === 'kitchen' && p.active !== false));
 
     const displayOrderNum = order.order_number 
         ? `#${String(order.order_number).padStart(3, '0')}`
@@ -205,30 +208,58 @@ const OrderCard: React.FC<{
         switch (order.status) {
             case 'Novo Pedido':
                  return (
-                    <div className="flex gap-1 mt-2">
-                        <button onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate("Aceitar pedido?", 'Preparando'); }} className={`${btnClass} bg-green-600`}>
-                            Aceitar
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate("Rejeitar pedido?", 'Cancelado'); }} className={`${btnClass} bg-red-600`}>
-                            Rejeitar
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); onNotify(order); }} className={`${btnClass} bg-blue-600 flex items-center justify-center gap-1`} title="Avisar Cliente">
-                            <WhatsAppIcon className="w-3.5 h-3.5" /> Avisar
-                        </button>
+                    <div className="flex flex-col gap-1.5 mt-2">
+                        <div className="flex gap-1">
+                            <button onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate("Aceitar pedido?", 'Preparando'); }} className={`${btnClass} bg-green-600`}>
+                                Aceitar
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate("Rejeitar pedido?", 'Cancelado'); }} className={`${btnClass} bg-red-600`}>
+                                Rejeitar
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); onNotify(order); }} className={`${btnClass} bg-blue-600 flex items-center justify-center gap-1`} title="Avisar Cliente">
+                                <WhatsAppIcon className="w-3.5 h-3.5" /> Avisar
+                            </button>
+                        </div>
+                        {hasKitchenPrinter && (
+                            <button 
+                                onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    onPrint(order, 'kitchen'); 
+                                }} 
+                                className="w-full py-1.5 px-2 rounded-lg bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-extrabold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all"
+                                title="Enviar comanda de preparo para a Cozinha"
+                            >
+                                <span>🍳</span> Imprimir na Cozinha
+                            </button>
+                        )}
                     </div>
                 );
             case 'Preparando':
                 return (
-                    <div className="flex gap-1 mt-2">
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate(isPickup ? "Pedido pronto para retirada?" : "Despachar para entrega?", 'A Caminho'); }} 
-                            className={`${btnClass} bg-orange-600 flex-grow-[2]`}
-                        >
-                            {isPickup ? "Pronto p/ Retirar" : "Despachar"}
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); onNotify(order); }} className={`${btnClass} bg-blue-600 flex items-center justify-center gap-1`} title="Avisar Cliente">
-                            <WhatsAppIcon className="w-3.5 h-3.5" /> Avisar
-                        </button>
+                    <div className="flex flex-col gap-1.5 mt-2">
+                        <div className="flex gap-1">
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate(isPickup ? "Pedido pronto para retirada?" : "Despachar para entrega?", 'A Caminho'); }} 
+                                className={`${btnClass} bg-orange-600 flex-grow-[2]`}
+                            >
+                                {isPickup ? "Pronto p/ Retirar" : "Despachar"}
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); onNotify(order); }} className={`${btnClass} bg-blue-600 flex items-center justify-center gap-1`} title="Avisar Cliente">
+                                <WhatsAppIcon className="w-3.5 h-3.5" /> Avisar
+                            </button>
+                        </div>
+                        {hasKitchenPrinter && (
+                            <button 
+                                onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    onPrint(order, 'kitchen'); 
+                                }} 
+                                className="w-full py-1 px-2 rounded-md bg-amber-50 hover:bg-amber-100 border border-amber-300 active:scale-95 text-amber-900 font-bold text-[11px] shadow-sm flex items-center justify-center gap-1 transition-all"
+                                title="Reimprimir comanda na Cozinha"
+                            >
+                                <span>🍳</span> Reimprimir na Cozinha
+                            </button>
+                        )}
                     </div>
                 );
             case 'A Caminho':
@@ -261,13 +292,25 @@ const OrderCard: React.FC<{
                         {dateString} {timeString}
                     </span>
                 </div>
-                <button 
-                    onClick={(e) => { e.stopPropagation(); onPrint(order); }} 
-                    className="p-1 -mt-1 -mr-1 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors" 
-                    title="Imprimir Via / Reimprimir"
-                >
-                    <PrinterIcon className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1 -mt-1 -mr-1">
+                    {hasKitchenPrinter && (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); onPrint(order, 'kitchen'); }} 
+                            className="px-1.5 py-0.5 text-[10px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded transition-colors flex items-center gap-0.5" 
+                            title="Imprimir comanda para a Cozinha"
+                        >
+                            <span>🍳</span>
+                            <span className="hidden sm:inline">Cozinha</span>
+                        </button>
+                    )}
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); onPrint(order, 'full'); }} 
+                        className="p-1 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors" 
+                        title={hasKitchenPrinter ? "Imprimir Via Caixa / Completa" : "Imprimir Via / Reimprimir"}
+                    >
+                        <PrinterIcon className="w-4 h-4" />
+                    </button>
+                </div>
             </div>
             
             <div className="flex justify-end mb-1 items-center gap-2">
@@ -787,6 +830,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                                     enableFiscal={restaurant?.enableFiscal}
                                     onToggleFiscal={handleToggleFiscal}
                                     updatingState={updatingOrders[order.id]}
+                                    restaurant={restaurant}
                                 />
                             ))}
                         </div>
@@ -1063,6 +1107,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                                                         enableFiscal={restaurant?.enableFiscal}
                                                         onToggleFiscal={handleToggleFiscal}
                                                         updatingState={updatingOrders[order.id]}
+                                                        restaurant={restaurant}
                                                     />
                                                 ))
                                             ) : (
@@ -1090,7 +1135,15 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                     </div>
                 )}
             </main>
-            {selectedOrder && <OrderDetailsModal order={selectedOrder} onClose={() => setSelectedOrder(null)} printerWidth={printerWidth} />}
+            {selectedOrder && (
+                <OrderDetailsModal 
+                    order={selectedOrder} 
+                    onClose={() => setSelectedOrder(null)} 
+                    printerWidth={printerWidth} 
+                    restaurant={restaurant}
+                    onPrint={onPrint}
+                />
+            )}
             {orderToEdit && currentUser && (
                 <OrderEditorModal
                     isOpen={!!orderToEdit}

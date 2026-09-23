@@ -8,6 +8,7 @@ import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
 import Spinner from './Spinner';
 import OrderEditorModal from './OrderEditorModal';
+import MultiComandaPaymentModal from './MultiComandaPaymentModal';
 import type { Order, CartItem, PaymentEntry, StaffMember, Restaurant, Mensalista } from '../types';
 
 const StoreIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -69,6 +70,36 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
     // Printing States
     const [printedItems, setPrintedItems] = useState<Set<string>>(new Set());
 
+    // Multi-comanda payment states
+    const [selectedOrderIdsForMultiPay, setSelectedOrderIdsForMultiPay] = useState<string[]>([]);
+    const [isMultiPayModalOpen, setIsMultiPayModalOpen] = useState(false);
+
+    const toggleOrderSelection = (id: string) => {
+        setSelectedOrderIdsForMultiPay(prev => 
+            prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+        );
+    };
+
+    const selectAllOrders = () => {
+        if (selectedOrderIdsForMultiPay.length === tableOrders.length) {
+            setSelectedOrderIdsForMultiPay([]);
+        } else {
+            setSelectedOrderIdsForMultiPay(tableOrders.map(o => o.id));
+        }
+    };
+
+    const selectedOrdersForMultiPay = useMemo(() => {
+        return tableOrders.filter(o => selectedOrderIdsForMultiPay.includes(o.id));
+    }, [tableOrders, selectedOrderIdsForMultiPay]);
+
+    const totalMultiPayBalance = useMemo(() => {
+        return selectedOrdersForMultiPay.reduce((acc, order) => {
+            const history = order.paymentHistory || [];
+            const paid = history.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+            return acc + Math.max(0, Number(order.totalPrice || 0) - paid);
+        }, 0);
+    }, [selectedOrdersForMultiPay]);
+
     const tableNumbers = Array.from({ length: 30 }, (_, i) => (i + 1).toString());
 
     useEffect(() => {
@@ -119,6 +150,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
 
     const handleOpenTable = async (tableNum: string) => {
         setSelectedTable(tableNum);
+        setSelectedOrderIdsForMultiPay([]);
         if (currentUser?.restaurantId) {
             try {
                 const orders = await fetchOpenTableOrders(currentUser.restaurantId, tableNum);
@@ -326,6 +358,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
     const handleCloseTableList = () => {
         setSelectedTable(null);
         setTableOrders([]);
+        setSelectedOrderIdsForMultiPay([]);
     };
 
     const triggerKitchenPrint = async (order: Order) => {
@@ -659,14 +692,25 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                     {tableOrders.length > 0 ? `${tableOrders.length} ${tableOrders.length === 1 ? 'comanda aberta' : 'comandas abertas'}` : 'Selecione ou abra uma comanda'}
                                 </p>
                             </div>
-                            <button 
-                                onClick={handleCloseTableList}
-                                className="p-2 text-gray-400 hover:text-gray-800 rounded-full hover:bg-gray-200 transition-colors"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
+                            <div className="flex items-center gap-2">
+                                {tableOrders.length > 1 && (
+                                    <button 
+                                        type="button"
+                                        onClick={selectAllOrders}
+                                        className="text-xs font-black text-orange-700 bg-orange-100 hover:bg-orange-200 px-3 py-2 rounded-xl transition-colors border border-orange-200 shadow-sm"
+                                    >
+                                        {selectedOrderIdsForMultiPay.length === tableOrders.length ? 'Desmarcar' : 'Selecionar Todas'}
+                                    </button>
+                                )}
+                                <button 
+                                    onClick={handleCloseTableList}
+                                    className="p-2 text-gray-400 hover:text-gray-800 rounded-full hover:bg-gray-200 transition-colors"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
 
                         <div className="p-6 overflow-y-auto flex-1 space-y-4">
@@ -677,32 +721,104 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 gap-3">
-                                    {tableOrders.map(order => (
+                                    {tableOrders.map(order => {
+                                        const isSelected = selectedOrderIdsForMultiPay.includes(order.id);
+                                        const history = order.paymentHistory || [];
+                                        const paid = history.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+
+                                        return (
+                                            <div
+                                                key={order.id}
+                                                onClick={() => {
+                                                    if (selectedOrderIdsForMultiPay.length > 0) {
+                                                        toggleOrderSelection(order.id);
+                                                    } else {
+                                                        setSelectedTableOrder(order);
+                                                    }
+                                                }}
+                                                className={`flex items-center justify-between p-3.5 bg-white border-2 rounded-2xl transition-all cursor-pointer select-none group ${
+                                                    isSelected 
+                                                        ? 'border-orange-500 bg-orange-50/50 shadow-md ring-2 ring-orange-400/30' 
+                                                        : 'border-gray-200 hover:border-orange-300 hover:shadow-sm'
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    {tableOrders.length > 1 && (
+                                                        <div
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                toggleOrderSelection(order.id);
+                                                            }}
+                                                            className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all border-2 flex-shrink-0 cursor-pointer ${
+                                                                isSelected
+                                                                    ? 'bg-orange-600 border-orange-600 text-white shadow-sm'
+                                                                    : 'border-gray-300 bg-white hover:border-orange-400'
+                                                            }`}
+                                                            title={isSelected ? "Desmarcar comanda" : "Selecionar para pagar junto"}
+                                                        >
+                                                            {isSelected && (
+                                                                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 stroke-[3]" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                                                    <polyline points="20 6 9 17 4 12" />
+                                                                </svg>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    <div className="w-11 h-11 bg-orange-100 rounded-xl flex items-center justify-center text-orange-600 font-black text-base flex-shrink-0 group-hover:bg-orange-600 group-hover:text-white transition-colors">
+                                                        {order.comandaNumber || '?'}
+                                                    </div>
+                                                    <div className="text-left min-w-0">
+                                                        <h4 className="font-black text-gray-800 uppercase text-sm truncate">{order.customerName}</h4>
+                                                        <p className="text-xs text-gray-400 font-bold">
+                                                            #{String(order.order_number || '').padStart(3, '0')} • {order.items?.length || 0} {order.items?.length === 1 ? 'item' : 'itens'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right flex-shrink-0 pl-2">
+                                                    <p className="font-black text-gray-900 text-base">R$ {order.totalPrice.toFixed(2)}</p>
+                                                    {paid > 0 && (
+                                                        <p className="text-[10px] text-green-600 font-bold">Pago: R$ {paid.toFixed(2)}</p>
+                                                    )}
+                                                    {order.items.some(i => !i.served) && (
+                                                        <span className="text-[9px] font-black text-red-500 uppercase flex items-center gap-1 justify-end mt-0.5">
+                                                            <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></span>
+                                                            Pendente
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {/* Floating / Sticky Bar for Multi-Comanda Payment */}
+                            {selectedOrderIdsForMultiPay.length > 0 && (
+                                <div className="p-4 bg-gradient-to-r from-orange-600 to-amber-600 text-white rounded-2xl shadow-xl flex items-center justify-between animate-in slide-in-from-bottom-2">
+                                    <div>
+                                        <p className="text-[11px] font-black uppercase tracking-wider text-orange-100">
+                                            {selectedOrderIdsForMultiPay.length} {selectedOrderIdsForMultiPay.length === 1 ? 'comanda selecionada' : 'comandas selecionadas'}
+                                        </p>
+                                        <p className="text-2xl font-black">
+                                            Total: R$ {totalMultiPayBalance.toFixed(2)}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
                                         <button
-                                            key={order.id}
-                                            onClick={() => setSelectedTableOrder(order)}
-                                            className="flex items-center justify-between p-4 bg-white border-2 border-gray-100 rounded-2xl hover:border-orange-500 hover:shadow-md transition-all group"
+                                            type="button"
+                                            onClick={() => setSelectedOrderIdsForMultiPay([])}
+                                            className="px-3 py-2 bg-white/20 hover:bg-white/30 rounded-xl text-xs font-bold text-white transition-colors"
                                         >
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center text-orange-600 font-black text-lg group-hover:bg-orange-600 group-hover:text-white transition-colors">
-                                                    {order.comandaNumber || '?'}
-                                                </div>
-                                                <div className="text-left">
-                                                    <h4 className="font-black text-gray-800 uppercase text-sm">{order.customerName}</h4>
-                                                    <p className="text-xs text-gray-400 font-bold">#{String(order.order_number || '').padStart(3, '0')}</p>
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="font-black text-gray-800">R$ {order.totalPrice.toFixed(2)}</p>
-                                                {order.items.some(i => !i.served) && (
-                                                    <span className="text-[9px] font-black text-red-500 uppercase flex items-center gap-1 justify-end">
-                                                        <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></span>
-                                                        Itens pendentes
-                                                    </span>
-                                                )}
-                                            </div>
+                                            Limpar
                                         </button>
-                                    ))}
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsMultiPayModalOpen(true)}
+                                            className="px-4 py-2.5 bg-green-500 hover:bg-green-600 active:scale-95 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg flex items-center gap-1.5 transition-all"
+                                        >
+                                            <span>💳</span>
+                                            Pagar Juntas
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -1264,6 +1380,22 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                     onSave={(updated) => setSelectedTableOrder(updated)}
                     restaurantId={currentUser.restaurantId!}
                     restaurantName={currentUser.name}
+                />
+            )}
+
+            {isMultiPayModalOpen && selectedOrdersForMultiPay.length > 0 && (
+                <MultiComandaPaymentModal
+                    isOpen={isMultiPayModalOpen}
+                    onClose={() => setIsMultiPayModalOpen(false)}
+                    orders={selectedOrdersForMultiPay}
+                    tableName={selectedTable}
+                    restaurant={restaurant}
+                    onSuccess={async () => {
+                        setSelectedOrderIdsForMultiPay([]);
+                        if (selectedTable) {
+                            await handleOpenTable(selectedTable);
+                        }
+                    }}
                 />
             )}
             

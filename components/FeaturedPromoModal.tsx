@@ -57,6 +57,7 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
             description: promo.description,
             originalPrice: promo.originalPrice,
             promotionName: promo.title,
+            includeFreeDelivery: Boolean(promo.includeFreeDelivery),
             notes: notes ? `Opção escolhida: ${selectedItem?.name || 'Padrão'} | Obs: ${notes}` : (selectedItem ? `Opção escolhida: ${selectedItem.name}` : undefined)
         };
 

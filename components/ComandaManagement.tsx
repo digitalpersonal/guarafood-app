@@ -7,6 +7,7 @@ import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
 import Spinner from './Spinner';
 import AddItemToOrderModal from './AddItemToOrderModal';
+import MultiComandaPaymentModal from './MultiComandaPaymentModal';
 import type { Order, CartItem, PaymentEntry, StaffMember, Restaurant, Mensalista, MenuItem, Combo } from '../types';
 
 const ReceiptIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -94,7 +95,37 @@ const ComandaManagement: React.FC<ComandaManagementProps> = ({ orders, currentSt
         return map;
     }, [orders]);
 
+    // Multi-comanda payment states
+    const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+    const [selectedComandaNumsForMultiPay, setSelectedComandaNumsForMultiPay] = useState<string[]>([]);
+    const [isMultiPayModalOpen, setIsMultiPayModalOpen] = useState(false);
+
+    const selectedOrdersForMultiPay = useMemo(() => {
+        return selectedComandaNumsForMultiPay
+            .map(num => activeComandasMap[num])
+            .filter((order): order is Order => !!order);
+    }, [selectedComandaNumsForMultiPay, activeComandasMap]);
+
+    const totalMultiPayBalance = useMemo(() => {
+        return selectedOrdersForMultiPay.reduce((acc, order) => {
+            const history = order.paymentHistory || [];
+            const paid = history.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+            return acc + Math.max(0, Number(order.totalPrice || 0) - paid);
+        }, 0);
+    }, [selectedOrdersForMultiPay]);
+
+    const toggleComandaMultiSelect = (num: string) => {
+        if (!activeComandasMap[num]) return; // Only active comandas can be selected
+        setSelectedComandaNumsForMultiPay(prev =>
+            prev.includes(num) ? prev.filter(n => n !== num) : [...prev, num]
+        );
+    };
+
     const handleComandaClick = (num: string) => {
+        if (isMultiSelectMode) {
+            toggleComandaMultiSelect(num);
+            return;
+        }
         setSelectedComandaNum(num);
         const existingOrder = activeComandasMap[num];
         if (existingOrder) {
@@ -400,13 +431,38 @@ const ComandaManagement: React.FC<ComandaManagementProps> = ({ orders, currentSt
 
     return (
         <div className="p-4 max-w-7xl mx-auto space-y-6 pb-32">
-            <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-4 rounded-2xl shadow-sm border">
                 <div>
                     <h2 className="text-xl sm:text-2xl font-black text-gray-800 flex items-center gap-2">
                         <ReceiptIcon className="w-7 h-7 text-orange-600" />
                         Controle de Comandas (1 a 200)
                     </h2>
-                    <p className="text-xs text-gray-400 font-bold mt-0.5">Selecione uma comanda para gerenciar pedidos, peso e pagamentos</p>
+                    <p className="text-xs text-gray-400 font-bold mt-0.5">
+                        {isMultiSelectMode 
+                            ? 'Clique nas comandas abertas para selecioná-las e pagar juntas' 
+                            : 'Selecione uma comanda para gerenciar pedidos, peso e pagamentos'}
+                    </p>
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (isMultiSelectMode) {
+                                setIsMultiSelectMode(false);
+                                setSelectedComandaNumsForMultiPay([]);
+                            } else {
+                                setIsMultiSelectMode(true);
+                            }
+                        }}
+                        className={`w-full sm:w-auto px-4 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-sm ${
+                            isMultiSelectMode
+                                ? 'bg-orange-600 text-white shadow-orange-200'
+                                : 'bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200'
+                        }`}
+                    >
+                        <span>💳</span>
+                        <span>{isMultiSelectMode ? 'Sair da Seleção Múltipla' : 'Pagar Múltiplas Comandas'}</span>
+                    </button>
                 </div>
             </div>
 
@@ -415,26 +471,38 @@ const ComandaManagement: React.FC<ComandaManagementProps> = ({ orders, currentSt
                 {comandaNumbers.map(num => {
                     const order = activeComandasMap[num];
                     const isOpen = !!order;
+                    const isSelected = selectedComandaNumsForMultiPay.includes(num);
                     const hasUnservedItems = isOpen && order.items && order.items.some(i => !i.served);
 
                     let btnStyle = 'bg-white border-gray-200 text-gray-600 hover:border-orange-300';
                     if (isOpen) {
-                        if (hasUnservedItems) {
+                        if (isSelected) {
+                            btnStyle = 'bg-green-600 border-green-700 text-white shadow-lg ring-4 ring-green-300 scale-105 z-10';
+                        } else if (hasUnservedItems) {
                             btnStyle = 'bg-red-500 border-red-600 text-white shadow-md shadow-red-100';
                         } else {
                             btnStyle = 'bg-orange-600 border-orange-700 text-white shadow-md shadow-orange-100';
                         }
+                    } else if (isMultiSelectMode) {
+                        btnStyle = 'bg-gray-50 border-gray-100 text-gray-300 opacity-30 cursor-not-allowed';
                     }
 
                     return (
                         <button
                             key={num}
                             onClick={() => handleComandaClick(num)}
-                            className={`aspect-square rounded-xl flex flex-col items-center justify-between p-1.5 border transition-all active:scale-95 text-center ${btnStyle}`}
+                            disabled={isMultiSelectMode && !isOpen}
+                            className={`aspect-square rounded-xl flex flex-col items-center justify-between p-1.5 border transition-all active:scale-95 text-center relative ${btnStyle}`}
                         >
                             <div className="flex items-center justify-between w-full">
                                 <span className="text-[9px] font-black uppercase tracking-tighter opacity-70">Cmd</span>
-                                {hasUnservedItems && <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" title="Itens pendentes a servir"></span>}
+                                {isSelected ? (
+                                    <span className="w-3.5 h-3.5 bg-white text-green-700 rounded-full flex items-center justify-center font-black text-[9px]">
+                                        ✓
+                                    </span>
+                                ) : hasUnservedItems ? (
+                                    <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" title="Itens pendentes a servir"></span>
+                                ) : null}
                             </div>
                             <span className="text-lg sm:text-xl font-black leading-none">{num}</span>
                             
@@ -765,6 +833,51 @@ const ComandaManagement: React.FC<ComandaManagementProps> = ({ orders, currentSt
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Floating / Sticky Bar for Multi-Comanda Payment */}
+            {selectedOrdersForMultiPay.length > 0 && (
+                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[95%] max-w-xl p-4 bg-gradient-to-r from-orange-600 to-amber-600 text-white rounded-3xl shadow-2xl flex items-center justify-between border-2 border-white/20 animate-in slide-in-from-bottom-5">
+                    <div>
+                        <p className="text-xs font-black uppercase tracking-wider text-orange-100">
+                            {selectedOrdersForMultiPay.length} {selectedOrdersForMultiPay.length === 1 ? 'comanda selecionada' : 'comandas selecionadas'}
+                        </p>
+                        <p className="text-2xl font-black">
+                            Total: R$ {totalMultiPayBalance.toFixed(2)}
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setSelectedComandaNumsForMultiPay([])}
+                            className="px-3 py-2 bg-white/20 hover:bg-white/30 rounded-xl text-xs font-bold text-white transition-colors"
+                        >
+                            Limpar
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setIsMultiPayModalOpen(true)}
+                            className="px-5 py-2.5 bg-green-500 hover:bg-green-600 active:scale-95 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg flex items-center gap-1.5 transition-all"
+                        >
+                            <span>💳</span>
+                            Pagar Juntas
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Pagamento Múltiplo */}
+            {isMultiPayModalOpen && selectedOrdersForMultiPay.length > 0 && (
+                <MultiComandaPaymentModal
+                    isOpen={isMultiPayModalOpen}
+                    onClose={() => setIsMultiPayModalOpen(false)}
+                    orders={selectedOrdersForMultiPay}
+                    restaurant={restaurant}
+                    onSuccess={() => {
+                        setSelectedComandaNumsForMultiPay([]);
+                        setIsMultiSelectMode(false);
+                    }}
+                />
             )}
 
             {/* Modal para Adicionar Item do Cardápio */}

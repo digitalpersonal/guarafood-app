@@ -267,6 +267,7 @@ export interface CartItem {
   description: string;
   originalPrice?: number;
   promotionName?: string;
+  includeFreeDelivery?: boolean; // Se true, item de promoção em destaque concede frete grátis
   served?: boolean; // NEW: Flag to indicate if the item has been served to the table
   itemStatus?: ItemPreparationStatus; // NEW: Fluxo em tempo real: 'Pendente' | 'Em Preparo' | 'Pronto' | 'Entregue'
   halves?: { name: string; price: number }[]; // For half-and-half pizzas

@@ -44,13 +44,18 @@ interface OrderDetailsModalProps {
     order: Order; 
     onClose: () => void; 
     printerWidth?: number; // Keep printerWidth for printable order
+    restaurant?: any;
+    onPrint?: (order: Order, mode?: 'full' | 'kitchen' | 'admin') => void;
 }
 
-const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, printerWidth = 80 }) => {
+const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, printerWidth = 80, restaurant, onPrint }) => {
     const { addToast } = useNotification();
     const { text, color } = statusConfig[order.status];
     const [isEditing, setIsEditing] = useState(false); // State to control editing modal
     const [currentOrder, setCurrentOrder] = useState<Order>(order); // Use internal state for order
+    const [printMode, setPrintMode] = useState<'full' | 'kitchen'>('full');
+
+    const hasKitchenPrinter = Boolean(restaurant?.printers?.some((p: any) => p.type === 'kitchen' && p.active !== false));
 
     useEffect(() => {
         setCurrentOrder(order); // Update internal state if parent order changes
@@ -68,8 +73,22 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
         };
     }, [onClose]);
 
-    const handlePrint = () => {
-        window.print();
+    const handlePrintFull = () => {
+        if (onPrint) {
+            onPrint(currentOrder, 'full');
+        } else {
+            setPrintMode('full');
+            setTimeout(() => window.print(), 100);
+        }
+    };
+
+    const handlePrintKitchen = () => {
+        if (onPrint) {
+            onPrint(currentOrder, 'kitchen');
+        } else {
+            setPrintMode('kitchen');
+            setTimeout(() => window.print(), 100);
+        }
     };
 
     const handleOrderUpdated = (updatedOrder: Order) => {
@@ -267,17 +286,29 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                             )}
                             <button
                                 type="button"
-                                onClick={handlePrint}
-                                className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gray-600 text-white font-bold hover:bg-gray-700 transition-all active:scale-95 shadow-md"
+                                onClick={handlePrintFull}
+                                className="flex items-center space-x-1.5 px-3 sm:px-4 py-2 rounded-lg bg-gray-700 text-white font-bold hover:bg-gray-800 transition-all active:scale-95 shadow-md text-xs sm:text-sm"
+                                title="Imprimir cupom completo (Caixa/Entrega)"
                             >
-                                <PrintIcon className="w-5 h-5"/>
-                                <span className="hidden sm:inline">Imprimir</span>
+                                <PrintIcon className="w-4 h-4 sm:w-5 sm:h-5"/>
+                                <span>{hasKitchenPrinter ? 'Via Caixa' : 'Imprimir'}</span>
                             </button>
+                            {hasKitchenPrinter && (
+                                <button
+                                    type="button"
+                                    onClick={handlePrintKitchen}
+                                    className="flex items-center space-x-1.5 px-3 sm:px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold transition-all active:scale-95 shadow-md text-xs sm:text-sm"
+                                    title="Enviar/Imprimir comanda para a Cozinha"
+                                >
+                                    <span>🍳</span>
+                                    <span>Imprimir Cozinha</span>
+                                </button>
+                            )}
                         </div>
                         <button
                             type="button"
                             onClick={onClose}
-                            className="px-6 py-2 rounded-lg bg-red-600 text-white font-bold hover:bg-red-700 transition-all active:scale-95 shadow-md"
+                            className="px-5 sm:px-6 py-2 rounded-lg bg-red-600 text-white font-bold hover:bg-red-700 transition-all active:scale-95 shadow-md text-xs sm:text-sm"
                         >
                             Fechar
                         </button>
@@ -286,7 +317,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
             </div>
             <div className="hidden print:block">
                 <div id="printable-order">
-                    <PrintableOrder order={currentOrder} printerWidth={printerWidth} /> 
+                    <PrintableOrder order={currentOrder} printerWidth={printerWidth} printMode={printMode} /> 
                 </div>
             </div>
 

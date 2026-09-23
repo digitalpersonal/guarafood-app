@@ -22,7 +22,7 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
         originalPrice: 0,
         imageUrl: '',
         itemIds: [],
-        includeFreeDelivery: true,
+        includeFreeDelivery: false,
         active: true
     });
     const [isUploading, setIsUploading] = useState(false);
@@ -57,7 +57,7 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
             originalPrice: 0,
             imageUrl: '',
             itemIds: [],
-            includeFreeDelivery: true,
+            includeFreeDelivery: false,
             active: true
         });
         setIsEditing(true);
@@ -351,7 +351,7 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
                                 <label className="flex items-center gap-2 cursor-pointer">
                                     <input 
                                         type="checkbox" 
-                                        checked={currentPromo.includeFreeDelivery ?? true} 
+                                        checked={currentPromo.includeFreeDelivery === true} 
                                         onChange={e => setCurrentPromo(prev => ({ ...prev, includeFreeDelivery: e.target.checked }))}
                                         className="w-4 h-4 text-orange-600 rounded focus:ring-orange-500"
                                     />
