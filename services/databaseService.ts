@@ -958,7 +958,7 @@ const normalizeFeaturedPromo = (data: any): FeaturedPromo => ({
     originalPrice: data.original_price ? Number(data.original_price) : undefined,
     imageUrl: data.image_url,
     itemIds: data.item_ids || [],
-    includeFreeDelivery: data.include_free_delivery ?? true,
+    includeFreeDelivery: data.include_free_delivery === true,
     active: data.active !== false
 });
 
