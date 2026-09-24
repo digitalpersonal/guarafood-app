@@ -321,7 +321,11 @@ const LoyaltyProgramSettings: React.FC<{
     );
 };
 
-const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () => void }> = ({ restaurantIdOverride, onBack }) => {
+const RestaurantSettings: React.FC<{ 
+    restaurantIdOverride?: number; 
+    onBack?: () => void;
+    onNavigateToPrinters?: () => void;
+}> = ({ restaurantIdOverride, onBack, onNavigateToPrinters }) => {
     const { currentUser } = useAuth();
     const { addToast, confirm } = useNotification();
     const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
@@ -333,6 +337,7 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
     const [bannerImageUrl, setBannerImageUrl] = useState('');
     const [hasMensalistas, setHasMensalistas] = useState(false);
     const [hasKiloService, setHasKiloService] = useState(false);
+    const [showPrintersInline, setShowPrintersInline] = useState(false);
     const [pricePerKilo, setPricePerKilo] = useState(0);
     const [disableDelivery, setDisableDelivery] = useState(false);
     const [enableFiscal, setEnableFiscal] = useState(false);
@@ -576,30 +581,64 @@ const RestaurantSettings: React.FC<{ restaurantIdOverride?: number, onBack?: () 
                     </div>
                 </div>
 
-                {/* --- CONFIGURAÇÃO DE MÚLTIPLAS IMPRESSORAS E ROTEAMENTO DE CATEGORIAS --- */}
+                {/* --- GERENCIAMENTO DE IMPRESSORAS (CENTRALIZADO NA ABA EXCLUSIVA) --- */}
                 {restaurant && (
-                    <div className="mb-10 space-y-6">
-                        <PrinterManagement 
-                            restaurant={restaurant} 
-                            onUpdateRestaurant={(updated) => setRestaurant(updated)} 
-                        />
-
-                        {/* Guia Rápido Chrome Kiosk */}
-                        <div className="p-4 bg-orange-50/60 rounded-2xl border-2 border-orange-100 text-xs text-gray-700 space-y-2">
-                            <div className="flex items-center gap-1.5 font-black text-orange-900">
-                                <span>⚡</span>
-                                <span>Como ativar a Impressão Silenciosa e 100% Automática em cada Terminal:</span>
+                    <div className="mb-10 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50/40 rounded-2xl border-2 border-orange-200 p-6 shadow-xs">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="flex items-start gap-3.5">
+                                <div className="w-12 h-12 rounded-2xl bg-white border border-orange-200 flex items-center justify-center text-2xl shadow-xs shrink-0">
+                                    🖨️
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-black text-gray-900 text-base">
+                                            Gerenciamento de Impressoras Térmicas
+                                        </h3>
+                                        <span className="px-2 py-0.5 text-[9px] font-black uppercase bg-orange-200 text-orange-900 rounded-md">
+                                            Centralizado
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-gray-600 mt-1 max-w-2xl leading-relaxed">
+                                        Para evitar confusão e duplicidade de telas, o cadastro de impressoras por setor (Caixa, Cozinha, Bar), largura de papel (58mm/80mm), testes e roteamento por categoria ficam centralizados na aba exclusiva <strong>🖨️ Impressoras</strong> no menu superior.
+                                    </p>
+                                    <div className="mt-2 flex items-center gap-3 text-xs text-gray-500 flex-wrap">
+                                        <span>Status: <strong>{restaurant.printers?.length || 0} impressora(s) cadastrada(s)</strong></span>
+                                        <span>•</span>
+                                        <span>Impressora padrão: <strong>{restaurant.printers?.find(p => p.isDefault)?.name || `Térmica (${restaurant.printerWidth || 80}mm)`}</strong></span>
+                                    </div>
+                                </div>
                             </div>
-                            <p className="text-[11px] text-gray-600 leading-relaxed">
-                                No atalho do Google Chrome na Área de Trabalho do Windows de cada computador conectado à impressora (Caixa, Cozinha ou Bar), clique com o botão direito &rarr; <strong>Propriedades</strong> &rarr; no campo <strong>Destino</strong> adicione ao final:
-                            </p>
-                            <code className="block p-2 bg-gray-900 text-orange-400 rounded-lg font-mono text-[11px]">
-                                --kiosk-printing
-                            </code>
-                            <p className="text-[11px] text-gray-500">
-                                Assim, todas as comandas e cupons saem instantaneamente sem abrir janelas de diálogo ou confirmação. Mais detalhes na aba <strong>Ajuda</strong>.
-                            </p>
+
+                            <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
+                                {onNavigateToPrinters ? (
+                                    <button
+                                        type="button"
+                                        onClick={onNavigateToPrinters}
+                                        className="px-5 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-2"
+                                    >
+                                        <span>Ir para Aba Impressoras</span>
+                                        <span>&rarr;</span>
+                                    </button>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPrintersInline(!showPrintersInline)}
+                                        className="px-4 py-2.5 bg-gray-800 hover:bg-black text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-all"
+                                    >
+                                        {showPrintersInline ? 'Ocultar Impressoras' : 'Gerenciar Impressoras Aqui'}
+                                    </button>
+                                )}
+                            </div>
                         </div>
+
+                        {showPrintersInline && (
+                            <div className="mt-6 pt-6 border-t border-orange-200">
+                                <PrinterManagement 
+                                    restaurant={restaurant} 
+                                    onUpdateRestaurant={(updated) => setRestaurant(updated)} 
+                                />
+                            </div>
+                        )}
                     </div>
                 )}
 

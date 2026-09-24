@@ -349,8 +349,8 @@ Regras:
   // ==========================================
   const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || "https://app.api.guarafood.com.br";
   const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "token_secreto_guara_2026";
-  const TYPEBOT_URL = process.env.TYPEBOT_URL || "https://typebot.co/guarafood";
-  const TYPEBOT_NAME = process.env.TYPEBOT_NAME || "GuaraFood Oficial";
+  const TYPEBOT_URL = process.env.TYPEBOT_URL || "https://typebot.co";
+  const TYPEBOT_NAME = process.env.TYPEBOT_NAME || "guarafood";
 
   // Obter status da instância do restaurante
   app.get("/api/whatsapp/status/:restaurantId", async (req, res) => {

@@ -240,8 +240,15 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
         }
 
         try {
-            const updatedList = printers.filter(p => p.id !== printer.id);
-            const updatedRestaurant = await updateRestaurant(restaurant.id, { printers: updatedList });
+            let updatedList = printers.filter(p => p.id !== printer.id);
+            if (printer.isDefault && updatedList.length > 0) {
+                updatedList = updatedList.map((p, idx) => idx === 0 ? { ...p, isDefault: true } : p);
+            }
+            const fallbackWidth = updatedList[0]?.width || restaurant.printerWidth || 80;
+            const updatedRestaurant = await updateRestaurant(restaurant.id, { 
+                printers: updatedList,
+                printerWidth: fallbackWidth
+            });
             setPrinters(updatedList);
             if (onUpdateRestaurant && updatedRestaurant) {
                 onUpdateRestaurant(updatedRestaurant);
@@ -422,6 +429,140 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
         });
     };
 
+    // Disparar teste genérico (para validação imediata mesmo sem configurar impressoras)
+    const handleTestGenericPrint = (width = 80) => {
+        const syntheticOrder: Order = {
+            id: `TEST-${Date.now().toString().slice(-4)}`,
+            order_number: 999,
+            timestamp: new Date().toISOString(),
+            status: 'Novo Pedido',
+            customerName: 'TESTE DE COMUNICAÇÃO',
+            customerPhone: '(35) 99999-9999',
+            customerAddress: {
+                zipCode: '37810-000',
+                street: 'Terminal de Caixa',
+                number: '01',
+                neighborhood: 'BALCÃO / SALÃO'
+            },
+            tableNumber: 'TESTE',
+            items: [
+                {
+                    id: 'test-gen-1',
+                    name: 'Teste de Impressão Térmica',
+                    price: 15.0,
+                    basePrice: 15.0,
+                    imageUrl: '',
+                    quantity: 1,
+                    description: 'Validação da comunicação com a impressora',
+                    notes: 'COMUNICAÇÃO OK • ALINHAMENTO CORRETO'
+                }
+            ],
+            totalPrice: 15.0,
+            subtotal: 15.0,
+            restaurantId: restaurant.id,
+            restaurantName: restaurant.name,
+            restaurantAddress: restaurant.address || 'Guaranésia - MG',
+            restaurantPhone: restaurant.phone || '',
+            paymentMethod: 'Teste do Sistema'
+        };
+
+        setTestPrintJob({
+            order: syntheticOrder,
+            printerWidth: width,
+            mode: 'full'
+        });
+
+        addToast({ 
+            message: `Disparando teste de impressão térmico (${width}mm)...`, 
+            type: 'info' 
+        });
+    };
+
+    // Disparar teste na impressora selecionada para este computador
+    const handleTestCurrentStation = () => {
+        if (currentStationId !== 'all') {
+            const targetPrinter = printers.find(p => p.id === currentStationId);
+            if (targetPrinter) {
+                handleTestPrint(targetPrinter);
+                return;
+            }
+        }
+        // Se a estação for 'all' (geral), testa com a impressora padrão ou primeira cadastrada
+        const defaultPrinter = printers.find(p => p.isDefault) || printers[0];
+        if (defaultPrinter) {
+            handleTestPrint(defaultPrinter);
+        } else {
+            handleTestGenericPrint(restaurant.printerWidth || 80);
+        }
+    };
+
+    const [isUpdatingDefault, setIsUpdatingDefault] = useState(false);
+
+    // Identifica a impressora padrão atual (ou a primeira, ou genérica)
+    const currentDefaultPrinter = useMemo(() => {
+        return printers.find(p => p.isDefault) || (printers.length > 0 ? printers[0] : null);
+    }, [printers]);
+
+    const currentDefaultPrinterId = useMemo(() => {
+        if (currentDefaultPrinter) {
+            return currentDefaultPrinter.id;
+        }
+        return restaurant.printerWidth === 58 ? 'generic-58' : 'generic-80';
+    }, [currentDefaultPrinter, restaurant.printerWidth]);
+
+    // Ação para definir impressora padrão do sistema (utilizada automaticamente)
+    const handleSetDefaultPrinter = async (targetId: string) => {
+        try {
+            setIsUpdatingDefault(true);
+
+            if (targetId.startsWith('generic-')) {
+                const width = targetId === 'generic-58' ? 58 : 80;
+                const updatedRestaurant = await updateRestaurant(restaurant.id, { printerWidth: width });
+                localStorage.setItem('guarafood-printer-width', width.toString());
+                if (onUpdateRestaurant && updatedRestaurant) {
+                    onUpdateRestaurant(updatedRestaurant);
+                }
+                addToast({ 
+                    message: `Largura padrão configurada para ${width}mm.`, 
+                    type: 'success' 
+                });
+                return;
+            }
+
+            const targetPrinter = printers.find(p => p.id === targetId);
+            if (!targetPrinter) return;
+
+            const updatedList: PrinterConfig[] = printers.map(p => ({
+                ...p,
+                isDefault: p.id === targetId
+            }));
+
+            const targetWidth = targetPrinter.width || restaurant.printerWidth || 80;
+            const updatedRestaurant = await updateRestaurant(restaurant.id, { 
+                printers: updatedList,
+                printerWidth: targetWidth
+            });
+
+            setPrinters(updatedList);
+            localStorage.setItem('guarafood-default-printer-id', targetId);
+            localStorage.setItem('guarafood-printer-width', targetWidth.toString());
+
+            if (onUpdateRestaurant && updatedRestaurant) {
+                onUpdateRestaurant(updatedRestaurant);
+            }
+
+            addToast({ 
+                message: `Impressora "${targetPrinter.name}" definida como padrão para novos pedidos!`, 
+                type: 'success' 
+            });
+        } catch (err: any) {
+            console.error("Erro ao definir impressora padrão:", err);
+            addToast({ message: `Erro ao definir impressora padrão: ${err.message}`, type: 'error' });
+        } finally {
+            setIsUpdatingDefault(false);
+        }
+    };
+
     // Categorias filtradas na busca do modal
     const filteredCategories = useMemo(() => {
         if (!categorySearch.trim()) return categories;
@@ -469,6 +610,14 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                            type="button"
+                            onClick={handleTestCurrentStation}
+                            className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1.5"
+                            title="Dispara um cupom de teste agora para validar a impressora selecionada no seu computador"
+                        >
+                            <span>🖨️</span> Teste de Impressão
+                        </button>
                         {printers.length === 0 && (
                             <button
                                 type="button"
@@ -489,36 +638,134 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                     </div>
                 </div>
 
-                {/* SELETOR DE ESTAÇÃO LOCAL (QUAL IMPRESSORA ESTÁ FISICAMENTE CONECTADA NESTE COMPUTADOR) */}
-                <div className="mt-6 pt-5 border-t border-gray-100 bg-orange-50/50 p-4 rounded-xl border border-orange-100">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                {/* PAINEL DE CONTROLE: SELETOR DE IMPRESSORA PADRÃO & ESTAÇÃO LOCAL */}
+                <div className="mt-6 pt-6 border-t border-gray-100 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* 1. SELECIONAR IMPRESSORA PADRÃO DO SISTEMA */}
+                    <div className="bg-gradient-to-br from-amber-50/90 via-orange-50/40 to-amber-50/90 p-4 sm:p-5 rounded-2xl border-2 border-amber-300 shadow-2xs flex flex-col justify-between">
                         <div>
-                            <p className="font-black text-xs uppercase text-orange-950 flex items-center gap-1.5">
-                                <span>🖥️</span> Estação Ativa Deste Computador / Terminal:
-                            </p>
-                            <p className="text-[11px] text-orange-800/80 mt-0.5">
-                                Selecione qual impressora física está conectada por cabo USB ou Rede nesta máquina:
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xl">🌟</span>
+                                    <h4 className="font-black text-sm uppercase text-amber-950 tracking-tight">
+                                        Selecionar Impressora Padrão
+                                    </h4>
+                                </div>
+                                <span className="px-2 py-0.5 text-[9px] font-black uppercase bg-amber-200 text-amber-900 rounded-md">
+                                    Automático
+                                </span>
+                            </div>
+                            <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                                Define o dispositivo utilizado <strong>automaticamente</strong> para novos pedidos e cupons, sem precisar de seleção manual a cada impressão.
                             </p>
                         </div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <select
-                                value={currentStationId}
-                                onChange={e => handleChangeStation(e.target.value)}
-                                className="px-3 py-2 bg-white border-2 border-orange-300 rounded-xl font-bold text-xs text-gray-900 focus:ring-2 focus:ring-orange-500 outline-none shadow-xs"
-                            >
-                                <option value="all">🌟 Estação Geral (Imprime Todos os Setores)</option>
-                                {printers.map(p => (
-                                    <option key={p.id} value={p.id}>
-                                        {p.type === 'kitchen' ? '🍳' : p.type === 'bar' ? '🍹' : p.type === 'cashier' ? '🛎️' : '🖨️'} {p.name} (ID: {p.id})
-                                    </option>
-                                ))}
-                            </select>
-                            <span className="text-[11px] font-bold px-2.5 py-1.5 bg-white border border-orange-200 text-orange-900 rounded-lg shadow-2xs">
-                                {currentStationId === 'all' 
-                                    ? 'Imprime Tudo' 
-                                    : `Filtro: ${printers.find(p => p.id === currentStationId)?.name || currentStationId}`
-                                }
-                            </span>
+
+                        <div className="mt-4 pt-3 border-t border-amber-200/70">
+                            <label htmlFor="select-default-printer" className="block text-[10px] font-black uppercase tracking-wider text-amber-900 mb-1.5 flex items-center justify-between">
+                                <span>Dispositivo Padrão dos Pedidos:</span>
+                                {isUpdatingDefault && <span className="text-[10px] text-amber-700 animate-pulse font-bold">Salvando...</span>}
+                            </label>
+                            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                                <select
+                                    id="select-default-printer"
+                                    value={currentDefaultPrinterId}
+                                    onChange={(e) => handleSetDefaultPrinter(e.target.value)}
+                                    disabled={isUpdatingDefault}
+                                    className="flex-1 min-w-[200px] px-3 py-2.5 bg-white border-2 border-amber-300 rounded-xl font-bold text-xs text-gray-900 focus:ring-2 focus:ring-amber-500 outline-none shadow-2xs disabled:opacity-50"
+                                >
+                                    {printers.length > 0 ? (
+                                        printers.map(p => (
+                                            <option key={p.id} value={p.id}>
+                                                {p.type === 'kitchen' ? '🍳' : p.type === 'bar' ? '🍹' : p.type === 'cashier' ? '🛎️' : '🖨️'} {p.name} ({p.width}mm) {p.isDefault ? '★ [Padrão Atual]' : ''}
+                                            </option>
+                                        ))
+                                    ) : (
+                                        <>
+                                            <option value="generic-80">🖨️ Impressora Térmica do Sistema (80mm - Padrão)</option>
+                                            <option value="generic-58">🖨️ Impressora Térmica Pequena (58mm)</option>
+                                        </>
+                                    )}
+                                </select>
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (currentDefaultPrinter) {
+                                            handleTestPrint(currentDefaultPrinter);
+                                        } else {
+                                            handleTestGenericPrint(restaurant.printerWidth || 80);
+                                        }
+                                    }}
+                                    className="px-3.5 py-2.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-xs transition-all flex items-center gap-1.5 shrink-0"
+                                    title="Disparar cupom de teste na impressora padrão"
+                                >
+                                    <span>🖨️</span>
+                                    <span>Testar Padrão</span>
+                                </button>
+                            </div>
+
+                            <div className="mt-2.5 flex items-center gap-2 text-[11px] text-amber-900 font-medium">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                                <span className="truncate">
+                                    Dispositivo ativo: <strong>{currentDefaultPrinter ? currentDefaultPrinter.name : `Térmica (${restaurant.printerWidth || 80}mm)`}</strong> ({currentDefaultPrinter?.width || restaurant.printerWidth || 80}mm)
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 2. ESTAÇÃO ATIVA DESTE COMPUTADOR / TERMINAL */}
+                    <div className="bg-gradient-to-br from-orange-50/70 to-orange-100/40 p-4 sm:p-5 rounded-2xl border-2 border-orange-200 shadow-2xs flex flex-col justify-between">
+                        <div>
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xl">🖥️</span>
+                                    <h4 className="font-black text-sm uppercase text-gray-900 tracking-tight">
+                                        Estação Deste Terminal
+                                    </h4>
+                                </div>
+                                <span className="px-2 py-0.5 text-[9px] font-black uppercase bg-orange-200 text-orange-900 rounded-md">
+                                    Terminal Local
+                                </span>
+                            </div>
+                            <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                                Selecione qual impressora física está conectada por cabo USB ou Rede nesta máquina específica:
+                            </p>
+                        </div>
+
+                        <div className="mt-4 pt-3 border-t border-orange-200/70">
+                            <label className="block text-[10px] font-black uppercase tracking-wider text-orange-950 mb-1.5">
+                                Filtrar Impressão Por Este Terminal:
+                            </label>
+                            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                                <select
+                                    value={currentStationId}
+                                    onChange={e => handleChangeStation(e.target.value)}
+                                    className="flex-1 min-w-[200px] px-3 py-2.5 bg-white border-2 border-orange-300 rounded-xl font-bold text-xs text-gray-900 focus:ring-2 focus:ring-orange-500 outline-none shadow-2xs"
+                                >
+                                    <option value="all">🌟 Estação Geral (Imprime Todos os Setores)</option>
+                                    {printers.map(p => (
+                                        <option key={p.id} value={p.id}>
+                                            {p.type === 'kitchen' ? '🍳' : p.type === 'bar' ? '🍹' : p.type === 'cashier' ? '🛎️' : '🖨️'} {p.name} (ID: {p.id})
+                                        </option>
+                                    ))}
+                                </select>
+
+                                <button
+                                    type="button"
+                                    onClick={handleTestCurrentStation}
+                                    className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-xs transition-all active:scale-95 flex items-center gap-1.5 shrink-0"
+                                    title="Envia um cupom de teste agora para a impressora selecionada neste computador"
+                                >
+                                    <span>🖨️</span>
+                                    <span>Testar Terminal</span>
+                                </button>
+                            </div>
+
+                            <div className="mt-2.5 flex items-center gap-2 text-[11px] text-orange-900 font-medium">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                                <span className="truncate">
+                                    Modo: <strong>{currentStationId === 'all' ? 'Imprime todos os setores' : `Filtrado para ${printers.find(p => p.id === currentStationId)?.name || currentStationId}`}</strong>
+                                </span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -536,18 +783,26 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                             Cadastre as impressoras do seu estabelecimento para enviar lanches para a cozinha, bebidas para o bar e contas para o caixa.
                         </p>
                     </div>
-                    <div className="flex items-center justify-center gap-3 pt-2">
+                    <div className="flex items-center justify-center gap-3 pt-2 flex-wrap">
+                        <button
+                            type="button"
+                            onClick={() => handleTestGenericPrint(restaurant.printerWidth || 80)}
+                            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-sm flex items-center gap-1.5 active:scale-95"
+                            title="Testa a comunicação com a impressora térmica física antes mesmo de configurar setores"
+                        >
+                            <span>🖨️</span> Teste de Impressão Rápido
+                        </button>
                         <button
                             type="button"
                             onClick={handleLoadPresetAll}
-                            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-sm"
+                            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-sm active:scale-95"
                         >
                             ⚡ Carregar Caixa, Cozinha e Bar
                         </button>
                         <button
                             type="button"
                             onClick={() => handleOpenAdd()}
-                            className="px-4 py-2.5 bg-gray-800 hover:bg-black text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-all"
+                            className="px-4 py-2.5 bg-gray-800 hover:bg-black text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-all active:scale-95"
                         >
                             ➕ Cadastrar Manualmente
                         </button>
@@ -585,8 +840,8 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                                                     {printer.width}mm
                                                 </span>
                                                 {printer.isDefault && (
-                                                    <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-blue-100 text-blue-800 rounded-md">
-                                                        Padrão
+                                                    <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-md flex items-center gap-1 shadow-2xs">
+                                                        <span>⭐</span> Padrão
                                                     </span>
                                                 )}
                                                 {isCurrentStation && (
@@ -657,13 +912,24 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                                     <button
                                         type="button"
                                         onClick={() => handleTestPrint(printer)}
-                                        className="px-2.5 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-900 rounded-lg text-xs font-bold transition-all flex items-center gap-1 active:scale-95"
-                                        title="Imprime um cupom de teste nesta configuração"
+                                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 active:scale-95 shadow-2xs"
+                                        title={`Disparar teste de impressão direto na impressora "${printer.name}"`}
                                     >
-                                        <span>🖨️</span> Testar
+                                        <span>🖨️</span> Testar Impressão
                                     </button>
 
                                     <div className="flex items-center gap-1">
+                                        {!printer.isDefault && (
+                                            <button
+                                                type="button"
+                                                disabled={isUpdatingDefault}
+                                                onClick={() => handleSetDefaultPrinter(printer.id)}
+                                                className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg text-xs font-black transition-all flex items-center gap-1 active:scale-95 shadow-2xs disabled:opacity-50"
+                                                title={`Definir "${printer.name}" como a impressora padrão automática`}
+                                            >
+                                                <span>⭐</span> Tornar Padrão
+                                            </button>
+                                        )}
                                         <button
                                             type="button"
                                             onClick={() => handleOpenEdit(printer)}
@@ -1006,21 +1272,45 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                             </div>
 
                             {/* BOTÕES DO FORMULÁRIO */}
-                            <div className="pt-4 border-t border-gray-100 flex items-center justify-end gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsModalOpen(false)}
-                                    className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-xs uppercase tracking-wider transition-colors"
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={isSaving}
-                                    className="px-6 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 disabled:opacity-50"
-                                >
-                                    {isSaving ? 'Salvando...' : editingPrinterId ? 'Salvar Alterações' : 'Cadastrar Impressora'}
-                                </button>
+                            <div className="pt-4 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+                                {editingPrinterId ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const currentPrinter = printers.find(p => p.id === editingPrinterId);
+                                            if (currentPrinter) {
+                                                handleTestPrint({
+                                                    ...currentPrinter,
+                                                    name: formName || currentPrinter.name,
+                                                    width: formWidth,
+                                                    printKitchenReceipt: formPrintKitchenReceipt,
+                                                    printFullReceipt: formPrintFullReceipt,
+                                                });
+                                            }
+                                        }}
+                                        className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 active:scale-95"
+                                        title="Dispara um cupom de teste com os parâmetros atuais"
+                                    >
+                                        <span>🖨️</span> Testar Impressão
+                                    </button>
+                                ) : <div />}
+
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsModalOpen(false)}
+                                        className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-xs uppercase tracking-wider transition-colors"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={isSaving}
+                                        className="px-6 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 disabled:opacity-50"
+                                    >
+                                        {isSaving ? 'Salvando...' : editingPrinterId ? 'Salvar Alterações' : 'Cadastrar Impressora'}
+                                    </button>
+                                </div>
                             </div>
                         </form>
                     </div>

@@ -500,7 +500,7 @@ const HelpCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             </div>
                             <div className="p-3 bg-gray-50 border rounded-xl">
                                 <p className="font-bold text-gray-800">P: O texto está saindo cortado nas laterais do papel?</p>
-                                <p className="text-gray-600 mt-1">R: No painel do GuaraFood (Configurações), altere a largura do papel para <strong>58mm</strong> ou <strong>80mm</strong> de acordo com a sua impressora física.</p>
+                                <p className="text-gray-600 mt-1">R: No painel do GuaraFood (aba <strong>🖨️ Impressoras</strong>), clique em <strong>Editar</strong> na sua impressora e selecione a largura correspondente: <strong>58mm</strong> ou <strong>80mm</strong>.</p>
                             </div>
                         </div>
                     </section>

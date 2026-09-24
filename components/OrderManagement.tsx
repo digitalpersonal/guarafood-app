@@ -183,6 +183,12 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     if (rest.printerWidth) {
                         setPrinterWidth(rest.printerWidth);
                         localStorage.setItem('guarafood-printer-width', rest.printerWidth.toString());
+                    } else if (rest.printers?.length) {
+                        const def = rest.printers.find((p: any) => p.isDefault) || rest.printers[0];
+                        if (def?.width) {
+                            setPrinterWidth(def.width);
+                            localStorage.setItem('guarafood-printer-width', def.width.toString());
+                        }
                     }
                     if (rest.staff) {
                         setStaffList(rest.staff);
@@ -290,7 +296,8 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     if (!o.tableNumber && o.items && o.items.length > 0) {
                         const isPrintServer = localStorage.getItem('guarafood-is-print-server') === 'true';
                         const stationId = localStorage.getItem('guarafood-print-station-id') || localStorage.getItem('guarafood-print-server-role') || 'all';
-                        const matchedPrinter = restaurant?.printers?.find(p => p.id === stationId);
+                        const defaultPrinter = restaurant?.printers?.find(p => p.isDefault) || restaurant?.printers?.[0];
+                        const matchedPrinter = (stationId && stationId !== 'all' ? restaurant?.printers?.find(p => p.id === stationId) : null) || defaultPrinter;
 
                         let shouldAutoPrint = true;
                         if (isPrintServer) {
@@ -668,7 +675,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 );
             case 'staff': return <StaffManagement />;
             case 'mensalistas': return <MensalistasManager />;
-            case 'settings': return <RestaurantSettings />;
+            case 'settings': return <RestaurantSettings onNavigateToPrinters={() => setActiveTab('printers')} />;
             case 'printers':
                 return restaurant ? (
                     <div className="max-w-6xl mx-auto p-4 sm:p-6">
@@ -846,8 +853,9 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 <div id="printable-order">
                     {printJob && (() => {
                         const stationId = localStorage.getItem('guarafood-print-station-id') || localStorage.getItem('guarafood-print-server-role');
-                        const configuredPrinter = stationId && stationId !== 'all' ? restaurant?.printers?.find(p => p.id === stationId) : null;
-                        const activeWidth = configuredPrinter?.width || printerWidth;
+                        const defaultPrinter = restaurant?.printers?.find(p => p.isDefault) || restaurant?.printers?.[0];
+                        const configuredPrinter = (stationId && stationId !== 'all' ? restaurant?.printers?.find(p => p.id === stationId) : null) || defaultPrinter;
+                        const activeWidth = configuredPrinter?.width || restaurant?.printerWidth || printerWidth;
                         return (
                             <PrintableOrder 
                                 order={printJob.items ? { ...printJob.order, items: printJob.items } : printJob.order} 
