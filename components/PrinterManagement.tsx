@@ -498,6 +498,47 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
 
     const [isUpdatingDefault, setIsUpdatingDefault] = useState(false);
 
+    // Estado da Impressão Automática (Ativar impressão automática)
+    const [autoPrintOrders, setAutoPrintOrders] = useState<boolean>(() => {
+        if (restaurant.autoPrintOrders !== undefined) {
+            return restaurant.autoPrintOrders;
+        }
+        const cached = localStorage.getItem('guarafood-auto-print-orders');
+        return cached !== null ? cached === 'true' : true;
+    });
+    const [isTogglingAutoPrint, setIsTogglingAutoPrint] = useState(false);
+    const [showKioskHelp, setShowKioskHelp] = useState(false);
+
+    useEffect(() => {
+        if (restaurant.autoPrintOrders !== undefined) {
+            setAutoPrintOrders(restaurant.autoPrintOrders);
+        }
+    }, [restaurant.autoPrintOrders]);
+
+    // Ação para ligar/desligar a impressão automática
+    const handleToggleAutoPrint = async (enabled: boolean) => {
+        try {
+            setIsTogglingAutoPrint(true);
+            setAutoPrintOrders(enabled);
+            localStorage.setItem('guarafood-auto-print-orders', enabled.toString());
+            const updatedRestaurant = await updateRestaurant(restaurant.id, { autoPrintOrders: enabled });
+            if (onUpdateRestaurant && updatedRestaurant) {
+                onUpdateRestaurant(updatedRestaurant);
+            }
+            addToast({ 
+                message: enabled 
+                    ? '⚡ Impressão automática ativada! Pedidos confirmados serão enviados diretamente à impressora.' 
+                    : '⏸️ Impressão automática desativada.', 
+                type: enabled ? 'success' : 'info' 
+            });
+        } catch (err: any) {
+            console.error("Erro ao alterar impressão automática:", err);
+            addToast({ message: `Erro ao salvar configuração: ${err.message}`, type: 'error' });
+        } finally {
+            setIsTogglingAutoPrint(false);
+        }
+    };
+
     // Identifica a impressora padrão atual (ou a primeira, ou genérica)
     const currentDefaultPrinter = useMemo(() => {
         return printers.find(p => p.isDefault) || (printers.length > 0 ? printers[0] : null);
@@ -768,6 +809,109 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                             </div>
                         </div>
                     </div>
+                </div>
+
+                {/* 3. INTERRUPTOR: ATIVAR IMPRESSÃO AUTOMÁTICA */}
+                <div className="mt-4 bg-gradient-to-r from-emerald-50/70 via-teal-50/30 to-emerald-50/70 p-4 sm:p-5 rounded-2xl border-2 border-emerald-300 shadow-2xs">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-emerald-100 border border-emerald-300 flex items-center justify-center text-xl shrink-0 mt-0.5 shadow-2xs">
+                                ⚡
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <h4 className="font-black text-sm uppercase text-emerald-950 tracking-tight">
+                                        Ativar Impressão Automática
+                                    </h4>
+                                    <span className={`px-2 py-0.5 text-[9px] font-black uppercase rounded-md shadow-2xs ${
+                                        autoPrintOrders 
+                                            ? 'bg-emerald-600 text-white' 
+                                            : 'bg-gray-200 text-gray-700'
+                                    }`}>
+                                        {autoPrintOrders ? '● Ativada' : '○ Desativada'}
+                                    </span>
+                                    <span className="px-2 py-0.5 text-[9px] font-bold bg-white text-emerald-900 border border-emerald-300 rounded-md shadow-2xs">
+                                        Mãos Livres / Auto-Print
+                                    </span>
+                                </div>
+                                <p className="text-xs text-gray-600 mt-1 leading-relaxed max-w-2xl">
+                                    Ao receber ou confirmar um pedido, o sistema envia o comando de impressão <strong>automaticamente</strong> para a impressora padrão selecionada (<strong>{currentDefaultPrinter ? currentDefaultPrinter.name : `Térmica (${restaurant.printerWidth || 80}mm)`}</strong>), sem necessidade de interação humana.
+                                </p>
+                                <div className="mt-2.5 flex items-center gap-3 text-xs">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowKioskHelp(!showKioskHelp)}
+                                        className="text-emerald-800 hover:text-emerald-950 font-bold underline flex items-center gap-1.5 transition-colors group cursor-pointer"
+                                    >
+                                        <span className="text-sm">❓</span>
+                                        <span>Isso funciona mesmo sem o kiosk-printing no link do Chrome? Entenda aqui</span>
+                                        <span className="text-[10px] bg-emerald-100 text-emerald-900 px-1.5 py-0.5 rounded font-mono group-hover:bg-emerald-200">
+                                            {showKioskHelp ? '▲ Recolher' : '▼ Ver detalhes'}
+                                        </span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0 self-start md:self-center bg-white/80 px-4 py-3 rounded-xl border border-emerald-200 shadow-2xs">
+                            <label className="relative inline-flex items-center cursor-pointer select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={autoPrintOrders}
+                                    onChange={(e) => handleToggleAutoPrint(e.target.checked)}
+                                    disabled={isTogglingAutoPrint}
+                                    className="sr-only peer"
+                                />
+                                <div className="w-13 h-7 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[3px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-emerald-600"></div>
+                                <span className="ml-3 text-xs font-black uppercase text-gray-900">
+                                    {isTogglingAutoPrint ? 'Salvando...' : (autoPrintOrders ? 'Ligado' : 'Desligado')}
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+
+                    {/* GUIA EXPLICATIVO KIOSK-PRINTING */}
+                    {showKioskHelp && (
+                        <div className="mt-4 pt-4 border-t border-emerald-200/80 text-xs text-gray-700 space-y-3">
+                            <div className="font-black text-emerald-950 flex items-center gap-2">
+                                <span className="text-base">💡</span>
+                                <span>Como o navegador se comporta com ou sem kiosk-printing:</span>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs leading-relaxed">
+                                <div className="bg-white p-3.5 rounded-xl border-2 border-emerald-200/90 shadow-2xs space-y-1.5">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-base">🖥️</span>
+                                        <p className="font-black text-emerald-950 text-xs uppercase">
+                                            1. Sem Kiosk-Printing (Chrome Normal)
+                                        </p>
+                                    </div>
+                                    <p className="text-gray-600 text-[11px]">
+                                        <strong>SIM, funciona automaticamente!</strong> Assim que o pedido chega ou é confirmado, o sistema já dispara o comando de impressão sozinho. A caixa de diálogo do Chrome salta imediatamente na tela com o cupom montado na impressora padrão.
+                                    </p>
+                                    <p className="text-emerald-900 text-[11px] font-semibold bg-emerald-50 p-2 rounded-lg border border-emerald-100">
+                                        👉 Por regras de segurança dos navegadores, você só precisa pressionar a tecla <strong>[ENTER]</strong> ou clicar em "Imprimir" para confirmar a saída no papel físico.
+                                    </p>
+                                </div>
+                                <div className="bg-white p-3.5 rounded-xl border-2 border-emerald-300 shadow-2xs space-y-1.5">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-base">🚀</span>
+                                        <p className="font-black text-emerald-950 text-xs uppercase">
+                                            2. Com Kiosk-Printing (100% Mãos Livres)
+                                        </p>
+                                    </div>
+                                    <p className="text-gray-600 text-[11px]">
+                                        Com o parâmetro ativado no atalho do Chrome, a impressão sai <strong>totalmente silenciosa direto na impressora térmica</strong> sem abrir caixa de diálogo e sem nenhum toque ou tecla.
+                                    </p>
+                                    <div className="text-[11px] bg-gray-900 text-emerald-400 p-2 rounded-lg font-mono leading-tight select-all">
+                                        chrome.exe --kiosk-printing
+                                    </div>
+                                    <p className="text-gray-500 text-[10px]">
+                                        Dica: Clique com o botão direito no atalho do Chrome &rarr; Propriedades &rarr; Destino &rarr; dê um espaço e adicione <code className="bg-gray-100 text-gray-900 px-1 rounded font-bold">--kiosk-printing</code> ao final.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 

@@ -108,6 +108,7 @@ export interface Restaurant {
   staff?: StaffMember[]; // NEW: List of staff members
   loyaltyProgram?: LoyaltyProgram; // NEW: Fidelity Program
   printers?: PrinterConfig[]; // NEW: Configuração de Múltiplas Impressoras e Roteamento de Categorias
+  autoPrintOrders?: boolean; // Se verdadeiro, envia automaticamente para a impressora padrão ao receber novos pedidos confirmados
 }
 
 export type PrinterType = 'cashier' | 'kitchen' | 'bar' | 'other';

@@ -508,7 +508,7 @@ const RestaurantSettings: React.FC<{
                 
                 <NotificationSettings />
 
-                {restaurantId && (
+                {restaurantId && restaurant && (
                     <WhatsAppBotSettings
                         restaurantId={restaurantId}
                         restaurantName={restaurant.name}

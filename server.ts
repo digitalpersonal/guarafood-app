@@ -356,10 +356,14 @@ Regras:
   app.get("/api/whatsapp/status/:restaurantId", async (req, res) => {
     try {
       const { restaurantId } = req.params;
+      if (!restaurantId || restaurantId === 'undefined' || restaurantId === 'null') {
+        return res.status(400).json({ connected: false, state: "disconnected", error: "ID do restaurante inválido" });
+      }
       const instanceName = `restaurante_${restaurantId}`;
 
       const checkRes = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, {
-        headers: { apikey: EVOLUTION_API_KEY }
+        headers: { apikey: EVOLUTION_API_KEY },
+        signal: AbortSignal.timeout(6000)
       });
 
       if (!checkRes.ok) {
@@ -375,7 +379,8 @@ Regras:
       if (isConnected) {
         try {
           const instRes = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances?instanceName=${instanceName}`, {
-            headers: { apikey: EVOLUTION_API_KEY }
+            headers: { apikey: EVOLUTION_API_KEY },
+            signal: AbortSignal.timeout(6000)
           });
           if (instRes.ok) {
             const instList = await instRes.json();
@@ -407,11 +412,15 @@ Regras:
   app.post("/api/whatsapp/connect/:restaurantId", async (req, res) => {
     try {
       const { restaurantId } = req.params;
+      if (!restaurantId || restaurantId === 'undefined' || restaurantId === 'null') {
+        return res.status(400).json({ error: "ID de restaurante inválido ou não autenticado" });
+      }
       const instanceName = `restaurante_${restaurantId}`;
 
       // 1. Verifica se a instância já existe
       const fetchRes = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances`, {
-        headers: { apikey: EVOLUTION_API_KEY }
+        headers: { apikey: EVOLUTION_API_KEY },
+        signal: AbortSignal.timeout(8000)
       });
       const instances = fetchRes.ok ? await fetchRes.json() : [];
       const existing = Array.isArray(instances) ? instances.find((i: any) => i.name === instanceName) : null;
@@ -432,7 +441,8 @@ Regras:
             instanceName,
             qrcode: true,
             integration: "WHATSAPP-BAILEYS"
-          })
+          }),
+          signal: AbortSignal.timeout(12000)
         });
 
         if (!createRes.ok) {
@@ -461,7 +471,8 @@ Regras:
 
         // Se existe mas precisa de reconexão / novo QR Code
         const connectRes = await fetch(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, {
-          headers: { apikey: EVOLUTION_API_KEY }
+          headers: { apikey: EVOLUTION_API_KEY },
+          signal: AbortSignal.timeout(10000)
         });
         if (connectRes.ok) {
           const connData = await connectRes.json();
@@ -472,31 +483,47 @@ Regras:
             return res.json({ connected: true, state: "open", instanceName });
           }
         }
+
+        // Se não veio QR Code na tentativa de connect simples, dispara restart para gerar
+        if (!qrCodeBase64) {
+          try {
+            const restartRes = await fetch(`${EVOLUTION_API_URL}/instance/restart/${instanceName}`, {
+              method: "POST",
+              headers: { apikey: EVOLUTION_API_KEY },
+              signal: AbortSignal.timeout(10000)
+            });
+            if (restartRes.ok) {
+              const restData = await restartRes.json();
+              qrCodeBase64 = restData?.base64 || restData?.qrcode?.base64 || null;
+              pairingCode = restData?.pairingCode || restData?.qrcode?.pairingCode || null;
+            }
+          } catch (_) {}
+        }
       }
 
-      // 2. Garante que o Typebot está configurado na instância
-      try {
-        await fetch(`${EVOLUTION_API_URL}/typebot/create/${instanceName}`, {
-          method: "POST",
-          headers: {
-            apikey: EVOLUTION_API_KEY,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            url: TYPEBOT_URL,
-            typebot: TYPEBOT_NAME,
-            enabled: true,
-            triggerType: "all",
-            expire: 20,
-            keywordFinish: "atendente",
-            delayMessage: 1000,
-            unknownMessage: "",
-            listeningFromMe: false
-          })
-        });
-      } catch (tErr) {
-        console.warn("Typebot config error (may already be set):", tErr);
-      }
+      // 2. Configura Typebot em background (sem travar a resposta do QR Code)
+      setTimeout(async () => {
+        try {
+          await fetch(`${EVOLUTION_API_URL}/typebot/create/${instanceName}`, {
+            method: "POST",
+            headers: {
+              apikey: EVOLUTION_API_KEY,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              url: TYPEBOT_URL,
+              typebot: TYPEBOT_NAME,
+              enabled: true,
+              triggerType: "all",
+              expire: 20,
+              keywordFinish: "atendente",
+              delayMessage: 1000,
+              unknownMessage: "",
+              listeningFromMe: false
+            })
+          });
+        } catch (_) {}
+      }, 500);
 
       return res.json({
         connected: false,
@@ -507,7 +534,40 @@ Regras:
       });
     } catch (err: any) {
       console.error("Error in /api/whatsapp/connect:", err);
-      return res.status(500).json({ error: err.message || "Erro ao conectar WhatsApp." });
+      return res.status(500).json({ error: err.message || "Erro ao conectar com servidor WhatsApp." });
+    }
+  });
+
+  // Reiniciar instância do WhatsApp para forçar novo QR Code
+  app.post("/api/whatsapp/restart/:restaurantId", async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      if (!restaurantId || restaurantId === 'undefined' || restaurantId === 'null') {
+        return res.status(400).json({ error: "ID de restaurante inválido" });
+      }
+      const instanceName = `restaurante_${restaurantId}`;
+
+      const restartRes = await fetch(`${EVOLUTION_API_URL}/instance/restart/${instanceName}`, {
+        method: "POST",
+        headers: { apikey: EVOLUTION_API_KEY },
+        signal: AbortSignal.timeout(10000)
+      });
+
+      if (restartRes.ok) {
+        const restData = await restartRes.json();
+        return res.json({
+          connected: false,
+          state: "connecting",
+          instanceName,
+          qrcode: restData?.base64 || restData?.qrcode?.base64 || null,
+          pairingCode: restData?.pairingCode || restData?.qrcode?.pairingCode || null
+        });
+      }
+
+      return res.status(400).json({ error: "Não foi possível reiniciar a instância." });
+    } catch (err: any) {
+      console.error("Error in /api/whatsapp/restart:", err);
+      return res.status(500).json({ error: err.message || "Erro ao reiniciar instância." });
     }
   });
 
@@ -515,11 +575,15 @@ Regras:
   app.post("/api/whatsapp/disconnect/:restaurantId", async (req, res) => {
     try {
       const { restaurantId } = req.params;
+      if (!restaurantId || restaurantId === 'undefined' || restaurantId === 'null') {
+        return res.status(400).json({ error: "ID de restaurante inválido" });
+      }
       const instanceName = `restaurante_${restaurantId}`;
 
       await fetch(`${EVOLUTION_API_URL}/instance/logout/${instanceName}`, {
         method: "DELETE",
-        headers: { apikey: EVOLUTION_API_KEY }
+        headers: { apikey: EVOLUTION_API_KEY },
+        signal: AbortSignal.timeout(8000)
       });
 
       return res.json({ success: true, instanceName });

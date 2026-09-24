@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+    fetchWhatsAppStatus,
+    connectWhatsAppInstance,
+    disconnectWhatsAppInstance,
+    restartWhatsAppInstance,
+    WhatsAppProfile
+} from '../services/whatsappService';
 
 interface WhatsAppBotSettingsProps {
-    restaurantId: number;
+    restaurantId: number | string;
     restaurantName: string;
-}
-
-interface WhatsAppProfile {
-    profileName?: string;
-    profilePicUrl?: string;
-    ownerJid?: string;
 }
 
 export const WhatsAppBotSettings: React.FC<WhatsAppBotSettingsProps> = ({ restaurantId, restaurantName }) => {
@@ -17,20 +18,25 @@ export const WhatsAppBotSettings: React.FC<WhatsAppBotSettingsProps> = ({ restau
     const [isGenerating, setIsGenerating] = useState<boolean>(false);
     const [isDisconnecting, setIsDisconnecting] = useState<boolean>(false);
     const [qrCodeBase64, setQrCodeBase64] = useState<string | null>(null);
+    const [pairingCode, setPairingCode] = useState<string | null>(null);
     const [profile, setProfile] = useState<WhatsAppProfile | null>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const pollingIntervalRef = useRef<any>(null);
 
     const checkStatus = useCallback(async () => {
+        if (!restaurantId || restaurantId === 'undefined' || restaurantId === 'null') {
+            setIsLoading(false);
+            return;
+        }
+
         try {
-            const res = await fetch(`/api/whatsapp/status/${restaurantId}`);
-            if (!res.ok) return;
-            const data = await res.json();
+            const data = await fetchWhatsAppStatus(restaurantId);
             
             if (data.connected) {
                 setIsConnected(true);
                 setProfile(data.profile || null);
                 setQrCodeBase64(null);
+                setPairingCode(null);
                 setErrorMessage(null);
                 if (pollingIntervalRef.current) {
                     clearInterval(pollingIntervalRef.current);
@@ -57,39 +63,64 @@ export const WhatsAppBotSettings: React.FC<WhatsAppBotSettingsProps> = ({ restau
     }, [checkStatus]);
 
     const handleConnect = async () => {
+        if (!restaurantId || restaurantId === 'undefined' || restaurantId === 'null') {
+            setErrorMessage('ID do restaurante não identificado. Por favor recarregue a página.');
+            return;
+        }
+
         setIsGenerating(true);
         setErrorMessage(null);
         setQrCodeBase64(null);
+        setPairingCode(null);
 
         try {
-            const res = await fetch(`/api/whatsapp/connect/${restaurantId}`, {
-                method: 'POST'
-            });
-
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.error || 'Falha ao conectar com o servidor WhatsApp.');
-            }
-
-            const data = await res.json();
+            const data = await connectWhatsAppInstance(restaurantId);
 
             if (data.connected) {
                 setIsConnected(true);
                 setProfile(data.profile || null);
                 setQrCodeBase64(null);
+                setPairingCode(null);
             } else if (data.qrcode) {
                 setQrCodeBase64(data.qrcode);
-                // Inicia polling a cada 3 segundos enquanto espera o escaneamento
+                setPairingCode(data.pairingCode || null);
+                // Inicia polling a cada 3.5 segundos enquanto espera a leitura
                 if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
                 pollingIntervalRef.current = setInterval(() => {
                     checkStatus();
-                }, 3000);
+                }, 3500);
             } else {
-                setErrorMessage('Não foi possível obter o QR Code. Tente novamente.');
+                setErrorMessage('Não foi possível obter o QR Code. Clique em "Reiniciar Instância" para forçar novo código.');
             }
         } catch (err: any) {
             console.error('Connect WhatsApp Error:', err);
-            setErrorMessage(err.message || 'Erro ao gerar QR Code.');
+            setErrorMessage(err.message || 'Falha ao conectar com o servidor WhatsApp. Verifique sua conexão e tente novamente.');
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
+    const handleRestart = async () => {
+        setIsGenerating(true);
+        setErrorMessage(null);
+        setQrCodeBase64(null);
+        setPairingCode(null);
+
+        try {
+            const data = await restartWhatsAppInstance(restaurantId);
+            if (data.qrcode) {
+                setQrCodeBase64(data.qrcode);
+                setPairingCode(data.pairingCode || null);
+                if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+                pollingIntervalRef.current = setInterval(() => {
+                    checkStatus();
+                }, 3500);
+            } else {
+                await checkStatus();
+            }
+        } catch (err: any) {
+            console.error('Restart WhatsApp Error:', err);
+            setErrorMessage('Não foi possível reiniciar a instância. Tente novamente em alguns segundos.');
         } finally {
             setIsGenerating(false);
         }
@@ -102,12 +133,11 @@ export const WhatsAppBotSettings: React.FC<WhatsAppBotSettingsProps> = ({ restau
 
         setIsDisconnecting(true);
         try {
-            await fetch(`/api/whatsapp/disconnect/${restaurantId}`, {
-                method: 'POST'
-            });
+            await disconnectWhatsAppInstance(restaurantId);
             setIsConnected(false);
             setProfile(null);
             setQrCodeBase64(null);
+            setPairingCode(null);
             if (pollingIntervalRef.current) {
                 clearInterval(pollingIntervalRef.current);
                 pollingIntervalRef.current = null;
@@ -124,7 +154,6 @@ export const WhatsAppBotSettings: React.FC<WhatsAppBotSettingsProps> = ({ restau
         if (!jid) return '';
         const raw = jid.replace('@s.whatsapp.net', '');
         if (raw.length === 12 || raw.length === 13) {
-            // Ex: 5535988785045 -> +55 (35) 98878-5045
             return `+${raw.slice(0, 2)} (${raw.slice(2, 4)}) ${raw.slice(4, -4)}-${raw.slice(-4)}`;
         }
         return raw;
@@ -157,7 +186,7 @@ export const WhatsAppBotSettings: React.FC<WhatsAppBotSettingsProps> = ({ restau
                             Verificando...
                         </span>
                     ) : isConnected ? (
-                        <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 flex items-center gap-1.5 border border-emerald-200">
+                        <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 flex items-center gap-1.5 border border-emerald-200 shadow-xs">
                             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                             🟢 Conectado
                         </span>
@@ -172,8 +201,29 @@ export const WhatsAppBotSettings: React.FC<WhatsAppBotSettingsProps> = ({ restau
 
             {/* Mensagem de Erro se houver */}
             {errorMessage && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-medium">
-                    {errorMessage}
+                <div className="mb-5 p-4 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-medium flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                        <span className="text-base">⚠️</span>
+                        <span>{errorMessage}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <button
+                            type="button"
+                            onClick={handleConnect}
+                            disabled={isGenerating}
+                            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs transition-colors shadow-xs"
+                        >
+                            {isGenerating ? 'Conectando...' : 'Tentar Novamente'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleRestart}
+                            disabled={isGenerating}
+                            className="px-3 py-1.5 bg-white border border-red-300 text-red-700 hover:bg-red-100/50 font-bold rounded-lg text-xs transition-colors"
+                        >
+                            Reiniciar Instância
+                        </button>
+                    </div>
                 </div>
             )}
 
@@ -211,14 +261,25 @@ export const WhatsAppBotSettings: React.FC<WhatsAppBotSettingsProps> = ({ restau
                             </div>
                         </div>
 
-                        <button
-                            type="button"
-                            onClick={handleDisconnect}
-                            disabled={isDisconnecting}
-                            className="w-full sm:w-auto px-4 py-2.5 bg-white border border-red-200 text-red-600 hover:bg-red-50 font-bold text-xs rounded-xl transition-all shadow-xs disabled:opacity-50"
-                        >
-                            {isDisconnecting ? 'Desconectando...' : 'Desconectar WhatsApp'}
-                        </button>
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                            <button
+                                type="button"
+                                onClick={handleRestart}
+                                disabled={isGenerating}
+                                title="Reiniciar a sessão em caso de instabilidade"
+                                className="px-3.5 py-2.5 bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 font-bold text-xs rounded-xl transition-all shadow-xs"
+                            >
+                                Reiniciar Conexão
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleDisconnect}
+                                disabled={isDisconnecting}
+                                className="w-full sm:w-auto px-4 py-2.5 bg-white border border-red-200 text-red-600 hover:bg-red-50 font-bold text-xs rounded-xl transition-all shadow-xs disabled:opacity-50"
+                            >
+                                {isDisconnecting ? 'Desconectando...' : 'Desconectar WhatsApp'}
+                            </button>
+                        </div>
                     </div>
 
                     <div className="mt-4 pt-3 border-t border-emerald-200/60 flex items-center justify-between text-xs text-emerald-900">
@@ -250,6 +311,13 @@ export const WhatsAppBotSettings: React.FC<WhatsAppBotSettingsProps> = ({ restau
                         </div>
                     </div>
 
+                    {pairingCode && (
+                        <div className="mb-4 inline-block bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2 text-center">
+                            <span className="text-[11px] text-gray-500 uppercase font-black block">Código de Pareamento</span>
+                            <span className="font-mono text-base font-black text-emerald-700 tracking-widest">{pairingCode}</span>
+                        </div>
+                    )}
+
                     <div className="max-w-md mx-auto text-left bg-white p-4 rounded-xl border border-gray-200 mb-5 shadow-xs">
                         <h5 className="font-black text-xs text-gray-800 uppercase tracking-wider mb-2">
                             Passo a passo no seu celular:
@@ -270,6 +338,14 @@ export const WhatsAppBotSettings: React.FC<WhatsAppBotSettingsProps> = ({ restau
                             className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-xs rounded-xl transition-all"
                         >
                             {isGenerating ? 'Gerando...' : 'Gerar Novo QR Code'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleRestart}
+                            disabled={isGenerating}
+                            className="px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-bold text-xs rounded-xl transition-all"
+                        >
+                            Reiniciar Instância
                         </button>
                         <button
                             type="button"
@@ -316,7 +392,7 @@ export const WhatsAppBotSettings: React.FC<WhatsAppBotSettingsProps> = ({ restau
                         {isGenerating ? (
                             <>
                                 <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                                Gerando QR Code no WhatsApp...
+                                Conectando e Gerando QR Code...
                             </>
                         ) : (
                             <>

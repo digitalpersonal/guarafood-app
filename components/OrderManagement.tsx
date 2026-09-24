@@ -275,7 +275,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 const isWithinStartupWindow = orderTime > appStartTimeRef.current - 120000; // 2 minutos antes do app abrir ou depois
                 const hasJustChangedStatus = prevStatus !== undefined && prevStatus !== order.status;
 
-                const isNewDelivery = order.status === 'Novo Pedido' && 
+                const isNewDelivery = (order.status === 'Novo Pedido' || (order.status === 'Preparando' && prevStatus === 'Novo Pedido')) && 
                                       isRecent && 
                                       !alertedOrderIdsRef.current.has(order.id) && 
                                       (isWithinStartupWindow || hasJustChangedStatus);
@@ -292,8 +292,12 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             if (ordersToAlert.length > 0) {
                 ordersToAlert.forEach(o => {
                     alertedOrderIdsRef.current.add(o.id);
-                    // Only auto-print delivery/balcão orders if this terminal is NOT exclusively a kitchen terminal
+                    // Only auto-print delivery/balcão orders if autoPrintOrders is enabled and this terminal is NOT exclusively a kitchen terminal
                     if (!o.tableNumber && o.items && o.items.length > 0) {
+                        const isAutoPrintActive = restaurant?.autoPrintOrders ?? (localStorage.getItem('guarafood-auto-print-orders') !== 'false');
+                        if (!isAutoPrintActive) {
+                            return;
+                        }
                         const isPrintServer = localStorage.getItem('guarafood-is-print-server') === 'true';
                         const stationId = localStorage.getItem('guarafood-print-station-id') || localStorage.getItem('guarafood-print-server-role') || 'all';
                         const defaultPrinter = restaurant?.printers?.find(p => p.isDefault) || restaurant?.printers?.[0];
