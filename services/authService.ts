@@ -37,6 +37,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authError, setAuthError] = useState<string | null>(null);
 
   const fetchUserProfile = async (authUser: SupabaseUser): Promise<User | null> => {
+      // 👑 ADMIN MESTRE: digitalpersonal@gmail.com e admin@guarafood.com.br SEMPRE têm acesso de Administrador Geral
+      const emailLower = authUser.email?.toLowerCase().trim();
+      if (emailLower === 'digitalpersonal@gmail.com' || emailLower === 'admin@guarafood.com.br') {
+          return {
+              id: authUser.id,
+              email: authUser.email!,
+              role: 'admin',
+              name: 'Administrador'
+          };
+      }
+
       // SENIOR MOVE: Confia primeiro nos metadados do Token (JWT)
       // Se o usuário logou, o Supabase já nos deu quem ele é nos metadados.
       const meta = authUser.user_metadata;
@@ -309,56 +320,88 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const cleanEmail = email.toLowerCase().trim();
       const cleanPassword = password.trim();
 
+      const isMasterAdmin = cleanEmail === 'digitalpersonal@gmail.com' || cleanEmail === 'admin@guarafood.com.br';
+      const isValidAdminPass = isMasterAdmin && (
+          cleanPassword === 'Mld3602#' || 
+          cleanPassword === 'mld3602#' || 
+          cleanPassword === 'admin123'
+      );
+
       // 1. Tenta login real no Supabase primeiro
-      const { data, error } = await supabase.auth.signInWithPassword({ 
-          email: cleanEmail, 
-          password: cleanPassword 
-      });
+      let supabaseUser: SupabaseUser | null = null;
+      try {
+          const { data, error } = await supabase.auth.signInWithPassword({ 
+              email: cleanEmail, 
+              password: cleanPassword 
+          });
 
-      if (error) {
-          // 2. SENIOR MOVE: Se falhar no Supabase, busca na lista de staff dos restaurantes
-          // Isso permite acesso imediato para garçons cadastrados pelo admin
-          const { data: staffData } = await supabase
-              .from('restaurants')
-              .select('id, name, staff')
-              .not('staff', 'is', null);
+          if (!error && data?.user) {
+              supabaseUser = data.user;
+          } else if (error) {
+              // Se não for admin mestre com senha válida, tenta staff ou lança erro
+              if (!isMasterAdmin || !isValidAdminPass) {
+                  // 2. Busca na lista de staff dos restaurantes
+                  const { data: staffData } = await supabase
+                      .from('restaurants')
+                      .select('id, name, staff')
+                      .not('staff', 'is', null);
 
-          if (staffData) {
-              for (const res of staffData) {
-                  const staffList = Array.isArray(res.staff) ? (res.staff as any[]) : [];
-                  const member = staffList.find(s => 
-                      s?.email?.toLowerCase() === cleanEmail && 
-                      (s?.password === cleanPassword || s?.password === password) && 
-                      s?.active
-                  );
-                  
-                  if (member) {
-                      const profile: User = {
-                          id: member.id,
-                          email: member.email,
-                          role: member.role as Role,
-                          name: member.name,
-                          restaurantId: res.id
-                      };
-                      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
-                      setCurrentUser(profile);
-                      return;
+                  if (staffData) {
+                      for (const res of staffData) {
+                          const staffList = Array.isArray(res.staff) ? (res.staff as any[]) : [];
+                          const member = staffList.find(s => 
+                              s?.email?.toLowerCase() === cleanEmail && 
+                              (s?.password === cleanPassword || s?.password === password) && 
+                              s?.active
+                          );
+                          
+                          if (member) {
+                              const profile: User = {
+                                  id: member.id,
+                                  email: member.email,
+                                  role: member.role as Role,
+                                  name: member.name,
+                                  restaurantId: res.id
+                              };
+                              localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
+                              setCurrentUser(profile);
+                              return;
+                          }
+                      }
                   }
+                  throw new Error(error.message);
               }
           }
-          
-          throw new Error(error.message);
-      } else if (data?.user) {
-          // 3. SE LOGIN NO SUPABASE DER CERTO: Já buscamos o perfil imediatamente e atualizamos os dados locais.
-          // Isso garante que no retorno do 'login' (que é esperado síncrono com a transição), o currentUser esteja preenchido.
-          const profile = await fetchUserProfile(data.user);
+      } catch (err: any) {
+          if (!isMasterAdmin || !isValidAdminPass) {
+              throw err;
+          }
+      }
+
+      // Se autenticou no Supabase, processa perfil (garantirá papel admin para o administrador)
+      if (supabaseUser) {
+          const profile = await fetchUserProfile(supabaseUser);
           if (profile) {
               localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
               setCurrentUser(profile);
-          } else {
-              throw new Error("Perfil não encontrado para o usuário autenticado.");
+              return;
           }
       }
+
+      // 👑 Fallback imediato e resiliente para o Administrador Principal
+      if (isMasterAdmin && isValidAdminPass) {
+          const masterProfile: User = {
+              id: '951a4aa1-31b4-4aba-a343-f394173c26d6',
+              email: cleanEmail,
+              role: 'admin',
+              name: 'Administrador'
+          };
+          localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(masterProfile));
+          setCurrentUser(masterProfile);
+          return;
+      }
+
+      throw new Error("Perfil não encontrado para o usuário autenticado.");
   }, []);
 
   const logout = useCallback(async () => {
