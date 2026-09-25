@@ -197,47 +197,59 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
     };
 };
 
-const normalizeCategory = (data: any): MenuCategory => ({
-    ...data,
-    restaurantId: data.restaurant_id,
-    displayOrder: data.display_order,
-    iconUrl: data.icon_url,
-    availableStartTime: data.available_start_time,
-    availableEndTime: data.available_end_time
-});
+const normalizeCategory = (data: any): MenuCategory => {
+    const rawRestId = data.restaurant_id !== undefined ? data.restaurant_id : data.restaurantId;
+    return {
+        ...data,
+        restaurantId: rawRestId !== undefined && rawRestId !== null ? Number(rawRestId) : undefined,
+        displayOrder: data.display_order,
+        iconUrl: data.icon_url,
+        availableStartTime: data.available_start_time,
+        availableEndTime: data.available_end_time
+    };
+};
 
-const normalizeItem = (data: any): MenuItem => ({
-    ...data,
-    restaurantId: data.restaurant_id,
-    categoryId: data.category_id,
-    imageUrl: data.image_url,
-    originalPrice: data.original_price,
-    isPizza: data.is_pizza,
-    isAcai: data.is_acai,
-    isMarmita: data.is_marmita,
-    marmitaOptions: data.marmita_options,
-    freeAddonCount: data.free_addon_count,
-    availableAddonIds: data.available_addon_ids,
-    isDailySpecial: data.is_daily_special,
-    isWeeklySpecial: data.is_weekly_special,
-    displayOrder: data.display_order,
-    available: data.available !== false, // Assume true if null
-    optionGroups: data.option_groups
-});
+const normalizeItem = (data: any): MenuItem => {
+    const rawRestId = data.restaurant_id !== undefined ? data.restaurant_id : data.restaurantId;
+    return {
+        ...data,
+        restaurantId: rawRestId !== undefined && rawRestId !== null ? Number(rawRestId) : (data.restaurantId ? Number(data.restaurantId) : undefined) as any,
+        categoryId: data.category_id !== undefined ? Number(data.category_id) : data.categoryId,
+        imageUrl: data.image_url || data.imageUrl,
+        originalPrice: data.original_price !== undefined ? Number(data.original_price) : data.originalPrice,
+        isPizza: data.is_pizza !== undefined ? data.is_pizza : data.isPizza,
+        isAcai: data.is_acai !== undefined ? data.is_acai : data.isAcai,
+        isMarmita: data.is_marmita !== undefined ? data.is_marmita : data.isMarmita,
+        marmitaOptions: data.marmita_options || data.marmitaOptions,
+        freeAddonCount: data.free_addon_count !== undefined ? data.free_addon_count : data.freeAddonCount,
+        availableAddonIds: data.available_addon_ids || data.availableAddonIds,
+        isDailySpecial: data.is_daily_special !== undefined ? data.is_daily_special : data.isDailySpecial,
+        isWeeklySpecial: data.is_weekly_special !== undefined ? data.is_weekly_special : data.isWeeklySpecial,
+        displayOrder: data.display_order !== undefined ? data.display_order : data.displayOrder,
+        available: data.available !== false, // Assume true if null
+        optionGroups: data.option_groups || data.optionGroups
+    };
+};
 
-const normalizeCombo = (data: any): Combo => ({
-    ...data,
-    restaurantId: data.restaurant_id,
-    categoryId: data.category_id,
-    imageUrl: data.image_url,
-    originalPrice: data.original_price,
-    menuItemIds: data.menu_item_ids
-});
+const normalizeCombo = (data: any): Combo => {
+    const rawRestId = data.restaurant_id !== undefined ? data.restaurant_id : data.restaurantId;
+    return {
+        ...data,
+        restaurantId: rawRestId !== undefined && rawRestId !== null ? Number(rawRestId) : (data.restaurantId ? Number(data.restaurantId) : undefined) as any,
+        categoryId: data.category_id !== undefined ? Number(data.category_id) : data.categoryId,
+        imageUrl: data.image_url || data.imageUrl,
+        originalPrice: data.original_price !== undefined ? Number(data.original_price) : data.originalPrice,
+        menuItemIds: data.menu_item_ids || data.menuItemIds || []
+    };
+};
 
-const normalizeAddon = (data: any): Addon => ({
-    ...data,
-    restaurantId: data.restaurant_id
-});
+const normalizeAddon = (data: any): Addon => {
+    const rawRestId = data.restaurant_id !== undefined ? data.restaurant_id : data.restaurantId;
+    return {
+        ...data,
+        restaurantId: rawRestId !== undefined && rawRestId !== null ? Number(rawRestId) : (data.restaurantId ? Number(data.restaurantId) : undefined) as any
+    };
+};
 
 const normalizePromotion = (data: any): Promotion => ({
     ...data,
