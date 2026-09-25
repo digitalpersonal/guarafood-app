@@ -29,7 +29,7 @@ const PencilIcon: React.FC<{ className?: string }> = ({ className }) => (
 
 
 const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
-    const { cartItems, updateQuantity, updateItemNotes, removeFromCart, totalPrice, totalItems, clearCart } = useCart();
+    const { cartItems, updateQuantity, updateItemNotes, removeFromCart, totalPrice, totalItems, clearCart, cartRestaurantId } = useCart();
     const { addToast } = useNotification();
     const { setCartElement } = useAnimation();
     const cartButtonRef = useRef<HTMLButtonElement>(null);
@@ -39,6 +39,10 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
     const [activeNoteInputId, setActiveNoteInputId] = useState<string | null>(null);
 
     const isOpen = restaurant ? isRestaurantOpen(restaurant) : true;
+
+    const isDifferentRestaurant = Boolean(
+        restaurant && cartRestaurantId && Number(restaurant.id) !== Number(cartRestaurantId)
+    );
 
     const [isBumping, setIsBumping] = useState(false);
     const prevTotalItems = useRef(totalItems);
@@ -73,8 +77,7 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
         }
         
         // Block checkout if cart has items from another restaurant
-        const hasDifferentRestaurant = cartItems.some(i => i.restaurantId !== undefined && i.restaurantId !== restaurant.id);
-        if (hasDifferentRestaurant) {
+        if (isDifferentRestaurant) {
             addToast({ message: "Seu carrinho contém itens de outro restaurante. Por favor, esvazie o carrinho para pedir aqui.", type: 'error' });
             return;
         }
@@ -129,6 +132,27 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
                             <button onClick={() => setIsCartOpen(false)} className="text-gray-500 hover:text-gray-800 text-2xl font-bold" aria-label="Fechar carrinho">&times;</button>
                         </div>
                     </div>
+
+                    {isDifferentRestaurant && (
+                        <div className="bg-amber-50 border-l-4 border-amber-500 p-3 mx-4 mt-3 rounded-r-lg text-xs flex flex-col gap-2 shadow-sm">
+                            <p className="text-amber-800 font-bold flex items-center gap-1.5">
+                                <span>⚠️</span>
+                                <span>Itens de outro restaurante na sacola</span>
+                            </p>
+                            <p className="text-amber-700 leading-relaxed">
+                                Os produtos atuais no seu carrinho são de outro estabelecimento. Para fazer pedidos em <strong>{restaurant?.name}</strong>, você precisa esvaziar o carrinho atual.
+                            </p>
+                            <button
+                                onClick={() => {
+                                    clearCart();
+                                    addToast({ message: 'Carrinho esvaziado com sucesso!', type: 'info' });
+                                }}
+                                className="bg-amber-600 hover:bg-amber-700 text-white font-bold py-1.5 px-3 rounded-lg text-xs w-fit transition-colors shadow-sm"
+                            >
+                                Esvaziar Sacola e Pedir Aqui
+                            </button>
+                        </div>
+                    )}
                     
                     {cartItems.length === 0 ? (
                         <div className="p-8 text-center text-gray-500 flex-grow flex flex-col justify-center items-center">
@@ -216,7 +240,7 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
                                     </div>
                                 </div>
                             )})}
-                            {restaurant && <CartUpsellSuggestions restaurantId={restaurant.id} />}
+                            {restaurant && !isDifferentRestaurant && <CartUpsellSuggestions restaurantId={restaurant.id} />}
                         </div>
                     )}
 
@@ -224,13 +248,27 @@ const Cart: React.FC<{ restaurant?: Restaurant | null }> = ({ restaurant }) => {
                          <div className="p-4 border-t bg-gray-50 rounded-b-lg">
                             <button
                                 onClick={handleCheckout}
-                                disabled={!isOpen}
-                                className={`w-full text-white font-bold py-3 px-4 rounded-lg transition-all flex justify-between items-center ${isOpen ? 'bg-orange-600 hover:bg-orange-700' : 'bg-gray-400 cursor-not-allowed shadow-inner'}`}
+                                disabled={!isOpen || isDifferentRestaurant}
+                                className={`w-full text-white font-bold py-3 px-4 rounded-lg transition-all flex justify-between items-center ${
+                                    isDifferentRestaurant
+                                        ? 'bg-amber-600 hover:bg-amber-700'
+                                        : isOpen 
+                                            ? 'bg-orange-600 hover:bg-orange-700' 
+                                            : 'bg-gray-400 cursor-not-allowed shadow-inner'
+                                }`}
                             >
-                                <span>{isOpen ? 'Finalizar Pedido' : 'Restaurante Fechado'}</span>
+                                <span>
+                                    {isDifferentRestaurant 
+                                        ? 'Itens de outro restaurante' 
+                                        : isOpen ? 'Finalizar Pedido' : 'Restaurante Fechado'}
+                                </span>
                                 <span>R$ {totalPrice.toFixed(2)}</span>
                             </button>
-                            {!isOpen && (
+                            {isDifferentRestaurant ? (
+                                <p className="text-[11px] text-amber-700 font-bold mt-2 text-center">
+                                    Esvazie o carrinho para poder finalizar compras neste restaurante.
+                                </p>
+                            ) : !isOpen && (
                                 <p className="text-[10px] text-red-500 font-bold mt-2 text-center">Infelizmente este restaurante encerrou o expediente.</p>
                             )}
                         </div>

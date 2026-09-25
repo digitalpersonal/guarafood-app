@@ -45,7 +45,7 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ onBack }) => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [activeTab, setActiveTab] = useState<'ongoing' | 'history'>('ongoing');
     const [isLoading, setIsLoading] = useState(true);
-    const { addToCart, clearCart } = useCart();
+    const { replaceCart } = useCart();
     const { addToast, confirm } = useNotification();
 
     const loadOrdersFromDB = useCallback(async () => {
@@ -140,18 +140,30 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ onBack }) => {
         });
     }, [orders, activeTab]);
 
-    const handleReorder = async (orderItems: CartItem[]) => {
+    const handleReorder = async (order: Order) => {
+        const orderItems = order.items || [];
+        if (orderItems.length === 0) {
+            addToast({ message: 'Não há itens neste pedido para repetir.', type: 'warning' });
+            return;
+        }
         const confirmed = await confirm({
             title: 'Repetir Pedido',
-            message: 'Isso irá substituir os itens atuais do seu carrinho. Deseja continuar?',
+            message: `Isso irá substituir os itens atuais do seu carrinho pelos produtos de "${order.restaurantName || 'Restaurante'}". Deseja continuar?`,
             confirmText: 'Sim, substituir',
             cancelText: 'Cancelar'
         });
 
         if (confirmed) {
-            clearCart();
-            orderItems.forEach(item => addToCart(item));
-            addToast({ message: 'Itens adicionados ao carrinho!', type: 'success' });
+            const normalizedItems: CartItem[] = orderItems.map((item, idx) => ({
+                ...item,
+                id: item.id || `reorder-${order.id}-${idx}`,
+                restaurantId: Number(item.restaurantId || order.restaurantId),
+                price: Number(item.price),
+                basePrice: Number(item.basePrice ?? item.price),
+                quantity: Math.max(1, Number(item.quantity) || 1)
+            }));
+            replaceCart(normalizedItems);
+            addToast({ message: 'Itens adicionados ao carrinho com sucesso!', type: 'success' });
             onBack(); 
         }
     };
@@ -319,7 +331,7 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ onBack }) => {
                                         Ajuda
                                     </button>
                                     <button 
-                                        onClick={() => handleReorder(order.items || [])}
+                                        onClick={() => handleReorder(order)}
                                         className="py-3 flex items-center justify-center gap-2 text-sm font-bold text-orange-600 hover:bg-orange-50 transition-colors"
                                     >
                                         <RefreshIcon className="w-4 h-4" />

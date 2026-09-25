@@ -68,12 +68,14 @@ export const CartUpsellSuggestions: React.FC<{ restaurantId: number }> = ({ rest
                    (item.sizes && item.sizes.length > 0)) {
             setIsGenericModalOpen(true);
         } else {
-            addToCart(item);
+            const itemWithRestId = { ...item, restaurantId: Number(restaurantId) };
+            addToCart(itemWithRestId, Number(restaurantId));
         }
     };
 
     const handleCustomizedItemAddToCart = (customizedItem: CartItem) => {
-        addToCart(customizedItem);
+        const customizedWithRestId = { ...customizedItem, restaurantId: Number(restaurantId) };
+        addToCart(customizedWithRestId, Number(restaurantId));
         setIsPizzaModalOpen(false);
         setIsAcaiModalOpen(false);
         setIsGenericModalOpen(false);

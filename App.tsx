@@ -166,7 +166,10 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                     const endTime = restaurant.marmitaEndTime || '15:30';
                     const isLunchTime = currentTime >= startTime && currentTime <= endTime;
 
-                    const allItems = menuData.flatMap((c: any) => c.items);
+                    const allItems = menuData.flatMap((c: any) => (c.items || []).map((item: any) => ({
+                        ...item,
+                        restaurantId: Number(item.restaurantId || item.restaurant_id || restaurant.id)
+                    })));
                     const lunchItems = allItems.filter((item: any) => item.isDailySpecial);
                     
                     setDailySpecials(lunchItems);
@@ -174,7 +177,15 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                     
                     const filteredMenu = menuData.map((cat: any) => ({
                         ...cat,
-                        items: cat.items.filter((item: any) => !item.isDailySpecial && !item.isWeeklySpecial && !item.isMarmita)
+                        restaurantId: Number(cat.restaurantId || cat.restaurant_id || restaurant.id),
+                        items: (cat.items || []).map((item: any) => ({
+                            ...item,
+                            restaurantId: Number(item.restaurantId || item.restaurant_id || restaurant.id)
+                        })).filter((item: any) => !item.isDailySpecial && !item.isWeeklySpecial && !item.isMarmita),
+                        combos: (cat.combos || []).map((combo: any) => ({
+                            ...combo,
+                            restaurantId: Number(combo.restaurantId || combo.restaurant_id || restaurant.id)
+                        }))
                     })).filter((cat: any) => cat.items.length > 0 || (cat.combos && cat.combos.length > 0));
 
                     setMenu(filteredMenu);
@@ -215,14 +226,25 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                 const endTime = restaurant.marmitaEndTime || '15:30';
                 const isLunchTime = currentTime >= startTime && currentTime <= endTime;
 
-                const allItems = menuData.flatMap((c: any) => c.items);
+                const allItems = menuData.flatMap((c: any) => (c.items || []).map((item: any) => ({
+                    ...item,
+                    restaurantId: Number(item.restaurantId || item.restaurant_id || restaurant.id)
+                })));
                 const lunchItems = allItems.filter((item: any) => item.isDailySpecial);
                 setDailySpecials(lunchItems);
                 setAllPizzas(allItems.filter((item: any) => item.isPizza));
                 
                 const filteredMenu = menuData.map((cat: any) => ({
                     ...cat,
-                    items: cat.items.filter((item: any) => !item.isDailySpecial && !item.isWeeklySpecial && !item.isMarmita)
+                    restaurantId: Number(cat.restaurantId || cat.restaurant_id || restaurant.id),
+                    items: (cat.items || []).map((item: any) => ({
+                        ...item,
+                        restaurantId: Number(item.restaurantId || item.restaurant_id || restaurant.id)
+                    })).filter((item: any) => !item.isDailySpecial && !item.isWeeklySpecial && !item.isMarmita),
+                    combos: (cat.combos || []).map((combo: any) => ({
+                        ...combo,
+                        restaurantId: Number(combo.restaurantId || combo.restaurant_id || restaurant.id)
+                    }))
                 })).filter((cat: any) => cat.items.length > 0 || (cat.combos && cat.combos.length > 0));
 
                 setMenu(filteredMenu);
@@ -315,6 +337,7 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                                 <MenuItemCard 
                                     key={`destaque-${item.id}`} 
                                     item={item} 
+                                    restaurantId={restaurant.id}
                                     allPizzas={allPizzas} 
                                     allAddons={addons} 
                                     categoryName={categoryName} 
@@ -358,8 +381,8 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
                                     )}
                                 </h2>
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                    {category.combos?.map(combo => <ComboCard key={`combo-${combo.id}`} combo={combo} menuItems={menu.flatMap(c => c.items)} isOpen={isRestaurantOpen(restaurant)} isCategoryAvailable={isCategoryAvailable} categoryUnavailableMessage={categoryUnavailableMessage} />)}
-                                    {category.items.map(item => <MenuItemCard key={item.id} item={item} allPizzas={allPizzas} allAddons={addons} categoryName={category.name} isOpen={isRestaurantOpen(restaurant)} isCategoryAvailable={isCategoryAvailable} categoryUnavailableMessage={categoryUnavailableMessage} />)}
+                                    {category.combos?.map(combo => <ComboCard key={`combo-${combo.id}`} combo={combo} restaurantId={restaurant.id} menuItems={menu.flatMap(c => c.items)} isOpen={isRestaurantOpen(restaurant)} isCategoryAvailable={isCategoryAvailable} categoryUnavailableMessage={categoryUnavailableMessage} />)}
+                                    {category.items.map(item => <MenuItemCard key={item.id} item={item} restaurantId={restaurant.id} allPizzas={allPizzas} allAddons={addons} categoryName={category.name} isOpen={isRestaurantOpen(restaurant)} isCategoryAvailable={isCategoryAvailable} categoryUnavailableMessage={categoryUnavailableMessage} />)}
                                 </div>
                             </div>
                         )})}
@@ -489,17 +512,15 @@ const CustomerView: React.FC<CustomerViewProps> = ({
 
     if (isLoading) return <div className="h-screen flex items-center justify-center"><Spinner /></div>;
 
-    const cartRestaurantId = cartItems.length > 0 ? cartItems[0].restaurantId : null;
-    let effectiveRestaurant = selectedRestaurant;
-    if (cartRestaurantId && restaurants.length > 0) {
-        const found = restaurants.find(r => r.id === cartRestaurantId);
-        if (found) effectiveRestaurant = found;
-    }
+    const cartRestaurantId = cartItems.length > 0 && cartItems[0].restaurantId !== undefined ? Number(cartItems[0].restaurantId) : null;
+    const cartRestaurant = cartRestaurantId && restaurants.length > 0 
+        ? restaurants.find(r => Number(r.id) === cartRestaurantId) || null 
+        : null;
 
     if (selectedRestaurant) return (
         <>
             <RestaurantMenu restaurant={selectedRestaurant} onBack={onBack || (() => onSelectRestaurant(null))} />
-            <Cart restaurant={effectiveRestaurant} />
+            <Cart restaurant={selectedRestaurant} />
         </>
     );
 
@@ -626,7 +647,7 @@ const CustomerView: React.FC<CustomerViewProps> = ({
                 )}
             </div>
             <AdRotator />
-            <Cart restaurant={effectiveRestaurant} />
+            <Cart restaurant={cartRestaurant} />
         </main>
     );
 };
@@ -634,7 +655,7 @@ const CustomerView: React.FC<CustomerViewProps> = ({
 const AppContent: React.FC = () => {
     const [view, setView] = useState<'customer' | 'login' | 'history' | 'help'>('customer');
     const { currentUser, loading } = useAuth();
-    const { cartItems } = useCart();
+    const { cartItems, clearCart, cartRestaurantId } = useCart();
     const { confirm } = useNotification();
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
     const [selectedCity, setSelectedCity] = useState<string>(() => getSelectedCity());
@@ -658,11 +679,35 @@ const AppContent: React.FC = () => {
                 isDestructive: true
             });
             if (proceed) {
+                clearCart();
                 setSelectedRestaurant(null);
             }
         } else {
             setSelectedRestaurant(null);
         }
+    };
+
+    const handleSelectRestaurant = async (restaurant: Restaurant | null) => {
+        if (!restaurant) {
+            setSelectedRestaurant(null);
+            return;
+        }
+        if (cartItems.length > 0 && cartRestaurantId && Number(cartRestaurantId) !== Number(restaurant.id)) {
+            const prevRest = allRestaurants.find(r => Number(r.id) === Number(cartRestaurantId));
+            const prevRestName = prevRest ? prevRest.name : 'outro estabelecimento';
+            const proceed = await confirm({
+                title: 'Restaurante Diferente',
+                message: `Você tem itens no carrinho de "${prevRestName}". Deseja esvaziar o carrinho para comprar em "${restaurant.name}"?`,
+                confirmText: 'Esvaziar e entrar',
+                cancelText: 'Manter carrinho atual'
+            });
+            if (proceed) {
+                clearCart();
+                setSelectedRestaurant(restaurant);
+            }
+            return;
+        }
+        setSelectedRestaurant(restaurant);
     };
 
     useEffect(() => {
@@ -707,7 +752,7 @@ const AppContent: React.FC = () => {
 
     const handleGlobalBack = () => {
         if (selectedRestaurant) {
-            setSelectedRestaurant(null);
+            handleBack();
         } else if (view !== 'customer') {
             setView('customer');
         }
@@ -725,7 +770,7 @@ const AppContent: React.FC = () => {
         return (
             <CustomerView 
                 selectedRestaurant={selectedRestaurant} 
-                onSelectRestaurant={setSelectedRestaurant}
+                onSelectRestaurant={handleSelectRestaurant}
                 currentCity={selectedCity}
                 onCityChange={handleCityChange}
                 onOpenCityModal={() => setIsCityModalOpen(true)}
@@ -740,7 +785,14 @@ const AppContent: React.FC = () => {
             <VersionChecker />
             <HeaderGlobal 
                 onOrdersClick={() => setView('history')} 
-                onHomeClick={() => { setView('customer'); setSelectedRestaurant(null); }}
+                onHomeClick={() => {
+                    if (selectedRestaurant && cartItems.length > 0) {
+                        handleBack();
+                    } else {
+                        setView('customer');
+                        setSelectedRestaurant(null);
+                    }
+                }}
                 canGoBack={canGoBack}
                 onBack={handleGlobalBack}
                 backLabel={backLabel}

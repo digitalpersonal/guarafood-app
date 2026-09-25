@@ -7,6 +7,7 @@ import OptimizedImage from './OptimizedImage';
 
 interface ComboCardProps {
   combo: Combo;
+  restaurantId?: number;
   menuItems: MenuItem[];
   isOpen?: boolean;
   isCategoryAvailable?: boolean;
@@ -56,7 +57,7 @@ const ComboDetailsModal: React.FC<{ combo: Combo; items: MenuItem[]; onClose: ()
     </div>
 );
 
-const ComboCard: React.FC<ComboCardProps> = ({ combo, menuItems, isOpen = true, isCategoryAvailable = true, categoryUnavailableMessage }) => {
+const ComboCard: React.FC<ComboCardProps> = ({ combo, restaurantId, menuItems, isOpen = true, isCategoryAvailable = true, categoryUnavailableMessage }) => {
   const { addToCart } = useCart();
   const { addFlyingItem } = useAnimation();
   const { addToast } = useNotification();
@@ -69,6 +70,7 @@ const ComboCard: React.FC<ComboCardProps> = ({ combo, menuItems, isOpen = true, 
   }, [combo.menuItemIds, menuItems]);
   
   const canPurchase = isOpen && isCategoryAvailable;
+  const effectiveRestId = Number(restaurantId || combo.restaurantId || (combo as any).restaurant_id);
 
   const handleAddToCart = (event: React.MouseEvent<HTMLButtonElement>) => {
       if (!isOpen) {
@@ -79,7 +81,8 @@ const ComboCard: React.FC<ComboCardProps> = ({ combo, menuItems, isOpen = true, 
           addToast({ message: categoryUnavailableMessage || "Categoria indisponível no momento.", type: 'warning' });
           return;
       }
-      const success = addToCart(combo);
+      const comboWithRestId = { ...combo, restaurantId: effectiveRestId };
+      const success = addToCart(comboWithRestId, effectiveRestId);
       if (success) {
           const rect = event.currentTarget.getBoundingClientRect();
           addFlyingItem(combo.imageUrl, rect);

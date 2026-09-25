@@ -48,20 +48,20 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
 
         const cartItemPayload = {
             id: `featured-promo-${promo.id}-${selectedItemId || 'gen'}`,
-            restaurantId: restaurant.id,
+            restaurantId: Number(restaurant.id),
             name: `${promo.title}${itemNameSuffix}`,
-            price: promo.fixedPrice,
-            basePrice: promo.fixedPrice,
+            price: Number(promo.fixedPrice),
+            basePrice: Number(promo.fixedPrice),
             imageUrl: promo.imageUrl || (selectedItem ? selectedItem.imageUrl : ''),
             quantity: 1,
             description: promo.description,
-            originalPrice: promo.originalPrice,
+            originalPrice: promo.originalPrice ? Number(promo.originalPrice) : undefined,
             promotionName: promo.title,
             includeFreeDelivery: Boolean(promo.includeFreeDelivery),
             notes: notes ? `Opção escolhida: ${selectedItem?.name || 'Padrão'} | Obs: ${notes}` : (selectedItem ? `Opção escolhida: ${selectedItem.name}` : undefined)
         };
 
-        const success = addToCart(cartItemPayload as any);
+        const success = addToCart(cartItemPayload as any, Number(restaurant.id));
         if (success) {
             addToast({ message: 'Combo promocional adicionado ao carrinho!', type: 'success' });
             onClose();

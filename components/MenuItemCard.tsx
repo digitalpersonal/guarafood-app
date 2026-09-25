@@ -39,6 +39,7 @@ const getGenericImageUrl = (category?: string): string | undefined => {
 
 interface MenuItemCardProps {
   item: MenuItem;
+  restaurantId?: number;
   allPizzas: MenuItem[];
   allAddons: Addon[];
   isOpen?: boolean;
@@ -61,7 +62,7 @@ const CalendarDaysIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 
 
-const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons, isOpen = true, categoryName, isCategoryAvailable = true, categoryUnavailableMessage }) => {
+const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, restaurantId, allPizzas, allAddons, isOpen = true, categoryName, isCategoryAvailable = true, categoryUnavailableMessage }) => {
   const { addToCart } = useCart();
   const { addFlyingItem } = useAnimation();
   const { addToast } = useNotification();
@@ -76,6 +77,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
 
   const isAvailable = item.available !== false;
   const canPurchase = isOpen && isAvailable && isCategoryAvailable;
+  const effectiveRestId = Number(restaurantId || item.restaurantId || (item as any).restaurant_id);
 
   const handleAddToCartClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (!isOpen) {
@@ -103,7 +105,8 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
       setIsGenericModalOpen(true);
     }
     else {
-      const success = addToCart(item);
+      const itemWithRestId = { ...item, restaurantId: effectiveRestId };
+      const success = addToCart(itemWithRestId, effectiveRestId);
       if (success) {
         setIsAdding(true);
         setTimeout(() => setIsAdding(false), 500);
@@ -115,7 +118,11 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, allPizzas, allAddons,
   };
 
   const handleCustomizedItemAddToCart = (customizedItem: CartItem) => {
-    const success = addToCart(customizedItem);
+    const itemWithRestId = { 
+      ...customizedItem, 
+      restaurantId: Number(customizedItem.restaurantId || effectiveRestId) 
+    };
+    const success = addToCart(itemWithRestId, effectiveRestId);
     if (success) {
       setIsAdding(true);
       setTimeout(() => setIsAdding(false), 500);
