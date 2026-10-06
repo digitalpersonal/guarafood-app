@@ -44,7 +44,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               id: authUser.id,
               email: authUser.email!,
               role: 'admin',
-              name: 'Administrador'
+              name: 'Administrador',
+              canAccessFinancial: true
           };
       }
 
@@ -62,6 +63,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   role: meta.role as Role,
                   name: meta.name,
                   restaurantId: parsedRestaurantId,
+                  canAccessFinancial: meta.canAccessFinancial !== undefined 
+                      ? Boolean(meta.canAccessFinancial) 
+                      : (meta.role === 'admin' || meta.role === 'merchant')
               };
           }
           return null;
@@ -105,7 +109,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                       email: authUser.email!,
                       role: data.role as Role,
                       name: data.name,
-                      restaurantId: parsedRestaurantId
+                      restaurantId: parsedRestaurantId,
+                      canAccessFinancial: data.can_access_financial !== undefined 
+                          ? Boolean(data.can_access_financial) 
+                          : (data.canAccessFinancial !== undefined ? Boolean(data.canAccessFinancial) : undefined)
                   };
 
                   // Verifica se o restaurante do profile ainda existe
@@ -129,12 +136,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               console.warn("[GuaraFood Auth] Erro ao buscar dados na tabela profiles:", err);
           }
 
-          // 3. SENIOR MOVE: Busca na lista de staff de todos os restaurantes
-          // Se o usuário não é um merchant dono, ele pode ser um funcionário convidado
+          // 3. SENIOR MOVE: Busca na lista de staff dos restaurantes ou da equipe GuaráFood
           try {
               const { data: staffData } = await supabase
                   .from('restaurants')
-                  .select('id, name, staff')
+                  .select('id, name, staff, category')
                   .not('staff', 'is', null);
 
               if (staffData) {
@@ -142,12 +148,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                       const staffList = Array.isArray(res.staff) ? (res.staff as any[]) : [];
                       const member = staffList.find(s => s?.email?.toLowerCase() === authUser.email?.toLowerCase() && s?.active);
                       if (member) {
+                          const isPlatformUser = res.category === 'Sistema' || member.role === 'admin';
                           const newProfile: User = {
                               id: authUser.id,
                               email: authUser.email!,
-                              role: member.role as Role,
+                              role: isPlatformUser ? 'admin' : (member.role as Role),
                               name: member.name,
-                              restaurantId: res.id
+                              restaurantId: isPlatformUser ? undefined : res.id,
+                              canAccessFinancial: member.canAccessFinancial !== undefined 
+                                  ? Boolean(member.canAccessFinancial) 
+                                  : (member.role === 'admin' || member.role === 'manager')
                           };
                           
                           return newProfile;
@@ -155,7 +165,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   }
               }
           } catch (err) {
-              console.warn("[GuaraFood Auth] Erro ao buscar lista de staff dos restaurantes:", err);
+              console.warn("[GuaraFood Auth] Erro ao buscar lista de staff dos restaurantes/plataforma:", err);
           }
 
           // Se nada funcionar, mas o cara está autenticado, monta um perfil básico para não travar
@@ -338,12 +348,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (!error && data?.user) {
               supabaseUser = data.user;
           } else if (error) {
-              // Se não for admin mestre com senha válida, tenta staff ou lança erro
+              // Se não for admin mestre com senha válida, tenta equipe da plataforma ou staff dos restaurantes
               if (!isMasterAdmin || !isValidAdminPass) {
-                  // 2. Busca na lista de staff dos restaurantes
+                  // 2. Busca na lista de staff da plataforma GuaráFood e restaurantes
                   const { data: staffData } = await supabase
                       .from('restaurants')
-                      .select('id, name, staff')
+                      .select('id, name, staff, category')
                       .not('staff', 'is', null);
 
                   if (staffData) {
@@ -356,12 +366,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                           );
                           
                           if (member) {
+                              const isPlatformUser = res.category === 'Sistema' || member.role === 'admin';
                               const profile: User = {
                                   id: member.id,
                                   email: member.email,
-                                  role: member.role as Role,
+                                  role: isPlatformUser ? 'admin' : (member.role as Role),
                                   name: member.name,
-                                  restaurantId: res.id
+                                  restaurantId: isPlatformUser ? undefined : res.id,
+                                  canAccessFinancial: member.canAccessFinancial !== undefined 
+                                      ? Boolean(member.canAccessFinancial) 
+                                      : (member.role === 'admin' || member.role === 'manager')
                               };
                               localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
                               setCurrentUser(profile);
@@ -369,6 +383,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                           }
                       }
                   }
+
+                  // 3. Fallback em cache local para usuários da plataforma offline
+                  try {
+                      const cachedPlat = localStorage.getItem('guarafood-platform-users');
+                      if (cachedPlat) {
+                          const list = JSON.parse(cachedPlat);
+                          const member = list.find((s: any) => 
+                              s?.email?.toLowerCase() === cleanEmail && 
+                              (s?.password === cleanPassword || s?.password === password) && 
+                              s?.active
+                          );
+                          if (member) {
+                              const profile: User = {
+                                  id: member.id,
+                                  email: member.email,
+                                  role: 'admin',
+                                  name: member.name,
+                                  canAccessFinancial: Boolean(member.canAccessFinancial)
+                              };
+                              localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
+                              setCurrentUser(profile);
+                              return;
+                          }
+                      }
+                  } catch {}
+
                   throw new Error(error.message);
               }
           }
@@ -394,7 +434,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               id: '951a4aa1-31b4-4aba-a343-f394173c26d6',
               email: cleanEmail,
               role: 'admin',
-              name: 'Administrador'
+              name: 'Administrador',
+              canAccessFinancial: true
           };
           localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(masterProfile));
           setCurrentUser(masterProfile);

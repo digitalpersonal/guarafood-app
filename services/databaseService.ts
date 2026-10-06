@@ -1,6 +1,6 @@
 
 import { supabase, supabaseAnon, handleSupabaseError } from './api';
-import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory, Expense, Order, OperatingHours, FeaturedPromo, PrinterConfig, ComandaAtiva } from '../types';
+import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory, Expense, Order, OperatingHours, FeaturedPromo, PrinterConfig, ComandaAtiva, PlatformUser, StaffMember } from '../types';
 
 // ==============================================================================
 // 🔄 NORMALIZADORES (Banco de Dados -> App)
@@ -297,7 +297,7 @@ export const fetchRestaurants = async (): Promise<Restaurant[]> => {
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants' });
     const deletedIds = getDeletedRestaurantIds();
     return (data || [])
-        .filter(r => !deletedIds.includes(r.id))
+        .filter(r => !deletedIds.includes(r.id) && r.category !== 'Sistema')
         .map(normalizeRestaurant);
 };
 
@@ -305,7 +305,9 @@ export const fetchRestaurantsSecure = async (includeDeleted: boolean = false): P
     const { data, error } = await supabase.from('restaurants').select('*');
     handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants (secure)' });
     const deletedIds = getDeletedRestaurantIds();
-    let list = (data || []).map(normalizeRestaurantSecure);
+    let list = (data || [])
+        .filter(r => r.category !== 'Sistema')
+        .map(normalizeRestaurantSecure);
     if (!includeDeleted) {
         list = list.filter(r => !deletedIds.includes(r.id));
     }
@@ -1114,6 +1116,145 @@ export const deleteComandaAtiva = async (id: string): Promise<void> => {
 
     if (error) {
         handleSupabaseError({ error, customMessage: 'Falha ao excluir comanda ativa' });
+    }
+};
+
+// ==============================================================================
+// 👥 USUÁRIOS DA PLATAFORMA GUARAFOOD E PERMISSÕES FINANCEIRAS
+// ==============================================================================
+
+const MASTER_ADMIN_USERS: PlatformUser[] = [
+    {
+        id: '951a4aa1-31b4-4aba-a343-f394173c26d6',
+        name: 'Administrador Geral',
+        email: 'digitalpersonal@gmail.com',
+        role: 'admin',
+        active: true,
+        canAccessFinancial: true,
+        createdAt: '2026-09-25T17:19:36.656Z'
+    },
+    {
+        id: '951a4aa1-31b4-4aba-a343-f394173c26d7',
+        name: 'Admin Suporte',
+        email: 'admin@guarafood.com.br',
+        role: 'admin',
+        active: true,
+        canAccessFinancial: true,
+        createdAt: '2026-09-25T17:19:36.656Z'
+    }
+];
+
+export const fetchSystemRestaurantId = async (): Promise<number> => {
+    const { data } = await supabase
+        .from('restaurants')
+        .select('id')
+        .eq('category', 'Sistema')
+        .maybeSingle();
+
+    if (data?.id) return data.id;
+
+    // Se não existir, tenta criar
+    const payload = {
+        name: 'GuaráFood Plataforma (Sistema)',
+        category: 'Sistema',
+        city: 'Guaranésia',
+        delivery_time: '0',
+        rating: 5,
+        image_url: '',
+        payment_gateways: [],
+        address: 'GuaráFood Admin',
+        phone: '35999999999',
+        opening_hours: '00:00',
+        closing_hours: '23:59',
+        delivery_fee: 0,
+        active: false,
+        staff: MASTER_ADMIN_USERS
+    };
+
+    const { data: created } = await supabase.from('restaurants').insert(payload).select('id').single();
+    return created?.id || 45;
+};
+
+export const fetchPlatformUsers = async (): Promise<PlatformUser[]> => {
+    try {
+        const { data, error } = await supabase
+            .from('restaurants')
+            .select('id, staff')
+            .eq('category', 'Sistema')
+            .maybeSingle();
+
+        if (error) {
+            console.warn("[databaseService] Erro ao buscar usuários da plataforma no Supabase:", error);
+            const cached = localStorage.getItem('guarafood-platform-users');
+            return cached ? JSON.parse(cached) : MASTER_ADMIN_USERS;
+        }
+
+        let staffList: PlatformUser[] = [];
+        if (data && Array.isArray(data.staff)) {
+            staffList = data.staff.map((s: any) => ({
+                id: s.id || crypto.randomUUID(),
+                name: s.name || 'Usuário',
+                email: s.email || '',
+                password: s.password || '',
+                role: s.role || 'operator',
+                active: s.active !== false,
+                canAccessFinancial: Boolean(s.canAccessFinancial),
+                createdAt: s.createdAt || new Date().toISOString()
+            }));
+        }
+
+        // Garante que os administradores mestres sempre estejam na lista
+        for (const master of MASTER_ADMIN_USERS) {
+            if (!staffList.some(u => u.email.toLowerCase() === master.email.toLowerCase())) {
+                staffList.unshift(master);
+            }
+        }
+
+        localStorage.setItem('guarafood-platform-users', JSON.stringify(staffList));
+        return staffList;
+    } catch (e) {
+        console.error("Erro ao carregar usuários da plataforma:", e);
+        const cached = localStorage.getItem('guarafood-platform-users');
+        return cached ? JSON.parse(cached) : MASTER_ADMIN_USERS;
+    }
+};
+
+export const savePlatformUsers = async (users: PlatformUser[]): Promise<void> => {
+    try {
+        localStorage.setItem('guarafood-platform-users', JSON.stringify(users));
+        const systemId = await fetchSystemRestaurantId();
+        const { error } = await supabase
+            .from('restaurants')
+            .update({ staff: users })
+            .eq('id', systemId);
+
+        if (error) {
+            console.error("[databaseService] Erro ao salvar usuários da plataforma no banco:", error);
+            throw new Error(`Erro ao salvar no banco: ${error.message}`);
+        }
+    } catch (err: any) {
+        console.error("Falha ao salvar usuários da plataforma:", err);
+        throw err;
+    }
+};
+
+export const fetchAllStaffAcrossRestaurants = async (): Promise<{ restaurantId: number; restaurantName: string; staff: StaffMember[] }[]> => {
+    try {
+        const { data, error } = await supabase
+            .from('restaurants')
+            .select('id, name, staff, category')
+            .neq('category', 'Sistema');
+
+        if (error || !data) return [];
+
+        return data.map(r => ({
+            restaurantId: r.id,
+            restaurantName: r.name,
+            staff: Array.isArray(r.staff) ? r.staff : []
+        }));
+    } catch (err) {
+        console.warn("Erro ao buscar equipe de todos os restaurantes:", err);
+        return [];
     }
 };
 
