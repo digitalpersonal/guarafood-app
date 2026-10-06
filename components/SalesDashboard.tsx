@@ -61,6 +61,23 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
     
     const isManager = currentStaffUser?.role === 'manager';
     
+    // Verificação de permissão financeira
+    const hasFinancialAccess = useMemo(() => {
+        if (currentStaffUser) {
+            if (currentStaffUser.canAccessFinancial !== undefined) {
+                return Boolean(currentStaffUser.canAccessFinancial);
+            }
+            return currentStaffUser.role === 'manager';
+        }
+        if (currentUser?.canAccessFinancial !== undefined) {
+            return Boolean(currentUser.canAccessFinancial);
+        }
+        if (currentUser?.role === 'admin' || currentUser?.role === 'merchant' || currentUser?.role === 'manager') {
+            return true;
+        }
+        return false;
+    }, [currentStaffUser, currentUser]);
+    
     const printerWidth = parseInt(localStorage.getItem('guarafood-printer-width') || '80', 10);
     const printableWidth = printerWidth === 80 ? '70mm' : '46mm';
     
@@ -92,7 +109,10 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
     
     useEffect(() => {
         const loadData = async () => {
-            if (!currentUser?.restaurantId) return;
+            if (!currentUser?.restaurantId || !hasFinancialAccess) {
+                setIsLoading(false);
+                return;
+            }
             setIsLoading(true);
             const restaurantId = currentUser.restaurantId;
             try {
@@ -382,6 +402,20 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
             addToast({ message: 'Erro ao salvar despesa.', type: 'error' }); 
         }
     };
+
+    if (!hasFinancialAccess) {
+        return (
+            <div className="p-8 text-center bg-white rounded-3xl max-w-md mx-auto my-12 border border-gray-200 shadow-sm animate-fadeIn">
+                <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl font-bold">
+                    🔒
+                </div>
+                <h3 className="text-xl font-black text-gray-800 mb-1">Acesso Financeiro Bloqueado</h3>
+                <p className="text-xs text-gray-500">
+                    Seu usuário não possui permissão para visualizar relatórios de vendas, faturamento total ou movimentações de caixa.
+                </p>
+            </div>
+        );
+    }
 
     if (isLoading) return <Spinner message="Calculando financeiro..." />;
 

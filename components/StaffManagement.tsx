@@ -6,7 +6,7 @@ import type { StaffMember, Restaurant } from '../types';
 
 const StaffManagement: React.FC = () => {
     const { currentUser } = useAuth();
-    const { addToast, confirm, prompt } = useNotification();
+    const { addToast, confirm } = useNotification();
     const [staff, setStaff] = useState<StaffMember[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -17,7 +17,8 @@ const StaffManagement: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [pin, setPin] = useState('');
-    const [role, setRole] = useState<'waiter' | 'manager'>('waiter');
+    const [role, setRole] = useState<'waiter' | 'manager' | 'operator' | 'kitchen'>('operator');
+    const [canAccessFinancial, setCanAccessFinancial] = useState(false);
 
     useEffect(() => {
         loadStaff();
@@ -58,14 +59,17 @@ const StaffManagement: React.FC = () => {
             setEmail(member.email);
             setPassword(member.password || '');
             setPin(member.pin || '');
-            setRole(member.role);
+            setRole(member.role || 'operator');
+            setCanAccessFinancial(Boolean(member.canAccessFinancial));
         } else {
             setEditingMember(null);
             setName('');
             setEmail('');
             setPassword('');
             setPin('');
-            setRole('waiter');
+            setRole('operator');
+            // Por padrão, novos atendentes e operadores NÃO têm acesso ao financeiro
+            setCanAccessFinancial(false);
         }
         setIsModalOpen(true);
     };
@@ -93,7 +97,15 @@ const StaffManagement: React.FC = () => {
         if (editingMember) {
             // Update existing
             updatedStaff = updatedStaff.map(s => 
-                s.id === editingMember.id ? { ...s, name, email, password, pin, role } : s
+                s.id === editingMember.id ? { 
+                    ...s, 
+                    name, 
+                    email: email.toLowerCase().trim(), 
+                    password, 
+                    pin, 
+                    role, 
+                    canAccessFinancial 
+                } : s
             );
         } else {
             // Create new
@@ -104,7 +116,8 @@ const StaffManagement: React.FC = () => {
                 password,
                 pin,
                 role,
-                active: true
+                active: true,
+                canAccessFinancial
             };
             updatedStaff.push(newMember);
         }
@@ -112,8 +125,9 @@ const StaffManagement: React.FC = () => {
         try {
             await updateRestaurant(currentUser.restaurantId, { staff: updatedStaff });
             setStaff(updatedStaff);
+            localStorage.setItem('guarafood-cached-staff', JSON.stringify(updatedStaff));
             setIsModalOpen(false);
-            addToast({ message: editingMember ? 'Atendente atualizado!' : 'Atendente cadastrado!', type: 'success' });
+            addToast({ message: editingMember ? 'Usuário atualizado com sucesso!' : 'Novo usuário cadastrado!', type: 'success' });
         } catch (error) {
             console.error("Error saving staff:", error);
             addToast({ message: 'Erro ao salvar dados.', type: 'error' });
@@ -130,6 +144,7 @@ const StaffManagement: React.FC = () => {
         try {
             await updateRestaurant(currentUser.restaurantId, { staff: updatedStaff });
             setStaff(updatedStaff);
+            localStorage.setItem('guarafood-cached-staff', JSON.stringify(updatedStaff));
             addToast({ message: `Status de ${member.name} atualizado.`, type: 'success' });
         } catch (error) {
             addToast({ message: 'Erro ao atualizar status.', type: 'error' });
@@ -140,7 +155,7 @@ const StaffManagement: React.FC = () => {
         if (!currentUser?.restaurantId) return;
 
         const confirmed = await confirm({
-            title: 'Remover Atendente',
+            title: 'Remover Usuário',
             message: `Tem certeza que deseja remover ${member.name}?`,
             confirmText: 'Remover',
             isDestructive: true
@@ -151,179 +166,351 @@ const StaffManagement: React.FC = () => {
             try {
                 await updateRestaurant(currentUser.restaurantId, { staff: updatedStaff });
                 setStaff(updatedStaff);
-                addToast({ message: 'Atendente removido.', type: 'success' });
+                localStorage.setItem('guarafood-cached-staff', JSON.stringify(updatedStaff));
+                addToast({ message: 'Usuário removido da equipe.', type: 'success' });
             } catch (error) {
-                addToast({ message: 'Erro ao remover atendente.', type: 'error' });
+                addToast({ message: 'Erro ao remover usuário.', type: 'error' });
             }
         }
     };
 
-    if (loading) {
-        return <div className="p-8 text-center text-gray-500">Carregando equipe...</div>;
-    }
+    const getRoleDetails = (r: StaffMember['role']) => {
+        switch (r) {
+            case 'manager':
+                return { label: 'Gerente', bg: 'bg-purple-600', badge: 'bg-purple-50 text-purple-700 border-purple-200' };
+            case 'operator':
+                return { label: 'Atendente / Caixa', bg: 'bg-blue-600', badge: 'bg-blue-50 text-blue-700 border-blue-200' };
+            case 'kitchen':
+                return { label: 'Cozinha', bg: 'bg-amber-600', badge: 'bg-amber-50 text-amber-700 border-amber-200' };
+            case 'waiter':
+            default:
+                return { label: 'Garçom', bg: 'bg-orange-500', badge: 'bg-orange-50 text-orange-700 border-orange-200' };
+        }
+    };
 
     return (
-        <div className="p-6 max-w-4xl mx-auto space-y-6">
-            <div className="flex justify-between items-center">
+        <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                 <div>
-                    <h2 className="text-2xl font-black text-gray-800">Equipe de Atendimento</h2>
-                    <p className="text-gray-500 text-sm">Gerencie garçons e gerentes que acessam o sistema.</p>
+                    <h2 className="text-xl sm:text-2xl font-black text-gray-800 flex items-center gap-2">
+                        <span>👥</span> Equipe & Permissões de Acesso
+                    </h2>
+                    <p className="text-gray-500 text-xs sm:text-sm mt-1">
+                        Cadastre atendentes, garçons e gerentes com controle rigoroso de acesso à parte financeira.
+                    </p>
                 </div>
                 <button 
                     onClick={() => handleOpenModal()}
-                    className="bg-orange-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-orange-700 transition-colors flex items-center gap-2"
+                    className="bg-orange-600 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-orange-700 transition-all flex items-center gap-2 shadow-md shadow-orange-200 active:scale-95 text-sm"
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                     </svg>
-                    Novo Atendente
+                    Novo Usuário da Equipe
                 </button>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {staff.map(member => (
-                    <div key={member.id} className={`bg-white p-4 rounded-2xl shadow-sm border-2 transition-all ${member.active ? 'border-gray-100' : 'border-gray-100 opacity-60 bg-gray-50'}`}>
-                        <div className="flex justify-between items-start mb-3">
-                            <div className="flex items-center gap-3">
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-white ${member.role === 'manager' ? 'bg-purple-600' : 'bg-orange-500'}`}>
-                                    {member.name.charAt(0).toUpperCase()}
-                                </div>
-                                <div>
-                                    <h3 className="font-bold text-gray-800">{member.name}</h3>
-                                    <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                                        {member.role === 'manager' ? 'Gerente' : 'Garçom'}
-                                    </span>
-                                </div>
-                            </div>
-                            <div className="flex gap-1">
-                                <button 
-                                    onClick={() => handleOpenModal(member)}
-                                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-                                    </svg>
-                                </button>
-                                <button 
-                                    onClick={() => handleDelete(member)}
-                                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                                    </svg>
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-100">
-                            <div className="text-[10px] font-mono text-gray-400 truncate max-w-[150px]">
-                                {member.email}
-                            </div>
-                            <button 
-                                onClick={() => handleToggleActive(member)}
-                                className={`text-xs font-bold px-3 py-1 rounded-full transition-colors ${member.active ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'}`}
+            {loading ? (
+                <div className="py-12 text-center text-gray-400 font-bold">Carregando membros da equipe...</div>
+            ) : (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {staff.map(member => {
+                        const roleInfo = getRoleDetails(member.role);
+                        const hasFinancial = Boolean(member.canAccessFinancial);
+
+                        return (
+                            <div 
+                                key={member.id} 
+                                className={`bg-white p-5 rounded-2xl shadow-sm border-2 transition-all flex flex-col justify-between ${
+                                    member.active ? 'border-gray-100 hover:border-orange-200' : 'border-gray-100 opacity-60 bg-gray-50'
+                                }`}
                             >
-                                {member.active ? 'ATIVO' : 'INATIVO'}
+                                <div>
+                                    <div className="flex justify-between items-start mb-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black text-white shadow-sm ${roleInfo.bg}`}>
+                                                {member.name.charAt(0).toUpperCase()}
+                                            </div>
+                                            <div>
+                                                <h3 className="font-bold text-gray-800 text-base leading-tight">{member.name}</h3>
+                                                <span className={`inline-block text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border mt-1 ${roleInfo.badge}`}>
+                                                    {roleInfo.label}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-1">
+                                            <button 
+                                                onClick={() => handleOpenModal(member)}
+                                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                title="Editar dados e permissões"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                                                </svg>
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDelete(member)}
+                                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                title="Remover da equipe"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 00-2.09 2.134v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Indicador de Segurança Financeira */}
+                                    <div className="mt-3 pt-3 border-t border-gray-100">
+                                        <div className="flex items-center gap-1.5">
+                                            {hasFinancial ? (
+                                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                    <span>💳</span> Acesso Financeiro Liberado
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg bg-red-50 text-red-700 border border-red-200">
+                                                    <span>🔒</span> Sem Acesso Financeiro
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-[10px] text-gray-400 mt-1 leading-tight">
+                                            {hasFinancial 
+                                                ? 'Pode ver faturamento, caixa e relatórios.' 
+                                                : 'Bloqueado para faturamento, caixa e relatórios.'}
+                                        </p>
+                                    </div>
+                                </div>
+                                
+                                <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-100">
+                                    <div className="text-[11px] font-mono text-gray-500 truncate max-w-[150px]" title={member.email}>
+                                        {member.email}
+                                    </div>
+                                    <button 
+                                        onClick={() => handleToggleActive(member)}
+                                        className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider transition-colors ${
+                                            member.active ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+                                        }`}
+                                    >
+                                        {member.active ? 'Ativo' : 'Inativo'}
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })}
+
+                    {staff.length === 0 && (
+                        <div className="col-span-full py-12 text-center border-2 border-dashed border-gray-200 rounded-2xl bg-white p-6">
+                            <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl">👥</div>
+                            <p className="text-gray-600 font-bold">Nenhum membro na equipe ainda.</p>
+                            <p className="text-gray-400 text-xs mt-1">Cadastre atendentes de caixa, garçons e operadores com ou sem acesso aos números financeiros.</p>
+                            <button onClick={() => handleOpenModal()} className="text-orange-600 font-bold mt-3 hover:underline text-sm">
+                                + Cadastrar o primeiro atendente
                             </button>
                         </div>
-                    </div>
-                ))}
+                    )}
+                </div>
+            )}
 
-                {staff.length === 0 && (
-                    <div className="col-span-full py-12 text-center border-2 border-dashed border-gray-200 rounded-2xl">
-                        <p className="text-gray-400 font-bold">Nenhum membro na equipe ainda.</p>
-                        <button onClick={() => handleOpenModal()} className="text-orange-600 font-bold mt-2 hover:underline">Cadastrar o primeiro</button>
-                    </div>
-                )}
-            </div>
-
-            {/* Modal */}
+            {/* Modal de Cadastro / Edição */}
             {isModalOpen && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
-                    <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl animate-slideUp max-h-[90vh] overflow-y-auto">
-                        <h3 className="text-xl font-black text-gray-800 mb-6">
-                            {editingMember ? 'Editar Atendente' : 'Novo Atendente'}
-                        </h3>
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
+                    <div className="bg-white w-full max-w-lg rounded-3xl p-6 shadow-2xl animate-slideUp max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-center justify-between mb-5">
+                            <div>
+                                <h3 className="text-xl font-black text-gray-800">
+                                    {editingMember ? 'Editar Acesso do Usuário' : 'Novo Usuário da Equipe'}
+                                </h3>
+                                <p className="text-xs text-gray-500 mt-0.5">Defina as credenciais e permissões operacionais.</p>
+                            </div>
+                            <button 
+                                onClick={() => setIsModalOpen(false)}
+                                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 flex items-center justify-center text-sm font-bold"
+                            >
+                                ✕
+                            </button>
+                        </div>
                         
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nome</label>
+                                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Nome Completo</label>
                                 <input 
                                     type="text" 
                                     value={name}
                                     onChange={e => setName(e.target.value)}
-                                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-orange-500 outline-none font-medium"
-                                    placeholder="Ex: João Silva"
+                                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-orange-500 focus:bg-white outline-none font-medium text-sm transition-all"
+                                    placeholder="Ex: Ana Lima (Balcão)"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email de Acesso</label>
+                                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">E-mail de Login</label>
                                 <input 
                                     type="email" 
                                     value={email}
                                     onChange={e => setEmail(e.target.value)}
-                                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-orange-500 outline-none font-medium"
-                                    placeholder="email@exemplo.com"
+                                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-orange-500 focus:bg-white outline-none font-medium text-sm transition-all"
+                                    placeholder="atendente@guarafood.com"
                                 />
                             </div>
 
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Senha de Acesso (6 dígitos)</label>
-                                <input 
-                                    type="text" 
-                                    value={password}
-                                    onChange={e => setPassword(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-orange-500 outline-none font-medium"
-                                    placeholder="000000"
-                                />
-                                <p className="text-[10px] text-gray-400 mt-1">A senha deve ter obrigatoriamente 6 dígitos.</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Senha (6 dígitos)</label>
+                                    <input 
+                                        type="text" 
+                                        value={password}
+                                        onChange={e => setPassword(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-orange-500 focus:bg-white outline-none font-mono text-center tracking-widest text-sm"
+                                        placeholder="123456"
+                                    />
+                                    <p className="text-[10px] text-gray-400 mt-1">Exatamente 6 dígitos numéricos.</p>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-600 uppercase mb-1">PIN Rápido (4 dígitos)</label>
+                                    <input 
+                                        type="text" 
+                                        maxLength={4}
+                                        value={pin}
+                                        onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
+                                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-orange-500 focus:bg-white outline-none font-mono text-center tracking-[0.5em] text-sm"
+                                        placeholder="0000"
+                                    />
+                                    <p className="text-[10px] text-gray-400 mt-1">Para troca rápida em tablet compartilhado.</p>
+                                </div>
                             </div>
 
+                            {/* Seleção de Função / Cargo */}
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">PIN de Acesso Rápido (Opcional - 4 dígitos)</label>
-                                <input 
-                                    type="text" 
-                                    maxLength={4}
-                                    value={pin}
-                                    onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
-                                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-orange-500 outline-none font-mono text-center tracking-[0.5em] text-lg"
-                                    placeholder="0000"
-                                />
-                                <p className="text-[10px] text-gray-400 mt-1">Usado apenas para desbloquear o painel em dispositivos compartilhados.</p>
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Função</label>
+                                <label className="block text-xs font-bold text-gray-600 uppercase mb-1.5">Função Operacional</label>
                                 <div className="grid grid-cols-2 gap-2">
                                     <button 
-                                        onClick={() => setRole('waiter')}
-                                        className={`p-3 rounded-xl font-bold text-sm transition-all ${role === 'waiter' ? 'bg-orange-100 text-orange-700 border-2 border-orange-200' : 'bg-gray-50 text-gray-500 border border-gray-200'}`}
+                                        type="button"
+                                        onClick={() => {
+                                            setRole('operator');
+                                        }}
+                                        className={`p-3 rounded-xl text-left border-2 transition-all ${
+                                            role === 'operator' 
+                                                ? 'border-blue-500 bg-blue-50/50 text-blue-900 shadow-sm' 
+                                                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                                        }`}
                                     >
-                                        Garçom
+                                        <div className="font-bold text-xs flex items-center gap-1.5">
+                                            <span>🏪</span> Atendente / Balcão
+                                        </div>
+                                        <p className="text-[10px] text-gray-500 mt-0.5">Pedidos delivery, balcão e comandas</p>
                                     </button>
+
                                     <button 
-                                        onClick={() => setRole('manager')}
-                                        className={`p-3 rounded-xl font-bold text-sm transition-all ${role === 'manager' ? 'bg-purple-100 text-purple-700 border-2 border-purple-200' : 'bg-gray-50 text-gray-500 border border-gray-200'}`}
+                                        type="button"
+                                        onClick={() => {
+                                            setRole('waiter');
+                                            setCanAccessFinancial(false); // Garçom sempre sem financeiro
+                                        }}
+                                        className={`p-3 rounded-xl text-left border-2 transition-all ${
+                                            role === 'waiter' 
+                                                ? 'border-orange-500 bg-orange-50/50 text-orange-900 shadow-sm' 
+                                                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                                        }`}
                                     >
-                                        Gerente
+                                        <div className="font-bold text-xs flex items-center gap-1.5">
+                                            <span>🍽️</span> Garçom (Salão)
+                                        </div>
+                                        <p className="text-[10px] text-gray-500 mt-0.5">Apenas mesas, comandas e pedidos de salão</p>
                                     </button>
+
+                                    <button 
+                                        type="button"
+                                        onClick={() => {
+                                            setRole('kitchen');
+                                            setCanAccessFinancial(false); // Cozinha sempre sem financeiro
+                                        }}
+                                        className={`p-3 rounded-xl text-left border-2 transition-all ${
+                                            role === 'kitchen' 
+                                                ? 'border-amber-500 bg-amber-50/50 text-amber-900 shadow-sm' 
+                                                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                                        }`}
+                                    >
+                                        <div className="font-bold text-xs flex items-center gap-1.5">
+                                            <span>👨‍🍳</span> Cozinha
+                                        </div>
+                                        <p className="text-[10px] text-gray-500 mt-0.5">Fila de preparo e monitor de pedidos</p>
+                                    </button>
+
+                                    <button 
+                                        type="button"
+                                        onClick={() => setRole('manager')}
+                                        className={`p-3 rounded-xl text-left border-2 transition-all ${
+                                            role === 'manager' 
+                                                ? 'border-purple-500 bg-purple-50/50 text-purple-900 shadow-sm' 
+                                                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                                        }`}
+                                    >
+                                        <div className="font-bold text-xs flex items-center gap-1.5">
+                                            <span>👔</span> Gerente Geral
+                                        </div>
+                                        <p className="text-[10px] text-gray-500 mt-0.5">Supervisão geral da loja</p>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* CONTROLE EXPLÍCITO DE ACESSO FINANCEIRO */}
+                            <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                    <div className="pr-2">
+                                        <span className="text-xs font-bold text-gray-800 uppercase flex items-center gap-1.5">
+                                            <span>💰</span> Acesso ao Financeiro
+                                        </span>
+                                        <p className="text-[11px] text-gray-500 mt-0.5 leading-tight">
+                                            Permite visualizar relatórios de vendas, faturamento total, despesas e fechamento de caixa.
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCanAccessFinancial(!canAccessFinancial)}
+                                        className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors flex-shrink-0 cursor-pointer ${
+                                            canAccessFinancial ? 'bg-emerald-500' : 'bg-gray-300'
+                                        }`}
+                                        title={canAccessFinancial ? 'Desativar acesso financeiro' : 'Ativar acesso financeiro'}
+                                    >
+                                        <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                                            canAccessFinancial ? 'translate-x-6' : 'translate-x-0'
+                                        }`} />
+                                    </button>
+                                </div>
+
+                                <div className="pt-1">
+                                    {canAccessFinancial ? (
+                                        <div className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 flex items-start gap-2">
+                                            <span className="text-sm">🔓</span>
+                                            <div>
+                                                <strong>Acesso Financeiro Liberado:</strong> Este usuário poderá visualizar todos os relatórios de faturamento, faturamento total do restaurante e caixa.
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-[11px] font-semibold text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200 flex items-start gap-2">
+                                            <span className="text-sm">🔒</span>
+                                            <div>
+                                                <strong>Sem Acesso Financeiro:</strong> A aba "Financeiro", relatórios de faturamento e dados de receita ficarão <strong>completamente invisíveis e bloqueados</strong> para este usuário.
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
 
-                        <div className="flex gap-3 mt-8">
+                        <div className="flex gap-3 mt-6">
                             <button 
                                 onClick={() => setIsModalOpen(false)}
-                                className="flex-1 py-3 text-gray-500 font-bold hover:bg-gray-50 rounded-xl transition-colors"
+                                className="flex-1 py-3 text-gray-500 font-bold hover:bg-gray-50 rounded-xl transition-colors text-sm"
                             >
                                 Cancelar
                             </button>
                             <button 
                                 onClick={handleSave}
-                                className="flex-1 py-3 bg-orange-600 text-white font-bold rounded-xl hover:bg-orange-700 shadow-lg shadow-orange-200 transition-all active:scale-95"
+                                className="flex-1 py-3 bg-orange-600 text-white font-bold rounded-xl hover:bg-orange-700 shadow-lg shadow-orange-200 transition-all active:scale-95 text-sm"
                             >
-                                Salvar
+                                Salvar Usuário
                             </button>
                         </div>
                     </div>

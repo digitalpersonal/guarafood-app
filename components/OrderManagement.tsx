@@ -210,14 +210,17 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setCurrentStaffUser(member);
         setIsPinPadOpen(false);
         
-        if (member.role === 'manager') {
+        if (member.role === 'manager' || member.role === 'operator') {
             setIsLocked(false);
             localStorage.setItem('guarafood-panel-locked', 'false');
+            if (activeTab === 'waiter_monitor') {
+                setActiveTab('orders');
+            }
         } else {
-            // Waiters are locked to the Waiter Monitor tab (Unified Tables & Comandas)
+            // Garçons e Cozinha ficam em seus fluxos operacionais dedicados
             setIsLocked(true);
             localStorage.setItem('guarafood-panel-locked', 'true');
-            setActiveTab('waiter_monitor');
+            setActiveTab(member.role === 'kitchen' ? 'orders' : 'waiter_monitor');
         }
     };
 
@@ -232,30 +235,72 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setIsPinPadOpen(true);
     };
 
-    // Determine visible tabs based on role and lock state
+    // Segurança Financeira: Determina se o usuário ativo atual tem autorização para o Financeiro
+    const hasFinancialAccess = useMemo(() => {
+        // Se houver um atendente autenticado via PIN no terminal compartilhado
+        if (currentStaffUser) {
+            if (currentStaffUser.canAccessFinancial !== undefined) {
+                return Boolean(currentStaffUser.canAccessFinancial);
+            }
+            return currentStaffUser.role === 'manager';
+        }
+        // Se o usuário logado tiver permissão financeira definida explicitamente
+        if (currentUser?.canAccessFinancial !== undefined) {
+            return Boolean(currentUser.canAccessFinancial);
+        }
+        // Por padrão, dono do restaurante (merchant), gerente e admin mestre mantêm acesso
+        if (currentUser?.role === 'admin' || currentUser?.role === 'merchant' || currentUser?.role === 'manager') {
+            return true;
+        }
+        return false;
+    }, [currentStaffUser, currentUser]);
+
+    // Determine visible tabs based on role, financial permissions and lock state
     const visibleTabs = useMemo(() => {
         const allTabs = ['orders', 'waiter_monitor', 'tables', 'comandas', 'menu', 'financial', 'customers', 'staff', 'printers', 'settings', 'help', 'mensalistas'] as const;
         
-        // Se o usuário logado for garçom, ele vê Monitor Garçom, Mesas, Comandas e Ajuda
-        if (currentUser?.role === 'waiter') {
-            return ['waiter_monitor', 'tables', 'comandas', 'help'];
-        }
+        const effectiveRole = currentStaffUser?.role || currentUser?.role;
 
-        // Se o painel estiver travado (Modo Garçom compartilhado), mostra Monitor Garçom, Mesas, Comandas e Ajuda
+        // Se o painel estiver travado (Modo Garçom compartilhado via PIN)
         if (isLocked) {
             return ['waiter_monitor', 'tables', 'comandas', 'help'];
         }
+
+        // Se o usuário logado for garçom
+        if (effectiveRole === 'waiter') {
+            return ['waiter_monitor', 'tables', 'comandas', 'help'];
+        }
+
+        // Se o usuário logado for cozinha
+        if (effectiveRole === 'kitchen') {
+            return ['orders', 'help'];
+        }
         
-        // Manager ou Merchant (Dono) vê tudo
-        return restaurant?.hasMensalistas ? allTabs : allTabs.filter(t => t !== 'mensalistas');
-    }, [currentUser, isLocked, restaurant]);
+        let tabs = restaurant?.hasMensalistas ? [...allTabs] : allTabs.filter(t => t !== 'mensalistas');
+
+        // SEGURANÇA MÁXIMA: Se não tem permissão financeira, bloqueia e oculta 'financial'
+        if (!hasFinancialAccess) {
+            tabs = tabs.filter(t => t !== 'financial');
+        }
+
+        // Se for atendente / operador de balcão (não é gerente nem dono)
+        if (effectiveRole === 'operator') {
+            // Atendente não configura o restaurante nem gerencia equipe
+            tabs = tabs.filter(t => t !== 'staff' && t !== 'settings');
+        }
+
+        return tabs;
+    }, [currentUser, currentStaffUser, isLocked, restaurant, hasFinancialAccess]);
 
     // Force tab if current is not allowed
     useEffect(() => {
-        if ((isLocked || currentUser?.role === 'waiter') && !['waiter_monitor', 'tables', 'comandas', 'help'].includes(activeTab)) {
-            setActiveTab('waiter_monitor');
+        if (!visibleTabs.includes(activeTab as any)) {
+            const fallbackTab = visibleTabs.includes('orders' as any) 
+                ? 'orders' 
+                : (visibleTabs[0] || 'waiter_monitor');
+            setActiveTab(fallbackTab as any);
         }
-    }, [currentUser, isLocked, activeTab]);
+    }, [visibleTabs, activeTab]);
 
     const processOrdersUpdate = useCallback((allOrders: Order[]) => {
         const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
@@ -666,6 +711,25 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 return <ComandaManagement orders={orders} currentStaffUser={currentStaffUser} restaurant={restaurant} />;
             case 'menu': return <MenuManagement />;
             case 'financial':
+                if (!hasFinancialAccess) {
+                    return (
+                        <div className="p-8 text-center bg-white rounded-2xl max-w-md mx-auto my-12 border border-gray-200 shadow-sm animate-fadeIn">
+                            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl font-bold">
+                                🔒
+                            </div>
+                            <h3 className="text-xl font-black text-gray-800 mb-1">Acesso Financeiro Restrito</h3>
+                            <p className="text-sm text-gray-500">
+                                Seu perfil de usuário não possui autorização para visualizar relatórios de vendas, faturamento total ou fluxo de caixa deste restaurante.
+                            </p>
+                            <button
+                                onClick={() => setActiveTab('orders')}
+                                className="mt-5 px-5 py-2.5 bg-orange-600 text-white text-xs font-black uppercase tracking-wider rounded-xl hover:bg-orange-700 transition-all shadow-md active:scale-95"
+                            >
+                                Ir para Tela de Pedidos
+                            </button>
+                        </div>
+                    );
+                }
                 return (
                     <React.Suspense fallback={<div className="p-4 text-center">Carregando financeiro...</div>}>
                         <SalesDashboard currentStaffUser={currentStaffUser} />
@@ -736,8 +800,23 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         </h1>
                         <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs text-orange-600 font-bold uppercase">
-                                {currentUser?.role === 'waiter' ? 'Garçom' : currentUser?.role === 'manager' ? 'Gerente' : 'Administrador'}
+                                {currentStaffUser ? (
+                                    currentStaffUser.role === 'waiter' ? 'Garçom' :
+                                    currentStaffUser.role === 'kitchen' ? 'Cozinha' :
+                                    currentStaffUser.role === 'operator' ? 'Atendente' :
+                                    currentStaffUser.role === 'manager' ? 'Gerente' : 'Equipe'
+                                ) : (
+                                    currentUser?.role === 'waiter' ? 'Garçom' :
+                                    currentUser?.role === 'kitchen' ? 'Cozinha' :
+                                    currentUser?.role === 'operator' ? 'Atendente' :
+                                    currentUser?.role === 'manager' ? 'Gerente' : 'Administrador'
+                                )}
                             </span>
+                            {!hasFinancialAccess && (
+                                <span className="text-[9px] bg-red-50 text-red-700 border border-red-200 px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-1 shadow-xs" title="Usuário com restrição: Acesso financeiro bloqueado">
+                                    <span>🔒</span> Sem Financeiro
+                                </span>
+                            )}
                             <span className="text-[9px] bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded font-bold">v{APP_VERSION}</span>
                             {isWakeLocked ? (
                                 <span className="text-[9px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-1 animate-pulse" title="A tela não entrará em repouso automaticamente para evitar que você perca pedidos novos!">

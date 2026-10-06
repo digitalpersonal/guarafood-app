@@ -134,6 +134,8 @@ const MensalistasManager: React.FC<MensalistasManagerProps> = ({ restaurantId })
         }
     };
 
+    const hasFinancialAccess = currentUser?.canAccessFinancial !== false;
+
     if (isLoading) return <Spinner />;
 
     return (
@@ -142,7 +144,9 @@ const MensalistasManager: React.FC<MensalistasManagerProps> = ({ restaurantId })
                 <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tight">Mensalistas</h2>
                 <div className="text-right">
                     <p className="text-xs text-gray-500 uppercase font-black">Total a Receber</p>
-                    <p className="text-xl font-black text-red-600">R$ {mensalistas.reduce((acc, m) => acc + m.balance, 0).toFixed(2)}</p>
+                    <p className="text-xl font-black text-red-600">
+                        {hasFinancialAccess ? `R$ ${mensalistas.reduce((acc, m) => acc + m.balance, 0).toFixed(2)}` : 'R$ •••••'}
+                    </p>
                 </div>
                 <button 
                     onClick={() => setIsFormOpen(!isFormOpen)}
@@ -152,11 +156,20 @@ const MensalistasManager: React.FC<MensalistasManagerProps> = ({ restaurantId })
                 </button>
             </div>
 
+            {!hasFinancialAccess && (
+                <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2">
+                    <span>🔒</span>
+                    <span>Valores financeiros e saldos estão ocultos para o seu perfil sem permissão financeira.</span>
+                </div>
+            )}
+
             {isFormOpen && (
                 <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 p-4 bg-gray-50 rounded-2xl">
                     <input type="text" placeholder="Nome" value={name} onChange={e => setName(e.target.value)} className="p-3 rounded-xl border" required />
                     <input type="text" placeholder="Telefone" value={phone} onChange={e => setPhone(e.target.value)} className="p-3 rounded-xl border" required />
-                    <input type="number" placeholder="Valor Mensal" value={monthlyFee} onChange={e => setMonthlyFee(e.target.value)} className="p-3 rounded-xl border" required />
+                    {hasFinancialAccess && (
+                        <input type="number" placeholder="Valor Mensal" value={monthlyFee} onChange={e => setMonthlyFee(e.target.value)} className="p-3 rounded-xl border" required />
+                    )}
                     <input type="date" value={nextPaymentDate} onChange={e => setNextPaymentDate(e.target.value)} className="p-3 rounded-xl border" required />
                     <button type="submit" className="md:col-span-2 bg-emerald-600 text-white font-black py-3 rounded-xl hover:bg-emerald-700">Salvar</button>
                 </form>
@@ -168,13 +181,19 @@ const MensalistasManager: React.FC<MensalistasManagerProps> = ({ restaurantId })
                         <div className="flex justify-between items-center p-4">
                             <div>
                                 <p className="font-bold text-gray-800">{m.name}</p>
-                                <p className="text-xs text-gray-500">{m.phone} | Saldo: <span className="font-black text-red-600">R$ {m.balance.toFixed(2)}</span></p>
+                                <p className="text-xs text-gray-500">
+                                    {m.phone} | Saldo: <span className="font-black text-red-600">
+                                        {hasFinancialAccess ? `R$ ${m.balance.toFixed(2)}` : 'R$ •••••'}
+                                    </span>
+                                </p>
                             </div>
                             <div className="flex items-center gap-2">
                                 <button onClick={() => toggleExpand(m.id)} className="bg-gray-200 text-gray-700 text-[10px] font-black px-3 py-2 rounded-lg hover:bg-gray-300 uppercase">
                                     {expandedId === m.id ? 'Ocultar' : 'Pedidos'}
                                 </button>
-                                <button onClick={() => handleSettle(m)} className="bg-emerald-600 text-white text-[10px] font-black px-3 py-2 rounded-lg hover:bg-emerald-700 uppercase">Dar Baixa</button>
+                                {hasFinancialAccess && (
+                                    <button onClick={() => handleSettle(m)} className="bg-emerald-600 text-white text-[10px] font-black px-3 py-2 rounded-lg hover:bg-emerald-700 uppercase">Dar Baixa</button>
+                                )}
                                 <button onClick={() => handleDelete(m.id)} className="text-red-500 hover:text-red-700 text-xs">Remover</button>
                             </div>
                         </div>

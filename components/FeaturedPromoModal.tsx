@@ -67,26 +67,53 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
         return participatingItems.find(i => i.id === selectedItemId) || participatingItems[0];
     }, [participatingItems, selectedItemId]);
 
-    // Parse option groups safely
+    // Parse option groups safely (supports both optionGroups and option_groups snake_case from DB)
     const currentOptionGroups: OptionGroup[] = useMemo(() => {
-        if (!selectedItem || !selectedItem.optionGroups) return [];
-        try {
-            return Array.isArray(selectedItem.optionGroups)
-                ? selectedItem.optionGroups
-                : (typeof selectedItem.optionGroups === 'string' ? JSON.parse(selectedItem.optionGroups) : []);
-        } catch (e) {
-            console.error("Error parsing optionGroups in promo modal:", e);
-            return [];
+        if (!selectedItem) return [];
+        const raw = (selectedItem as any).optionGroups || (selectedItem as any).option_groups;
+        let parsed: OptionGroup[] = [];
+        if (raw) {
+            try {
+                parsed = Array.isArray(raw)
+                    ? raw
+                    : (typeof raw === 'string' ? JSON.parse(raw) : []);
+            } catch (e) {
+                console.error("Error parsing optionGroups in promo modal:", e);
+                parsed = [];
+            }
         }
+
+        // Se o item tiver marmitaOptions/sabores simples mas sem optionGroups formal
+        const marmitaRaw = (selectedItem as any).marmitaOptions || (selectedItem as any).marmita_options;
+        if ((!parsed || parsed.length === 0) && marmitaRaw) {
+            try {
+                const marmitaList: string[] = Array.isArray(marmitaRaw)
+                    ? marmitaRaw
+                    : (typeof marmitaRaw === 'string' ? JSON.parse(marmitaRaw) : []);
+                if (marmitaList.length > 0) {
+                    parsed = [{
+                        id: 'marmita-sabor-options',
+                        title: 'Opção / Sabor',
+                        minSelections: 1,
+                        maxSelections: 1,
+                        options: marmitaList.map(opt => ({ name: opt, price: 0 }))
+                    }];
+                }
+            } catch {}
+        }
+
+        return parsed;
     }, [selectedItem]);
 
     // Parse sizes safely
     const currentSizes: SizeOption[] = useMemo(() => {
-        if (!selectedItem || !selectedItem.sizes) return [];
+        if (!selectedItem) return [];
+        const rawSizes = (selectedItem as any).sizes;
+        if (!rawSizes) return [];
         try {
-            return Array.isArray(selectedItem.sizes)
-                ? selectedItem.sizes
-                : (typeof selectedItem.sizes === 'string' ? JSON.parse(selectedItem.sizes) : []);
+            return Array.isArray(rawSizes)
+                ? rawSizes
+                : (typeof rawSizes === 'string' ? JSON.parse(rawSizes) : []);
         } catch (e) {
             console.error("Error parsing sizes in promo modal:", e);
             return [];

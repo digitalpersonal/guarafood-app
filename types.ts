@@ -63,8 +63,9 @@ export interface StaffMember {
     email: string; // NEW: Para login individual
     password?: string; // NEW: Para acesso imediato sem convite
     pin?: string; // Mantido para compatibilidade ou acesso rápido
-    role: 'waiter' | 'manager';
+    role: 'waiter' | 'manager' | 'operator' | 'kitchen';
     active: boolean;
+    canAccessFinancial?: boolean; // Permissão explícita para visualizar área financeira (relatórios, faturamento, caixa)
 }
 
 export interface Restaurant {
@@ -326,7 +327,7 @@ export interface Order {
   mensalistaId?: string; // NEW: Para pedidos de mensalistas
 }
 
-export type Role = 'admin' | 'merchant' | 'waiter' | 'manager';
+export type Role = 'admin' | 'merchant' | 'waiter' | 'manager' | 'operator' | 'kitchen';
 
 export interface User {
   id: string;
@@ -334,6 +335,18 @@ export interface User {
   role: Role;
   name: string;
   restaurantId?: number;
+  canAccessFinancial?: boolean;
+}
+
+export interface PlatformUser {
+  id: string;
+  name: string;
+  email: string;
+  password?: string;
+  role: 'admin' | 'operator';
+  active: boolean;
+  canAccessFinancial: boolean;
+  createdAt?: string;
 }
 
 export interface CustomerLoyalty {

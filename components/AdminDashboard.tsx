@@ -12,6 +12,7 @@ import RestaurantSettings from './RestaurantSettings';
 import GlobalCustomerList from './GlobalCustomerList';
 import MensalistasManager from './MensalistasManager';
 import AdminSalesReport from './AdminSalesReport';
+import PlatformUsersManagement from './PlatformUsersManagement';
 import HelpCenter from './HelpCenter';
 
 
@@ -37,9 +38,9 @@ const ArrowDownTrayIcon: React.FC<{ className?: string }> = ({ className }) => (
 import { fetchRestaurantsSecure, deleteRestaurant } from '../services/databaseService';
 
 const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
-    const { logout } = useAuth();
+    const { currentUser, logout } = useAuth();
     const { addToast } = useNotification();
-    const [activeTab, setActiveTab] = useState<'restaurants' | 'sales' | 'categories' | 'marketing' | 'ads' | 'customers' | 'settings' | 'help' | 'mensalistas'>('restaurants');
+    const [activeTab, setActiveTab] = useState<'restaurants' | 'sales' | 'categories' | 'marketing' | 'ads' | 'customers' | 'settings' | 'help' | 'mensalistas' | 'users'>('restaurants');
     const [editingMenuRestaurantId, setEditingMenuRestaurantId] = useState<number | null>(null);
     const [editingSettingsRestaurantId, setEditingSettingsRestaurantId] = useState<number | null>(null);
 
@@ -131,7 +132,22 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     />
                 );
             case 'sales':
+                if (currentUser && currentUser.canAccessFinancial === false) {
+                    return (
+                        <div className="p-8 text-center bg-white rounded-3xl max-w-md mx-auto my-12 border border-gray-200 shadow-sm animate-fadeIn">
+                            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl font-bold">
+                                🔒
+                            </div>
+                            <h3 className="text-xl font-black text-gray-800 mb-1">Acesso Financeiro Bloqueado</h3>
+                            <p className="text-xs text-gray-500">
+                                Seu perfil de usuário não possui permissão para visualizar relatórios de vendas, faturamento e dados financeiros da plataforma GuaráFood.
+                            </p>
+                        </div>
+                    );
+                }
                 return <AdminSalesReport />;
+            case 'users':
+                return <PlatformUsersManagement />;
             case 'categories':
                 return <CategoryManagement />;
             case 'marketing':
@@ -161,6 +177,12 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         </button>
                         <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Administração GuaraFood</h1>
                         <span className="text-[10px] bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full font-bold">v{APP_VERSION}</span>
+                        {currentUser?.canAccessFinancial === false && (
+                            <span className="text-[10px] bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 border border-amber-200">
+                                <span>🔒</span>
+                                <span>Operacional (Sem Financeiro)</span>
+                            </span>
+                        )}
                     </div>
                      <button onClick={logout} className="flex items-center space-x-2 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition-colors font-semibold" title="Sair">
                         <LogoutIcon className="w-6 h-6" />
@@ -172,7 +194,19 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <nav className="p-4 border-b bg-gray-50 sticky top-[89px] z-10">
                 <div className="flex space-x-2 rounded-lg bg-gray-200 p-1 overflow-x-auto no-scrollbar">
                     <button onClick={() => setActiveTab('restaurants')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'restaurants' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Restaurantes</button>
-                    <button onClick={() => setActiveTab('sales')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'sales' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Relatório Vendas</button>
+                    {currentUser?.canAccessFinancial !== false ? (
+                        <button onClick={() => setActiveTab('sales')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'sales' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Relatório Vendas</button>
+                    ) : (
+                        <button 
+                            onClick={() => addToast({ message: 'Acesso Financeiro Bloqueado: Seu perfil não possui permissão para relatórios de vendas.', type: 'warning' })} 
+                            className="flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md text-gray-400 bg-gray-100/60 cursor-not-allowed opacity-60 flex items-center justify-center gap-1"
+                            title="Acesso Financeiro Bloqueado"
+                        >
+                            <span>🔒</span>
+                            <span>Vendas</span>
+                        </button>
+                    )}
+                    <button onClick={() => setActiveTab('users')} className={`flex-1 min-w-[110px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'users' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Equipe & Usuários</button>
                     <button onClick={() => setActiveTab('categories')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'categories' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Categorias</button>
                     <button onClick={() => setActiveTab('marketing')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'marketing' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Marketing</button>
                     <button onClick={() => setActiveTab('ads')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'ads' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Propagandas</button>
