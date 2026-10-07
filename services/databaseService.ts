@@ -1,6 +1,7 @@
 
 import { supabase, supabaseAnon, handleSupabaseError } from './api';
 import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory, Expense, Order, OperatingHours, FeaturedPromo, PrinterConfig, ComandaAtiva, PlatformUser, StaffMember } from '../types';
+import { decodeDaysFromDescription, encodeDaysInDescription, isPromoActiveToday } from '../utils/promoUtils';
 
 // ==============================================================================
 // 🔄 NORMALIZADORES (Banco de Dados -> App)
@@ -251,17 +252,33 @@ const normalizeAddon = (data: any): Addon => {
     };
 };
 
-const normalizePromotion = (data: any): Promotion => ({
-    ...data,
-    discountType: data.discount_type,
-    discountValue: data.discount_value,
-    itemIds: data.item_ids || [],
-    comboIds: data.combo_ids || [],
-    categoryIds: data.category_ids || [],
-    startDate: data.start_date,
-    endDate: data.end_date,
-    restaurantId: data.restaurant_id
-});
+const normalizePromotion = (data: any): Promotion => {
+    let availableDays = data.available_days;
+    let description = data.description || '';
+    if (!availableDays || !Array.isArray(availableDays) || availableDays.length === 0) {
+        const decoded = decodeDaysFromDescription(description);
+        if (decoded.availableDays) {
+            availableDays = decoded.availableDays;
+            description = decoded.cleanDescription;
+        }
+    } else {
+        description = description.replace(/\s*<!--days:[0-9,]+-->/g, '').trim();
+    }
+
+    return {
+        ...data,
+        description,
+        discountType: data.discount_type,
+        discountValue: data.discount_value,
+        itemIds: data.item_ids || [],
+        comboIds: data.combo_ids || [],
+        categoryIds: data.category_ids || [],
+        startDate: data.start_date,
+        endDate: data.end_date,
+        restaurantId: data.restaurant_id,
+        availableDays: Array.isArray(availableDays) && availableDays.length > 0 ? availableDays : [0, 1, 2, 3, 4, 5, 6]
+    };
+};
 
 const normalizeCoupon = (data: any): Coupon => ({
     ...data,
@@ -654,8 +671,9 @@ export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilt
 
         items = items.map(item => {
             const activePromo = promotions.find(p => 
-                (p.itemIds && p.itemIds.includes(item.id)) || 
-                (p.categoryIds && p.categoryIds.includes(item.categoryId!))
+                ((p.itemIds && p.itemIds.includes(item.id)) || 
+                (p.categoryIds && p.categoryIds.includes(item.categoryId!))) &&
+                isPromoActiveToday(p)
             );
             if (activePromo) {
                 let newPrice = activePromo.discountType === 'PERCENTAGE' ? item.price * (1 - activePromo.discountValue / 100) : Math.max(0, item.price - activePromo.discountValue);
@@ -667,8 +685,9 @@ export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilt
         let categoryCombos = (combosData || []).map(normalizeCombo).filter(combo => combo.categoryId === category.id);
         categoryCombos = categoryCombos.map(combo => {
              const activePromo = promotions.find(p => 
-                (p.comboIds && p.comboIds.includes(combo.id)) ||
-                (p.categoryIds && p.categoryIds.includes(combo.categoryId!))
+                ((p.comboIds && p.comboIds.includes(combo.id)) ||
+                (p.categoryIds && p.categoryIds.includes(combo.categoryId!))) &&
+                isPromoActiveToday(p)
              );
              if (activePromo) {
                 let newPrice = activePromo.discountType === 'PERCENTAGE' ? combo.price * (1 - activePromo.discountValue / 100) : Math.max(0, combo.price - activePromo.discountValue);
@@ -809,7 +828,8 @@ export const fetchPromotionsForRestaurant = async (restaurantId: number): Promis
 };
 
 export const createPromotion = async (restaurantId: number, promo: any): Promise<void> => {
-    const payload = { 
+    const days = promo.availableDays && promo.availableDays.length > 0 ? promo.availableDays : [0, 1, 2, 3, 4, 5, 6];
+    const payload: any = { 
         restaurant_id: restaurantId, 
         name: promo.name, 
         description: promo.description, 
@@ -819,14 +839,26 @@ export const createPromotion = async (restaurantId: number, promo: any): Promise
         combo_ids: promo.comboIds, 
         category_ids: promo.categoryIds, 
         start_date: promo.startDate, 
-        end_date: promo.endDate 
+        end_date: promo.endDate,
+        available_days: days
     };
     const { error } = await supabase.from('promotions').insert(payload);
-    handleSupabaseError({ error, customMessage: 'Failed to create promotion' });
+    if (error) {
+        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days')) {
+            const descWithTag = encodeDaysInDescription(promo.description, days);
+            const fallback = { ...payload, description: descWithTag };
+            delete fallback.available_days;
+            const { error: err2 } = await supabase.from('promotions').insert(fallback);
+            handleSupabaseError({ error: err2, customMessage: 'Failed to create promotion' });
+            return;
+        }
+        handleSupabaseError({ error, customMessage: 'Failed to create promotion' });
+    }
 };
 
 export const updatePromotion = async (restaurantId: number, id: number, promo: any): Promise<void> => {
-    const payload = { 
+    const days = promo.availableDays && promo.availableDays.length > 0 ? promo.availableDays : [0, 1, 2, 3, 4, 5, 6];
+    const payload: any = { 
         name: promo.name, 
         description: promo.description, 
         discount_type: promo.discountType, 
@@ -835,10 +867,21 @@ export const updatePromotion = async (restaurantId: number, id: number, promo: a
         combo_ids: promo.comboIds, 
         category_ids: promo.categoryIds, 
         start_date: promo.startDate, 
-        end_date: promo.endDate 
+        end_date: promo.endDate,
+        available_days: days
     };
     const { error = null } = await supabase.from('promotions').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
-    handleSupabaseError({ error, customMessage: 'Failed to update promotion' });
+    if (error) {
+        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days')) {
+            const descWithTag = encodeDaysInDescription(promo.description, days);
+            const fallback = { ...payload, description: descWithTag };
+            delete fallback.available_days;
+            const { error: err2 } = await supabase.from('promotions').update(fallback).eq('id', id).eq('restaurant_id', restaurantId);
+            handleSupabaseError({ error: err2, customMessage: 'Failed to update promotion' });
+            return;
+        }
+        handleSupabaseError({ error, customMessage: 'Failed to update promotion' });
+    }
 };
 
 export const deletePromotion = async (restaurantId: number, id: number): Promise<void> => {
@@ -963,18 +1006,33 @@ export const deleteAd = async (id: string): Promise<void> => {
     handleSupabaseError({ error, customMessage: 'Failed to delete ad' });
 };
 
-const normalizeFeaturedPromo = (data: any): FeaturedPromo => ({
-    id: data.id,
-    restaurantId: data.restaurant_id,
-    title: data.title,
-    description: data.description,
-    fixedPrice: Number(data.fixed_price || 0),
-    originalPrice: data.original_price ? Number(data.original_price) : undefined,
-    imageUrl: data.image_url,
-    itemIds: data.item_ids || [],
-    includeFreeDelivery: data.include_free_delivery === true,
-    active: data.active !== false
-});
+const normalizeFeaturedPromo = (data: any): FeaturedPromo => {
+    let availableDays = data.available_days;
+    let description = data.description || '';
+    if (!availableDays || !Array.isArray(availableDays) || availableDays.length === 0) {
+        const decoded = decodeDaysFromDescription(description);
+        if (decoded.availableDays) {
+            availableDays = decoded.availableDays;
+            description = decoded.cleanDescription;
+        }
+    } else {
+        description = description.replace(/\s*<!--days:[0-9,]+-->/g, '').trim();
+    }
+
+    return {
+        id: data.id,
+        restaurantId: data.restaurant_id,
+        title: data.title,
+        description,
+        fixedPrice: Number(data.fixed_price || 0),
+        originalPrice: data.original_price ? Number(data.original_price) : undefined,
+        imageUrl: data.image_url,
+        itemIds: data.item_ids || [],
+        includeFreeDelivery: data.include_free_delivery === true,
+        active: data.active !== false,
+        availableDays: Array.isArray(availableDays) && availableDays.length > 0 ? availableDays : [0, 1, 2, 3, 4, 5, 6]
+    };
+};
 
 export const fetchFeaturedPromos = async (restaurantId?: number, onlyActive?: boolean): Promise<FeaturedPromo[]> => {
     let query = supabaseAnon.from('featured_promos').select('*').order('created_at', { ascending: false });
@@ -994,7 +1052,8 @@ export const fetchFeaturedPromos = async (restaurantId?: number, onlyActive?: bo
 };
 
 export const createFeaturedPromo = async (restaurantId: number, promo: Omit<FeaturedPromo, 'id' | 'restaurantId'>): Promise<void> => {
-    const payload = {
+    const days = promo.availableDays && promo.availableDays.length > 0 ? promo.availableDays : [0, 1, 2, 3, 4, 5, 6];
+    const payload: any = {
         restaurant_id: restaurantId,
         title: promo.title,
         description: promo.description,
@@ -1003,16 +1062,26 @@ export const createFeaturedPromo = async (restaurantId: number, promo: Omit<Feat
         image_url: promo.imageUrl,
         item_ids: promo.itemIds,
         include_free_delivery: promo.includeFreeDelivery,
-        active: promo.active
+        active: promo.active,
+        available_days: days
     };
     const { error } = await supabase.from('featured_promos').insert(payload);
-    handleSupabaseError({ error, customMessage: 'Failed to create featured promo' });
+    if (error) {
+        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days')) {
+            const descWithTag = encodeDaysInDescription(promo.description, days);
+            const fallback = { ...payload, description: descWithTag };
+            delete fallback.available_days;
+            const { error: err2 } = await supabase.from('featured_promos').insert(fallback);
+            handleSupabaseError({ error: err2, customMessage: 'Failed to create featured promo' });
+            return;
+        }
+        handleSupabaseError({ error, customMessage: 'Failed to create featured promo' });
+    }
 };
 
 export const updateFeaturedPromo = async (restaurantId: number, id: number, promo: Partial<FeaturedPromo>): Promise<void> => {
     const payload: any = {};
     if (promo.title !== undefined) payload.title = promo.title;
-    if (promo.description !== undefined) payload.description = promo.description;
     if (promo.fixedPrice !== undefined) payload.fixed_price = promo.fixedPrice;
     if (promo.originalPrice !== undefined) payload.original_price = promo.originalPrice;
     if (promo.imageUrl !== undefined) payload.image_url = promo.imageUrl;
@@ -1020,8 +1089,28 @@ export const updateFeaturedPromo = async (restaurantId: number, id: number, prom
     if (promo.includeFreeDelivery !== undefined) payload.include_free_delivery = promo.includeFreeDelivery;
     if (promo.active !== undefined) payload.active = promo.active;
 
+    let days = promo.availableDays;
+    if (days !== undefined) {
+        payload.available_days = days;
+    }
+    if (promo.description !== undefined) {
+        payload.description = promo.description;
+    }
+
     const { error } = await supabase.from('featured_promos').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
-    handleSupabaseError({ error, customMessage: 'Failed to update featured promo' });
+    if (error) {
+        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days')) {
+            const daysToEncode = days && days.length > 0 ? days : [0, 1, 2, 3, 4, 5, 6];
+            const cleanDesc = (promo.description || '').replace(/\s*<!--days:[0-9,]+-->/g, '').trim();
+            const descWithTag = encodeDaysInDescription(cleanDesc, daysToEncode);
+            const fallback = { ...payload, description: descWithTag };
+            delete fallback.available_days;
+            const { error: err2 } = await supabase.from('featured_promos').update(fallback).eq('id', id).eq('restaurant_id', restaurantId);
+            handleSupabaseError({ error: err2, customMessage: 'Failed to update featured promo' });
+            return;
+        }
+        handleSupabaseError({ error, customMessage: 'Failed to update featured promo' });
+    }
 };
 
 export const deleteFeaturedPromo = async (restaurantId: number, id: number): Promise<void> => {
