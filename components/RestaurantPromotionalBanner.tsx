@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { FeaturedPromo, Restaurant } from '../types';
 import { fetchFeaturedPromos } from '../services/databaseService';
+import { isPromoActiveToday, formatPromoDays } from '../utils/promoUtils';
 import OptimizedImage from './OptimizedImage';
 import { FeaturedPromoModal } from './FeaturedPromoModal';
 
@@ -24,8 +25,10 @@ export const RestaurantPromotionalBanner: React.FC<RestaurantPromotionalBannerPr
             try {
                 // Fetch only active promos for this specific restaurant
                 const activePromos = await fetchFeaturedPromos(restaurant.id, true);
+                // Filter only promos active TODAY according to days of week
+                const todayPromos = activePromos.filter(p => isPromoActiveToday(p));
                 if (isMounted) {
-                    setPromos(activePromos);
+                    setPromos(todayPromos);
                 }
             } catch (err) {
                 console.error("Erro ao buscar promoções do restaurante:", err);
@@ -97,6 +100,15 @@ export const RestaurantPromotionalBanner: React.FC<RestaurantPromotionalBannerPr
                                 <h4 className="text-base sm:text-lg font-black leading-snug group-hover:text-orange-400 transition-colors">
                                     {promo.title}
                                 </h4>
+                                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                        <span>🗓️</span>
+                                        <span>{formatPromoDays(promo.availableDays)}</span>
+                                    </span>
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                        Válido Hoje 🔥
+                                    </span>
+                                </div>
                                 {promo.description && (
                                     <p className="text-xs text-gray-300 line-clamp-2 mt-1.5 leading-relaxed">
                                         {promo.description}

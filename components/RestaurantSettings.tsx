@@ -339,6 +339,7 @@ const RestaurantSettings: React.FC<{
     const [hasKiloService, setHasKiloService] = useState(false);
     const [showPrintersInline, setShowPrintersInline] = useState(false);
     const [pricePerKilo, setPricePerKilo] = useState(0);
+    const [deliveryFee, setDeliveryFee] = useState(0);
     const [disableDelivery, setDisableDelivery] = useState(false);
     const [enableFiscal, setEnableFiscal] = useState(false);
     const [printerWidth, setPrinterWidth] = useState(80);
@@ -382,6 +383,7 @@ const RestaurantSettings: React.FC<{
                 setHasMensalistas(data.hasMensalistas || false);
                 setHasKiloService(data.hasKiloService || false);
                 setPricePerKilo(data.pricePerKilo || 0);
+                setDeliveryFee(data.deliveryFee != null ? Number(data.deliveryFee) : 0);
                 setDisableDelivery(data.disableDelivery || false);
                 setEnableFiscal(data.enableFiscal || false);
                 setOperatingHours(data.operatingHours || getDefaultOperatingHours());
@@ -432,6 +434,7 @@ const RestaurantSettings: React.FC<{
                 hasMensalistas: hasMensalistas,
                 hasKiloService: hasKiloService,
                 pricePerKilo: pricePerKilo,
+                deliveryFee: Number(deliveryFee) || 0,
                 disableDelivery: disableDelivery,
                 enableFiscal: enableFiscal
             });
@@ -442,7 +445,37 @@ const RestaurantSettings: React.FC<{
         } catch (err: any) {
             console.error("Save Error:", err);
             addToast({ message: `Erro ao salvar: ${getErrorMessage(err)}`, type: 'error' });
-        } finally { setIsSaving(false); }
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const [isSavingFeeQuick, setIsSavingFeeQuick] = useState(false);
+
+    const handleSaveDeliveryFeeQuick = async () => {
+        if (!restaurantId) return;
+        setIsSavingFeeQuick(true);
+        try {
+            const fee = Number(deliveryFee) || 0;
+            await updateRestaurant(restaurantId, {
+                deliveryFee: fee,
+                disableDelivery: disableDelivery
+            });
+            if (restaurant) {
+                const updated = { ...restaurant, deliveryFee: fee, disableDelivery };
+                setRestaurant(updated);
+                localStorage.setItem('guarafood-cached-restaurant', JSON.stringify(updated));
+            }
+            addToast({ 
+                message: `Taxa de entrega salva com sucesso (${fee === 0 ? 'Grátis' : `R$ ${fee.toFixed(2)}`})!`, 
+                type: 'success' 
+            });
+        } catch (err: any) {
+            console.error("Save Fee Error:", err);
+            addToast({ message: `Erro ao salvar taxa de entrega: ${getErrorMessage(err)}`, type: 'error' });
+        } finally {
+            setIsSavingFeeQuick(false);
+        }
     };
     
     const handleCleanupTableOrders = async () => {
@@ -514,6 +547,91 @@ const RestaurantSettings: React.FC<{
                         restaurantName={restaurant.name}
                     />
                 )}
+
+                {/* --- CONFIGURAÇÃO DE ENTREGAS E TAXA DE FRETE (PRIORIDADE ALTA) --- */}
+                <div className="mb-10 bg-gradient-to-r from-orange-50/90 via-white to-amber-50/70 p-6 rounded-2xl border-2 border-orange-300 shadow-sm space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-orange-200/60 pb-3">
+                        <div className="flex items-center gap-2.5">
+                            <span className="text-3xl">🛵</span>
+                            <div>
+                                <h3 className="text-base font-black text-gray-900 uppercase tracking-tight">
+                                    Entregas e Taxa de Frete
+                                </h3>
+                                <p className="text-xs text-gray-600 font-medium">
+                                    Defina o valor fixo cobrado por entrega aos seus clientes ou ofereça frete grátis.
+                                </p>
+                            </div>
+                        </div>
+                        <span className="text-xs font-black px-3.5 py-1.5 rounded-full border self-start sm:self-auto bg-white text-orange-700 border-orange-300 shadow-2xs">
+                            {deliveryFee === 0 ? '🎁 Frete Grátis Ativo' : `R$ ${deliveryFee.toFixed(2)} por entrega`}
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center pt-1">
+                        <div>
+                            <label className="block text-[11px] font-black text-gray-700 uppercase tracking-wider mb-1.5">
+                                Valor Cobrado por Entrega (R$)
+                            </label>
+                            <div className="relative">
+                                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 font-black text-base">R$</span>
+                                <input 
+                                    type="number" 
+                                    step="0.50" 
+                                    min="0"
+                                    value={deliveryFee} 
+                                    onChange={e => setDeliveryFee(Math.max(0, parseFloat(e.target.value) || 0))} 
+                                    placeholder="0.00" 
+                                    className="w-full p-3.5 pl-11 border-2 border-orange-300 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white font-mono text-xl font-black text-gray-900 shadow-inner outline-none" 
+                                />
+                            </div>
+                        </div>
+
+                        {/* Botões de Atalho */}
+                        <div>
+                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider block mb-1.5">Valores rápidos:</span>
+                            <div className="flex flex-wrap gap-1.5">
+                                {[0, 3, 5, 6, 7, 8, 10, 12].map(val => (
+                                    <button
+                                        key={val}
+                                        type="button"
+                                        onClick={() => setDeliveryFee(val)}
+                                        className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                                            deliveryFee === val 
+                                                ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
+                                                : 'bg-white text-gray-700 border-gray-200 hover:bg-orange-50 hover:border-orange-200'
+                                        }`}
+                                    >
+                                        {val === 0 ? 'Grátis (0)' : `R$ ${val},00`}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Desativar Entregas (Apenas Retirada) */}
+                    <label className="flex items-center justify-between cursor-pointer p-3.5 bg-white rounded-xl border border-orange-200 hover:bg-orange-50/40 transition-colors">
+                        <div>
+                            <span className="font-bold text-gray-800 block text-xs">Desativar Entregas (Apenas Retirada no Balcão)</span>
+                            <span className="text-[11px] text-gray-500">Clientes só poderão fazer pedidos para retirar no local (chuva, falta de entregador).</span>
+                        </div>
+                        <div className="relative">
+                            <input type="checkbox" className="sr-only peer" checked={disableDelivery} onChange={e => setDisableDelivery(e.target.checked)} />
+                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+                        </div>
+                    </label>
+
+                    {/* Botão de Salvar Imediato do Frete */}
+                    <div className="flex justify-end pt-1">
+                        <button
+                            type="button"
+                            onClick={handleSaveDeliveryFeeQuick}
+                            disabled={isSavingFeeQuick}
+                            className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-300 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-2 cursor-pointer"
+                        >
+                            {isSavingFeeQuick ? 'Salvando Frete...' : '✓ Salvar Taxa de Frete Agora'}
+                        </button>
+                    </div>
+                </div>
 
                 <div className="mb-10 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
                     <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Configuração de Pagamento (Pix)</h3>
@@ -696,14 +814,79 @@ const RestaurantSettings: React.FC<{
                         <MensalistasManager />
                     </div>
 
-                    {/* --- CONFIGURAÇÃO DE COMIDA POR KILO --- */}
+                    {/* --- CONFIGURAÇÃO DE ENTREGAS E TAXA DE FRETE --- */}
                     <div className="border-t pt-8">
-                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Disponibilidade de Entregas</h3>
+                        <div className="flex items-center gap-2 mb-4">
+                            <span className="text-2xl">🛵</span>
+                            <div>
+                                <h3 className="text-md font-black text-gray-800 uppercase tracking-widest">
+                                    Entregas e Taxa de Frete
+                                </h3>
+                                <p className="text-xs text-gray-500 font-medium">
+                                    Configure o valor padrão cobrado pela entrega dos pedidos aos clientes e a disponibilidade do serviço.
+                                </p>
+                            </div>
+                        </div>
+
                         <div className="space-y-4">
-                            <label className="flex items-center justify-between cursor-pointer p-4 bg-gray-50 rounded-xl border border-gray-200">
+                            {/* Card do Valor do Frete */}
+                            <div className="p-5 bg-gradient-to-r from-orange-50/80 via-white to-amber-50/50 rounded-2xl border-2 border-orange-200 shadow-sm space-y-3">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                    <label className="block text-xs font-black text-gray-800 uppercase tracking-wide flex items-center gap-1.5">
+                                        <span>🛵</span>
+                                        <span>Valor da Taxa de Entrega / Frete (R$)</span>
+                                    </label>
+                                    <span className="text-xs font-bold px-3 py-1 rounded-full border self-start sm:self-auto bg-white text-orange-700 border-orange-300 shadow-2xs">
+                                        {deliveryFee === 0 ? '🎁 Frete Grátis Ativo' : `R$ ${deliveryFee.toFixed(2)} por entrega`}
+                                    </span>
+                                </div>
+
+                                <p className="text-xs text-gray-600 leading-relaxed">
+                                    Este valor fixo é somado automaticamente como taxa de entrega na finalização dos pedidos de delivery. Deixe <strong>0</strong> caso seu restaurante ofereça <strong>Frete Grátis</strong>.
+                                </p>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center pt-1">
+                                    <div className="relative">
+                                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 font-black text-base">R$</span>
+                                        <input 
+                                            type="number" 
+                                            step="0.50" 
+                                            min="0"
+                                            value={deliveryFee} 
+                                            onChange={e => setDeliveryFee(Math.max(0, parseFloat(e.target.value) || 0))} 
+                                            placeholder="0.00" 
+                                            className="w-full p-3.5 pl-11 border-2 border-orange-300 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white font-mono text-xl font-black text-gray-900 shadow-inner outline-none" 
+                                        />
+                                    </div>
+
+                                    {/* Botões de Atalho */}
+                                    <div>
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase block mb-1.5">Valores rápidos:</span>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {[0, 3, 5, 6, 7, 8, 10, 12].map(val => (
+                                                <button
+                                                    key={val}
+                                                    type="button"
+                                                    onClick={() => setDeliveryFee(val)}
+                                                    className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                                                        deliveryFee === val 
+                                                            ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
+                                                            : 'bg-white text-gray-700 border-gray-200 hover:bg-orange-50 hover:border-orange-200'
+                                                    }`}
+                                                >
+                                                    {val === 0 ? 'Grátis (0)' : `R$ ${val},00`}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Desativar Entregas (Apenas Retirada) */}
+                            <label className="flex items-center justify-between cursor-pointer p-4 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100/70 transition-colors">
                                 <div>
-                                    <span className="font-bold text-gray-800 block">Desativar Entregas (Apenas Retirada)</span>
-                                    <span className="text-xs text-gray-500">Útil para dias sem entregador. Clientes só poderão fazer pedidos para retirar no balcão.</span>
+                                    <span className="font-bold text-gray-800 block text-sm">Desativar Entregas (Apenas Retirada no Balcão)</span>
+                                    <span className="text-xs text-gray-500">Útil para dias de muita chuva ou sem entregador. Clientes só poderão fazer pedidos para retirar no local.</span>
                                 </div>
                                 <div className="relative">
                                     <input type="checkbox" className="sr-only peer" checked={disableDelivery} onChange={e => setDisableDelivery(e.target.checked)} />

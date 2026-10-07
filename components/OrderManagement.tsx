@@ -4,7 +4,8 @@ import { subscribeToOrders, fetchOrders } from '../services/orderService';
 import { retryWithExponentialBackoff } from '../utils/retry';
 import { useAuth } from '../services/authService'; 
 import { APP_VERSION } from './VersionChecker';
-import { fetchRestaurantByIdSecure } from '../services/databaseService';
+import { fetchRestaurantByIdSecure, updateRestaurant } from '../services/databaseService';
+import { getErrorMessage } from '../services/api';
 import type { Order, StaffMember, CartItem, Restaurant } from '../types';
 import OrdersView from './OrdersView';
 import MenuManagement from './MenuManagement';
@@ -92,7 +93,35 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [currentStaffUser, setCurrentStaffUser] = useState<StaffMember | null>(null);
     const [isPinPadOpen, setIsPinPadOpen] = useState(false);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const [isDeliveryFeeModalOpen, setIsDeliveryFeeModalOpen] = useState(false);
+    const [quickDeliveryFee, setQuickDeliveryFee] = useState<number>(0);
+    const [isSavingDeliveryFee, setIsSavingDeliveryFee] = useState(false);
     const [isLocked, setIsLocked] = useState(localStorage.getItem('guarafood-panel-locked') === 'true');
+
+    const handleOpenDeliveryFeeModal = () => {
+        setQuickDeliveryFee(restaurant?.deliveryFee != null ? Number(restaurant.deliveryFee) : 0);
+        setIsDeliveryFeeModalOpen(true);
+    };
+
+    const handleSaveDeliveryFee = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!restaurant?.id) return;
+        setIsSavingDeliveryFee(true);
+        try {
+            const newFee = Math.max(0, Number(quickDeliveryFee) || 0);
+            await updateRestaurant(restaurant.id, { deliveryFee: newFee });
+            setRestaurant(prev => prev ? { ...prev, deliveryFee: newFee } : prev);
+            addToast({ 
+                message: `Taxa de entrega alterada com sucesso para ${newFee === 0 ? 'Grátis' : `R$ ${newFee.toFixed(2)}`}!`, 
+                type: 'success' 
+            });
+            setIsDeliveryFeeModalOpen(false);
+        } catch (err: any) {
+            addToast({ message: `Erro ao alterar taxa de entrega: ${getErrorMessage(err)}`, type: 'error' });
+        } finally {
+            setIsSavingDeliveryFee(false);
+        }
+    };
 
     const lastSuccessfulSyncRef = useRef<number>(Date.now());
     const [lastSuccessfulSyncTime, setLastSuccessfulSyncTime] = useState<number>(Date.now());
@@ -881,14 +910,25 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         )
                     )}
                     {restaurant && (
-                        <button 
-                            onClick={() => setIsShareModalOpen(true)}
-                            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl transition-all font-black text-[11px] uppercase tracking-wider shadow-xs cursor-pointer border border-emerald-200"
-                            title="Divulgar Cardápio Oficial via WhatsApp"
-                        >
-                            <span>📲</span>
-                            <span className="hidden md:inline">Cardápio & WhatsApp</span>
-                        </button>
+                        <>
+                            <button 
+                                onClick={handleOpenDeliveryFeeModal}
+                                className="flex items-center gap-1.5 px-3 py-2 bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-xl transition-all font-black text-[11px] uppercase tracking-wider shadow-xs cursor-pointer border border-orange-200"
+                                title="Clique para alterar rapidamente a taxa de frete"
+                            >
+                                <span>🛵</span>
+                                <span className="hidden sm:inline">Frete:</span>
+                                <span>{restaurant.deliveryFee > 0 ? `R$ ${Number(restaurant.deliveryFee).toFixed(2)}` : 'Grátis'}</span>
+                            </button>
+                            <button 
+                                onClick={() => setIsShareModalOpen(true)}
+                                className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl transition-all font-black text-[11px] uppercase tracking-wider shadow-xs cursor-pointer border border-emerald-200"
+                                title="Divulgar Cardápio Oficial via WhatsApp"
+                            >
+                                <span>📲</span>
+                                <span className="hidden md:inline">Cardápio & WhatsApp</span>
+                            </button>
+                        </>
                     )}
                     <button 
                         onClick={forceSync}
@@ -977,6 +1017,103 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     onClose={() => setIsShareModalOpen(false)}
                     restaurant={restaurant}
                 />
+            )}
+
+            {/* Modal Rápido de Alteração do Frete */}
+            {isDeliveryFeeModalOpen && restaurant && (
+                <div 
+                    className="fixed inset-0 bg-black/60 z-[140] flex items-center justify-center p-4 animate-fade-in"
+                    onClick={() => setIsDeliveryFeeModalOpen(false)}
+                >
+                    <div 
+                        className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-5"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between border-b pb-3">
+                            <div className="flex items-center gap-2">
+                                <span className="text-2xl">🛵</span>
+                                <div>
+                                    <h3 className="text-lg font-black text-gray-900 leading-tight">
+                                        Taxa de Entrega (Frete)
+                                    </h3>
+                                    <p className="text-xs text-gray-500 font-medium">
+                                        {restaurant.name}
+                                    </p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => setIsDeliveryFeeModalOpen(false)}
+                                className="text-gray-400 hover:text-gray-700 font-bold p-1 text-lg leading-none"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSaveDeliveryFee} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-black text-gray-700 uppercase mb-1">
+                                    Valor da Taxa de Entrega (R$)
+                                </label>
+                                <p className="text-xs text-gray-500 mb-2">
+                                    Valor fixo somado em todos os pedidos de delivery. Deixe <strong>0</strong> para <strong>Frete Grátis</strong>.
+                                </p>
+                                <div className="relative">
+                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-black text-lg">R$</span>
+                                    <input 
+                                        type="number" 
+                                        step="0.50" 
+                                        min="0"
+                                        value={quickDeliveryFee}
+                                        onChange={e => setQuickDeliveryFee(Math.max(0, parseFloat(e.target.value) || 0))}
+                                        placeholder="0.00"
+                                        className="w-full p-3.5 pl-12 border-2 border-orange-300 rounded-2xl focus:ring-2 focus:ring-orange-500 bg-white font-mono text-2xl font-black text-gray-900 shadow-inner outline-none"
+                                        autoFocus
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Atalhos Rápidos */}
+                            <div>
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider block mb-1.5">
+                                    Valores Rápidos:
+                                </span>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {[0, 3, 5, 6, 7, 8, 10, 12].map(val => (
+                                        <button
+                                            key={val}
+                                            type="button"
+                                            onClick={() => setQuickDeliveryFee(val)}
+                                            className={`px-3 py-1.5 text-xs font-bold rounded-xl border transition-all ${
+                                                quickDeliveryFee === val
+                                                    ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                                                    : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-orange-50 hover:border-orange-200'
+                                            }`}
+                                        >
+                                            {val === 0 ? 'Grátis (0)' : `R$ ${val},00`}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-3 pt-3 border-t">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsDeliveryFeeModalOpen(false)}
+                                    className="px-4 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl transition-all"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSavingDeliveryFee}
+                                    className="px-6 py-2.5 bg-orange-600 hover:bg-orange-700 text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-sm transition-all disabled:opacity-50 flex items-center gap-1.5"
+                                >
+                                    {isSavingDeliveryFee ? 'Salvando...' : 'Salvar Frete'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             )}
 
             {printQueue.length > 0 && (

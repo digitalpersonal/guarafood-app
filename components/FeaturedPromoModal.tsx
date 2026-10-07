@@ -3,6 +3,7 @@ import type { FeaturedPromo, MenuItem, MenuCategory, Restaurant, CartItem, Optio
 import { fetchMenuForRestaurant } from '../services/databaseService';
 import { useCart } from '../hooks/useCart';
 import { useNotification } from '../hooks/useNotification';
+import { formatPromoDays } from '../utils/promoUtils';
 import OptimizedImage from './OptimizedImage';
 
 interface FeaturedPromoModalProps {
@@ -275,9 +276,15 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
                         className="w-full h-full object-cover"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent flex flex-col justify-end p-5 text-white">
-                        <span className="bg-orange-600 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full w-max mb-1.5 shadow-sm">
-                            Destaque Promocional
-                        </span>
+                        <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                            <span className="bg-orange-600 text-white text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full shadow-sm">
+                                Destaque Promocional
+                            </span>
+                            <span className="bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-xs flex items-center gap-1">
+                                <span>🗓️</span>
+                                <span>{formatPromoDays(promo.availableDays)}</span>
+                            </span>
+                        </div>
                         <h2 className="text-xl sm:text-2xl font-black leading-tight">{promo.title}</h2>
                         {promo.includeFreeDelivery && (
                             <span className="text-xs text-green-300 font-bold mt-1 flex items-center gap-1">

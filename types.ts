@@ -219,6 +219,7 @@ export interface Promotion {
   startDate: string; // ISO 8601 format
   endDate: string; // ISO 8601 format
   restaurantId: number;
+  availableDays?: number[]; // [0, 1, 2, 3, 4, 5, 6] 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
 }
 
 export interface FeaturedPromo {
@@ -232,6 +233,7 @@ export interface FeaturedPromo {
   itemIds: number[];
   includeFreeDelivery: boolean;
   active: boolean;
+  availableDays?: number[]; // [0, 1, 2, 3, 4, 5, 6] 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
 }
 
 export interface Coupon {

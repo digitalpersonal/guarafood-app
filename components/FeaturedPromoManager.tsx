@@ -5,6 +5,7 @@ import { supabase } from '../services/api';
 import { useNotification } from '../hooks/useNotification';
 import Spinner from './Spinner';
 import OptimizedImage from './OptimizedImage';
+import { DAYS_OF_WEEK, ALL_DAYS, MON_TO_THU, MON_TO_FRI, FRI_TO_SUN, WEEKEND_DAYS, formatPromoDays, isPromoActiveToday } from '../utils/promoUtils';
 
 interface FeaturedPromoManagerProps {
     restaurantId: number;
@@ -23,7 +24,8 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
         imageUrl: '',
         itemIds: [],
         includeFreeDelivery: false,
-        active: true
+        active: true,
+        availableDays: ALL_DAYS
     });
     const [isUploading, setIsUploading] = useState(false);
     const { addToast } = useNotification();
@@ -58,13 +60,17 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
             imageUrl: '',
             itemIds: [],
             includeFreeDelivery: false,
-            active: true
+            active: true,
+            availableDays: ALL_DAYS
         });
         setIsEditing(true);
     };
 
     const handleOpenEdit = (promo: FeaturedPromo) => {
-        setCurrentPromo(promo);
+        setCurrentPromo({
+            ...promo,
+            availableDays: promo.availableDays && promo.availableDays.length > 0 ? promo.availableDays : ALL_DAYS
+        });
         setIsEditing(true);
     };
 
@@ -206,6 +212,27 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
                                             {isActive ? '● Ativo no Cardápio' : '○ Inativo'}
                                         </span>
                                     </div>
+
+                                    {/* Dias da semana e status hoje */}
+                                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                        <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200 flex items-center gap-1">
+                                            <span>🗓️</span>
+                                            <span>{formatPromoDays(promo.availableDays)}</span>
+                                        </span>
+                                        {isActive && (
+                                            isPromoActiveToday(promo) ? (
+                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                                    <span>Ativa Hoje 🔥</span>
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                                                    ⏸ Inativa hoje (fora do dia)
+                                                </span>
+                                            )
+                                        )}
+                                    </div>
+
                                     <p className="text-xs text-gray-500 line-clamp-2">{promo.description}</p>
                                     <p className="text-[11px] font-medium text-orange-600">
                                         {promo.itemIds.length} produtos participantes
@@ -272,6 +299,116 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
                                     rows={3}
                                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                                 />
+                            </div>
+
+                            {/* Dias da Semana da Promoção */}
+                            <div className="bg-orange-50/70 border border-orange-200 rounded-2xl p-4 space-y-3">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                    <label className="block text-xs font-black text-gray-800 uppercase tracking-wide flex items-center gap-1.5">
+                                        <span>🗓️</span>
+                                        <span>Dias da Semana Ativos</span>
+                                    </label>
+                                    <span className="text-xs font-bold text-orange-700 bg-white px-2.5 py-0.5 rounded-full border border-orange-200 self-start sm:self-auto">
+                                        {formatPromoDays(currentPromo.availableDays)}
+                                    </span>
+                                </div>
+
+                                <p className="text-[11px] text-gray-600 leading-relaxed">
+                                    Defina os dias em que a promoção aparece na tela inicial e no topo do cardápio (ex: <strong>somente de segunda a quinta</strong>):
+                                </p>
+
+                                {/* Presets rápidos */}
+                                <div className="flex flex-wrap gap-1.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurrentPromo(prev => ({ ...prev, availableDays: ALL_DAYS }))}
+                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all ${
+                                            JSON.stringify([...(currentPromo.availableDays || [])].sort((a,b) => a-b)) === JSON.stringify(ALL_DAYS)
+                                                ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                                                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                                        }`}
+                                    >
+                                        Todos os dias
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurrentPromo(prev => ({ ...prev, availableDays: MON_TO_THU }))}
+                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all ${
+                                            JSON.stringify([...(currentPromo.availableDays || [])].sort((a,b) => a-b)) === JSON.stringify(MON_TO_THU)
+                                                ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                                                : 'bg-white text-orange-700 border-orange-300 hover:bg-orange-100/50'
+                                        }`}
+                                    >
+                                        Segunda a Quinta 🔥
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurrentPromo(prev => ({ ...prev, availableDays: MON_TO_FRI }))}
+                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all ${
+                                            JSON.stringify([...(currentPromo.availableDays || [])].sort((a,b) => a-b)) === JSON.stringify(MON_TO_FRI)
+                                                ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                                                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                                        }`}
+                                    >
+                                        Segunda a Sexta
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurrentPromo(prev => ({ ...prev, availableDays: FRI_TO_SUN }))}
+                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all ${
+                                            JSON.stringify([...(currentPromo.availableDays || [])].sort((a,b) => a-b)) === JSON.stringify([0, 5, 6])
+                                                ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                                                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                                        }`}
+                                    >
+                                        Sexta a Domingo
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurrentPromo(prev => ({ ...prev, availableDays: WEEKEND_DAYS }))}
+                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all ${
+                                            JSON.stringify([...(currentPromo.availableDays || [])].sort((a,b) => a-b)) === JSON.stringify(WEEKEND_DAYS)
+                                                ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                                                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                                        }`}
+                                    >
+                                        Finais de Semana
+                                    </button>
+                                </div>
+
+                                {/* Botões por dia */}
+                                <div className="grid grid-cols-7 gap-1.5 pt-1">
+                                    {DAYS_OF_WEEK.map(d => {
+                                        const isSelected = (currentPromo.availableDays || []).includes(d.index);
+                                        return (
+                                            <button
+                                                key={d.index}
+                                                type="button"
+                                                onClick={() => {
+                                                    const current = currentPromo.availableDays || [];
+                                                    let updated: number[];
+                                                    if (isSelected) {
+                                                        updated = current.filter(day => day !== d.index);
+                                                        if (updated.length === 0) updated = [d.index];
+                                                    } else {
+                                                        updated = [...current, d.index].sort((a, b) => a - b);
+                                                    }
+                                                    setCurrentPromo(prev => ({ ...prev, availableDays: updated }));
+                                                }}
+                                                className={`py-2 px-1 rounded-xl text-xs font-black text-center transition-all border flex flex-col items-center gap-0.5 ${
+                                                    isSelected 
+                                                        ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
+                                                        : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                                }`}
+                                            >
+                                                <span>{d.abbr}</span>
+                                                <span className={`text-[9px] ${isSelected ? 'text-orange-100' : 'text-gray-400'}`}>
+                                                    {isSelected ? '✓' : '—'}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">

@@ -28,6 +28,7 @@ import {
     createAddon,
     updateAddon,
     deleteAddon,
+    updateRestaurant,
 } from '../services/databaseService';
 import Spinner from './Spinner';
 import ComboEditorModal from './ComboEditorModal';
@@ -107,12 +108,49 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
     // Category editing state
     const [editingCategory, setEditingCategory] = useState<{ id: number; oldName: string; newName: string; newIconUrl: string | null; newAvailableStartTime: string | null; newAvailableEndTime: string | null } | null>(null);
     const [restaurantName, setRestaurantName] = useState<string | null>(null);
+    const [deliveryFee, setDeliveryFee] = useState<number>(() => {
+        try {
+            const cached = localStorage.getItem('guarafood-cached-restaurant');
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                return parsed.deliveryFee != null ? Number(parsed.deliveryFee) : 0;
+            }
+        } catch {}
+        return 0;
+    });
+    const [isSavingDeliveryFee, setIsSavingDeliveryFee] = useState(false);
     const [showAiImporter, setShowAiImporter] = useState(false);
 
     const restaurantId = propRestaurantId || currentUser?.restaurantId;
 
     const allMenuItems = menuCategories.flatMap(c => c.items);
     const allCombos = menuCategories.flatMap(c => c.combos || []);
+
+    const handleSaveDeliveryFee = async (feeToSave: number) => {
+        if (!restaurantId) return;
+        setIsSavingDeliveryFee(true);
+        try {
+            const newFee = Math.max(0, feeToSave);
+            await updateRestaurant(restaurantId, { deliveryFee: newFee });
+            setDeliveryFee(newFee);
+            try {
+                const cached = localStorage.getItem('guarafood-cached-restaurant');
+                if (cached) {
+                    const parsed = JSON.parse(cached);
+                    parsed.deliveryFee = newFee;
+                    localStorage.setItem('guarafood-cached-restaurant', JSON.stringify(parsed));
+                }
+            } catch {}
+            addToast({ 
+                message: `Taxa de entrega alterada com sucesso para ${newFee === 0 ? 'Grátis' : `R$ ${newFee.toFixed(2)}`}!`, 
+                type: 'success' 
+            });
+        } catch (err: any) {
+            addToast({ message: `Erro ao salvar frete: ${getErrorMessage(err)}`, type: 'error' });
+        } finally {
+            setIsSavingDeliveryFee(false);
+        }
+    };
 
     const loadData = useCallback(async () => {
         if (!restaurantId) {
@@ -122,13 +160,18 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
         try {
             setIsLoading(true);
             
-            // Try fetching restaurant name with 2.5s maximum timeout
+            // Try fetching restaurant name & delivery fee with 2.5s maximum timeout
             const restNameData = await Promise.race([
-                supabase.from('restaurants').select('name').eq('id', restaurantId).single(),
+                supabase.from('restaurants').select('name, delivery_fee').eq('id', restaurantId).single(),
                 new Promise<any>((resolve) => setTimeout(() => resolve({ data: null, error: new Error('Timeout') }), 2500))
             ]).catch(() => null);
             
-            if (restNameData?.data) setRestaurantName(restNameData.data.name);
+            if (restNameData?.data) {
+                setRestaurantName(restNameData.data.name);
+                if (restNameData.data.delivery_fee != null) {
+                    setDeliveryFee(Number(restNameData.data.delivery_fee));
+                }
+            }
 
             // Fetch menu components concurrently with a 3.5s timeout race
             const results = await Promise.race([
@@ -742,6 +785,70 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                     <h2 className="text-xl font-bold text-gray-800">Gerenciar Cardápio do Restaurante</h2>
                 </div>
             )}
+
+            {/* --- TAXA DE ENTREGA / FRETE DO RESTAURANTE --- */}
+            <div className="bg-gradient-to-r from-orange-50 via-white to-amber-50 rounded-2xl border-2 border-orange-200 p-6 shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-orange-200/60 pb-3">
+                    <div className="flex items-center gap-2.5">
+                        <span className="text-3xl">🛵</span>
+                        <div>
+                            <h3 className="text-base font-black text-gray-900 uppercase tracking-tight">
+                                Taxa de Entrega / Frete do Estabelecimento
+                            </h3>
+                            <p className="text-xs text-gray-600 font-medium">
+                                Altere o valor do frete cobrado aos clientes diretamente por aqui ou no painel de configurações.
+                            </p>
+                        </div>
+                    </div>
+                    <span className="text-xs font-black px-3.5 py-1.5 rounded-full border self-start sm:self-auto bg-white text-orange-700 border-orange-300 shadow-2xs">
+                        {deliveryFee === 0 ? '🎁 Frete Grátis Ativo' : `R$ ${deliveryFee.toFixed(2)} por entrega`}
+                    </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4 pt-1">
+                    <div className="relative w-44">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 font-black text-base">R$</span>
+                        <input 
+                            type="number" 
+                            step="0.50" 
+                            min="0"
+                            value={deliveryFee}
+                            onChange={e => setDeliveryFee(Math.max(0, parseFloat(e.target.value) || 0))}
+                            className="w-full p-3 pl-10 border-2 border-orange-300 rounded-xl font-mono text-lg font-black text-gray-900 outline-none focus:ring-2 focus:ring-orange-500 bg-white"
+                        />
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() => handleSaveDeliveryFee(deliveryFee)}
+                        disabled={isSavingDeliveryFee}
+                        className="px-5 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-300 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-2 cursor-pointer"
+                    >
+                        {isSavingDeliveryFee ? 'Salvando Frete...' : '✓ Salvar Taxa de Frete'}
+                    </button>
+
+                    <div className="flex flex-wrap items-center gap-1.5 ml-auto">
+                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Atalhos:</span>
+                        {[0, 3, 5, 6, 7, 8, 10, 12].map(val => (
+                            <button
+                                key={val}
+                                type="button"
+                                onClick={() => {
+                                    setDeliveryFee(val);
+                                    handleSaveDeliveryFee(val);
+                                }}
+                                className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                                    deliveryFee === val 
+                                        ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
+                                        : 'bg-white text-gray-700 border-gray-200 hover:bg-orange-50 hover:border-orange-200'
+                                }`}
+                            >
+                                {val === 0 ? 'Grátis' : `R$ ${val}`}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
 
             {/* --- PROMOTIONS --- */}
             <div className="bg-white rounded-lg shadow-md p-6">

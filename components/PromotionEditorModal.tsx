@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import type { Promotion, MenuItem, Combo, MenuCategory } from '../types';
+import { DAYS_OF_WEEK, ALL_DAYS, MON_TO_THU, MON_TO_FRI, FRI_TO_SUN, WEEKEND_DAYS, formatPromoDays } from '../utils/promoUtils';
 
 interface PromotionEditorModalProps {
     isOpen: boolean;
@@ -17,6 +18,7 @@ const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOpen, onC
     const [description, setDescription] = useState('');
     const [discountType, setDiscountType] = useState<'PERCENTAGE' | 'FIXED'>('PERCENTAGE');
     const [discountValue, setDiscountValue] = useState('');
+    const [availableDays, setAvailableDays] = useState<number[]>(ALL_DAYS);
     
     // Multi-select states
     const [itemIds, setItemIds] = useState<Set<number>>(new Set());
@@ -35,6 +37,7 @@ const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOpen, onC
             setDescription(existingPromotion.description);
             setDiscountType(existingPromotion.discountType);
             setDiscountValue(existingPromotion.discountValue.toString());
+            setAvailableDays(existingPromotion.availableDays && existingPromotion.availableDays.length > 0 ? existingPromotion.availableDays : ALL_DAYS);
             setItemIds(new Set(existingPromotion.itemIds || []));
             setComboIds(new Set(existingPromotion.comboIds || []));
             setCategoryIds(new Set(existingPromotion.categoryIds || []));
@@ -45,6 +48,7 @@ const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOpen, onC
             setDescription('');
             setDiscountType('PERCENTAGE');
             setDiscountValue('');
+            setAvailableDays(ALL_DAYS);
             setItemIds(new Set());
             setComboIds(new Set());
             setCategoryIds(new Set());
@@ -95,6 +99,7 @@ const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOpen, onC
             categoryIds: Array.from(categoryIds),
             startDate: new Date(startDate).toISOString(),
             endDate: new Date(endDate).toISOString(),
+            availableDays: availableDays && availableDays.length > 0 ? availableDays : ALL_DAYS
         });
     };
 
@@ -139,6 +144,93 @@ const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOpen, onC
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Valor do Desconto</label>
                             <input type="number" placeholder="0.00" value={discountValue} onChange={e => setDiscountValue(e.target.value)} className="w-full p-2 border rounded-lg bg-gray-50"/>
+                        </div>
+                    </div>
+
+                    {/* Dias da Semana Ativos */}
+                    <div className="bg-orange-50/60 border border-orange-200/80 rounded-xl p-3.5 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                            <label className="block text-xs font-bold text-gray-700 uppercase">
+                                🗓️ Dias da Semana da Promoção
+                            </label>
+                            <span className="text-xs font-bold text-orange-700 bg-white px-2 py-0.5 rounded-full border border-orange-200">
+                                {formatPromoDays(availableDays)}
+                            </span>
+                        </div>
+                        <p className="text-[11px] text-gray-500">
+                            A promoção só concederá desconto nos dias da semana definidos (ex: somente de segunda a quinta):
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                            <button
+                                type="button"
+                                onClick={() => setAvailableDays(ALL_DAYS)}
+                                className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all ${
+                                    JSON.stringify([...availableDays].sort((a,b)=>a-b)) === JSON.stringify(ALL_DAYS)
+                                        ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                                }`}
+                            >
+                                Todos os dias
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setAvailableDays(MON_TO_THU)}
+                                className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all ${
+                                    JSON.stringify([...availableDays].sort((a,b)=>a-b)) === JSON.stringify(MON_TO_THU)
+                                        ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                                        : 'bg-white text-orange-700 border-orange-300 hover:bg-orange-100/50'
+                                }`}
+                            >
+                                Segunda a Quinta 🔥
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setAvailableDays(MON_TO_FRI)}
+                                className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all ${
+                                    JSON.stringify([...availableDays].sort((a,b)=>a-b)) === JSON.stringify(MON_TO_FRI)
+                                        ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                                }`}
+                            >
+                                Segunda a Sexta
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setAvailableDays(FRI_TO_SUN)}
+                                className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all ${
+                                    JSON.stringify([...availableDays].sort((a,b)=>a-b)) === JSON.stringify([0, 5, 6])
+                                        ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                                }`}
+                            >
+                                Sexta a Domingo
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-7 gap-1 pt-1">
+                            {DAYS_OF_WEEK.map(d => {
+                                const isSelected = availableDays.includes(d.index);
+                                return (
+                                    <button
+                                        key={d.index}
+                                        type="button"
+                                        onClick={() => {
+                                            if (isSelected) {
+                                                const updated = availableDays.filter(x => x !== d.index);
+                                                setAvailableDays(updated.length > 0 ? updated : [d.index]);
+                                            } else {
+                                                setAvailableDays([...availableDays, d.index].sort((a,b)=>a-b));
+                                            }
+                                        }}
+                                        className={`py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                                            isSelected 
+                                                ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
+                                                : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                                        }`}
+                                    >
+                                        {d.abbr}
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
 

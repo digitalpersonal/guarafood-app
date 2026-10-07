@@ -16,6 +16,7 @@ import LoginScreen from './components/LoginScreen';
 import AdminDashboard from './components/AdminDashboard';
 import OrderManagement from './components/OrderManagement';
 import HomePromotionalBanner from './components/HomePromotionalBanner';
+import { HomeFeaturedPromos } from './components/HomeFeaturedPromos';
 import { RestaurantPromotionalBanner } from './components/RestaurantPromotionalBanner';
 import { RestaurantShareModal } from './components/RestaurantShareModal';
 import { CartProvider, useCart } from './hooks/useCart';
@@ -539,6 +540,12 @@ const CustomerView: React.FC<CustomerViewProps> = ({
                     if (r) onSelectRestaurant(r);
                 } else { handleCategoryToggle(val); }
             }} />
+
+            {/* Promoções Ativas de Hoje com base nos Dias da Semana */}
+            <HomeFeaturedPromos 
+                restaurants={restaurants} 
+                onSelectRestaurant={onSelectRestaurant} 
+            />
 
             <div className="p-4 overflow-hidden">
                 <h2 className="text-lg font-bold text-gray-800 mb-4 ml-1">O que você quer comer hoje?</h2>
