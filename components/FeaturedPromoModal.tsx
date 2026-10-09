@@ -15,7 +15,7 @@ interface FeaturedPromoModalProps {
 
 export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, onClose, promo, restaurant }) => {
     const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([]);
-    const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
+    const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
     const [selectedOptions, setSelectedOptions] = useState<{ [groupId: string]: string[] }>({});
     const [selectedSize, setSelectedSize] = useState<SizeOption | null>(null);
     const [notes, setNotes] = useState('');
@@ -30,10 +30,12 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
             fetchMenuForRestaurant(restaurant.id)
                 .then(cats => {
                     setMenuCategories(cats);
+                    const max = promo.maxItemSelections || 1;
                     if (promo.itemIds && promo.itemIds.length > 0) {
-                        setSelectedItemId(Number(promo.itemIds[0]));
+                        const numericIds = promo.itemIds.map(Number);
+                        setSelectedItemIds(numericIds.slice(0, max));
                     } else {
-                        setSelectedItemId(null);
+                        setSelectedItemIds([]);
                     }
                 })
                 .catch(err => console.error("Error loading menu for promo modal:", err))
@@ -52,21 +54,37 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
         return allItems.filter(item => numericItemIds.includes(Number(item.id)));
     }, [allItems, promo]);
 
-    // Ensure selectedItemId is valid
-    useEffect(() => {
-        if (participatingItems.length > 0) {
-            const exists = participatingItems.some(i => i.id === selectedItemId);
-            if (!exists) {
-                setSelectedItemId(participatingItems[0].id);
-            }
-        }
-    }, [participatingItems, selectedItemId]);
+    const maxSelections = promo?.maxItemSelections || 1;
+    const requiredCount = Math.min(maxSelections, participatingItems.length);
 
-    // Current selected item
+    const handleItemToggle = (itemId: number) => {
+        setSelectedItemIds(prev => {
+            if (prev.includes(itemId)) {
+                return prev.filter(id => id !== itemId);
+            } else {
+                if (maxSelections === 1) {
+                    return [itemId];
+                }
+                if (prev.length >= maxSelections) {
+                    return [...prev.slice(1), itemId];
+                }
+                return [...prev, itemId];
+            }
+        });
+    };
+
+    const isItemsValid = participatingItems.length === 0 || selectedItemIds.length === requiredCount;
+
+    const selectedItems = useMemo(() => {
+        return participatingItems.filter(i => selectedItemIds.includes(i.id));
+    }, [participatingItems, selectedItemIds]);
+
+    // Current selected item (first selected item or first participating item for option groups / sizes)
     const selectedItem: MenuItem | null = useMemo(() => {
+        if (selectedItems.length > 0) return selectedItems[0];
         if (participatingItems.length === 0) return null;
-        return participatingItems.find(i => i.id === selectedItemId) || participatingItems[0];
-    }, [participatingItems, selectedItemId]);
+        return participatingItems[0];
+    }, [selectedItems, participatingItems]);
 
     // Parse option groups safely (supports both optionGroups and option_groups snake_case from DB)
     const currentOptionGroups: OptionGroup[] = useMemo(() => {
@@ -147,7 +165,7 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
         } else {
             setSelectedSize(null);
         }
-    }, [selectedItemId, selectedItem?.id, currentOptionGroups, currentSizes]);
+    }, [selectedItemIds, selectedItem?.id, currentOptionGroups, currentSizes]);
 
     // Calculate additional price from options (hook must be called unconditionally before early returns)
     const optionsExtraPrice = useMemo(() => {
@@ -203,6 +221,11 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
     const handleAddToCart = () => {
         if (!restaurant) return;
 
+        if (!isItemsValid) {
+            addToast({ message: `Por favor, selecione exatamente ${requiredCount} opções participantes.`, type: 'warning' });
+            return;
+        }
+
         if (!isAllValid()) {
             const missingNames = missingRequiredGroups.map(g => g.title).join(', ');
             addToast({ message: `Por favor, selecione: ${missingNames}`, type: 'warning' });
@@ -227,8 +250,8 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
         const optionsSummary = cartSelectedOptions.map(o => `${o.groupTitle}: ${o.optionName}`).join(' | ');
         const optionKey = cartSelectedOptions.map(o => `${o.groupTitle}:${o.optionName}`).sort().join('-');
 
-        const itemNameSuffix = selectedItem && participatingItems.length > 1
-            ? ` (${selectedItem.name})`
+        const itemNameSuffix = selectedItems.length > 0
+            ? ` (${selectedItems.map(i => i.name).join(', ')})`
             : '';
 
         let formattedNotes = '';
@@ -241,7 +264,7 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
         }
 
         const cartItemPayload: CartItem = {
-            id: `featured-promo-${promo.id}-${selectedItemId || 'gen'}${optionKey ? `-${optionKey}` : ''}`,
+            id: `featured-promo-${promo.id}-${selectedItemIds.join('-') || 'gen'}${optionKey ? `-${optionKey}` : ''}`,
             restaurantId: Number(restaurant.id),
             categoryId: selectedItem?.categoryId,
             name: `${promo.title}${itemNameSuffix}`,
@@ -327,23 +350,34 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
                         )}
                     </div>
 
-                    {/* Step 1: Escolha do item participante (caso haja mais de 1) */}
-                    {participatingItems.length > 1 && (
-                        <div>
-                            <label className="block text-sm font-bold text-gray-800 mb-2">
-                                1. Escolha a opção participante:
-                            </label>
+                    {/* Step 1: Escolha dos itens participantes */}
+                    {participatingItems.length > 0 && (
+                        <div className="space-y-3">
+                            <div className="flex justify-between items-center">
+                                <label className="block text-sm font-bold text-gray-800">
+                                    {maxSelections > 1 
+                                        ? `1. Escolha até ${maxSelections} opções (${selectedItemIds.length}/${maxSelections}):`
+                                        : '1. Escolha a opção participante:'
+                                    }
+                                </label>
+                                {maxSelections > 1 && (
+                                    <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
+                                        selectedItemIds.length === requiredCount ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200 font-black'
+                                    }`}>
+                                        {selectedItemIds.length} / {requiredCount} selecionados
+                                    </span>
+                                )}
+                            </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                 {participatingItems.map(item => {
-                                    const isSelected = selectedItemId === item.id;
+                                    const isSelected = selectedItemIds.includes(item.id);
                                     return (
-                                        <button
+                                        <div
                                             key={item.id}
-                                            type="button"
-                                            onClick={() => setSelectedItemId(item.id)}
-                                            className={`p-3 rounded-xl border text-left transition-all flex items-center gap-3 ${
+                                            onClick={() => handleItemToggle(item.id)}
+                                            className={`p-3 rounded-xl border text-left transition-all flex items-center gap-3 cursor-pointer ${
                                                 isSelected 
-                                                    ? 'border-orange-600 bg-orange-50/70 ring-2 ring-orange-500/20 shadow-sm' 
+                                                    ? 'border-orange-600 bg-orange-50/70 ring-2 ring-orange-500/20 shadow-sm font-bold' 
                                                     : 'border-gray-200 hover:border-gray-300 bg-white'
                                             }`}
                                         >
@@ -358,30 +392,14 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
                                                     <p className="text-[11px] text-gray-500 truncate">{item.description}</p>
                                                 )}
                                             </div>
-                                            <div className={`w-5 h-5 rounded-full border flex items-center justify-center flex-shrink-0 ${isSelected ? 'border-orange-600 bg-orange-600 text-white' : 'border-gray-300'}`}>
+                                            <div className={`w-5 h-5 flex items-center justify-center flex-shrink-0 ${
+                                                maxSelections === 1 ? 'rounded-full border' : 'rounded border'
+                                            } ${isSelected ? 'border-orange-600 bg-orange-600 text-white' : 'border-gray-300 bg-white'}`}>
                                                 {isSelected && <span className="text-xs font-black">✓</span>}
                                             </div>
-                                        </button>
+                                        </div>
                                     );
                                 })}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Item selecionado / incluso quando há apenas 1 item participante */}
-                    {participatingItems.length === 1 && selectedItem && (
-                        <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
-                            {selectedItem.imageUrl && (
-                                <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 bg-gray-200">
-                                    <OptimizedImage src={selectedItem.imageUrl} alt={selectedItem.name} className="w-full h-full object-cover" />
-                                </div>
-                            )}
-                            <div className="min-w-0 flex-grow">
-                                <span className="text-[10px] font-bold text-orange-600 uppercase tracking-wider block">Item da Promoção</span>
-                                <p className="text-sm font-black text-gray-800 truncate">{selectedItem.name}</p>
-                                {selectedItem.description && (
-                                    <p className="text-xs text-gray-500 truncate">{selectedItem.description}</p>
-                                )}
                             </div>
                         </div>
                     )}
@@ -504,14 +522,14 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
                     </div>
                     <button
                         onClick={handleAddToCart}
-                        disabled={!isAllValid()}
+                        disabled={!isItemsValid || !isAllValid()}
                         className={`font-bold px-6 py-3 rounded-xl shadow-lg transition-all text-sm flex items-center gap-2 ${
-                            isAllValid()
+                            isItemsValid && isAllValid()
                                 ? 'bg-orange-600 hover:bg-orange-700 text-white hover:shadow-xl active:scale-95'
                                 : 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
                         }`}
                     >
-                        {isAllValid() ? 'Adicionar ao Carrinho' : 'Selecione as opções'}
+                        {isItemsValid && isAllValid() ? 'Adicionar ao Carrinho' : 'Selecione as opções'}
                     </button>
                 </div>
             </div>

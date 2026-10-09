@@ -61,7 +61,8 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
             itemIds: [],
             includeFreeDelivery: false,
             active: true,
-            availableDays: ALL_DAYS
+            availableDays: ALL_DAYS,
+            maxItemSelections: 1
         });
         setIsEditing(true);
     };
@@ -69,7 +70,8 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
     const handleOpenEdit = (promo: FeaturedPromo) => {
         setCurrentPromo({
             ...promo,
-            availableDays: promo.availableDays && promo.availableDays.length > 0 ? promo.availableDays : ALL_DAYS
+            availableDays: promo.availableDays && promo.availableDays.length > 0 ? promo.availableDays : ALL_DAYS,
+            maxItemSelections: promo.maxItemSelections || 1
         });
         setIsEditing(true);
     };
@@ -454,10 +456,25 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
                                 </div>
                             </div>
 
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                                    Quantidade de Itens que o Cliente Pode Marcar / Escolher (Ex: 1 para 1 sabor, 2 para 2 pizzas, 6 para esfihas)
+                                </label>
+                                <input 
+                                    type="number"
+                                    min="1"
+                                    value={currentPromo.maxItemSelections || 1}
+                                    onChange={e => setCurrentPromo(prev => ({ ...prev, maxItemSelections: parseInt(e.target.value) || 1 }))}
+                                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono font-bold"
+                                    placeholder="Ex: 1, 2 ou 6"
+                                />
+                                <p className="text-[10px] text-gray-500 mt-1">Quantos produtos/sabores o cliente pode selecionar nesta promoção destaque.</p>
+                            </div>
+
                             {/* Products selection */}
                             <div>
                                 <label className="block text-xs font-bold text-gray-700 uppercase mb-2">
-                                    Produtos Participantes (O cliente escolherá 1)
+                                    Produtos Participantes (O cliente escolherá até {currentPromo.maxItemSelections || 1} itens)
                                 </label>
                                 <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-xl p-3 space-y-2 bg-gray-50">
                                     {allItems.map(item => {

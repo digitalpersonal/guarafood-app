@@ -247,6 +247,7 @@ export interface FeaturedPromo {
   includeFreeDelivery: boolean;
   active: boolean;
   availableDays?: number[]; // [0, 1, 2, 3, 4, 5, 6] 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
+  maxItemSelections?: number; // ex: 1, 2, 6 (Quantidade máxima de escolhas de produtos participantes)
 }
 
 export interface Coupon {
