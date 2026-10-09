@@ -1284,7 +1284,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             </div>
 
             {isComboModalOpen && <ComboEditorModal isOpen={isComboModalOpen} onClose={() => setIsComboModalOpen(false)} onSave={handleSaveCombo} existingCombo={editingCombo} menuItems={allMenuItems} />}
-            {isItemModalOpen && restaurantId && <MenuItemEditorModal isOpen={isItemModalOpen} onClose={() => setIsItemModalOpen(false)} onSave={handleSaveItem} existingItem={editingItem?.item} initialCategory={editingItem?.categoryName} restaurantCategories={menuCategories.map(c => c.name)} allAddons={addons} restaurantId={restaurantId} />}
+            {isItemModalOpen && restaurantId && <MenuItemEditorModal isOpen={isItemModalOpen} onClose={() => setIsItemModalOpen(false)} onSave={handleSaveItem} existingItem={editingItem?.item} initialCategory={editingItem?.categoryName} restaurantCategories={menuCategories.map(c => c.name)} categories={menuCategories} allAddons={addons} restaurantId={restaurantId} />}
             {isPromoModalOpen && <PromotionEditorModal isOpen={isPromoModalOpen} onClose={() => setIsPromoModalOpen(false)} onSave={handleSavePromo} existingPromotion={editingPromo} menuItems={allMenuItems} combos={allCombos} categories={menuCategories}/>}
             {isCouponModalOpen && <CouponEditorModal isOpen={isCouponModalOpen} onClose={() => setIsCouponModalOpen(false)} onSave={handleSaveCoupon} existingCoupon={editingCoupon} />}
             {isAddonModalOpen && <AddonEditorModal isOpen={isAddonModalOpen} onClose={() => setIsAddonModalOpen(false)} onSave={handleSaveAddon} existingAddon={editingAddon} />}

@@ -21,6 +21,8 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
     const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
     const [selectedOptions, setSelectedOptions] = useState<{ [groupId: string]: string[] }>({});
     const [notes, setNotes] = useState('');
+    const [upsellSelected, setUpsellSelected] = useState(false);
+    const [selectedUpsellOption, setSelectedUpsellOption] = useState<string>('');
 
     const [isAdding, setIsAdding] = useState(false);
 
@@ -42,6 +44,8 @@ const AcaiCustomizationModal: React.FC<AcaiCustomizationModalProps> = ({
         
         setNotes('');
         setIsAdding(false);
+        setUpsellSelected(false);
+        setSelectedUpsellOption(initialItem.activePromotion?.upsellOptions?.[0] || '');
     }, [initialItem, isOpen]);
 
     const freeAddonCountLimit = selectedSize?.freeAddonCount || 0;

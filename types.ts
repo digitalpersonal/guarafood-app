@@ -178,6 +178,9 @@ export interface MenuItem {
   isWeeklySpecial?: boolean; // For supermarket "Promoções da Semana"
   displayOrder?: number; // Added for item reordering
   available?: boolean; // NEW: Field to mark item as out of stock
+  availableDays?: number[]; // [0..6]
+  availableStartTime?: string; // "HH:MM" ex: "13:00"
+  availableEndTime?: string; // "HH:MM" ex: "18:00"
 }
 
 export interface Combo {
@@ -191,6 +194,9 @@ export interface Combo {
   menuItemIds: number[];
   activePromotion?: Promotion;
   categoryId?: number; // Added for DB interaction
+  availableDays?: number[]; // [0..6]
+  availableStartTime?: string; // "HH:MM" ex: "13:00"
+  availableEndTime?: string; // "HH:MM" ex: "18:00"
 }
 
 export interface MenuCategory {
@@ -211,7 +217,7 @@ export interface Promotion {
   id: number;
   name: string;
   description: string;
-  discountType: 'PERCENTAGE' | 'FIXED';
+  discountType: 'PERCENTAGE' | 'FIXED' | 'UPSELL';
   discountValue: number;
   itemIds?: number[];
   comboIds?: number[];
@@ -220,6 +226,12 @@ export interface Promotion {
   endDate: string; // ISO 8601 format
   restaurantId: number;
   availableDays?: number[]; // [0, 1, 2, 3, 4, 5, 6] 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
+  availableStartTime?: string; // "HH:MM"
+  availableEndTime?: string; // "HH:MM"
+  upsellTitle?: string; // ex: "Pizza Broto Doce" ou "Copo de Açaí 300ml"
+  upsellDescription?: string; // ex: "Com leite ninho e leite condensado"
+  upsellPrice?: number; // ex: 14.99 ou 9.99
+  upsellOptions?: string[]; // ex: ["Prestígio", "Brigadeiro"]
 }
 
 export interface FeaturedPromo {

@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import type { MenuItem, Addon, CartItem, SizeOption, OptionGroup } from '../types';
 import OptimizedImage from './OptimizedImage';
+import PromotionalUpsellOffer from './PromotionalUpsellOffer';
 
 
 interface PizzaCustomizationModalProps {
@@ -28,6 +29,8 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
     const [selectedOptions, setSelectedOptions] = useState<{ [groupId: string]: string[] }>({});
     const [showSecondHalfSelector, setShowSecondHalfSelector] = useState(false);
     const [notes, setNotes] = useState('');
+    const [upsellSelected, setUpsellSelected] = useState(false);
+    const [selectedUpsellOption, setSelectedUpsellOption] = useState<string>('');
 
     const [isAdding, setIsAdding] = useState(false);
 
@@ -51,6 +54,8 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
         setShowSecondHalfSelector(false);
         setNotes('');
         setIsAdding(false);
+        setUpsellSelected(false);
+        setSelectedUpsellOption(initialPizza.activePromotion?.upsellOptions?.[0] || '');
     }, [initialPizza, isOpen]);
 
     const allowsMultipleFlavors = useMemo(() => {
@@ -227,6 +232,14 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                 </div>
 
                 <div className="overflow-y-auto p-4 space-y-4">
+                    <PromotionalUpsellOffer
+                        promotion={initialPizza.activePromotion}
+                        selected={upsellSelected}
+                        onToggle={setUpsellSelected}
+                        selectedOption={selectedUpsellOption}
+                        onSelectOption={setSelectedUpsellOption}
+                    />
+
                     {initialPizza.sizes && initialPizza.sizes.length > 0 && (
                         <div>
                             <h3 className="font-bold mb-2">1. Escolha o Tamanho</h3>

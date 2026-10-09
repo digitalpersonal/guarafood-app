@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import type { MenuItem, Addon, CartItem, SizeOption, OptionGroup } from '../types';
 import OptimizedImage from './OptimizedImage';
+import PromotionalUpsellOffer from './PromotionalUpsellOffer';
 
 
 interface GenericCustomizationModalProps {
@@ -23,6 +24,8 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
     const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
     const [selectedOptions, setSelectedOptions] = useState<{ [groupId: string]: string[] }>({});
     const [notes, setNotes] = useState('');
+    const [upsellSelected, setUpsellSelected] = useState(false);
+    const [selectedUpsellOption, setSelectedUpsellOption] = useState<string>('');
 
     const [isAdding, setIsAdding] = useState(false);
 
@@ -44,6 +47,8 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
         
         setNotes('');
         setIsAdding(false);
+        setUpsellSelected(false);
+        setSelectedUpsellOption(initialItem.activePromotion?.upsellOptions?.[0] || '');
     }, [initialItem, isOpen]);
 
     const availableAddons = useMemo(() => {
@@ -66,8 +71,11 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
             });
         });
 
-        return basePrice + addonsPrice + optionsPrice;
-    }, [initialItem, selectedSize, selectedAddonIds, availableAddons, selectedOptions]);
+        const upsellAdd = (upsellSelected && initialItem.activePromotion?.discountType === 'UPSELL') 
+            ? Number(initialItem.activePromotion.upsellPrice) || 0 
+            : 0;
+        return basePrice + addonsPrice + optionsPrice + upsellAdd;
+    }, [initialItem, selectedSize, selectedAddonIds, availableAddons, selectedOptions, upsellSelected]);
     
     const handleAddonToggle = (addonId: number) => {
         setSelectedAddonIds(prev => {

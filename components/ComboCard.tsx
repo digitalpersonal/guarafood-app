@@ -57,6 +57,8 @@ const ComboDetailsModal: React.FC<{ combo: Combo; items: MenuItem[]; onClose: ()
     </div>
 );
 
+import { checkItemAvailability } from '../utils/promoUtils';
+
 const ComboCard: React.FC<ComboCardProps> = ({ combo, restaurantId, menuItems, isOpen = true, isCategoryAvailable = true, categoryUnavailableMessage }) => {
   const { addToCart } = useCart();
   const { addFlyingItem } = useAnimation();
@@ -69,7 +71,9 @@ const ComboCard: React.FC<ComboCardProps> = ({ combo, restaurantId, menuItems, i
       .filter((item): item is MenuItem => !!item);
   }, [combo.menuItemIds, menuItems]);
   
-  const canPurchase = isOpen && isCategoryAvailable;
+  const availability = checkItemAvailability(combo);
+  const isAvailable = availability.isAvailable;
+  const canPurchase = isOpen && isCategoryAvailable && isAvailable;
   const effectiveRestId = Number(restaurantId || combo.restaurantId || (combo as any).restaurant_id);
 
   const handleAddToCart = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -81,6 +85,10 @@ const ComboCard: React.FC<ComboCardProps> = ({ combo, restaurantId, menuItems, i
           addToast({ message: categoryUnavailableMessage || "Categoria indisponível no momento.", type: 'warning' });
           return;
       }
+      if (!isAvailable) {
+          addToast({ message: availability.reason || "Este combo não está disponível no momento.", type: 'warning' });
+          return;
+      }
       const comboWithRestId = { ...combo, restaurantId: effectiveRestId };
       const success = addToCart(comboWithRestId, effectiveRestId);
       if (success) {
@@ -89,12 +97,12 @@ const ComboCard: React.FC<ComboCardProps> = ({ combo, restaurantId, menuItems, i
       }
   };
   
-  const tagText = combo.activePromotion ? 'PROMO' : 'COMBO';
+  const tagText = !isAvailable ? (availability.badgeText || 'FORA DO HORÁRIO') : combo.activePromotion ? 'PROMO' : 'COMBO';
 
   return (
     <>
-      <div className={`rounded-2xl overflow-hidden flex flex-col p-4 border-2 shadow-lg relative ${combo.activePromotion ? 'bg-orange-50 border-orange-400' : 'bg-white border-gray-100'} ${!canPurchase ? 'grayscale opacity-75' : ''}`}>
-        <div className={`absolute top-0 left-0 text-black text-xs font-extrabold px-4 py-1 rounded-br-lg rounded-tl-xl shadow-md ${combo.activePromotion ? 'bg-orange-500 text-white' : 'bg-yellow-400'}`}>
+      <div className={`rounded-2xl overflow-hidden flex flex-col p-4 border-2 shadow-lg relative ${!isAvailable ? 'bg-gray-50 border-gray-200' : combo.activePromotion ? 'bg-orange-50 border-orange-400' : 'bg-white border-gray-100'} ${!canPurchase ? 'grayscale opacity-75' : ''}`}>
+        <div className={`absolute top-0 left-0 text-black text-xs font-extrabold px-4 py-1 rounded-br-lg rounded-tl-xl shadow-md ${!isAvailable ? 'bg-gray-800 text-white' : combo.activePromotion ? 'bg-orange-500 text-white' : 'bg-yellow-400'}`}>
             {tagText}
         </div>
         

@@ -1,12 +1,13 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import type { Order } from '../types';
+import type { Order, Restaurant } from '../types';
 
 interface PrintableOrderProps {
     order: Order;
     printerWidth?: number; // 80 or 58
-    printMode?: 'full' | 'kitchen' | 'admin'; // 'full' prints everything, 'kitchen'/'admin' prints only new items
+    printMode?: 'full' | 'kitchen' | 'admin' | 'fiscal'; 
     printedItems?: string[]; // IDs of items already printed (for kitchen mode)
+    restaurant?: Restaurant | null;
 }
 
 const sanitizePrintText = (str?: string): string => {
@@ -18,24 +19,10 @@ const sanitizePrintText = (str?: string): string => {
         .trim();
 };
 
-const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 80, printMode = 'full', printedItems = [] }) => {
+const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 80, printMode = 'full', printedItems = [], restaurant }) => {
     const paperSize = `${printerWidth}mm`;
-    
-    // Filter items for kitchen/admin printing (only new items)
-    const itemsToPrint = (printMode === 'kitchen' || printMode === 'admin')
-        ? (order.items || []).filter(item => !printedItems.includes(item.id))
-        : (order.items || []);
 
-    // If no items to print, don't render anything to avoid blank prints
-    if (itemsToPrint.length === 0) {
-        return null; 
-    }
-
-    // Precise side padding tailored for thermal print heads (avoiding right clipping)
-    // 58mm paper has ~48mm printable width. 1.5mm padding guarantees max width without clipping.
     const sidePadding = printerWidth === 58 ? '1mm' : '2mm';
-    
-    // Increased and balanced font sizes for instant reading in kitchen/rush operations
     const baseFontSize = printerWidth === 58 ? '13px' : '14px';
     const headerFontSize = printerWidth === 58 ? '14px' : '15px';
     const titleFontSize = printerWidth === 58 ? '17px' : '19px';
@@ -61,6 +48,139 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
     const displayTotal = Number(order.totalPrice) > 0 
         ? Number(order.totalPrice) 
         : (displaySubtotal + Number(order.deliveryFee || 0) - Number(order.discountAmount || 0));
+
+    const dateObj = order.createdAt ? new Date(order.createdAt) : new Date();
+    const dateString = dateObj.toLocaleDateString('pt-BR');
+    const timeString = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+    if (printMode === 'fiscal') {
+        const approxTaxes = displayTotal * 0.1345; // ~13.45% IBPT approximation
+        const accessKey = `352610${(restaurant?.cnpj || '00000000000100').replace(/\D/g, '')}65001000${String(order.order_number || 1).padStart(9, '0')}1234567890`;
+        const formattedKey = accessKey.match(/.{1,4}/g)?.join(' ') || accessKey;
+
+        return createPortal(
+            <div id="thermal-receipt-container">
+                <style dangerouslySetInnerHTML={{ __html: `
+                    @media screen { #thermal-receipt-container { display: none !important; } }
+                    @media print {
+                        @page { margin: 0 !important; size: ${paperSize} auto; }
+                        html, body {
+                            margin: 0 !important; padding: 0 !important; width: ${paperSize} !important;
+                            font-family: 'Courier New', Courier, monospace !important;
+                            font-size: ${baseFontSize}; color: #000 !important; background: #fff !important;
+                        }
+                        body * { display: none !important; }
+                        #thermal-receipt-container, #thermal-receipt-container * { display: block !important; visibility: visible !important; }
+                        #thermal-receipt-container {
+                            position: absolute !important; left: 0 !important; top: 0 !important;
+                            width: ${paperSize} !important; padding: ${sidePadding} !important; box-sizing: border-box !important;
+                        }
+                        .section-divider { border-top: 1.5px dashed #000 !important; margin: 4px 0 !important; width: 100% !important; }
+                    }
+                `}} />
+                <div style={{ width: '100%', fontFamily: 'Courier New, monospace', fontSize: baseFontSize, lineHeight, color: '#000', background: '#fff', padding: sidePadding }}>
+                    <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: headerFontSize, marginBottom: '2px' }}>
+                        {sanitizePrintText(restaurant?.name || 'ESTABELECIMENTO COMERCIAL')}
+                    </div>
+                    <div style={{ textAlign: 'center', fontSize: smallFontSize, marginBottom: '1px' }}>
+                        CNPJ: {restaurant?.cnpj || '00.000.000/0001-00'} | IE: {restaurant?.ie || 'ISENTO'}
+                    </div>
+                    <div style={{ textAlign: 'center', fontSize: smallFontSize, marginBottom: '4px' }}>
+                        {sanitizePrintText(restaurant?.address || 'Endereço não informado')}
+                    </div>
+
+                    <div className="section-divider"></div>
+                    <div style={{ textAlign: 'center', fontWeight: '900', fontSize: headerFontSize, margin: '4px 0' }}>
+                        EXTRATO Nº {displayOrderNum}<br/>
+                        CUPOM FISCAL ELETRÔNICO - SAT
+                    </div>
+                    <div className="section-divider"></div>
+
+                    <div style={{ fontSize: smallFontSize, marginBottom: '4px' }}>
+                        <div>DATA: {dateString} {timeString}</div>
+                        <div>CPF/CNPJ Consumidor: {order.customerDocument || 'NÃO INFORMADO'}</div>
+                        <div>CLIENTE: {sanitizePrintText(order.customerName)}</div>
+                    </div>
+
+                    <div className="section-divider"></div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: smallFontSize }}>
+                        <thead>
+                            <tr style={{ borderBottom: '1px dashed #000' }}>
+                                <th style={{ textAlign: 'left', paddingBottom: '2px' }}>ITEM</th>
+                                <th style={{ textAlign: 'center', paddingBottom: '2px' }}>QTD</th>
+                                <th style={{ textAlign: 'right', paddingBottom: '2px' }}>VL.UN</th>
+                                <th style={{ textAlign: 'right', paddingBottom: '2px' }}>TOTAL</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {(order.items || []).map((item, idx) => (
+                                <tr key={item.id || idx}>
+                                    <td style={{ textAlign: 'left', paddingBottom: '2px', wordBreak: 'break-all' }}>
+                                        {idx + 1}. {sanitizePrintText(item.name)}
+                                    </td>
+                                    <td style={{ textAlign: 'center', paddingBottom: '2px' }}>{item.quantity}</td>
+                                    <td style={{ textAlign: 'right', paddingBottom: '2px' }}>{item.price.toFixed(2)}</td>
+                                    <td style={{ textAlign: 'right', paddingBottom: '2px' }}>{(item.price * item.quantity).toFixed(2)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+
+                    <div className="section-divider"></div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: baseFontSize }}>
+                        <tbody>
+                            <tr>
+                                <td style={{ textAlign: 'left' }}>SUBTOTAL:</td>
+                                <td style={{ textAlign: 'right' }}>R$ {displaySubtotal.toFixed(2)}</td>
+                            </tr>
+                            {!isPickup && Number(order.deliveryFee || 0) > 0 && (
+                                <tr>
+                                    <td style={{ textAlign: 'left' }}>ENTREGA:</td>
+                                    <td style={{ textAlign: 'right' }}>R$ {Number(order.deliveryFee).toFixed(2)}</td>
+                                </tr>
+                            )}
+                            {Number(order.discountAmount || 0) > 0 && (
+                                <tr>
+                                    <td style={{ textAlign: 'left' }}>DESCONTO:</td>
+                                    <td style={{ textAlign: 'right' }}>- R$ {Number(order.discountAmount).toFixed(2)}</td>
+                                </tr>
+                            )}
+                            <tr>
+                                <td style={{ textAlign: 'left', fontSize: titleFontSize, fontWeight: '900', paddingTop: '3px' }}>VALOR TOTAL:</td>
+                                <td style={{ textAlign: 'right', fontSize: titleFontSize, fontWeight: '900', paddingTop: '3px' }}>R$ {displayTotal.toFixed(2)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div style={{ marginTop: '4px', fontSize: smallFontSize, borderTop: '1px dashed #000', paddingTop: '3px' }}>
+                        <div>FORMA PGTO: {order.paymentMethod.toUpperCase()}</div>
+                    </div>
+
+                    <div className="section-divider"></div>
+                    <div style={{ textAlign: 'center', fontSize: '10px', lineHeight: '1.1' }}>
+                        Trib Aprox: R$ {approxTaxes.toFixed(2)} (13.45%) Fonte: IBPT<br/>
+                        CONSULTE A CHAVE DE ACESSO NO PORTAL SEFAZ<br/>
+                        <span style={{ fontFamily: 'monospace', fontSize: '9px', fontWeight: 'bold' }}>{formattedKey}</span>
+                    </div>
+
+                    <div style={{ textAlign: 'center', fontSize: smallFontSize, marginTop: '6px', borderTop: '1px dashed #000', paddingTop: '4px' }}>
+                        EMISSOR GUARA-FOOD PDV FISCAL
+                    </div>
+                </div>
+            </div>,
+            document.body
+        );
+    }
+
+    // Filter items for kitchen/admin printing (only new items)
+    const itemsToPrint = (printMode === 'kitchen' || printMode === 'admin')
+        ? (order.items || []).filter(item => !printedItems.includes(item.id))
+        : (order.items || []);
+
+    // If no items to print, don't render anything to avoid blank prints
+    if (itemsToPrint.length === 0) {
+        return null; 
+    }
 
     const content = (
         <div id="thermal-receipt-container">

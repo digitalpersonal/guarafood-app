@@ -16,9 +16,17 @@ interface PromotionEditorModalProps {
 const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOpen, onClose, onSave, existingPromotion, menuItems, combos, categories }) => {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
-    const [discountType, setDiscountType] = useState<'PERCENTAGE' | 'FIXED'>('PERCENTAGE');
+    const [discountType, setDiscountType] = useState<'PERCENTAGE' | 'FIXED' | 'UPSELL'>('PERCENTAGE');
     const [discountValue, setDiscountValue] = useState('');
     const [availableDays, setAvailableDays] = useState<number[]>(ALL_DAYS);
+    const [availableStartTime, setAvailableStartTime] = useState('');
+    const [availableEndTime, setAvailableEndTime] = useState('');
+    
+    // Upsell Promo states (ex: Na compra de qualquer Pizza leve Pizza Broto por +R$ 14,99)
+    const [upsellTitle, setUpsellTitle] = useState('');
+    const [upsellDescription, setUpsellDescription] = useState('');
+    const [upsellPrice, setUpsellPrice] = useState('');
+    const [upsellOptionsStr, setUpsellOptionsStr] = useState('');
     
     // Multi-select states
     const [itemIds, setItemIds] = useState<Set<number>>(new Set());
@@ -35,9 +43,15 @@ const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOpen, onC
         if (existingPromotion) {
             setName(existingPromotion.name);
             setDescription(existingPromotion.description);
-            setDiscountType(existingPromotion.discountType);
-            setDiscountValue(existingPromotion.discountValue.toString());
+            setDiscountType(existingPromotion.discountType || 'PERCENTAGE');
+            setDiscountValue(existingPromotion.discountValue != null ? existingPromotion.discountValue.toString() : '');
             setAvailableDays(existingPromotion.availableDays && existingPromotion.availableDays.length > 0 ? existingPromotion.availableDays : ALL_DAYS);
+            setAvailableStartTime(existingPromotion.availableStartTime || '');
+            setAvailableEndTime(existingPromotion.availableEndTime || '');
+            setUpsellTitle(existingPromotion.upsellTitle || '');
+            setUpsellDescription(existingPromotion.upsellDescription || '');
+            setUpsellPrice(existingPromotion.upsellPrice != null ? existingPromotion.upsellPrice.toString() : '');
+            setUpsellOptionsStr((existingPromotion.upsellOptions || []).join(', '));
             setItemIds(new Set(existingPromotion.itemIds || []));
             setComboIds(new Set(existingPromotion.comboIds || []));
             setCategoryIds(new Set(existingPromotion.categoryIds || []));
@@ -49,6 +63,12 @@ const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOpen, onC
             setDiscountType('PERCENTAGE');
             setDiscountValue('');
             setAvailableDays(ALL_DAYS);
+            setAvailableStartTime('');
+            setAvailableEndTime('');
+            setUpsellTitle('');
+            setUpsellDescription('');
+            setUpsellPrice('');
+            setUpsellOptionsStr('');
             setItemIds(new Set());
             setComboIds(new Set());
             setCategoryIds(new Set());
@@ -69,25 +89,42 @@ const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOpen, onC
     };
 
     const handleSubmit = () => {
-        if (!name || !discountValue || !startDate || !endDate) {
-            setError('Campos obrigatórios: Nome, Valor e Datas.');
+        if (!name || !startDate || !endDate) {
+            setError('Campos obrigatórios: Nome e Datas de Validade.');
             return;
+        }
+
+        if (discountType === 'UPSELL') {
+            if (!upsellTitle || !upsellPrice) {
+                setError('Para promoções Compre e Leve, informe o Nome do Item Ofertado e o Preço Promocional.');
+                return;
+            }
+        } else {
+            if (!discountValue) {
+                setError('Informe o valor do desconto.');
+                return;
+            }
         }
 
         if (itemIds.size === 0 && comboIds.size === 0 && categoryIds.size === 0) {
-            setError('Selecione pelo menos um item, combo ou categoria.');
+            setError('Selecione pelo menos uma categoria ou produto participante da promoção.');
             return;
         }
 
-        const numericDiscount = parseFloat(discountValue);
+        const numericDiscount = discountType === 'UPSELL' ? (parseFloat(upsellPrice) || 0) : parseFloat(discountValue);
         if (isNaN(numericDiscount) || numericDiscount <= 0) {
-            setError('O valor do desconto deve ser um número positivo.');
+            setError('O valor deve ser um número positivo maior que zero.');
             return;
         }
         if (new Date(startDate) > new Date(endDate)) {
             setError('A data de início não pode ser posterior à data de término.');
             return;
         }
+
+        const parsedOptions = upsellOptionsStr
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean);
 
         onSave({
             name,
@@ -99,7 +136,13 @@ const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOpen, onC
             categoryIds: Array.from(categoryIds),
             startDate: new Date(startDate).toISOString(),
             endDate: new Date(endDate).toISOString(),
-            availableDays: availableDays && availableDays.length > 0 ? availableDays : ALL_DAYS
+            availableDays: availableDays && availableDays.length > 0 ? availableDays : ALL_DAYS,
+            availableStartTime: availableStartTime || undefined,
+            availableEndTime: availableEndTime || undefined,
+            upsellTitle: discountType === 'UPSELL' ? upsellTitle : undefined,
+            upsellDescription: discountType === 'UPSELL' ? upsellDescription : undefined,
+            upsellPrice: discountType === 'UPSELL' ? numericDiscount : undefined,
+            upsellOptions: discountType === 'UPSELL' && parsedOptions.length > 0 ? parsedOptions : undefined
         });
     };
 
@@ -133,17 +176,185 @@ const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOpen, onC
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                         <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Tipo de Desconto</label>
-                            <select value={discountType} onChange={e => setDiscountType(e.target.value as any)} className="w-full p-2 border rounded-lg bg-gray-50">
-                                <option value="PERCENTAGE">Porcentagem (%)</option>
-                                <option value="FIXED">Valor Fixo (R$)</option>
-                            </select>
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-3.5 space-y-3">
+                        <label className="block text-xs font-bold text-gray-700 uppercase">
+                            Mecânica / Tipo da Promoção
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setDiscountType('PERCENTAGE')}
+                                className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left flex flex-col justify-between ${
+                                    discountType === 'PERCENTAGE'
+                                        ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
+                                        : 'bg-white text-gray-800 border-gray-200 hover:bg-orange-50'
+                                }`}
+                            >
+                                <span>% Desconto Porcentagem</span>
+                                <span className="text-[10px] opacity-80 mt-1">Ex: 10% OFF nos produtos</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setDiscountType('FIXED')}
+                                className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left flex flex-col justify-between ${
+                                    discountType === 'FIXED'
+                                        ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
+                                        : 'bg-white text-gray-800 border-gray-200 hover:bg-orange-50'
+                                }`}
+                            >
+                                <span>R$ Desconto Fixo</span>
+                                <span className="text-[10px] opacity-80 mt-1">Ex: R$ 5,00 OFF no item</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setDiscountType('UPSELL')}
+                                className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left flex flex-col justify-between ${
+                                    discountType === 'UPSELL'
+                                        ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
+                                        : 'bg-white text-gray-800 border-orange-300 hover:bg-orange-50'
+                                }`}
+                            >
+                                <span>🎁 Compre e Leve por +R$</span>
+                                <span className="text-[10px] opacity-80 mt-1">Ex: Leve Pizza Broto por +R$ 14,99</span>
+                            </button>
                         </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Valor do Desconto</label>
-                            <input type="number" placeholder="0.00" value={discountValue} onChange={e => setDiscountValue(e.target.value)} className="w-full p-2 border rounded-lg bg-gray-50"/>
+
+                        {discountType !== 'UPSELL' ? (
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                    {discountType === 'PERCENTAGE' ? 'Porcentagem de Desconto (%)' : 'Valor do Desconto (R$)'}
+                                </label>
+                                <input 
+                                    type="number" 
+                                    placeholder={discountType === 'PERCENTAGE' ? 'Ex: 10' : 'Ex: 5.00'} 
+                                    value={discountValue} 
+                                    onChange={e => setDiscountValue(e.target.value)} 
+                                    className="w-full p-2.5 border rounded-lg bg-white font-mono font-bold"
+                                />
+                            </div>
+                        ) : (
+                            <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5 space-y-3 mt-2">
+                                <div className="flex items-center gap-2 border-b border-amber-200/60 pb-2">
+                                    <span className="text-xl">🎁</span>
+                                    <div>
+                                        <h4 className="text-xs font-black text-amber-900 uppercase">Configuração da Oferta Compre e Leve</h4>
+                                        <p className="text-[11px] text-amber-700">Ao comprar qualquer item participante, o cliente poderá adicionar esta oferta especial.</p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Item Ofertado</label>
+                                        <input 
+                                            type="text" 
+                                            placeholder="Ex: Pizza Broto Doce ou Copo de Açaí 300ml" 
+                                            value={upsellTitle} 
+                                            onChange={e => setUpsellTitle(e.target.value)} 
+                                            className="w-full p-2.5 border border-amber-300 rounded-lg bg-white text-sm"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Preço Especial Adicional (+ R$)</label>
+                                        <input 
+                                            type="number" 
+                                            step="0.01" 
+                                            placeholder="Ex: 14.99 ou 9.99" 
+                                            value={upsellPrice} 
+                                            onChange={e => setUpsellPrice(e.target.value)} 
+                                            className="w-full p-2.5 border border-amber-300 rounded-lg bg-white font-mono font-bold text-sm"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                                        Sabores / Opções Disponíveis (opcional, separados por vírgula)
+                                    </label>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Ex: Prestígio, Brigadeiro (ou deixe vazio se não houver escolha)" 
+                                        value={upsellOptionsStr} 
+                                        onChange={e => setUpsellOptionsStr(e.target.value)} 
+                                        className="w-full p-2.5 border border-amber-300 rounded-lg bg-white text-sm"
+                                    />
+                                    <p className="text-[10px] text-gray-500 mt-1">O cliente poderá escolher entre esses sabores ao aceitar a promoção.</p>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Frase Chamativa no Modal (opcional)</label>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Ex: Com mais R$ 14,99 leve uma Pizza Broto para adoçar seu dia!" 
+                                        value={upsellDescription} 
+                                        onChange={e => setUpsellDescription(e.target.value)} 
+                                        className="w-full p-2.5 border border-amber-300 rounded-lg bg-white text-sm"
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Faixa de Horário Opcional (Ex: 13:00 às 18:00) */}
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-3.5 space-y-2">
+                        <div className="flex items-center justify-between">
+                            <label className="block text-xs font-bold text-gray-700 uppercase">
+                                ⏰ Faixa de Horário Válida (Opcional)
+                            </label>
+                            {(availableStartTime || availableEndTime) && (
+                                <button
+                                    type="button"
+                                    onClick={() => { setAvailableStartTime(''); setAvailableEndTime(''); }}
+                                    className="text-[11px] text-orange-600 font-bold hover:underline"
+                                >
+                                    Limpar Horário
+                                </button>
+                            )}
+                        </div>
+                        <p className="text-[11px] text-gray-500">
+                            Deixe em branco para valer o dia todo, ou defina horários específicos (ex: das 13:00 às 18:00):
+                        </p>
+                        <div className="grid grid-cols-2 gap-3 items-center">
+                            <div>
+                                <span className="text-[10px] text-gray-500 block mb-0.5">Horário Inicial:</span>
+                                <input
+                                    type="time"
+                                    value={availableStartTime}
+                                    onChange={e => setAvailableStartTime(e.target.value)}
+                                    className="w-full p-2 border rounded-lg bg-white font-mono text-sm"
+                                />
+                            </div>
+                            <div>
+                                <span className="text-[10px] text-gray-500 block mb-0.5">Horário Final:</span>
+                                <input
+                                    type="time"
+                                    value={availableEndTime}
+                                    onChange={e => setAvailableEndTime(e.target.value)}
+                                    className="w-full p-2 border rounded-lg bg-white font-mono text-sm"
+                                />
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                            <button
+                                type="button"
+                                onClick={() => { setAvailableStartTime('13:00'); setAvailableEndTime('18:00'); }}
+                                className="px-2 py-1 text-[11px] font-bold rounded-lg border bg-white border-orange-200 text-orange-700 hover:bg-orange-50"
+                            >
+                                Tarde (13:00 - 18:00)
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setAvailableStartTime('11:00'); setAvailableEndTime('15:00'); }}
+                                className="px-2 py-1 text-[11px] font-bold rounded-lg border bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
+                            >
+                                Almoço (11:00 - 15:00)
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setAvailableStartTime('18:00'); setAvailableEndTime('23:30'); }}
+                                className="px-2 py-1 text-[11px] font-bold rounded-lg border bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
+                            >
+                                Noite (18:00 - 23:30)
+                            </button>
                         </div>
                     </div>
 

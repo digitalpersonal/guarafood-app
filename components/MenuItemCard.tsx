@@ -8,6 +8,7 @@ import PizzaCustomizationModal from './PizzaCustomizationModal';
 import AcaiCustomizationModal from './AcaiCustomizationModal';
 import GenericCustomizationModal from './GenericCustomizationModal';
 import OptimizedImage from './OptimizedImage';
+import { checkItemAvailability } from '../utils/promoUtils';
 
 // Mapa de imagens genéricas por categoria
 const genericImages: Record<string, string> = {
@@ -75,7 +76,8 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, restaurantId, allPizz
   // Lógica para determinar a URL da imagem final
   const finalImageUrl = item.imageUrl || getGenericImageUrl(categoryName) || '';
 
-  const isAvailable = item.available !== false;
+  const availability = checkItemAvailability(item);
+  const isAvailable = item.available !== false && availability.isAvailable;
   const canPurchase = isOpen && isAvailable && isCategoryAvailable;
   const effectiveRestId = Number(restaurantId || item.restaurantId || (item as any).restaurant_id);
 
@@ -89,7 +91,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, restaurantId, allPizz
         return;
     }
     if (!isAvailable) {
-        addToast({ message: "Este item está esgotado no momento.", type: 'warning' });
+        addToast({ message: availability.reason || "Este item não está disponível no momento.", type: 'warning' });
         return;
     }
 
@@ -97,6 +99,8 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, restaurantId, allPizz
       setIsPizzaModalOpen(true);
     } else if (item.isAcai) {
       setIsAcaiModalOpen(true);
+    } else if (item.activePromotion?.discountType === 'UPSELL') {
+      setIsGenericModalOpen(true);
     } else if (item.optionGroups && item.optionGroups.length > 0) {
         setIsGenericModalOpen(true);
     } else if (item.availableAddonIds && item.availableAddonIds.length > 0) {
@@ -141,10 +145,12 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, restaurantId, allPizz
     <>
       <div className={`${containerClasses} rounded-lg overflow-hidden flex p-3 space-x-4 relative transition-all duration-300 group ${!canPurchase ? 'grayscale opacity-75' : ''} ${isAdding ? 'ring-2 ring-green-500 bg-green-50' : ''}`}>
           
-          {/* Badge: Esgotado */}
+          {/* Badge: Indisponível / Fora de Horário */}
           {!isAvailable && (
             <div className="absolute inset-0 z-20 flex items-start justify-start p-2 md:items-center md:justify-center pointer-events-none">
-                <span className="bg-gray-200 text-gray-600 text-[10px] font-bold px-2 py-1 rounded shadow-sm uppercase tracking-wider md:bg-gray-800 md:text-white md:text-xs md:px-4 md:py-2 md:rounded-full md:shadow-xl md:tracking-widest md:border-2 md:border-white">Esgotado</span>
+                <span className="bg-gray-800 text-white text-[10px] font-bold px-2.5 py-1 rounded-md shadow-md uppercase tracking-wider md:text-xs md:px-3 md:py-1.5 md:rounded-full md:border md:border-white/20">
+                    {availability.badgeText || 'Esgotado'}
+                </span>
             </div>
           )}
 
@@ -156,10 +162,17 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, restaurantId, allPizz
             </div>
           )}
 
-          {/* Badge: Promoção */}
+          {/* Badge: Promoção Normal ou Compre e Leve */}
           {item.activePromotion && !item.isDailySpecial && isAvailable && (
-            <div className="absolute top-0 left-0 bg-orange-600 text-white text-[10px] font-bold px-2 py-1 rounded-br-lg z-10">
-                PROMO
+            <div className="absolute top-0 left-0 bg-orange-600 text-white text-[10px] font-bold px-2 py-1 rounded-br-lg z-10 flex items-center gap-1 shadow-sm">
+                {item.activePromotion.discountType === 'UPSELL' ? (
+                    <>
+                        <span>🎁</span>
+                        <span>LEVE +{item.activePromotion.upsellTitle || 'BRINDE'} (+R$ {Number(item.activePromotion.upsellPrice || 0).toFixed(2)})</span>
+                    </>
+                ) : (
+                    <span>PROMO</span>
+                )}
             </div>
           )}
 

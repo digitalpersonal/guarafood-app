@@ -984,6 +984,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                                 order={printJob.items ? { ...printJob.order, items: printJob.items } : printJob.order} 
                                 printerWidth={activeWidth} 
                                 printMode={printJob.mode}
+                                restaurant={restaurant}
                             />
                         );
                     })()}

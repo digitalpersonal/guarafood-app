@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import type { MenuItem, SizeOption, Addon, OptionGroup, CustomizationOption } from '../types';
+import type { MenuItem, SizeOption, Addon, OptionGroup, CustomizationOption, MenuCategory } from '../types';
+import { DAYS_OF_WEEK, ALL_DAYS, MON_TO_THU, MON_TO_FRI, FRI_TO_SUN, formatPromoDays } from '../utils/promoUtils';
 import { supabase } from '../services/api';
 
 // Icon for the Combobox dropdown
@@ -109,11 +110,12 @@ interface MenuItemEditorModalProps {
     existingItem?: MenuItem;
     initialCategory?: string;
     restaurantCategories: string[];
+    categories?: MenuCategory[];
     allAddons: Addon[];
     restaurantId: number;
 }
 
-const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClose, onSave, existingItem, initialCategory = '', restaurantCategories, allAddons, restaurantId }) => {
+const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClose, onSave, existingItem, initialCategory = '', restaurantCategories, categories = [], allAddons, restaurantId }) => {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [price, setPrice] = useState('');
@@ -134,10 +136,35 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
     const [allItemsForCopy, setAllItemsForCopy] = useState<MenuItem[]>([]);
     const [error, setError] = useState('');
     const [available, setAvailable] = useState(true);
+    const [availableDays, setAvailableDays] = useState<number[]>(ALL_DAYS);
+    const [availableStartTime, setAvailableStartTime] = useState('');
+    const [availableEndTime, setAvailableEndTime] = useState('');
 
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+
+    // --- ESTADOS DO MODAL DE IMPORTAÇÃO POR CATEGORIA ---
+    const [isCategoryImportModalOpen, setIsCategoryImportModalOpen] = useState(false);
+    const [categoryImportTargetGroupId, setCategoryImportTargetGroupId] = useState<string | null>(null);
+    const [selectedImportCategory, setSelectedImportCategory] = useState<string>('');
+    const [categoryImportItemSelection, setCategoryImportItemSelection] = useState<Set<number>>(new Set());
+    const [categoryImportPriceMode, setCategoryImportPriceMode] = useState<'FREE' | 'ORIGINAL'>('FREE');
+    const [categoryImportMode, setCategoryImportMode] = useState<'REPLACE' | 'APPEND'>('APPEND');
+    const [categoryImportGroupTitle, setCategoryImportGroupTitle] = useState('');
+    const [categoryImportMin, setCategoryImportMin] = useState(1);
+    const [categoryImportMax, setCategoryImportMax] = useState(1);
+
+    // --- ESTADOS DO MODAL DE IMPORTAÇÃO DE ADICIONAIS / COMPLEMENTOS ---
+    const [isAddonImportModalOpen, setIsAddonImportModalOpen] = useState(false);
+    const [addonImportTargetGroupId, setAddonImportTargetGroupId] = useState<string | null>(null);
+    const [addonImportSelection, setAddonImportSelection] = useState<Set<number>>(new Set());
+    const [addonImportFilter, setAddonImportFilter] = useState<'ALL' | 'FREE' | 'PAID'>('ALL');
+    const [addonImportPriceMode, setAddonImportPriceMode] = useState<'FREE' | 'ORIGINAL'>('FREE');
+    const [addonImportMode, setAddonImportMode] = useState<'REPLACE' | 'APPEND'>('APPEND');
+    const [addonImportGroupTitle, setAddonImportGroupTitle] = useState('');
+    const [addonImportMin, setAddonImportMin] = useState(0);
+    const [addonImportMax, setAddonImportMax] = useState(3);
 
 
     useEffect(() => {
@@ -170,22 +197,174 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
         fetchAllItems();
     }, [restaurantId, isOpen]);
 
-    const handleCopyGroupsFromItem = (sourceItem: MenuItem) => {
+    // Lista de categorias com seus respectivos produtos para importação rápida
+    const availableCategoryList = useMemo(() => {
+        if (categories && categories.length > 0) {
+            return categories.map(cat => ({
+                id: cat.id,
+                name: cat.name,
+                items: cat.items || []
+            }));
+        }
+        // Fallback: agrupa allItemsForCopy por categoria
+        const map = new Map<string, MenuItem[]>();
+        restaurantCategories.forEach(cName => map.set(cName, []));
+        allItemsForCopy.forEach(item => {
+            const catName = (item as any).category_name || (item as any).category || '';
+            if (catName) {
+                if (!map.has(catName)) map.set(catName, []);
+                map.get(catName)!.push(item);
+            }
+        });
+        return Array.from(map.entries()).map(([name, items], idx) => ({ id: idx + 1, name, items }));
+    }, [categories, restaurantCategories, allItemsForCopy]);
+
+    const handleSelectCategoryForImport = (catName: string) => {
+        setSelectedImportCategory(catName);
+        const catData = availableCategoryList.find(c => c.name === catName);
+        const allIds = new Set<number>((catData?.items || []).map(i => i.id));
+        setCategoryImportItemSelection(allIds);
+        
+        // Auto-sugere o título se estiver vazio ou genérico
+        if (!categoryImportGroupTitle || categoryImportGroupTitle.startsWith('Escolha seu') || categoryImportGroupTitle === 'Opções') {
+            setCategoryImportGroupTitle(`Escolha seu(sua) ${catName}`);
+        }
+    };
+
+    const handleOpenCategoryImport = (groupId: string | null = null, defaultCategory: string = '') => {
+        setCategoryImportTargetGroupId(groupId);
+        const existingGroup = groupId ? optionGroups.find(g => g.id === groupId) : null;
+        
+        const initialCat = defaultCategory || (availableCategoryList.length > 0 ? availableCategoryList[0].name : '');
+        setSelectedImportCategory(initialCat);
+        
+        const catData = availableCategoryList.find(c => c.name === initialCat);
+        const allIds = new Set<number>((catData?.items || []).map(i => i.id));
+        setCategoryImportItemSelection(allIds);
+        
+        setCategoryImportPriceMode('FREE');
+        setCategoryImportMode(existingGroup ? 'REPLACE' : 'APPEND');
+        setCategoryImportGroupTitle(existingGroup?.title || (initialCat ? `Escolha seu(sua) ${initialCat}` : 'Escolha a Opção'));
+        setCategoryImportMin(existingGroup?.minSelections !== undefined ? existingGroup.minSelections : 1);
+        setCategoryImportMax(existingGroup?.maxSelections !== undefined ? existingGroup.maxSelections : 1);
+        
+        setIsCategoryImportModalOpen(true);
+    };
+
+    const handleConfirmCategoryImport = () => {
+        const catData = availableCategoryList.find(c => c.name === selectedImportCategory);
+        if (!catData || catData.items.length === 0) {
+            alert('Nenhum produto encontrado nesta categoria.');
+            return;
+        }
+
+        const selectedItems = catData.items.filter(i => categoryImportItemSelection.has(i.id));
+        if (selectedItems.length === 0) {
+            alert('Selecione pelo menos um produto para importar.');
+            return;
+        }
+
+        const newOptions: CustomizationOption[] = selectedItems.map(item => ({
+            name: item.name,
+            price: categoryImportPriceMode === 'FREE' ? 0 : (Number(item.price) || 0)
+        }));
+
+        if (categoryImportTargetGroupId) {
+            setOptionGroups(prev => prev.map(group => {
+                if (group.id !== categoryImportTargetGroupId) return group;
+                return {
+                    ...group,
+                    title: categoryImportGroupTitle.trim() || group.title,
+                    minSelections: categoryImportMin,
+                    maxSelections: categoryImportMax,
+                    options: categoryImportMode === 'REPLACE' ? newOptions : [...group.options, ...newOptions]
+                };
+            }));
+        } else {
+            const newGroup: OptionGroup = {
+                id: crypto.randomUUID(),
+                title: categoryImportGroupTitle.trim() || `Escolha seu(sua) ${selectedImportCategory}`,
+                minSelections: categoryImportMin,
+                maxSelections: categoryImportMax,
+                options: newOptions
+            };
+            setOptionGroups(prev => [...prev, newGroup]);
+        }
+
+        setIsCategoryImportModalOpen(false);
+    };
+
+    const handleOpenAddonImport = (groupId: string | null = null) => {
+        setAddonImportTargetGroupId(groupId);
+        const existingGroup = groupId ? optionGroups.find(g => g.id === groupId) : null;
+        
+        setAddonImportSelection(new Set(allAddons.map(a => a.id)));
+        setAddonImportFilter('ALL');
+        setAddonImportPriceMode('FREE');
+        setAddonImportMode(existingGroup ? 'REPLACE' : 'APPEND');
+        setAddonImportGroupTitle(existingGroup?.title || 'Complementos / Adicionais');
+        setAddonImportMin(existingGroup?.minSelections !== undefined ? existingGroup.minSelections : 0);
+        setAddonImportMax(existingGroup?.maxSelections !== undefined ? existingGroup.maxSelections : 3);
+        
+        setIsAddonImportModalOpen(true);
+    };
+
+    const handleConfirmAddonImport = () => {
+        const selectedList = allAddons.filter(a => addonImportSelection.has(a.id));
+        if (selectedList.length === 0) {
+            alert('Selecione pelo menos um adicional para importar.');
+            return;
+        }
+
+        const newOptions: CustomizationOption[] = selectedList.map(a => ({
+            name: a.name,
+            price: addonImportPriceMode === 'FREE' ? 0 : (Number(a.price) || 0)
+        }));
+
+        if (addonImportTargetGroupId) {
+            setOptionGroups(prev => prev.map(group => {
+                if (group.id !== addonImportTargetGroupId) return group;
+                return {
+                    ...group,
+                    title: addonImportGroupTitle.trim() || group.title,
+                    minSelections: addonImportMin,
+                    maxSelections: addonImportMax,
+                    options: addonImportMode === 'REPLACE' ? newOptions : [...group.options, ...newOptions]
+                };
+            }));
+        } else {
+            const newGroup: OptionGroup = {
+                id: crypto.randomUUID(),
+                title: addonImportGroupTitle.trim() || 'Complementos / Adicionais',
+                minSelections: addonImportMin,
+                maxSelections: addonImportMax,
+                options: newOptions
+            };
+            setOptionGroups(prev => [...prev, newGroup]);
+        }
+
+        setIsAddonImportModalOpen(false);
+    };
+
+    const handleCopyGroupsFromItem = (sourceItem: MenuItem, mode: 'APPEND' | 'REPLACE') => {
         if (!sourceItem.optionGroups || sourceItem.optionGroups.length === 0) {
             alert('Este produto não possui grupos de opções para copiar.');
             return;
         }
 
-        if (confirm(`Deseja copiar os ${sourceItem.optionGroups.length} grupos de opções de "${sourceItem.name}"? Isso substituirá os grupos atuais.`)) {
-            const copiedGroups: OptionGroup[] = sourceItem.optionGroups.map(group => ({
-                ...group,
-                id: crypto.randomUUID(),
-                options: group.options.map(opt => ({ ...opt }))
-            }));
+        const copiedGroups: OptionGroup[] = sourceItem.optionGroups.map(group => ({
+            ...group,
+            id: crypto.randomUUID(),
+            options: group.options.map(opt => ({ ...opt }))
+        }));
+
+        if (mode === 'APPEND') {
+            setOptionGroups(prev => [...prev, ...copiedGroups]);
+        } else {
             setOptionGroups(copiedGroups);
-            setIsCopyingGroups(false);
-            setCopySearchTerm('');
         }
+        setIsCopyingGroups(false);
+        setCopySearchTerm('');
     };
 
     useEffect(() => {
@@ -206,6 +385,9 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             setOptionGroups(existingItem.optionGroups || []);
             setSelectedAddonIds(new Set(existingItem.availableAddonIds || []));
             setAvailable(existingItem.available !== false);
+            setAvailableDays(existingItem.availableDays && existingItem.availableDays.length > 0 ? existingItem.availableDays : ALL_DAYS);
+            setAvailableStartTime(existingItem.availableStartTime || '');
+            setAvailableEndTime(existingItem.availableEndTime || '');
         } else {
             // Reset form for new item
             setName('');
@@ -224,6 +406,9 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
             setOptionGroups([]);
             setSelectedAddonIds(new Set());
             setAvailable(true);
+            setAvailableDays(ALL_DAYS);
+            setAvailableStartTime('');
+            setAvailableEndTime('');
         }
         setAddonSearchTerm('');
         setImageFile(null);
@@ -487,7 +672,10 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                 sizes: hasSizes ? sizes : null,
                 optionGroups: optionGroups.length > 0 ? optionGroups : null,
                 availableAddonIds: Array.from(selectedAddonIds),
-                available: available
+                available: available,
+                availableDays: availableDays && availableDays.length > 0 ? availableDays : ALL_DAYS,
+                availableStartTime: availableStartTime || undefined,
+                availableEndTime: availableEndTime || undefined
             }, category);
         } catch (err: any) {
             console.error("Failed to save:", err);
@@ -521,6 +709,113 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                             <input type="checkbox" checked={available} onChange={(e) => setAvailable(e.target.checked)} className="sr-only peer" />
                             <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
                         </label>
+                    </div>
+
+                    {/* HORÁRIO DE VENDA (EX: COMBO DA TARDE 13H ÀS 18H) */}
+                    <div className="p-4 bg-gradient-to-r from-orange-50/70 to-amber-50/50 border border-orange-200 rounded-2xl space-y-3">
+                        <div className="flex items-center justify-between">
+                            <label className="block text-xs font-black text-orange-950 uppercase flex items-center gap-1.5">
+                                <span>⏰</span>
+                                <span>Horário de Venda / Validade (Opcional)</span>
+                            </label>
+                            {(availableStartTime || availableEndTime) && (
+                                <button
+                                    type="button"
+                                    onClick={() => { setAvailableStartTime(''); setAvailableEndTime(''); }}
+                                    className="text-xs text-orange-600 font-bold hover:underline cursor-pointer"
+                                >
+                                    Limpar Horário
+                                </button>
+                            )}
+                        </div>
+                        <p className="text-[11px] text-gray-600">
+                            Ex: <strong>Combo da Tarde (13:00 às 18:00)</strong>, Marmita Almoço (11h às 14h). Se preenchido, o app só permitirá pedidos nessa faixa de horário.
+                        </p>
+                        
+                        <div className="grid grid-cols-2 gap-3 items-center">
+                            <div>
+                                <span className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Início:</span>
+                                <input
+                                    type="time"
+                                    value={availableStartTime}
+                                    onChange={(e) => setAvailableStartTime(e.target.value)}
+                                    className="w-full p-2.5 border rounded-xl bg-white font-mono text-sm font-bold"
+                                />
+                            </div>
+                            <div>
+                                <span className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Término:</span>
+                                <input
+                                    type="time"
+                                    value={availableEndTime}
+                                    onChange={(e) => setAvailableEndTime(e.target.value)}
+                                    className="w-full p-2.5 border rounded-xl bg-white font-mono text-sm font-bold"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Atalhos Rápidos */}
+                        <div className="flex flex-wrap gap-1.5 pt-0.5">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase mr-1 self-center">Atalhos:</span>
+                            <button
+                                type="button"
+                                onClick={() => { setAvailableStartTime('13:00'); setAvailableEndTime('18:00'); }}
+                                className="px-2.5 py-1 text-xs font-bold rounded-lg border bg-white border-orange-300 text-orange-800 hover:bg-orange-100/60 cursor-pointer"
+                            >
+                                Tarde (13h - 18h) 🔥
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setAvailableStartTime('11:00'); setAvailableEndTime('15:00'); }}
+                                className="px-2.5 py-1 text-xs font-bold rounded-lg border bg-white border-gray-200 text-gray-700 hover:bg-gray-50 cursor-pointer"
+                            >
+                                Almoço (11h - 15h)
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setAvailableStartTime('18:00'); setAvailableEndTime('23:30'); }}
+                                className="px-2.5 py-1 text-xs font-bold rounded-lg border bg-white border-gray-200 text-gray-700 hover:bg-gray-50 cursor-pointer"
+                            >
+                                Noite (18h - 23h30)
+                            </button>
+                        </div>
+
+                        {/* Dias da Semana */}
+                        <div className="pt-2 border-t border-orange-200/60">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-[11px] font-bold text-gray-700 uppercase">Dias Válidos:</span>
+                                <span className="text-[11px] font-bold text-orange-700 bg-white px-2 py-0.5 rounded-full border border-orange-200">
+                                    {formatPromoDays(availableDays)}
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-7 gap-1">
+                                {DAYS_OF_WEEK.map(day => {
+                                    const isSelected = availableDays.includes(day.index);
+                                    return (
+                                        <button
+                                            key={day.index}
+                                            type="button"
+                                            onClick={() => {
+                                                setAvailableDays(prev => {
+                                                    if (prev.includes(day.index)) {
+                                                        if (prev.length === 1) return prev;
+                                                        return prev.filter(d => d !== day.index);
+                                                    } else {
+                                                        return [...prev, day.index].sort((a,b)=>a-b);
+                                                    }
+                                                });
+                                            }}
+                                            className={`py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                                                isSelected
+                                                    ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                                                    : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            {day.short}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
                     </div>
 
                     <div className="flex flex-col md:flex-row items-start gap-4">
@@ -615,41 +910,78 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                         </button>
                     </div>
 
-                    {/* --- OPTION GROUPS MANAGEMENT (GENERIC CUSTOMIZATION) --- */}
-                    <div className="p-3 bg-white rounded-lg border-2 border-dashed border-gray-200">
-                        <div className="flex justify-between items-center mb-3">
-                            <h3 className="font-bold text-gray-700 uppercase text-xs tracking-wider">Grupos de Escolha (Personalização)</h3>
-                            <div className="flex gap-2">
+                    {/* --- OPTION GROUPS MANAGEMENT (GENERIC CUSTOMIZATION & COMBOS) --- */}
+                    <div className="p-4 bg-white rounded-2xl border-2 border-orange-200/80 shadow-xs space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-orange-100 pb-3">
+                            <div>
+                                <h3 className="font-black text-gray-900 uppercase text-xs tracking-wider flex items-center gap-1.5">
+                                    <span>⚙️</span>
+                                    <span>Grupos de Opções / Montagem do Combo</span>
+                                </h3>
+                                <p className="text-[11px] text-gray-500 mt-0.5">
+                                    Crie escolhas como "Escolha seu Pastel", "Bebida", "Complementos do Açaí", etc.
+                                </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                <button 
+                                    onClick={() => handleOpenCategoryImport(null)} 
+                                    className="text-xs font-black bg-gradient-to-r from-orange-600 to-amber-600 text-white px-3 py-1.5 rounded-xl hover:from-orange-700 hover:to-amber-700 shadow-sm flex items-center gap-1.5 cursor-pointer"
+                                    type="button"
+                                    title="Criar um grupo preenchido automaticamente com todos os produtos de uma categoria (ex: Pastéis)"
+                                >
+                                    <span>⚡ Puxar de Categoria</span>
+                                </button>
+                                <button 
+                                    onClick={() => handleOpenAddonImport(null)} 
+                                    className="text-xs font-black bg-purple-600 text-white px-2.5 py-1.5 rounded-xl hover:bg-purple-700 shadow-sm flex items-center gap-1 cursor-pointer"
+                                    type="button"
+                                    title="Criar grupo com complementos cadastrados (ex: Adicionais do Açaí)"
+                                >
+                                    <span>🍇 Puxar Complementos</span>
+                                </button>
                                 <button 
                                     onClick={() => setIsCopyingGroups(!isCopyingGroups)} 
-                                    className="text-xs font-black bg-emerald-600 text-white px-2 py-1 rounded hover:bg-emerald-700 uppercase flex items-center gap-1"
+                                    className="text-xs font-black bg-emerald-600 text-white px-2.5 py-1.5 rounded-xl hover:bg-emerald-700 shadow-sm flex items-center gap-1 cursor-pointer"
+                                    type="button"
+                                    title="Copiar grupos de opções de outro produto existente"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" /></svg>
+                                    <span>Copiar Produto</span>
+                                </button>
+                                <button 
+                                    onClick={addOptionGroup} 
+                                    className="text-xs font-black bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300 px-2.5 py-1.5 rounded-xl cursor-pointer" 
                                     type="button"
                                 >
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3 h-3"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" /></svg>
-                                    Copiar de Outro
-                                </button>
-                                <button onClick={addOptionGroup} className="text-xs font-black bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 uppercase" type="button">
-                                    + Novo Grupo
+                                    + Grupo Vazio
                                 </button>
                             </div>
                         </div>
 
+                        {/* Painel de Cópia Inteligente de Grupos */}
                         {isCopyingGroups && (
-                            <div className="mb-4 p-4 bg-emerald-50 rounded-xl border border-emerald-100 animate-fadeIn">
-                                <div className="flex justify-between items-center mb-2">
-                                    <h4 className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Selecionar Produto Origem</h4>
-                                    <button onClick={() => setIsCopyingGroups(false)} className="text-emerald-500 hover:text-emerald-700">
-                                        <XIcon className="w-4 h-4" />
+                            <div className="p-4 bg-emerald-50 rounded-2xl border-2 border-emerald-200 animate-fadeIn space-y-3">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <h4 className="text-xs font-black text-emerald-900 uppercase tracking-wide">
+                                            Copiar Grupos de Opções de Outro Produto
+                                        </h4>
+                                        <p className="text-[11px] text-emerald-700">
+                                            Você pode <strong>anexar</strong> aos grupos atuais (preservando o que já fez) ou <strong>substituir</strong>.
+                                        </p>
+                                    </div>
+                                    <button onClick={() => setIsCopyingGroups(false)} className="text-emerald-600 hover:text-emerald-800 p-1">
+                                        <XIcon className="w-5 h-5" />
                                     </button>
                                 </div>
                                 <input 
                                     type="text" 
-                                    placeholder="Pesquisar produto..." 
+                                    placeholder="Pesquisar produto pelo nome (ex: Açaí, Pastel, Pizza)..." 
                                     value={copySearchTerm}
                                     onChange={(e) => setCopySearchTerm(e.target.value)}
-                                    className="w-full p-2 text-sm border-2 border-emerald-100 rounded-lg bg-white mb-2 focus:border-emerald-400 outline-none"
+                                    className="w-full p-2.5 text-sm border-2 border-emerald-200 rounded-xl bg-white focus:border-emerald-500 outline-none"
                                 />
-                                <div className="max-h-40 overflow-y-auto space-y-1">
+                                <div className="max-h-48 overflow-y-auto space-y-2">
                                     {allItemsForCopy
                                         .filter(item => 
                                             item.id !== existingItem?.id && 
@@ -657,17 +989,39 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                                             item.optionGroups && item.optionGroups.length > 0
                                         )
                                         .map(item => (
-                                            <button 
+                                            <div 
                                                 key={item.id}
-                                                onClick={() => handleCopyGroupsFromItem(item)}
-                                                className="w-full text-left p-2 hover:bg-emerald-100 rounded-lg flex justify-between items-center transition-colors border border-transparent hover:border-emerald-200"
-                                                type="button"
+                                                className="p-3 bg-white rounded-xl border border-emerald-200 hover:border-emerald-400 flex flex-wrap items-center justify-between gap-2 shadow-2xs"
                                             >
-                                                <span className="text-sm font-bold text-emerald-900">{item.name}</span>
-                                                <span className="text-[10px] font-black bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-full uppercase">
-                                                    {item.optionGroups?.length} Grupos
-                                                </span>
-                                            </button>
+                                                <div>
+                                                    <span className="text-sm font-black text-emerald-950 block">{item.name}</span>
+                                                    <span className="text-[10px] text-gray-500">
+                                                        {item.optionGroups?.length} grupo(s): {item.optionGroups?.map(g => g.title).filter(Boolean).join(', ')}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleCopyGroupsFromItem(item, 'APPEND')}
+                                                        className="px-2.5 py-1 text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg shadow-2xs cursor-pointer"
+                                                        title="Adiciona os grupos deste produto mantendo os grupos que você já criou intactos"
+                                                    >
+                                                        + Anexar Grupos
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (confirm(`Substituir TODOS os grupos atuais pelos grupos de "${item.name}"?`)) {
+                                                                handleCopyGroupsFromItem(item, 'REPLACE');
+                                                            }
+                                                        }}
+                                                        className="px-2 py-1 text-xs font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg cursor-pointer"
+                                                        title="Substitui todos os grupos atuais"
+                                                    >
+                                                        Substituir Tudo
+                                                    </button>
+                                                </div>
+                                            </div>
                                         ))
                                     }
                                     {allItemsForCopy.filter(item => 
@@ -675,99 +1029,183 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                                         item.name.toLowerCase().includes(copySearchTerm.toLowerCase()) &&
                                         item.optionGroups && item.optionGroups.length > 0
                                     ).length === 0 && (
-                                        <p className="text-[10px] text-emerald-600 font-bold italic py-2 text-center">Nenhum produto com grupos encontrado.</p>
+                                        <p className="text-xs text-emerald-700 font-bold italic py-3 text-center">
+                                            Nenhum produto com grupos de opções encontrado.
+                                        </p>
                                     )}
                                 </div>
                             </div>
                         )}
                         
                         {optionGroups.length === 0 && (
-                            <p className="text-[10px] text-gray-400 font-bold uppercase text-center py-4">Nenhum grupo de personalização definido.</p>
+                            <div className="text-center py-8 px-4 bg-orange-50/50 rounded-2xl border border-dashed border-orange-200">
+                                <span className="text-3xl block mb-2">💡</span>
+                                <h4 className="text-xs font-black text-orange-950 uppercase mb-1">Nenhum grupo de personalização definido</h4>
+                                <p className="text-xs text-gray-600 max-w-md mx-auto mb-3">
+                                    Para montar um Combo (ex: pastel + bebida + açaí), clique no botão abaixo para puxar todos os pastéis com 1 clique!
+                                </p>
+                                <div className="flex flex-wrap justify-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleOpenCategoryImport(null)}
+                                        className="px-4 py-2 bg-orange-600 text-white text-xs font-black rounded-xl hover:bg-orange-700 shadow-sm cursor-pointer"
+                                    >
+                                        ⚡ Criar Grupo a Partir de uma Categoria
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleOpenAddonImport(null)}
+                                        className="px-4 py-2 bg-purple-600 text-white text-xs font-black rounded-xl hover:bg-purple-700 shadow-sm cursor-pointer"
+                                    >
+                                        🍇 Criar Grupo com Adicionais do Açaí
+                                    </button>
+                                </div>
+                            </div>
                         )}
 
                         <div className="space-y-4">
                             {optionGroups.map((group, gIdx) => (
-                                <div key={group.id} className="p-4 bg-gray-50 border rounded-xl relative group/card">
+                                <div key={group.id} className="p-4 bg-gray-50 border-2 border-gray-200/90 rounded-2xl relative group/card space-y-3">
                                     <button 
                                         onClick={() => removeOptionGroup(group.id)}
-                                        className="absolute -top-2 -right-2 bg-red-100 text-red-600 p-1.5 rounded-full hover:bg-red-200 shadow-sm opacity-0 group-hover/card:opacity-100 transition-opacity"
+                                        className="absolute -top-2.5 -right-2.5 bg-red-100 text-red-600 p-1.5 rounded-full hover:bg-red-200 shadow-sm transition-opacity"
+                                        title="Remover este grupo"
+                                        type="button"
                                     >
                                         <TrashIcon className="w-4 h-4" />
                                     </button>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                                        <div>
-                                            <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Título do Grupo</label>
+                                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                                        <div className="md:col-span-6">
+                                            <label className="block text-[10px] font-black text-gray-500 uppercase mb-1">
+                                                Título do Grupo ({gIdx + 1})
+                                            </label>
                                             <input 
                                                 type="text" 
-                                                placeholder="Ex: Escolha o Sabor" 
+                                                placeholder="Ex: Escolha o Pastel, Escolha a Bebida" 
                                                 value={group.title} 
                                                 onChange={(e) => updateOptionGroup(group.id, 'title', e.target.value)}
-                                                className="w-full p-2 text-sm border rounded-lg bg-white font-bold"
+                                                className="w-full p-2.5 text-sm border border-gray-300 rounded-xl bg-white font-bold text-gray-900"
                                             />
                                         </div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <div>
-                                                <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Mínimo</label>
-                                                <input 
-                                                    type="number" 
-                                                    value={group.minSelections} 
-                                                    onChange={(e) => updateOptionGroup(group.id, 'minSelections', parseInt(e.target.value))}
-                                                    className="w-full p-2 text-sm border rounded-lg bg-white"
-                                                    min="0"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Máximo</label>
-                                                <input 
-                                                    type="number" 
-                                                    value={group.maxSelections} 
-                                                    onChange={(e) => updateOptionGroup(group.id, 'maxSelections', parseInt(e.target.value))}
-                                                    className="w-full p-2 text-sm border rounded-lg bg-white"
-                                                    min="1"
-                                                />
-                                            </div>
+                                        <div className="md:col-span-3">
+                                            <label className="block text-[10px] font-black text-gray-500 uppercase mb-1">
+                                                Mínimo Obrigatório
+                                            </label>
+                                            <input 
+                                                type="number" 
+                                                value={group.minSelections} 
+                                                onChange={(e) => updateOptionGroup(group.id, 'minSelections', parseInt(e.target.value) || 0)}
+                                                className="w-full p-2.5 text-sm border border-gray-300 rounded-xl bg-white font-bold"
+                                                min="0"
+                                            />
+                                            <span className="text-[10px] text-gray-400">1 = obrigatório, 0 = opcional</span>
+                                        </div>
+                                        <div className="md:col-span-3">
+                                            <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">
+                                                Máximo Permitido
+                                            </label>
+                                            <input 
+                                                type="number" 
+                                                value={group.maxSelections} 
+                                                onChange={(e) => updateOptionGroup(group.id, 'maxSelections', parseInt(e.target.value) || 1)}
+                                                className="w-full p-2.5 text-sm border border-gray-300 rounded-xl bg-white font-bold"
+                                                min="1"
+                                            />
+                                            <span className="text-[10px] text-gray-400">Limite de escolhas</span>
                                         </div>
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Opções do Grupo</label>
+                                    {/* Barra de Ações Rápidas do Grupo */}
+                                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-200">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="text-[10px] font-black text-gray-400 uppercase">
+                                                Opções ({group.options.length}):
+                                            </span>
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-800">
+                                                {group.minSelections > 0 ? `Mín: ${group.minSelections}` : 'Opcional'} • Máx: {group.maxSelections}
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOpenCategoryImport(group.id)}
+                                                className="text-[11px] font-bold bg-orange-100 text-orange-800 hover:bg-orange-200 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                                                title="Preencher com todos os produtos de uma categoria (ex: Pastéis)"
+                                            >
+                                                <span>⚡ Puxar de Categoria</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOpenAddonImport(group.id)}
+                                                className="text-[11px] font-bold bg-purple-100 text-purple-800 hover:bg-purple-200 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                                                title="Preencher com adicionais/complementos (ex: Adicionais do Açaí)"
+                                            >
+                                                <span>🍇 Puxar Complementos</span>
+                                            </button>
+                                            {group.options.length > 0 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (confirm('Deseja limpar todas as opções deste grupo?')) {
+                                                            updateOptionGroup(group.id, 'options', []);
+                                                        }
+                                                    }}
+                                                    className="text-[11px] font-bold text-gray-400 hover:text-red-600 px-2 py-1 rounded-lg cursor-pointer"
+                                                >
+                                                    Limpar
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Lista de Opções */}
+                                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                                         {group.options.map((opt, oIdx) => (
-                                            <div key={oIdx} className="grid grid-cols-12 gap-2 items-center">
+                                            <div key={oIdx} className="grid grid-cols-12 gap-2 items-center bg-white p-1.5 rounded-xl border border-gray-200">
                                                 <input 
                                                     type="text" 
-                                                    placeholder="Nome da Opção" 
+                                                    placeholder="Nome da Opção (ex: Pastel de Carne)" 
                                                     value={opt.name} 
                                                     onChange={(e) => updateOptionInGroup(group.id, oIdx, 'name', e.target.value)}
-                                                    className="col-span-7 p-2 text-sm border rounded-lg bg-white"
+                                                    className="col-span-7 p-2 text-xs border border-gray-200 rounded-lg bg-gray-50/50 font-medium"
                                                 />
-                                                <input 
-                                                    type="number" 
-                                                    placeholder="Preço" 
-                                                    value={opt.price} 
-                                                    onChange={(e) => updateOptionInGroup(group.id, oIdx, 'price', parseFloat(e.target.value))}
-                                                    className="col-span-4 p-2 text-sm border rounded-lg bg-white"
-                                                    step="0.01"
-                                                />
+                                                <div className="col-span-4 flex items-center gap-1">
+                                                    <span className="text-[10px] font-bold text-gray-400">+R$</span>
+                                                    <input 
+                                                        type="number" 
+                                                        placeholder="0.00" 
+                                                        value={opt.price} 
+                                                        onChange={(e) => updateOptionInGroup(group.id, oIdx, 'price', parseFloat(e.target.value) || 0)}
+                                                        className="w-full p-2 text-xs border border-gray-200 rounded-lg bg-gray-50/50 font-mono font-bold"
+                                                        step="0.01"
+                                                    />
+                                                </div>
                                                 <button 
+                                                    type="button"
                                                     onClick={() => removeOptionFromGroup(group.id, oIdx)}
-                                                    className="col-span-1 p-1 text-red-400 hover:text-red-600"
+                                                    className="col-span-1 p-1 text-red-400 hover:text-red-600 flex justify-center cursor-pointer"
                                                 >
                                                     <TrashIcon className="w-4 h-4" />
                                                 </button>
                                             </div>
                                         ))}
-                                        <button 
-                                            onClick={() => addOptionToGroup(group.id)}
-                                            className="text-xs font-bold text-blue-600 hover:underline"
-                                        >
-                                            + Adicionar Opção
-                                        </button>
                                     </div>
+
+                                    <button 
+                                        type="button"
+                                        onClick={() => addOptionToGroup(group.id)}
+                                        className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1 cursor-pointer pt-1"
+                                    >
+                                        <PlusIcon className="w-3.5 h-3.5" />
+                                        <span>Adicionar Opção Manual</span>
+                                    </button>
                                 </div>
                             ))}
                         </div>
-                        <p className="text-[10px] text-gray-500 mt-2 font-medium italic">O cliente poderá escolher entre o mínimo e o máximo de opções configuradas acima.</p>
+                        <p className="text-[10px] text-gray-500 mt-2 font-medium italic">
+                            O cliente poderá escolher entre o mínimo e o máximo de opções configuradas acima ao adicionar este item ao carrinho.
+                        </p>
                     </div>
 
                     {/* --- ADDONS MANAGEMENT --- */}
@@ -858,6 +1296,555 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                     </button>
                 </div>
             </div>
+
+            {/* ========================================================================= */}
+            {/* ⚡ MODAL: IMPORTAR PRODUTOS DE UMA CATEGORIA COMO OPÇÕES DO GRUPO         */}
+            {/* ========================================================================= */}
+            {isCategoryImportModalOpen && (
+                <div 
+                    className="fixed inset-0 bg-black/70 z-[130] flex items-center justify-center p-4 backdrop-blur-xs" 
+                    onClick={() => setIsCategoryImportModalOpen(false)}
+                >
+                    <div 
+                        className="bg-white rounded-3xl shadow-2xl max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden animate-scaleIn border border-orange-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div className="p-5 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 text-white flex justify-between items-start">
+                            <div>
+                                <span className="text-[10px] font-black uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full inline-block mb-1">
+                                    Preenchimento Inteligente de Combos
+                                </span>
+                                <h3 className="text-lg font-black leading-tight flex items-center gap-1.5">
+                                    <span>⚡</span>
+                                    <span>Puxar Produtos de uma Categoria</span>
+                                </h3>
+                                <p className="text-xs text-orange-100 mt-0.5">
+                                    Selecione a categoria para listar todos os itens automaticamente (ex: todos os pastéis).
+                                </p>
+                            </div>
+                            <button 
+                                onClick={() => setIsCategoryImportModalOpen(false)}
+                                className="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/10 cursor-pointer"
+                                type="button"
+                            >
+                                <XIcon className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Body */}
+                        <div className="p-5 overflow-y-auto space-y-4 flex-1">
+                            {/* 1. Selecionar Categoria */}
+                            <div>
+                                <label className="block text-xs font-black text-gray-700 uppercase mb-2">
+                                    1. Escolha a Categoria de Origem:
+                                </label>
+                                {availableCategoryList.length === 0 ? (
+                                    <p className="text-xs text-red-500 font-bold">Nenhuma categoria encontrada no cardápio.</p>
+                                ) : (
+                                    <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
+                                        {availableCategoryList.map((cat) => {
+                                            const isSelected = selectedImportCategory === cat.name;
+                                            return (
+                                                <button
+                                                    key={cat.name}
+                                                    type="button"
+                                                    onClick={() => handleSelectCategoryForImport(cat.name)}
+                                                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                                                        isSelected
+                                                            ? 'bg-orange-50 border-orange-500 ring-2 ring-orange-400/30'
+                                                            : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                                                    }`}
+                                                >
+                                                    <span className={`text-xs font-black truncate ${isSelected ? 'text-orange-950' : 'text-gray-800'}`}>
+                                                        {cat.name}
+                                                    </span>
+                                                    <span className="text-[10px] text-gray-500 mt-1">
+                                                        {cat.items.length} produto(s)
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* 2. Lista de Produtos da Categoria */}
+                            {selectedImportCategory && (
+                                <div className="space-y-2 bg-gray-50/70 p-3.5 rounded-2xl border border-gray-200">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-black text-gray-800 uppercase">
+                                            2. Produtos a Incluir ({categoryImportItemSelection.size} selecionados):
+                                        </label>
+                                        <div className="flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const catData = availableCategoryList.find(c => c.name === selectedImportCategory);
+                                                    setCategoryImportItemSelection(new Set((catData?.items || []).map(i => i.id)));
+                                                }}
+                                                className="text-[10px] font-bold text-orange-600 hover:underline cursor-pointer"
+                                            >
+                                                Marcar Todos
+                                            </button>
+                                            <span className="text-gray-300">|</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setCategoryImportItemSelection(new Set())}
+                                                className="text-[10px] font-bold text-gray-500 hover:underline cursor-pointer"
+                                            >
+                                                Desmarcar
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {(() => {
+                                        const catData = availableCategoryList.find(c => c.name === selectedImportCategory);
+                                        const items = catData?.items || [];
+                                        if (items.length === 0) {
+                                            return <p className="text-xs text-gray-400 italic py-2">Nenhum produto cadastrado nesta categoria.</p>;
+                                        }
+                                        return (
+                                            <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1">
+                                                {items.map((item) => {
+                                                    const checked = categoryImportItemSelection.has(item.id);
+                                                    return (
+                                                        <label 
+                                                            key={item.id}
+                                                            className={`flex items-center justify-between p-2 rounded-xl border text-xs cursor-pointer transition-all ${
+                                                                checked ? 'bg-white border-orange-300 shadow-2xs' : 'bg-gray-100/50 border-gray-200 opacity-60'
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-center gap-2">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={checked}
+                                                                    onChange={() => {
+                                                                        setCategoryImportItemSelection(prev => {
+                                                                            const n = new Set(prev);
+                                                                            if (n.has(item.id)) n.delete(item.id);
+                                                                            else n.add(item.id);
+                                                                            return n;
+                                                                        });
+                                                                    }}
+                                                                    className="w-4 h-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
+                                                                />
+                                                                <span className="font-bold text-gray-900">{item.name}</span>
+                                                            </div>
+                                                            <span className="text-[10px] text-gray-500 font-mono">
+                                                                R$ {Number(item.price).toFixed(2)}
+                                                            </span>
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                            )}
+
+                            {/* 3. Regra de Preço no Combo */}
+                            <div>
+                                <label className="block text-xs font-black text-gray-700 uppercase mb-1.5">
+                                    3. Preço Adicional no Combo:
+                                </label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <label className={`p-3 rounded-xl border cursor-pointer flex flex-col justify-between transition-all ${
+                                        categoryImportPriceMode === 'FREE' 
+                                            ? 'bg-orange-50 border-orange-500 ring-2 ring-orange-400/20' 
+                                            : 'bg-white border-gray-200'
+                                    }`}>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="radio"
+                                                name="cat-price-mode"
+                                                checked={categoryImportPriceMode === 'FREE'}
+                                                onChange={() => setCategoryImportPriceMode('FREE')}
+                                                className="text-orange-600 focus:ring-orange-500"
+                                            />
+                                            <span className="text-xs font-black text-orange-950">R$ 0,00 (Incluso)</span>
+                                        </div>
+                                        <span className="text-[10px] text-gray-500 mt-1">
+                                            Ideal para combo: o cliente escolhe sem acréscimo.
+                                        </span>
+                                    </label>
+
+                                    <label className={`p-3 rounded-xl border cursor-pointer flex flex-col justify-between transition-all ${
+                                        categoryImportPriceMode === 'ORIGINAL' 
+                                            ? 'bg-orange-50 border-orange-500 ring-2 ring-orange-400/20' 
+                                            : 'bg-white border-gray-200'
+                                    }`}>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="radio"
+                                                name="cat-price-mode"
+                                                checked={categoryImportPriceMode === 'ORIGINAL'}
+                                                onChange={() => setCategoryImportPriceMode('ORIGINAL')}
+                                                className="text-orange-600 focus:ring-orange-500"
+                                            />
+                                            <span className="text-xs font-black text-gray-900">Preço do Produto</span>
+                                        </div>
+                                        <span className="text-[10px] text-gray-500 mt-1">
+                                            Cobra o valor de cada item no cardápio.
+                                        </span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            {/* 4. Título e Limites */}
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 pt-1">
+                                <div className="md:col-span-6">
+                                    <label className="block text-[10px] font-black text-gray-500 uppercase mb-1">
+                                        Título do Grupo
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={categoryImportGroupTitle}
+                                        onChange={(e) => setCategoryImportGroupTitle(e.target.value)}
+                                        placeholder="Ex: Escolha o Pastel"
+                                        className="w-full p-2.5 text-xs font-bold border rounded-xl bg-white"
+                                    />
+                                </div>
+                                <div className="md:col-span-3">
+                                    <label className="block text-[10px] font-black text-gray-500 uppercase mb-1">
+                                        Mínimo
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value={categoryImportMin}
+                                        onChange={(e) => setCategoryImportMin(parseInt(e.target.value) || 0)}
+                                        className="w-full p-2.5 text-xs font-bold border rounded-xl bg-white"
+                                    />
+                                </div>
+                                <div className="md:col-span-3">
+                                    <label className="block text-[10px] font-black text-gray-500 uppercase mb-1">
+                                        Máximo
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={categoryImportMax}
+                                        onChange={(e) => setCategoryImportMax(parseInt(e.target.value) || 1)}
+                                        className="w-full p-2.5 text-xs font-bold border rounded-xl bg-white"
+                                    />
+                                </div>
+                            </div>
+
+                            {categoryImportTargetGroupId && (
+                                <div className="flex items-center gap-3 pt-1 border-t border-gray-100">
+                                    <span className="text-xs font-bold text-gray-600">Neste grupo existente:</span>
+                                    <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="import-mode-cat"
+                                            checked={categoryImportMode === 'REPLACE'}
+                                            onChange={() => setCategoryImportMode('REPLACE')}
+                                            className="text-orange-600"
+                                        />
+                                        <span>Substituir opções atuais</span>
+                                    </label>
+                                    <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="import-mode-cat"
+                                            checked={categoryImportMode === 'APPEND'}
+                                            onChange={() => setCategoryImportMode('APPEND')}
+                                            className="text-orange-600"
+                                        />
+                                        <span>Somar às existentes</span>
+                                    </label>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 bg-gray-50 border-t flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setIsCategoryImportModalOpen(false)}
+                                className="px-4 py-2 text-xs font-bold bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 cursor-pointer"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmCategoryImport}
+                                disabled={categoryImportItemSelection.size === 0}
+                                className="px-5 py-2 text-xs font-black bg-orange-600 text-white rounded-xl hover:bg-orange-700 shadow-sm disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                            >
+                                <span>⚡ Inserir {categoryImportItemSelection.size} Produtos no Grupo</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* 🍇 MODAL: IMPORTAR COMPLEMENTOS / ADICIONAIS COMO OPÇÕES DO GRUPO         */}
+            {/* ========================================================================= */}
+            {isAddonImportModalOpen && (
+                <div 
+                    className="fixed inset-0 bg-black/70 z-[130] flex items-center justify-center p-4 backdrop-blur-xs" 
+                    onClick={() => setIsAddonImportModalOpen(false)}
+                >
+                    <div 
+                        className="bg-white rounded-3xl shadow-2xl max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden animate-scaleIn border border-purple-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div className="p-5 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 text-white flex justify-between items-start">
+                            <div>
+                                <span className="text-[10px] font-black uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full inline-block mb-1">
+                                    Adicionais & Acompanhamentos
+                                </span>
+                                <h3 className="text-lg font-black leading-tight flex items-center gap-1.5">
+                                    <span>🍇</span>
+                                    <span>Puxar Complementos / Adicionais</span>
+                                </h3>
+                                <p className="text-xs text-purple-100 mt-0.5">
+                                    Adicione com 1 clique adicionais de açaí (leite ninho, granola, banana, morango, caldas, etc.).
+                                </p>
+                            </div>
+                            <button 
+                                onClick={() => setIsAddonImportModalOpen(false)}
+                                className="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/10 cursor-pointer"
+                                type="button"
+                            >
+                                <XIcon className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Body */}
+                        <div className="p-5 overflow-y-auto space-y-4 flex-1">
+                            {/* Filtros */}
+                            <div className="flex items-center justify-between border-b pb-2">
+                                <span className="text-xs font-black text-gray-700 uppercase">Filtrar Complementos:</span>
+                                <div className="flex gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setAddonImportFilter('ALL')}
+                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg cursor-pointer ${
+                                            addonImportFilter === 'ALL' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600'
+                                        }`}
+                                    >
+                                        Todos ({allAddons.length})
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAddonImportFilter('FREE')}
+                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg cursor-pointer ${
+                                            addonImportFilter === 'FREE' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600'
+                                        }`}
+                                    >
+                                        Grátis ({allAddons.filter(a => Number(a.price) === 0).length})
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAddonImportFilter('PAID')}
+                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg cursor-pointer ${
+                                            addonImportFilter === 'PAID' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600'
+                                        }`}
+                                    >
+                                        Pagos ({allAddons.filter(a => Number(a.price) > 0).length})
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Lista de Adicionais */}
+                            <div className="space-y-2 bg-gray-50/70 p-3.5 rounded-2xl border border-gray-200">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs font-black text-gray-800 uppercase">
+                                        Complementos Selecionados ({addonImportSelection.size}):
+                                    </label>
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setAddonImportSelection(new Set(allAddons.map(a => a.id)))}
+                                            className="text-[10px] font-bold text-purple-600 hover:underline cursor-pointer"
+                                        >
+                                            Marcar Todos
+                                        </button>
+                                        <span className="text-gray-300">|</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setAddonImportSelection(new Set())}
+                                            className="text-[10px] font-bold text-gray-500 hover:underline cursor-pointer"
+                                        >
+                                            Desmarcar
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                                    {allAddons
+                                        .filter(a => {
+                                            if (addonImportFilter === 'FREE') return Number(a.price) === 0;
+                                            if (addonImportFilter === 'PAID') return Number(a.price) > 0;
+                                            return true;
+                                        })
+                                        .map((addon) => {
+                                            const checked = addonImportSelection.has(addon.id);
+                                            return (
+                                                <label 
+                                                    key={addon.id}
+                                                    className={`flex items-center justify-between p-2 rounded-xl border text-xs cursor-pointer transition-all ${
+                                                        checked ? 'bg-white border-purple-300 shadow-2xs' : 'bg-gray-100/50 border-gray-200 opacity-60'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={checked}
+                                                            onChange={() => {
+                                                                setAddonImportSelection(prev => {
+                                                                    const n = new Set(prev);
+                                                                    if (n.has(addon.id)) n.delete(addon.id);
+                                                                    else n.add(addon.id);
+                                                                    return n;
+                                                                });
+                                                            }}
+                                                            className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                                                        />
+                                                        <span className="font-bold text-gray-900">{addon.name}</span>
+                                                    </div>
+                                                    <span className="text-[10px] font-mono font-bold text-gray-500">
+                                                        {Number(addon.price) === 0 ? 'Grátis' : `+ R$ ${Number(addon.price).toFixed(2)}`}
+                                                    </span>
+                                                </label>
+                                            );
+                                        })
+                                    }
+                                </div>
+                            </div>
+
+                            {/* Regra de Preço */}
+                            <div>
+                                <label className="block text-xs font-black text-gray-700 uppercase mb-1.5">
+                                    Cobrança no Combo / Grupo:
+                                </label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <label className={`p-3 rounded-xl border cursor-pointer flex flex-col justify-between transition-all ${
+                                        addonImportPriceMode === 'FREE' 
+                                            ? 'bg-purple-50 border-purple-500 ring-2 ring-purple-400/20' 
+                                            : 'bg-white border-gray-200'
+                                    }`}>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="radio"
+                                                name="addon-price-mode"
+                                                checked={addonImportPriceMode === 'FREE'}
+                                                onChange={() => setAddonImportPriceMode('FREE')}
+                                                className="text-purple-600 focus:ring-purple-500"
+                                            />
+                                            <span className="text-xs font-black text-purple-950">R$ 0,00 (Grátis)</span>
+                                        </div>
+                                        <span className="text-[10px] text-gray-500 mt-1">
+                                            Ideal para adicionais grátis no Açaí ou Combo.
+                                        </span>
+                                    </label>
+
+                                    <label className={`p-3 rounded-xl border cursor-pointer flex flex-col justify-between transition-all ${
+                                        addonImportPriceMode === 'ORIGINAL' 
+                                            ? 'bg-purple-50 border-purple-500 ring-2 ring-purple-400/20' 
+                                            : 'bg-white border-gray-200'
+                                    }`}>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="radio"
+                                                name="addon-price-mode"
+                                                checked={addonImportPriceMode === 'ORIGINAL'}
+                                                onChange={() => setAddonImportPriceMode('ORIGINAL')}
+                                                className="text-purple-600 focus:ring-purple-500"
+                                            />
+                                            <span className="text-xs font-black text-gray-900">Preço do Adicional</span>
+                                        </div>
+                                        <span className="text-[10px] text-gray-500 mt-1">
+                                            Mantém o preço já cadastrado do adicional.
+                                        </span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            {/* Título e Limites */}
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 pt-1">
+                                <div className="md:col-span-6">
+                                    <label className="block text-[10px] font-black text-gray-500 uppercase mb-1">
+                                        Título do Grupo
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={addonImportGroupTitle}
+                                        onChange={(e) => setAddonImportGroupTitle(e.target.value)}
+                                        placeholder="Ex: Complementos do Açaí"
+                                        className="w-full p-2.5 text-xs font-bold border rounded-xl bg-white"
+                                    />
+                                </div>
+                                <div className="md:col-span-3">
+                                    <label className="block text-[10px] font-black text-gray-500 uppercase mb-1">
+                                        Mínimo
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value={addonImportMin}
+                                        onChange={(e) => setAddonImportMin(parseInt(e.target.value) || 0)}
+                                        className="w-full p-2.5 text-xs font-bold border rounded-xl bg-white"
+                                    />
+                                </div>
+                                <div className="md:col-span-3">
+                                    <label className="block text-[10px] font-black text-gray-500 uppercase mb-1">
+                                        Máximo
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={addonImportMax}
+                                        onChange={(e) => setAddonImportMax(parseInt(e.target.value) || 1)}
+                                        className="w-full p-2.5 text-xs font-bold border rounded-xl bg-white"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Atalhos Rápidos de Quantidade */}
+                            <div className="flex items-center gap-1.5 pt-1">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase">Atalhos Máx:</span>
+                                {[1, 2, 3, 4, 5, 10].map(n => (
+                                    <button
+                                        key={n}
+                                        type="button"
+                                        onClick={() => setAddonImportMax(n)}
+                                        className={`px-2 py-0.5 text-xs font-bold rounded-md border cursor-pointer ${
+                                            addonImportMax === n ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200'
+                                        }`}
+                                    >
+                                        {n}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 bg-gray-50 border-t flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setIsAddonImportModalOpen(false)}
+                                className="px-4 py-2 text-xs font-bold bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 cursor-pointer"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmAddonImport}
+                                disabled={addonImportSelection.size === 0}
+                                className="px-5 py-2 text-xs font-black bg-purple-600 text-white rounded-xl hover:bg-purple-700 shadow-sm disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                            >
+                                <span>🍇 Inserir {addonImportSelection.size} Complementos no Grupo</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

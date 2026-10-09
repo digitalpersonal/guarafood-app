@@ -342,6 +342,11 @@ const RestaurantSettings: React.FC<{
     const [deliveryFee, setDeliveryFee] = useState(0);
     const [disableDelivery, setDisableDelivery] = useState(false);
     const [enableFiscal, setEnableFiscal] = useState(false);
+    const [cnpj, setCnpj] = useState('');
+    const [ie, setIe] = useState('');
+    const [im, setIm] = useState('');
+    const [blingApiKey, setBlingApiKey] = useState('');
+    const [fiscalProvider, setFiscalProvider] = useState('focus');
     const [printerWidth, setPrinterWidth] = useState(80);
     const [isPrintServer, setIsPrintServer] = useState(false);
     const [printServerRole, setPrintServerRole] = useState<'all' | 'kitchen' | 'counter'>('all');
@@ -386,6 +391,11 @@ const RestaurantSettings: React.FC<{
                 setDeliveryFee(data.deliveryFee != null ? Number(data.deliveryFee) : 0);
                 setDisableDelivery(data.disableDelivery || false);
                 setEnableFiscal(data.enableFiscal || false);
+                setCnpj(data.cnpj || '');
+                setIe(data.ie || '');
+                setIm(data.im || '');
+                setBlingApiKey(data.blingApiKey || '');
+                setFiscalProvider(data.fiscalProvider || 'focus');
                 setOperatingHours(data.operatingHours || getDefaultOperatingHours());
                 
                 // Força o estado da impressora a partir do banco e sincroniza LocalStorage
@@ -418,6 +428,20 @@ const RestaurantSettings: React.FC<{
 
     const handleSaveChanges = async () => {
         if (!restaurantId || !restaurant) return;
+        
+        // Validação Fiscal se estiver ativado
+        if (enableFiscal) {
+            const cleanCnpj = cnpj.replace(/\D/g, '');
+            if (!cleanCnpj || cleanCnpj.length !== 14) {
+                addToast({ message: 'Erro: O CNPJ deve conter exatamente 14 dígitos válidos.', type: 'error' });
+                return;
+            }
+            if (!ie.trim()) {
+                addToast({ message: 'Erro: A Inscrição Estadual (I.E.) é obrigatória para emissão fiscal.', type: 'error' });
+                return;
+            }
+        }
+
         setIsSaving(true);
         try {
             await updateRestaurant(restaurantId, {
@@ -436,7 +460,12 @@ const RestaurantSettings: React.FC<{
                 pricePerKilo: pricePerKilo,
                 deliveryFee: Number(deliveryFee) || 0,
                 disableDelivery: disableDelivery,
-                enableFiscal: enableFiscal
+                enableFiscal: enableFiscal,
+                cnpj: cnpj,
+                ie: ie,
+                im: im,
+                blingApiKey: blingApiKey,
+                fiscalProvider: fiscalProvider
             });
             localStorage.setItem('guarafood-printer-width', printerWidth.toString());
             localStorage.setItem('guarafood-is-print-server', isPrintServer.toString());
@@ -771,6 +800,17 @@ const RestaurantSettings: React.FC<{
                                             <input type="checkbox" checked={!!day.isOpen} onChange={e => handleOperatingHoursChange(index, 'isOpen', e.target.checked)} className="h-5 w-5 mr-3" />
                                             <span className="font-bold text-xs text-gray-700">{daysOfWeek[index]}</span>
                                         </div>
+
+                                     {fiscalProvider === 'betha' && (
+                                         <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800 space-y-1">
+                                             <p className="font-black flex items-center gap-1.5">
+                                                 <span>🏛️</span> Integração Betha Sistemas (Prefeitura de Guaranésia - MG)
+                                             </p>
+                                             <p className="text-[11px] text-blue-700">
+                                                 Excelente escolha para Guaranésia! O sistema Betha é utilizado pela prefeitura local para emissão de NFS-e. Informe a <strong>Inscrição Municipal (I.M.)</strong> e o Token/Webservice fornecido pelo Betha e-Nota para emissão direta de cada pedido.
+                                             </p>
+                                         </div>
+                                     )}
                                         <div className="col-span-3">
                                             <input type="time" value={day.opens || ''} onChange={e => handleOperatingHoursChange(index, 'opens', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
                                         </div>
@@ -853,7 +893,7 @@ const RestaurantSettings: React.FC<{
 
                     {/* --- CONFIGURAÇÃO FISCAL --- */}
                     <div className="border-t pt-8">
-                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Integração Fiscal</h3>
+                        <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Integração Fiscal e CNPJ</h3>
                         <div className="space-y-4">
                             <label className="flex items-center justify-between cursor-pointer p-4 bg-gray-50 rounded-xl border border-gray-200">
                                 <div>
@@ -865,6 +905,102 @@ const RestaurantSettings: React.FC<{
                                     <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
                                 </div>
                             </label>
+
+                            {enableFiscal && (
+                                <div className="p-5 bg-purple-50/60 rounded-2xl border border-purple-200 space-y-4 animate-in fade-in slide-in-from-top-2">
+                                    <h4 className="font-black text-purple-900 text-xs uppercase tracking-wider flex items-center gap-2">
+                                        <span>📋</span> Dados Fiscais e Provedor (Vinculado unicamente ao CNPJ)
+                                    </h4>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-[10px] font-black text-purple-700 uppercase tracking-widest mb-1 ml-1">CNPJ da Loja</label>
+                                            <input 
+                                                type="text" 
+                                                value={cnpj} 
+                                                onChange={e => setCnpj(e.target.value)} 
+                                                placeholder="00.000.000/0001-00" 
+                                                className="w-full p-3 border border-purple-200 rounded-xl font-mono text-sm bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 outline-none" 
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black text-purple-700 uppercase tracking-widest mb-1 ml-1">Inscrição Estadual (I.E.)</label>
+                                            <input 
+                                                type="text" 
+                                                value={ie} 
+                                                onChange={e => setIe(e.target.value)} 
+                                                placeholder="Isento ou número da IE" 
+                                                className="w-full p-3 border border-purple-200 rounded-xl font-mono text-sm bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 outline-none" 
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-[10px] font-black text-purple-700 uppercase tracking-widest mb-1 ml-1">Inscrição Municipal (I.M. / Betha)</label>
+                                            <input 
+                                                type="text" 
+                                                value={im} 
+                                                onChange={e => setIm(e.target.value)} 
+                                                placeholder="Inscrição Municipal" 
+                                                className="w-full p-3 border border-purple-200 rounded-xl font-mono text-sm bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 outline-none" 
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black text-purple-700 uppercase tracking-widest mb-1 ml-1">Provedor de Emissão (API)</label>
+                                             <select 
+                                                value={fiscalProvider} 
+                                                onChange={e => setFiscalProvider(e.target.value)}
+                                                className="w-full p-3 border border-purple-200 rounded-xl font-bold text-sm bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 outline-none"
+                                            >
+                                                <option value="focus">Focus NFe (NFC-e Estadual - Alimentos e Bebidas) [Recomendado]</option>
+                                                <option value="nuvem">Nuvem Fiscal (NFC-e Estadual - Alimentos e Bebidas)</option>
+                                                <option value="bling">Bling ERP / API (NFC-e Integrado)</option>
+                                                <option value="betha">Betha Sistemas (Somente Serviços / NFS-e Municipal)</option>
+                                                <option value="custom">API Própria / Webhook</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* ALERTA EXPLICATIVO FISCAL: VENDAS (NFC-e / ESTADUAL) vs SERVIÇOS (NFS-e / PREFEITURA) */}
+                                    {fiscalProvider === 'betha' ? (
+                                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 space-y-1.5">
+                                            <div className="font-bold flex items-center gap-1.5 text-amber-800">
+                                                <span>⚠️</span> Atenção sobre Notas da Prefeitura (Betha Sistemas):
+                                            </div>
+                                            <p>
+                                                A Prefeitura (Betha) emite <strong>NFS-e (Serviços / ISSQN)</strong>. Restaurantes e lanchonetes vendem <strong>alimentos e bebidas (mercadorias)</strong>, que exigem <strong>NFC-e (Estadual / SEF-MG)</strong>.
+                                            </p>
+                                            <p className="text-[11px] text-amber-700">
+                                                💡 Use o Betha apenas se sua loja fatura serviços (ex: taxa de evento, buffet, locação). Para o cupom fiscal das refeições e entregas aos clientes, recomendamos selecionar <strong>Focus NFe</strong> ou <strong>Nuvem Fiscal</strong>.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-xs text-emerald-900 space-y-1">
+                                            <div className="font-bold flex items-center gap-1.5 text-emerald-800">
+                                                <span>✅</span> Emissão de Cupom Fiscal de Alimentos (NFC-e Modelo 65 - SEF/MG):
+                                            </div>
+                                            <p>
+                                                Para emitir cupons de refeições e lanches em Minas Gerais, você precisa do <strong>Certificado Digital A1</strong> da empresa e do <strong>Código CSC</strong> cadastrado na SEF-MG pelo seu contador. A API ({fiscalProvider === 'focus' ? 'Focus NFe' : fiscalProvider === 'nuvem' ? 'Nuvem Fiscal' : 'Provedor Fiscal'}) assina e transmite o cupom automaticamente.
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    <div>
+                                        <label className="block text-[10px] font-black text-purple-700 uppercase tracking-widest mb-1 ml-1">Token / API Key do Provedor Fiscal</label>
+                                        <input 
+                                            type="password" 
+                                            value={blingApiKey} 
+                                            onChange={e => setBlingApiKey(e.target.value)} 
+                                            placeholder="Cole aqui o Token da API ou Chave de Acesso" 
+                                            className="w-full p-3 border border-purple-200 rounded-xl font-mono text-sm bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 outline-none" 
+                                        />
+                                        <p className="text-[10px] text-purple-600 mt-1 font-bold">
+                                            * Credencial protegida e vinculada unicamente ao CNPJ {cnpj || 'informado'} para emissão de notas.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
 

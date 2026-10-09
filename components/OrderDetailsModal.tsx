@@ -45,7 +45,7 @@ interface OrderDetailsModalProps {
     onClose: () => void; 
     printerWidth?: number; // Keep printerWidth for printable order
     restaurant?: any;
-    onPrint?: (order: Order, mode?: 'full' | 'kitchen' | 'admin') => void;
+    onPrint?: (order: Order, mode?: 'full' | 'kitchen' | 'admin' | 'fiscal') => void;
 }
 
 const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, printerWidth = 80, restaurant, onPrint }) => {
@@ -53,7 +53,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
     const { text, color } = statusConfig[order.status];
     const [isEditing, setIsEditing] = useState(false); // State to control editing modal
     const [currentOrder, setCurrentOrder] = useState<Order>(order); // Use internal state for order
-    const [printMode, setPrintMode] = useState<'full' | 'kitchen'>('full');
+    const [printMode, setPrintMode] = useState<'full' | 'kitchen' | 'admin' | 'fiscal'>('full');
 
     const hasKitchenPrinter = Boolean(restaurant?.printers?.some((p: any) => p.type === 'kitchen' && p.active !== false));
 
@@ -87,6 +87,15 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
             onPrint(currentOrder, 'kitchen');
         } else {
             setPrintMode('kitchen');
+            setTimeout(() => window.print(), 100);
+        }
+    };
+
+    const handlePrintFiscal = () => {
+        if (onPrint) {
+            onPrint(currentOrder, 'fiscal');
+        } else {
+            setPrintMode('fiscal');
             setTimeout(() => window.print(), 100);
         }
     };
@@ -292,6 +301,15 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                             >
                                 <PrintIcon className="w-4 h-4 sm:w-5 sm:h-5"/>
                                 <span>{hasKitchenPrinter ? 'Via Caixa' : 'Imprimir'}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handlePrintFiscal}
+                                className="flex items-center space-x-1.5 px-3 sm:px-4 py-2 rounded-lg bg-purple-700 hover:bg-purple-800 text-white font-black transition-all active:scale-95 shadow-md text-xs sm:text-sm"
+                                title="Imprimir Cupom Fiscal Eletrônico (NFC-e / SAT)"
+                            >
+                                <span>🧾</span>
+                                <span>Cupom Fiscal</span>
                             </button>
                             {hasKitchenPrinter && (
                                 <button

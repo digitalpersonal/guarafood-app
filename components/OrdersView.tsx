@@ -141,7 +141,7 @@ const OrderCard: React.FC<{
     onStatusUpdate: (id: string, status: OrderStatus) => void; 
     onNotify: (order: Order) => void; 
     onViewDetails: (order: Order) => void; 
-    onPrint: (order: Order, mode?: 'full' | 'kitchen' | 'admin') => void;
+    onPrint: (order: Order, mode?: 'full' | 'kitchen' | 'admin' | 'fiscal') => void;
     enableFiscal?: boolean;
     onToggleFiscal?: (id: string, currentVal: boolean) => void;
     updatingState?: UpdatingOrderState;
@@ -303,6 +303,14 @@ const OrderCard: React.FC<{
                             <span className="hidden sm:inline">Cozinha</span>
                         </button>
                     )}
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); onPrint(order, 'fiscal'); }} 
+                        className="px-1.5 py-0.5 text-[10px] font-black text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-300 rounded transition-colors flex items-center gap-0.5" 
+                        title="Imprimir Cupom Fiscal / Extrato Eletrônico"
+                    >
+                        <span>🧾</span>
+                        <span className="hidden sm:inline">Fiscal</span>
+                    </button>
                     <button 
                         onClick={(e) => { e.stopPropagation(); onPrint(order, 'full'); }} 
                         className="p-1 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors" 
