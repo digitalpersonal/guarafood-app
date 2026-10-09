@@ -1,7 +1,7 @@
 
 import { supabase, supabaseAnon, handleSupabaseError } from './api';
 import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory, Expense, Order, OperatingHours, FeaturedPromo, PrinterConfig, ComandaAtiva, PlatformUser, StaffMember } from '../types';
-import { decodeDaysFromDescription, encodeDaysInDescription, isPromoActiveToday } from '../utils/promoUtils';
+import { decodeDaysFromDescription, encodeDaysInDescription, isPromoActiveToday, decodePromoMetadata, encodePromoMetadata } from '../utils/promoUtils';
 
 // ==============================================================================
 // 🔄 NORMALIZADORES (Banco de Dados -> App)
@@ -228,7 +228,10 @@ const normalizeItem = (data: any): MenuItem => {
         isWeeklySpecial: data.is_weekly_special !== undefined ? data.is_weekly_special : data.isWeeklySpecial,
         displayOrder: data.display_order !== undefined ? data.display_order : data.displayOrder,
         available: data.available !== false, // Assume true if null
-        optionGroups: data.option_groups || data.optionGroups
+        optionGroups: data.option_groups || data.optionGroups,
+        availableDays: data.available_days || data.availableDays,
+        availableStartTime: data.available_start_time || data.availableStartTime,
+        availableEndTime: data.available_end_time || data.availableEndTime
     };
 };
 
@@ -240,7 +243,10 @@ const normalizeCombo = (data: any): Combo => {
         categoryId: data.category_id !== undefined ? Number(data.category_id) : data.categoryId,
         imageUrl: data.image_url || data.imageUrl,
         originalPrice: data.original_price !== undefined ? Number(data.original_price) : data.originalPrice,
-        menuItemIds: data.menu_item_ids || data.menuItemIds || []
+        menuItemIds: data.menu_item_ids || data.menuItemIds || [],
+        availableDays: data.available_days || data.availableDays,
+        availableStartTime: data.available_start_time || data.availableStartTime,
+        availableEndTime: data.available_end_time || data.availableEndTime
     };
 };
 
@@ -254,29 +260,37 @@ const normalizeAddon = (data: any): Addon => {
 
 const normalizePromotion = (data: any): Promotion => {
     let availableDays = data.available_days;
-    let description = data.description || '';
+    let rawDescription = data.description || '';
+    
+    const decoded = decodePromoMetadata(rawDescription);
+    const description = decoded.cleanDescription;
+
     if (!availableDays || !Array.isArray(availableDays) || availableDays.length === 0) {
-        const decoded = decodeDaysFromDescription(description);
         if (decoded.availableDays) {
             availableDays = decoded.availableDays;
-            description = decoded.cleanDescription;
         }
-    } else {
-        description = description.replace(/\s*<!--days:[0-9,]+-->/g, '').trim();
     }
+
+    const discountType = decoded.type || data.discount_type || 'PERCENTAGE';
 
     return {
         ...data,
         description,
-        discountType: data.discount_type,
-        discountValue: data.discount_value,
+        discountType,
+        discountValue: Number(data.discount_value || 0),
         itemIds: data.item_ids || [],
         comboIds: data.combo_ids || [],
         categoryIds: data.category_ids || [],
         startDate: data.start_date,
         endDate: data.end_date,
         restaurantId: data.restaurant_id,
-        availableDays: Array.isArray(availableDays) && availableDays.length > 0 ? availableDays : [0, 1, 2, 3, 4, 5, 6]
+        availableDays: Array.isArray(availableDays) && availableDays.length > 0 ? availableDays : [0, 1, 2, 3, 4, 5, 6],
+        availableStartTime: decoded.availableStartTime || data.available_start_time,
+        availableEndTime: decoded.availableEndTime || data.available_end_time,
+        upsellTitle: decoded.upsellTitle || data.upsell_title,
+        upsellDescription: decoded.upsellDescription || data.upsell_description,
+        upsellPrice: decoded.upsellPrice !== undefined ? decoded.upsellPrice : (data.upsell_price ? Number(data.upsell_price) : undefined),
+        upsellOptions: decoded.upsellOptions || data.upsell_options
     };
 };
 
@@ -676,6 +690,9 @@ export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilt
                 isPromoActiveToday(p)
             );
             if (activePromo) {
+                if (activePromo.discountType === 'UPSELL') {
+                    return { ...item, activePromotion: activePromo };
+                }
                 let newPrice = activePromo.discountType === 'PERCENTAGE' ? item.price * (1 - activePromo.discountValue / 100) : Math.max(0, item.price - activePromo.discountValue);
                 return { ...item, price: newPrice, originalPrice: item.price, activePromotion: activePromo };
             }
@@ -730,13 +747,23 @@ export const createMenuItem = async (restaurantId: number, item: any): Promise<v
         original_price: item.originalPrice, image_url: item.imageUrl, is_pizza: item.isPizza, is_acai: item.isAcai,
         is_marmita: item.isMarmita, marmita_options: item.marmitaOptions, available_addon_ids: item.availableAddonIds,
         sizes: item.sizes, is_daily_special: item.isDailySpecial, is_weekly_special: item.isWeeklySpecial,
-        available: item.available !== false, option_groups: item.optionGroups
+        available: item.available !== false, option_groups: item.optionGroups,
+        available_days: item.availableDays,
+        available_start_time: item.availableStartTime || null,
+        available_end_time: item.availableEndTime || null
     };
     if (item.displayOrder !== undefined) {
         payload.display_order = item.displayOrder;
     }
     const { error } = await supabase.from('menu_items').insert(payload);
-    handleSupabaseError({ error, customMessage: 'Failed to create item' });
+    if (error) {
+        delete payload.available_days;
+        delete payload.available_start_time;
+        delete payload.available_end_time;
+        const { error: err2 } = await supabase.from('menu_items').insert(payload);
+        handleSupabaseError({ error: err2, customMessage: 'Failed to create item' });
+        return;
+    }
 };
 
 export const updateMenuItem = async (restaurantId: number, id: number, item: any): Promise<void> => {
@@ -747,13 +774,23 @@ export const updateMenuItem = async (restaurantId: number, id: number, item: any
         image_url: item.imageUrl, is_pizza: item.isPizza, is_acai: item.isAcai, is_marmita: item.isMarmita,
         marmita_options: item.marmitaOptions, available_addon_ids: item.availableAddonIds, sizes: item.sizes,
         is_daily_special: item.isDailySpecial, is_weekly_special: item.isWeeklySpecial,
-        available: item.available !== false, option_groups: item.optionGroups
+        available: item.available !== false, option_groups: item.optionGroups,
+        available_days: item.availableDays,
+        available_start_time: item.availableStartTime || null,
+        available_end_time: item.availableEndTime || null
     };
     if (item.displayOrder !== undefined) {
         payload.display_order = item.displayOrder;
     }
     const { error } = await supabase.from('menu_items').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
-    handleSupabaseError({ error, customMessage: 'Failed to update item' });
+    if (error) {
+        delete payload.available_days;
+        delete payload.available_start_time;
+        delete payload.available_end_time;
+        const { error: err2 } = await supabase.from('menu_items').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
+        handleSupabaseError({ error: err2, customMessage: 'Failed to update item' });
+        return;
+    }
 };
 
 export const deleteMenuItem = async (restaurantId: number, id: number): Promise<void> => {
@@ -804,15 +841,48 @@ export const deleteAddon = async (restaurantId: number, id: number): Promise<voi
 
 // --- COMBOS ---
 export const createCombo = async (restaurantId: number, combo: any): Promise<void> => {
-    const payload = { restaurant_id: restaurantId, name: combo.name, description: combo.description, price: combo.price, image_url: combo.imageUrl, menu_item_ids: combo.menuItemIds };
+    const payload: any = { 
+        restaurant_id: restaurantId, 
+        name: combo.name, 
+        description: combo.description, 
+        price: combo.price, 
+        image_url: combo.imageUrl, 
+        menu_item_ids: combo.menuItemIds,
+        available_days: combo.availableDays,
+        available_start_time: combo.availableStartTime || null,
+        available_end_time: combo.availableEndTime || null
+    };
     const { error } = await supabase.from('combos').insert(payload);
-    handleSupabaseError({ error, customMessage: 'Failed to create combo' });
+    if (error) {
+        delete payload.available_days;
+        delete payload.available_start_time;
+        delete payload.available_end_time;
+        const { error: err2 } = await supabase.from('combos').insert(payload);
+        handleSupabaseError({ error: err2, customMessage: 'Failed to create combo' });
+        return;
+    }
 };
 
 export const updateCombo = async (restaurantId: number, id: number, combo: any): Promise<void> => {
-    const payload = { name: combo.name, description: combo.description, price: combo.price, image_url: combo.imageUrl, menu_item_ids: combo.menuItemIds };
+    const payload: any = { 
+        name: combo.name, 
+        description: combo.description, 
+        price: combo.price, 
+        image_url: combo.imageUrl, 
+        menu_item_ids: combo.menuItemIds,
+        available_days: combo.availableDays,
+        available_start_time: combo.availableStartTime || null,
+        available_end_time: combo.availableEndTime || null
+    };
     const { error } = await supabase.from('combos').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
-    handleSupabaseError({ error, customMessage: 'Failed to update combo' });
+    if (error) {
+        delete payload.available_days;
+        delete payload.available_start_time;
+        delete payload.available_end_time;
+        const { error: err2 } = await supabase.from('combos').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
+        handleSupabaseError({ error: err2, customMessage: 'Failed to update combo' });
+        return;
+    }
 };
 
 export const deleteCombo = async (restaurantId: number, id: number): Promise<void> => {
@@ -829,12 +899,24 @@ export const fetchPromotionsForRestaurant = async (restaurantId: number): Promis
 
 export const createPromotion = async (restaurantId: number, promo: any): Promise<void> => {
     const days = promo.availableDays && promo.availableDays.length > 0 ? promo.availableDays : [0, 1, 2, 3, 4, 5, 6];
+    const encodedDesc = encodePromoMetadata(promo.description, {
+        type: promo.discountType,
+        upsellTitle: promo.upsellTitle,
+        upsellDescription: promo.upsellDescription,
+        upsellPrice: promo.upsellPrice,
+        upsellOptions: promo.upsellOptions,
+        availableStartTime: promo.availableStartTime,
+        availableEndTime: promo.availableEndTime,
+        availableDays: days
+    });
+
+    const isUpsell = promo.discountType === 'UPSELL';
     const payload: any = { 
         restaurant_id: restaurantId, 
         name: promo.name, 
-        description: promo.description, 
-        discount_type: promo.discountType, 
-        discount_value: promo.discountValue, 
+        description: encodedDesc, 
+        discount_type: isUpsell ? 'FIXED' : promo.discountType, 
+        discount_value: isUpsell ? (Number(promo.upsellPrice) || 0) : Number(promo.discountValue || 0), 
         item_ids: promo.itemIds, 
         combo_ids: promo.comboIds, 
         category_ids: promo.categoryIds, 
@@ -845,8 +927,7 @@ export const createPromotion = async (restaurantId: number, promo: any): Promise
     const { error } = await supabase.from('promotions').insert(payload);
     if (error) {
         if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days')) {
-            const descWithTag = encodeDaysInDescription(promo.description, days);
-            const fallback = { ...payload, description: descWithTag };
+            const fallback = { ...payload, description: encodedDesc };
             delete fallback.available_days;
             const { error: err2 } = await supabase.from('promotions').insert(fallback);
             handleSupabaseError({ error: err2, customMessage: 'Failed to create promotion' });
@@ -858,11 +939,23 @@ export const createPromotion = async (restaurantId: number, promo: any): Promise
 
 export const updatePromotion = async (restaurantId: number, id: number, promo: any): Promise<void> => {
     const days = promo.availableDays && promo.availableDays.length > 0 ? promo.availableDays : [0, 1, 2, 3, 4, 5, 6];
+    const encodedDesc = encodePromoMetadata(promo.description, {
+        type: promo.discountType,
+        upsellTitle: promo.upsellTitle,
+        upsellDescription: promo.upsellDescription,
+        upsellPrice: promo.upsellPrice,
+        upsellOptions: promo.upsellOptions,
+        availableStartTime: promo.availableStartTime,
+        availableEndTime: promo.availableEndTime,
+        availableDays: days
+    });
+
+    const isUpsell = promo.discountType === 'UPSELL';
     const payload: any = { 
         name: promo.name, 
-        description: promo.description, 
-        discount_type: promo.discountType, 
-        discount_value: promo.discountValue, 
+        description: encodedDesc, 
+        discount_type: isUpsell ? 'FIXED' : promo.discountType, 
+        discount_value: isUpsell ? (Number(promo.upsellPrice) || 0) : Number(promo.discountValue || 0), 
         item_ids: promo.itemIds, 
         combo_ids: promo.comboIds, 
         category_ids: promo.categoryIds, 
@@ -873,8 +966,7 @@ export const updatePromotion = async (restaurantId: number, id: number, promo: a
     const { error = null } = await supabase.from('promotions').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
     if (error) {
         if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days')) {
-            const descWithTag = encodeDaysInDescription(promo.description, days);
-            const fallback = { ...payload, description: descWithTag };
+            const fallback = { ...payload, description: encodedDesc };
             delete fallback.available_days;
             const { error: err2 } = await supabase.from('promotions').update(fallback).eq('id', id).eq('restaurant_id', restaurantId);
             handleSupabaseError({ error: err2, customMessage: 'Failed to update promotion' });
