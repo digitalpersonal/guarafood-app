@@ -419,6 +419,9 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     if (updates.staff !== undefined) dbUpdates.staff = updates.staff;
     if (updates.loyaltyProgram !== undefined) dbUpdates.loyalty_program = updates.loyaltyProgram;
     if (updates.disableDelivery !== undefined) dbUpdates.disable_delivery = updates.disableDelivery;
+    if (updates.blingApiKey !== undefined) dbUpdates.bling_api_key = updates.blingApiKey;
+    if (updates.fiscalProvider !== undefined) dbUpdates.fiscal_provider = updates.fiscalProvider;
+    if (updates.autoPrintOrders !== undefined) dbUpdates.auto_print_orders = updates.autoPrintOrders;
     if (updates.printers !== undefined) {
         dbUpdates.printer_name = JSON.stringify(updates.printers);
         if (id && typeof window !== 'undefined') {
@@ -433,7 +436,8 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
         'deliveryTime', 'imageUrl', 'paymentGateways', 'openingHours', 
         'closingHours', 'deliveryFee', 'operatingHours', 'manualPixKey', 
         'hasPixConfigured', 'printerWidth', 'printerName', 'selectedPaymentGateway', 'bannerImageUrl', 'marmitaStartTime', 'marmitaEndTime',
-        'hasMensalistas', 'hasKiloService', 'pricePerKilo', 'loyaltyProgram', 'disableDelivery', 'printers'
+        'hasMensalistas', 'hasKiloService', 'pricePerKilo', 'loyaltyProgram', 'disableDelivery', 'printers',
+        'blingApiKey', 'fiscalProvider', 'autoPrintOrders'
     ];
     keysToRemove.forEach(key => delete dbUpdates[key]);
 
@@ -1226,7 +1230,8 @@ const normalizeFeaturedPromo = (data: any): FeaturedPromo => {
         itemIds: data.item_ids || [],
         includeFreeDelivery: data.include_free_delivery === true,
         active: data.active !== false,
-        availableDays: Array.isArray(availableDays) && availableDays.length > 0 ? availableDays : [0, 1, 2, 3, 4, 5, 6]
+        availableDays: Array.isArray(availableDays) && availableDays.length > 0 ? availableDays : [0, 1, 2, 3, 4, 5, 6],
+        maxItemSelections: data.max_item_selections ? Number(data.max_item_selections) : 1
     };
 };
 
@@ -1259,14 +1264,16 @@ export const createFeaturedPromo = async (restaurantId: number, promo: Omit<Feat
         item_ids: promo.itemIds,
         include_free_delivery: promo.includeFreeDelivery,
         active: promo.active,
-        available_days: days
+        available_days: days,
+        max_item_selections: promo.maxItemSelections || 1
     };
     const { error } = await supabase.from('featured_promos').insert(payload);
     if (error) {
-        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days')) {
+        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days') || error.message?.includes('max_item_selections')) {
             const descWithTag = encodeDaysInDescription(promo.description, days);
             const fallback = { ...payload, description: descWithTag };
             delete fallback.available_days;
+            delete fallback.max_item_selections;
             const { error: err2 } = await supabase.from('featured_promos').insert(fallback);
             handleSupabaseError({ error: err2, customMessage: 'Failed to create featured promo' });
             return;
@@ -1284,6 +1291,7 @@ export const updateFeaturedPromo = async (restaurantId: number, id: number, prom
     if (promo.itemIds !== undefined) payload.item_ids = promo.itemIds;
     if (promo.includeFreeDelivery !== undefined) payload.include_free_delivery = promo.includeFreeDelivery;
     if (promo.active !== undefined) payload.active = promo.active;
+    if (promo.maxItemSelections !== undefined) payload.max_item_selections = promo.maxItemSelections;
 
     let days = promo.availableDays;
     if (days !== undefined) {
@@ -1295,12 +1303,13 @@ export const updateFeaturedPromo = async (restaurantId: number, id: number, prom
 
     const { error } = await supabase.from('featured_promos').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
     if (error) {
-        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days')) {
+        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days') || error.message?.includes('max_item_selections')) {
             const daysToEncode = days && days.length > 0 ? days : [0, 1, 2, 3, 4, 5, 6];
             const cleanDesc = (promo.description || '').replace(/\s*<!--days:[0-9,]+-->/g, '').trim();
             const descWithTag = encodeDaysInDescription(cleanDesc, daysToEncode);
             const fallback = { ...payload, description: descWithTag };
             delete fallback.available_days;
+            delete fallback.max_item_selections;
             const { error: err2 } = await supabase.from('featured_promos').update(fallback).eq('id', id).eq('restaurant_id', restaurantId);
             handleSupabaseError({ error: err2, customMessage: 'Failed to update featured promo' });
             return;
