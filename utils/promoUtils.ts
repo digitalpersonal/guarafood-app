@@ -208,6 +208,7 @@ export const encodePromoMetadata = (
         upsellDescription?: string;
         upsellPrice?: number;
         upsellOptions?: string[];
+        upsellMaxSelections?: number;
         availableStartTime?: string;
         availableEndTime?: string;
         availableDays?: number[];
@@ -224,6 +225,7 @@ export const encodePromoMetadata = (
     if (meta.upsellDescription) cleanMeta.ud = meta.upsellDescription;
     if (meta.upsellPrice !== undefined && meta.upsellPrice !== null) cleanMeta.up = meta.upsellPrice;
     if (meta.upsellOptions && meta.upsellOptions.length > 0) cleanMeta.uo = meta.upsellOptions;
+    if (meta.upsellMaxSelections !== undefined && meta.upsellMaxSelections !== null) cleanMeta.um = meta.upsellMaxSelections;
     if (meta.availableStartTime) cleanMeta.st = meta.availableStartTime;
     if (meta.availableEndTime) cleanMeta.et = meta.availableEndTime;
 
@@ -248,6 +250,7 @@ export const decodePromoMetadata = (description: string = ''): {
     upsellDescription?: string;
     upsellPrice?: number;
     upsellOptions?: string[];
+    upsellMaxSelections?: number;
     availableStartTime?: string;
     availableEndTime?: string;
     availableDays?: number[];
@@ -258,6 +261,7 @@ export const decodePromoMetadata = (description: string = ''): {
     let upsellDescription: string | undefined = undefined;
     let upsellPrice: number | undefined = undefined;
     let upsellOptions: string[] | undefined = undefined;
+    let upsellMaxSelections: number | undefined = undefined;
     let availableStartTime: string | undefined = undefined;
     let availableEndTime: string | undefined = undefined;
 
@@ -270,6 +274,7 @@ export const decodePromoMetadata = (description: string = ''): {
             if (parsed.ud) upsellDescription = parsed.ud;
             if (parsed.up !== undefined) upsellPrice = Number(parsed.up);
             if (Array.isArray(parsed.uo)) upsellOptions = parsed.uo;
+            if (parsed.um !== undefined) upsellMaxSelections = Number(parsed.um);
             if (parsed.st) availableStartTime = parsed.st;
             if (parsed.et) availableEndTime = parsed.et;
         } catch {}
@@ -285,6 +290,7 @@ export const decodePromoMetadata = (description: string = ''): {
         upsellDescription,
         upsellPrice,
         upsellOptions,
+        upsellMaxSelections,
         availableStartTime,
         availableEndTime,
         availableDays

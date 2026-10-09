@@ -273,14 +273,25 @@ const normalizePromotion = (data: any): Promotion => {
 
     const discountType = decoded.type || data.discount_type || 'PERCENTAGE';
 
+    let categoryIds = data.category_ids || [];
+    let itemIds = data.item_ids || [];
+    let comboIds = data.combo_ids || [];
+
+    if ((!categoryIds || categoryIds.length === 0) && (!itemIds || itemIds.length === 0) && (!comboIds || comboIds.length === 0) && data.target_type && Array.isArray(data.target_ids)) {
+        const parsedIds = data.target_ids.map((id: any) => Number(id)).filter((n: number) => !isNaN(n));
+        if (data.target_type === 'CATEGORY') categoryIds = parsedIds;
+        else if (data.target_type === 'ITEM') itemIds = parsedIds;
+        else if (data.target_type === 'COMBO') comboIds = parsedIds;
+    }
+
     return {
         ...data,
         description,
         discountType,
         discountValue: Number(data.discount_value || 0),
-        itemIds: data.item_ids || [],
-        comboIds: data.combo_ids || [],
-        categoryIds: data.category_ids || [],
+        itemIds,
+        comboIds,
+        categoryIds,
         startDate: data.start_date,
         endDate: data.end_date,
         restaurantId: data.restaurant_id,
@@ -290,7 +301,8 @@ const normalizePromotion = (data: any): Promotion => {
         upsellTitle: decoded.upsellTitle || data.upsell_title,
         upsellDescription: decoded.upsellDescription || data.upsell_description,
         upsellPrice: decoded.upsellPrice !== undefined ? decoded.upsellPrice : (data.upsell_price ? Number(data.upsell_price) : undefined),
-        upsellOptions: decoded.upsellOptions || data.upsell_options
+        upsellOptions: decoded.upsellOptions || data.upsell_options,
+        upsellMaxSelections: decoded.upsellMaxSelections !== undefined ? Number(decoded.upsellMaxSelections) : (data.upsell_max_selections ? Number(data.upsell_max_selections) : 1)
     };
 };
 
@@ -905,32 +917,79 @@ export const createPromotion = async (restaurantId: number, promo: any): Promise
         upsellDescription: promo.upsellDescription,
         upsellPrice: promo.upsellPrice,
         upsellOptions: promo.upsellOptions,
+        upsellMaxSelections: promo.upsellMaxSelections,
         availableStartTime: promo.availableStartTime,
         availableEndTime: promo.availableEndTime,
         availableDays: days
     });
 
     const isUpsell = promo.discountType === 'UPSELL';
+
+    // Postgres enum promotion_target requires 'CATEGORY' | 'ITEM' | 'COMBO'
+    let targetType: 'CATEGORY' | 'ITEM' | 'COMBO' = 'CATEGORY';
+    let targetIds: string[] = [];
+
+    if (promo.categoryIds && promo.categoryIds.length > 0) {
+        targetType = 'CATEGORY';
+        targetIds = promo.categoryIds.map((id: any) => String(id));
+    } else if (promo.itemIds && promo.itemIds.length > 0) {
+        targetType = 'ITEM';
+        targetIds = promo.itemIds.map((id: any) => String(id));
+    } else if (promo.comboIds && promo.comboIds.length > 0) {
+        targetType = 'COMBO';
+        targetIds = promo.comboIds.map((id: any) => String(id));
+    } else {
+        targetType = 'CATEGORY';
+        targetIds = [];
+    }
+
     const payload: any = { 
         restaurant_id: restaurantId, 
         name: promo.name, 
         description: encodedDesc, 
         discount_type: isUpsell ? 'FIXED' : promo.discountType, 
         discount_value: isUpsell ? (Number(promo.upsellPrice) || 0) : Number(promo.discountValue || 0), 
-        item_ids: promo.itemIds, 
-        combo_ids: promo.comboIds, 
-        category_ids: promo.categoryIds, 
+        target_type: targetType,
+        target_ids: targetIds,
+        item_ids: promo.itemIds || [], 
+        combo_ids: promo.comboIds || [], 
+        category_ids: promo.categoryIds || [], 
         start_date: promo.startDate, 
         end_date: promo.endDate,
-        available_days: days
+        available_days: days,
+        available_start_time: promo.availableStartTime || null,
+        available_end_time: promo.availableEndTime || null,
+        upsell_title: isUpsell ? (promo.upsellTitle || null) : null,
+        upsell_description: isUpsell ? (promo.upsellDescription || null) : null,
+        upsell_price: isUpsell ? (Number(promo.upsellPrice) || null) : null,
+        upsell_options: isUpsell && promo.upsellOptions ? promo.upsellOptions : null,
+        upsell_max_selections: isUpsell ? (Number(promo.upsellMaxSelections) || 1) : 1
     };
+
     const { error } = await supabase.from('promotions').insert(payload);
     if (error) {
-        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days')) {
-            const fallback = { ...payload, description: encodedDesc };
+        // Fallback for older database schemas where optional columns might not exist
+        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days') || error.message?.includes('upsell_')) {
+            const fallback = { ...payload };
             delete fallback.available_days;
+            delete fallback.available_start_time;
+            delete fallback.available_end_time;
+            delete fallback.upsell_title;
+            delete fallback.upsell_description;
+            delete fallback.upsell_price;
+            delete fallback.upsell_options;
             const { error: err2 } = await supabase.from('promotions').insert(fallback);
-            handleSupabaseError({ error: err2, customMessage: 'Failed to create promotion' });
+            if (err2) {
+                if (err2.code === 'PGRST204' || err2.code === '42703') {
+                    delete fallback.target_type;
+                    delete fallback.target_ids;
+                    const { error: err3 } = await supabase.from('promotions').insert(fallback);
+                    handleSupabaseError({ error: err3, customMessage: 'Failed to create promotion' });
+                    return;
+                }
+                handleSupabaseError({ error: err2, customMessage: 'Failed to create promotion' });
+                return;
+            }
             return;
         }
         handleSupabaseError({ error, customMessage: 'Failed to create promotion' });
@@ -945,31 +1004,76 @@ export const updatePromotion = async (restaurantId: number, id: number, promo: a
         upsellDescription: promo.upsellDescription,
         upsellPrice: promo.upsellPrice,
         upsellOptions: promo.upsellOptions,
+        upsellMaxSelections: promo.upsellMaxSelections,
         availableStartTime: promo.availableStartTime,
         availableEndTime: promo.availableEndTime,
         availableDays: days
     });
 
     const isUpsell = promo.discountType === 'UPSELL';
+
+    let targetType: 'CATEGORY' | 'ITEM' | 'COMBO' = 'CATEGORY';
+    let targetIds: string[] = [];
+
+    if (promo.categoryIds && promo.categoryIds.length > 0) {
+        targetType = 'CATEGORY';
+        targetIds = promo.categoryIds.map((cid: any) => String(cid));
+    } else if (promo.itemIds && promo.itemIds.length > 0) {
+        targetType = 'ITEM';
+        targetIds = promo.itemIds.map((iid: any) => String(iid));
+    } else if (promo.comboIds && promo.comboIds.length > 0) {
+        targetType = 'COMBO';
+        targetIds = promo.comboIds.map((cid: any) => String(cid));
+    } else {
+        targetType = 'CATEGORY';
+        targetIds = [];
+    }
+
     const payload: any = { 
         name: promo.name, 
         description: encodedDesc, 
         discount_type: isUpsell ? 'FIXED' : promo.discountType, 
         discount_value: isUpsell ? (Number(promo.upsellPrice) || 0) : Number(promo.discountValue || 0), 
-        item_ids: promo.itemIds, 
-        combo_ids: promo.comboIds, 
-        category_ids: promo.categoryIds, 
+        target_type: targetType,
+        target_ids: targetIds,
+        item_ids: promo.itemIds || [], 
+        combo_ids: promo.comboIds || [], 
+        category_ids: promo.categoryIds || [], 
         start_date: promo.startDate, 
         end_date: promo.endDate,
-        available_days: days
+        available_days: days,
+        available_start_time: promo.availableStartTime || null,
+        available_end_time: promo.availableEndTime || null,
+        upsell_title: isUpsell ? (promo.upsellTitle || null) : null,
+        upsell_description: isUpsell ? (promo.upsellDescription || null) : null,
+        upsell_price: isUpsell ? (Number(promo.upsellPrice) || null) : null,
+        upsell_options: isUpsell && promo.upsellOptions ? promo.upsellOptions : null,
+        upsell_max_selections: isUpsell ? (Number(promo.upsellMaxSelections) || 1) : 1
     };
+
     const { error = null } = await supabase.from('promotions').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
     if (error) {
-        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days')) {
-            const fallback = { ...payload, description: encodedDesc };
+        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days') || error.message?.includes('upsell_')) {
+            const fallback = { ...payload };
             delete fallback.available_days;
+            delete fallback.available_start_time;
+            delete fallback.available_end_time;
+            delete fallback.upsell_title;
+            delete fallback.upsell_description;
+            delete fallback.upsell_price;
+            delete fallback.upsell_options;
             const { error: err2 } = await supabase.from('promotions').update(fallback).eq('id', id).eq('restaurant_id', restaurantId);
-            handleSupabaseError({ error: err2, customMessage: 'Failed to update promotion' });
+            if (err2) {
+                if (err2.code === 'PGRST204' || err2.code === '42703') {
+                    delete fallback.target_type;
+                    delete fallback.target_ids;
+                    const { error: err3 } = await supabase.from('promotions').update(fallback).eq('id', id).eq('restaurant_id', restaurantId);
+                    handleSupabaseError({ error: err3, customMessage: 'Failed to update promotion' });
+                    return;
+                }
+                handleSupabaseError({ error: err2, customMessage: 'Failed to update promotion' });
+                return;
+            }
             return;
         }
         handleSupabaseError({ error, customMessage: 'Failed to update promotion' });
