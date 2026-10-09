@@ -14,6 +14,7 @@ import MensalistasManager from './MensalistasManager';
 import AdminSalesReport from './AdminSalesReport';
 import PlatformUsersManagement from './PlatformUsersManagement';
 import HelpCenter from './HelpCenter';
+import AdminPromotionsManagement from './AdminPromotionsManagement';
 
 
 // Re-usable Icons
@@ -40,7 +41,8 @@ import { fetchRestaurantsSecure, deleteRestaurant } from '../services/databaseSe
 const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { currentUser, logout } = useAuth();
     const { addToast } = useNotification();
-    const [activeTab, setActiveTab] = useState<'restaurants' | 'sales' | 'categories' | 'marketing' | 'ads' | 'customers' | 'settings' | 'help' | 'mensalistas' | 'users'>('restaurants');
+    const [activeTab, setActiveTab] = useState<'restaurants' | 'promotions' | 'sales' | 'categories' | 'marketing' | 'ads' | 'customers' | 'settings' | 'help' | 'mensalistas' | 'users'>('restaurants');
+    const [selectedPromoRestaurantId, setSelectedPromoRestaurantId] = useState<number | null>(null);
     const [editingMenuRestaurantId, setEditingMenuRestaurantId] = useState<number | null>(null);
     const [editingSettingsRestaurantId, setEditingSettingsRestaurantId] = useState<number | null>(null);
 
@@ -129,8 +131,14 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     <RestaurantManagement 
                         onEditMenu={(restaurant) => setEditingMenuRestaurantId(restaurant.id)} 
                         onEditSettings={(restaurant) => setEditingSettingsRestaurantId(restaurant.id)}
+                        onManagePromotions={(restaurant) => {
+                            setSelectedPromoRestaurantId(restaurant.id);
+                            setActiveTab('promotions');
+                        }}
                     />
                 );
+            case 'promotions':
+                return <AdminPromotionsManagement initialRestaurantId={selectedPromoRestaurantId} />;
             case 'sales':
                 if (currentUser && currentUser.canAccessFinancial === false) {
                     return (
@@ -194,6 +202,13 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <nav className="p-4 border-b bg-gray-50 sticky top-[89px] z-10">
                 <div className="flex space-x-2 rounded-lg bg-gray-200 p-1 overflow-x-auto no-scrollbar">
                     <button onClick={() => setActiveTab('restaurants')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'restaurants' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Restaurantes</button>
+                    <button 
+                        onClick={() => { setSelectedPromoRestaurantId(null); setActiveTab('promotions'); }} 
+                        className={`flex-1 min-w-[110px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all flex items-center justify-center gap-1.5 ${activeTab === 'promotions' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500 hover:text-orange-600'}`}
+                    >
+                        <span>🎁</span>
+                        <span>Promoções</span>
+                    </button>
                     {currentUser?.canAccessFinancial !== false ? (
                         <button onClick={() => setActiveTab('sales')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'sales' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Relatório Vendas</button>
                     ) : (

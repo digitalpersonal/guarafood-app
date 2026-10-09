@@ -5,16 +5,16 @@ interface PromotionalUpsellOfferProps {
     promotion?: Promotion | null;
     selected: boolean;
     onToggle: (selected: boolean) => void;
-    selectedOption: string;
-    onSelectOption: (option: string) => void;
+    selectedOptions: string[];
+    onToggleOption: (option: string) => void;
 }
 
 export const PromotionalUpsellOffer: React.FC<PromotionalUpsellOfferProps> = ({
     promotion,
     selected,
     onToggle,
-    selectedOption,
-    onSelectOption
+    selectedOptions,
+    onToggleOption
 }) => {
     if (!promotion || promotion.discountType !== 'UPSELL' || !promotion.upsellTitle) {
         return null;
@@ -22,6 +22,7 @@ export const PromotionalUpsellOffer: React.FC<PromotionalUpsellOfferProps> = ({
 
     const price = Number(promotion.upsellPrice) || 0;
     const options = promotion.upsellOptions || [];
+    const maxSelections = promotion.upsellMaxSelections || 1;
 
     return (
         <div className={`my-4 p-4 rounded-2xl border-2 transition-all ${
@@ -40,6 +41,11 @@ export const PromotionalUpsellOffer: React.FC<PromotionalUpsellOfferProps> = ({
                             <span className="text-xs font-black text-orange-700">
                                 + R$ {price.toFixed(2)}
                             </span>
+                            {maxSelections > 1 && (
+                                <span className="text-[10px] font-bold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">
+                                    Escolha até {maxSelections}
+                                </span>
+                            )}
                         </div>
                         <h4 className="font-black text-gray-900 text-sm mt-1">
                             {promotion.name || promotion.upsellTitle}
@@ -66,17 +72,27 @@ export const PromotionalUpsellOffer: React.FC<PromotionalUpsellOfferProps> = ({
             {/* Seleção de Sabores / Opções quando a oferta estiver marcada */}
             {selected && options.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-orange-200/70">
-                    <p className="text-xs font-black text-gray-800 uppercase tracking-tight mb-2">
-                        Escolha o sabor / opção desejada:
-                    </p>
+                    <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-black text-gray-800 uppercase tracking-tight">
+                            {maxSelections > 1 
+                                ? `Escolha até ${maxSelections} opções (${selectedOptions.length}/${maxSelections}):`
+                                : 'Escolha o sabor / opção desejada:'
+                            }
+                        </p>
+                        {maxSelections > 1 && (
+                            <span className={`text-[11px] font-bold ${selectedOptions.length === maxSelections ? 'text-green-600' : 'text-amber-700'}`}>
+                                {selectedOptions.length}/{maxSelections} selecionados
+                            </span>
+                        )}
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {options.map((opt) => {
-                            const isOptSelected = selectedOption === opt;
+                            const isOptSelected = selectedOptions.includes(opt);
                             return (
                                 <button
                                     key={opt}
                                     type="button"
-                                    onClick={() => onSelectOption(opt)}
+                                    onClick={() => onToggleOption(opt)}
                                     className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all text-left flex items-center justify-between cursor-pointer ${
                                         isOptSelected 
                                             ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 

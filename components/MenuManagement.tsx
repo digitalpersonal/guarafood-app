@@ -786,8 +786,53 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
                 </div>
             )}
 
+            {/* --- ATALHOS RÁPIDOS DE NAVEGAÇÃO --- */}
+            <div className="bg-white border-2 border-gray-100 rounded-2xl p-3 flex items-center gap-2 overflow-x-auto no-scrollbar shadow-xs">
+                <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider pl-1 whitespace-nowrap">Ir para:</span>
+                <button
+                    type="button"
+                    onClick={() => document.getElementById('secao-promocoes')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-3.5 py-1.5 bg-orange-100 hover:bg-orange-200 text-orange-800 text-xs font-black rounded-xl transition-all whitespace-nowrap flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95"
+                >
+                    <span>🎁</span>
+                    <span>Promoções ({promotions.length})</span>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => document.getElementById('secao-cardapio')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-3.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold rounded-xl transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer"
+                >
+                    <span>📋</span>
+                    <span>Itens do Cardápio ({allMenuItems.length})</span>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => document.getElementById('secao-combos')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-3.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold rounded-xl transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer"
+                >
+                    <span>🍱</span>
+                    <span>Combos ({allCombos.length})</span>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => document.getElementById('secao-cupons')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-3.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-bold rounded-xl transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer"
+                >
+                    <span>🎟️</span>
+                    <span>Cupons ({coupons.length})</span>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => document.getElementById('secao-frete')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-3.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold rounded-xl transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer"
+                >
+                    <span>🛵</span>
+                    <span>Taxa de Frete</span>
+                </button>
+            </div>
+
             {/* --- TAXA DE ENTREGA / FRETE DO RESTAURANTE --- */}
-            <div className="bg-gradient-to-r from-orange-50 via-white to-amber-50 rounded-2xl border-2 border-orange-200 p-6 shadow-sm space-y-4">
+            <div id="secao-frete" className="bg-gradient-to-r from-orange-50 via-white to-amber-50 rounded-2xl border-2 border-orange-200 p-6 shadow-sm space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-orange-200/60 pb-3">
                     <div className="flex items-center gap-2.5">
                         <span className="text-3xl">🛵</span>
@@ -851,13 +896,14 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             </div>
 
             {/* --- PROMOTIONS --- */}
-            <div className="bg-white rounded-lg shadow-md p-6">
+            <div id="secao-promocoes" className="bg-white rounded-lg shadow-md p-6">
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
                     <div className="flex items-center gap-3">
+                        <span className="text-2xl">🎁</span>
                         <h2 className="text-2xl font-bold text-gray-800">Promoções de Itens</h2>
                     </div>
-                    <button onClick={() => handleOpenPromoModal()} className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 w-full sm:w-auto">
-                        Criar Promoção
+                    <button onClick={() => handleOpenPromoModal()} className="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 w-full sm:w-auto shadow-sm">
+                        Criar Nova Promoção
                     </button>
                 </div>
                  {promotions.length > 0 ? (
@@ -887,7 +933,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             </div>
 
             {/* --- COUPONS --- */}
-            <div className="bg-white rounded-lg shadow-md p-6">
+            <div id="secao-cupons" className="bg-white rounded-lg shadow-md p-6">
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
                     <h2 className="text-2xl font-bold text-gray-800">Cupons de Desconto</h2>
                     <button onClick={() => handleOpenCouponModal()} className="bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-700 w-full sm:w-auto">
@@ -959,7 +1005,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             </div>
 
             {/* --- COMBOS --- */}
-            <div className="bg-white rounded-lg shadow-md p-6">
+            <div id="secao-combos" className="bg-white rounded-lg shadow-md p-6">
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
                     <h2 className="text-2xl font-bold text-gray-800">Combos</h2>
                     {/* The button was moved to the top of the menu items section for better accessibility */}
@@ -1005,7 +1051,7 @@ const MenuManagement: React.FC<{ restaurantId?: number, onBack?: () => void }> =
             </div>
 
             {/* --- MENU ITEMS & CATEGORIES --- */}
-            <div>
+            <div id="secao-cardapio">
                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
                     <h2 className="text-2xl font-bold text-gray-800">Itens do Cardápio</h2>
                     <div className="flex flex-col sm:flex-row gap-2">

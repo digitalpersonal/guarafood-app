@@ -59,11 +59,12 @@ const ArrowPathIcon: React.FC<{ className?: string }> = ({ className }) => (
 interface RestaurantManagementProps {
     onEditMenu: (restaurant: Restaurant) => void;
     onEditSettings: (restaurant: Restaurant) => void;
+    onManagePromotions?: (restaurant: Restaurant) => void;
 }
 
 type TabType = 'active' | 'inactive' | 'all';
 
-const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu, onEditSettings }) => {
+const RestaurantManagement: React.FC<RestaurantManagementProps> = ({ onEditMenu, onEditSettings, onManagePromotions }) => {
     const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -480,6 +481,16 @@ COMMIT;
                                                 >
                                                     <MenuBookIcon className="w-4 h-4"/>
                                                 </button>
+
+                                                {onManagePromotions && (
+                                                    <button 
+                                                        onClick={() => onManagePromotions(restaurant)} 
+                                                        className="p-1.5 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors font-bold text-xs" 
+                                                        title="Gerenciar Promoções do Restaurante (Compre e Leve, Descontos)"
+                                                    >
+                                                        🎁
+                                                    </button>
+                                                )}
 
                                                 <button 
                                                     onClick={() => onEditSettings(restaurant)} 

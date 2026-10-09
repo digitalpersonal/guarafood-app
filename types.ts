@@ -232,6 +232,7 @@ export interface Promotion {
   upsellDescription?: string; // ex: "Com leite ninho e leite condensado"
   upsellPrice?: number; // ex: 14.99 ou 9.99
   upsellOptions?: string[]; // ex: ["Prestígio", "Brigadeiro"]
+  upsellMaxSelections?: number; // ex: 1, 2, 6 (Quantidade máxima de escolhas permitidas)
 }
 
 export interface FeaturedPromo {

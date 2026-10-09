@@ -25,7 +25,7 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
     const [selectedOptions, setSelectedOptions] = useState<{ [groupId: string]: string[] }>({});
     const [notes, setNotes] = useState('');
     const [upsellSelected, setUpsellSelected] = useState(false);
-    const [selectedUpsellOption, setSelectedUpsellOption] = useState<string>('');
+    const [selectedUpsellOptions, setSelectedUpsellOptions] = useState<string[]>([]);
 
     const [isAdding, setIsAdding] = useState(false);
 
@@ -48,8 +48,25 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
         setNotes('');
         setIsAdding(false);
         setUpsellSelected(false);
-        setSelectedUpsellOption(initialItem.activePromotion?.upsellOptions?.[0] || '');
+        setSelectedUpsellOptions(initialItem.activePromotion?.upsellOptions?.[0] ? [initialItem.activePromotion.upsellOptions[0]] : []);
     }, [initialItem, isOpen]);
+
+    const handleUpsellOptionToggle = (opt: string) => {
+        const max = initialItem.activePromotion?.upsellMaxSelections || 1;
+        setSelectedUpsellOptions(prev => {
+            if (prev.includes(opt)) {
+                return prev.filter(o => o !== opt);
+            } else {
+                if (max === 1) {
+                    return [opt];
+                }
+                if (prev.length >= max) {
+                    return prev;
+                }
+                return [...prev, opt];
+            }
+        });
+    };
 
     const availableAddons = useMemo(() => {
         return allAddons.filter(addon => initialItem.availableAddonIds?.includes(addon.id));
@@ -142,6 +159,14 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
             });
         });
 
+        if (upsellSelected && initialItem.activePromotion?.discountType === 'UPSELL') {
+            cartSelectedOptions.push({
+                groupTitle: `🎁 ${initialItem.activePromotion.upsellTitle || 'Oferta'}`,
+                optionName: selectedUpsellOptions.join(', '),
+                price: Number(initialItem.activePromotion.upsellPrice) || 0
+            });
+        }
+
         const topAddons = selectedAddons.slice(0, 2).map(a => a.name).join(', ');
         const remainingCount = selectedAddons.length - 2;
         const name = `${initialItem.name}${selectedAddons.length > 0 ? ` (com ${topAddons}` : ''}${remainingCount > 0 ? ` e mais ${remainingCount}` : ''}${selectedAddons.length > 0 ? ')' : ''}`;
@@ -184,6 +209,14 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
                 </div>
 
                 <div className="overflow-y-auto p-4 space-y-4">
+                    <PromotionalUpsellOffer
+                        promotion={initialItem.activePromotion}
+                        selected={upsellSelected}
+                        onToggle={setUpsellSelected}
+                        selectedOptions={selectedUpsellOptions}
+                        onToggleOption={handleUpsellOptionToggle}
+                    />
+
                     {initialItem.sizes && initialItem.sizes.length > 0 && (
                         <div>
                             <h3 className="font-bold mb-2">1. Escolha o Tamanho</h3>

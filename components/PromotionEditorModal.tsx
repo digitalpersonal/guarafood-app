@@ -27,6 +27,7 @@ const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOpen, onC
     const [upsellDescription, setUpsellDescription] = useState('');
     const [upsellPrice, setUpsellPrice] = useState('');
     const [upsellOptionsStr, setUpsellOptionsStr] = useState('');
+    const [upsellMaxSelections, setUpsellMaxSelections] = useState('1');
     
     // Multi-select states
     const [itemIds, setItemIds] = useState<Set<number>>(new Set());
@@ -52,6 +53,7 @@ const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOpen, onC
             setUpsellDescription(existingPromotion.upsellDescription || '');
             setUpsellPrice(existingPromotion.upsellPrice != null ? existingPromotion.upsellPrice.toString() : '');
             setUpsellOptionsStr((existingPromotion.upsellOptions || []).join(', '));
+            setUpsellMaxSelections(existingPromotion.upsellMaxSelections != null ? existingPromotion.upsellMaxSelections.toString() : '1');
             setItemIds(new Set(existingPromotion.itemIds || []));
             setComboIds(new Set(existingPromotion.comboIds || []));
             setCategoryIds(new Set(existingPromotion.categoryIds || []));
@@ -69,6 +71,7 @@ const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOpen, onC
             setUpsellDescription('');
             setUpsellPrice('');
             setUpsellOptionsStr('');
+            setUpsellMaxSelections('1');
             setItemIds(new Set());
             setComboIds(new Set());
             setCategoryIds(new Set());
@@ -142,7 +145,8 @@ const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOpen, onC
             upsellTitle: discountType === 'UPSELL' ? upsellTitle : undefined,
             upsellDescription: discountType === 'UPSELL' ? upsellDescription : undefined,
             upsellPrice: discountType === 'UPSELL' ? numericDiscount : undefined,
-            upsellOptions: discountType === 'UPSELL' && parsedOptions.length > 0 ? parsedOptions : undefined
+            upsellOptions: discountType === 'UPSELL' && parsedOptions.length > 0 ? parsedOptions : undefined,
+            upsellMaxSelections: discountType === 'UPSELL' ? (parseInt(upsellMaxSelections) || 1) : undefined
         });
     };
 
@@ -278,6 +282,21 @@ const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOpen, onC
                                         className="w-full p-2.5 border border-amber-300 rounded-lg bg-white text-sm"
                                     />
                                     <p className="text-[10px] text-gray-500 mt-1">O cliente poderá escolher entre esses sabores ao aceitar a promoção.</p>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                                        Quantidade de Escolhas Permitidas (Ex: 1 para 1 sabor, 2 para 2 pizzas, 6 para esfihas)
+                                    </label>
+                                    <input 
+                                        type="number" 
+                                        min="1" 
+                                        placeholder="Ex: 1, 2 ou 6" 
+                                        value={upsellMaxSelections} 
+                                        onChange={e => setUpsellMaxSelections(e.target.value)} 
+                                        className="w-full p-2.5 border border-amber-300 rounded-lg bg-white font-mono font-bold text-sm"
+                                    />
+                                    <p className="text-[10px] text-gray-500 mt-1">Quantos itens/sabores o cliente pode selecionar nesta promoção (padrão: 1).</p>
                                 </div>
 
                                 <div>

@@ -30,7 +30,7 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
     const [showSecondHalfSelector, setShowSecondHalfSelector] = useState(false);
     const [notes, setNotes] = useState('');
     const [upsellSelected, setUpsellSelected] = useState(false);
-    const [selectedUpsellOption, setSelectedUpsellOption] = useState<string>('');
+    const [selectedUpsellOptions, setSelectedUpsellOptions] = useState<string[]>([]);
 
     const [isAdding, setIsAdding] = useState(false);
 
@@ -55,8 +55,25 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
         setNotes('');
         setIsAdding(false);
         setUpsellSelected(false);
-        setSelectedUpsellOption(initialPizza.activePromotion?.upsellOptions?.[0] || '');
+        setSelectedUpsellOptions(initialPizza.activePromotion?.upsellOptions?.[0] ? [initialPizza.activePromotion.upsellOptions[0]] : []);
     }, [initialPizza, isOpen]);
+
+    const handleUpsellOptionToggle = (opt: string) => {
+        const max = initialPizza.activePromotion?.upsellMaxSelections || 1;
+        setSelectedUpsellOptions(prev => {
+            if (prev.includes(opt)) {
+                return prev.filter(o => o !== opt);
+            } else {
+                if (max === 1) {
+                    return [opt];
+                }
+                if (prev.length >= max) {
+                    return prev;
+                }
+                return [...prev, opt];
+            }
+        });
+    };
 
     const allowsMultipleFlavors = useMemo(() => {
         if (!selectedSize) return true;
@@ -113,11 +130,15 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
             });
         });
 
+        const upsellAdd = (upsellSelected && initialPizza.activePromotion?.discountType === 'UPSELL') 
+            ? Number(initialPizza.activePromotion.upsellPrice) || 0 
+            : 0;
+
         return { 
             basePrice: pizzaPrice, 
-            totalPrice: pizzaPrice + addonsPrice + optionsPrice
+            totalPrice: pizzaPrice + addonsPrice + optionsPrice + upsellAdd
         };
-    }, [firstHalf, secondHalf, selectedAddonIds, allAddons, selectedSize, selectedOptions, initialPizza.optionGroups]);
+    }, [firstHalf, secondHalf, selectedAddonIds, allAddons, selectedSize, selectedOptions, initialPizza.optionGroups, upsellSelected, initialPizza.activePromotion]);
     
     const handleAddonToggle = (addonId: number) => {
         setSelectedAddonIds(prev => {
@@ -236,8 +257,8 @@ const PizzaCustomizationModal: React.FC<PizzaCustomizationModalProps> = ({
                         promotion={initialPizza.activePromotion}
                         selected={upsellSelected}
                         onToggle={setUpsellSelected}
-                        selectedOption={selectedUpsellOption}
-                        onSelectOption={setSelectedUpsellOption}
+                        selectedOptions={selectedUpsellOptions}
+                        onToggleOption={handleUpsellOptionToggle}
                     />
 
                     {initialPizza.sizes && initialPizza.sizes.length > 0 && (
