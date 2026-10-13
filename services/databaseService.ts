@@ -1231,7 +1231,8 @@ const normalizeFeaturedPromo = (data: any): FeaturedPromo => {
         includeFreeDelivery: data.include_free_delivery === true,
         active: data.active !== false,
         availableDays: Array.isArray(availableDays) && availableDays.length > 0 ? availableDays : [0, 1, 2, 3, 4, 5, 6],
-        maxItemSelections: data.max_item_selections ? Number(data.max_item_selections) : 1
+        maxItemSelections: data.max_item_selections ? Number(data.max_item_selections) : 1,
+        optionGroups: data.option_groups || data.optionGroups || null
     };
 };
 
@@ -1265,15 +1266,17 @@ export const createFeaturedPromo = async (restaurantId: number, promo: Omit<Feat
         include_free_delivery: promo.includeFreeDelivery,
         active: promo.active,
         available_days: days,
-        max_item_selections: promo.maxItemSelections || 1
+        max_item_selections: promo.maxItemSelections || 1,
+        option_groups: promo.optionGroups && promo.optionGroups.length > 0 ? promo.optionGroups : null
     };
     const { error } = await supabase.from('featured_promos').insert(payload);
     if (error) {
-        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days') || error.message?.includes('max_item_selections')) {
+        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days') || error.message?.includes('max_item_selections') || error.message?.includes('option_groups')) {
             const descWithTag = encodeDaysInDescription(promo.description, days);
             const fallback = { ...payload, description: descWithTag };
             delete fallback.available_days;
             delete fallback.max_item_selections;
+            delete fallback.option_groups;
             const { error: err2 } = await supabase.from('featured_promos').insert(fallback);
             handleSupabaseError({ error: err2, customMessage: 'Failed to create featured promo' });
             return;
@@ -1292,6 +1295,7 @@ export const updateFeaturedPromo = async (restaurantId: number, id: number, prom
     if (promo.includeFreeDelivery !== undefined) payload.include_free_delivery = promo.includeFreeDelivery;
     if (promo.active !== undefined) payload.active = promo.active;
     if (promo.maxItemSelections !== undefined) payload.max_item_selections = promo.maxItemSelections;
+    if (promo.optionGroups !== undefined) payload.option_groups = promo.optionGroups && promo.optionGroups.length > 0 ? promo.optionGroups : null;
 
     let days = promo.availableDays;
     if (days !== undefined) {
@@ -1303,13 +1307,14 @@ export const updateFeaturedPromo = async (restaurantId: number, id: number, prom
 
     const { error } = await supabase.from('featured_promos').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
     if (error) {
-        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days') || error.message?.includes('max_item_selections')) {
+        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days') || error.message?.includes('max_item_selections') || error.message?.includes('option_groups')) {
             const daysToEncode = days && days.length > 0 ? days : [0, 1, 2, 3, 4, 5, 6];
             const cleanDesc = (promo.description || '').replace(/\s*<!--days:[0-9,]+-->/g, '').trim();
             const descWithTag = encodeDaysInDescription(cleanDesc, daysToEncode);
             const fallback = { ...payload, description: descWithTag };
             delete fallback.available_days;
             delete fallback.max_item_selections;
+            delete fallback.option_groups;
             const { error: err2 } = await supabase.from('featured_promos').update(fallback).eq('id', id).eq('restaurant_id', restaurantId);
             handleSupabaseError({ error: err2, customMessage: 'Failed to update featured promo' });
             return;
