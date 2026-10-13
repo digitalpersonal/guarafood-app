@@ -137,19 +137,16 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
             }
         }
 
-        if (selectedItem) {
+        // Se a promoção já tem option_groups próprios explicitamente configurados, usamos a configuração da promoção
+        // e NÃO duplicamos com optionGroups dos itens originais (a menos que a promoção não tenha nenhum grupo configurado).
+        if (groups.length === 0 && selectedItem) {
             const raw = (selectedItem as any).optionGroups || (selectedItem as any).option_groups;
             if (raw) {
                 try {
                     const itemGroups = Array.isArray(raw)
                         ? raw
                         : (typeof raw === 'string' ? JSON.parse(raw) : []);
-                    // Append item option groups if not already present by title
-                    itemGroups.forEach((ig: OptionGroup) => {
-                        if (!groups.some(g => g.title.toLowerCase() === ig.title.toLowerCase())) {
-                            groups.push(ig);
-                        }
-                    });
+                    groups = [...itemGroups];
                 } catch (e) {
                     console.error("Error parsing optionGroups in promo modal:", e);
                 }
@@ -173,6 +170,18 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
                     }
                 } catch {}
             }
+        }
+
+        // Se a promoção for de apenas 1 pizza (maxSelections === 1), garanta que nunca apareça "Borda da 2ª Pizza"
+        if (maxSelections === 1) {
+            groups = groups.filter(g => !g.title.toLowerCase().includes('2ª pizza') && !g.title.toLowerCase().includes('segunda pizza'));
+            // E se houver apenas 1 borda restante chamada "Borda da 1ª Pizza", renomear para "Borda da Pizza"
+            groups = groups.map(g => {
+                if (g.title.toLowerCase().includes('borda da 1ª pizza') || g.title.toLowerCase().includes('borda da 1a pizza')) {
+                    return { ...g, title: 'Borda Recheada da Pizza' };
+                }
+                return g;
+            });
         }
 
         return groups;
@@ -230,12 +239,13 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
 
     // Available Addons for sandwiches/burgers/selected items
     const availableAddons = useMemo(() => {
-        if (!selectedItem) return [];
+        if (!selectedItem || !promo) return [];
         const itemAddonIds = selectedItem.availableAddonIds || (selectedItem as any).available_addon_ids || [];
         if (Array.isArray(itemAddonIds) && itemAddonIds.length > 0) {
             return allAddons.filter(a => itemAddonIds.includes(Number(a.id)));
         }
         // Se o item for da categoria Lanche/Sanduíche/Hambúrguer ou se o restaurante tiver adicionais cadastrados
+        const promoTitleLower = promo.title ? promo.title.toLowerCase() : '';
         const isSandwichOrBurger = selectedItem.name?.toLowerCase().includes('x-') ||
             selectedItem.name?.toLowerCase().includes('lanche') ||
             selectedItem.name?.toLowerCase().includes('sanduíche') ||
@@ -243,16 +253,16 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
             selectedItem.name?.toLowerCase().includes('hambúrguer') ||
             selectedItem.name?.toLowerCase().includes('hamburguer') ||
             selectedItem.name?.toLowerCase().includes('burger') ||
-            promo.title?.toLowerCase().includes('x-') ||
-            promo.title?.toLowerCase().includes('lanche') ||
-            promo.title?.toLowerCase().includes('sanduíche') ||
-            promo.title?.toLowerCase().includes('burger');
+            promoTitleLower.includes('x-') ||
+            promoTitleLower.includes('lanche') ||
+            promoTitleLower.includes('sanduíche') ||
+            promoTitleLower.includes('burger');
 
         if (isSandwichOrBurger) {
             return allAddons;
         }
         return [];
-    }, [selectedItem, allAddons, promo.title]);
+    }, [selectedItem, allAddons, promo?.title]);
 
     const handleAddonToggle = (addonId: number) => {
         setSelectedAddonIds(prev => {
