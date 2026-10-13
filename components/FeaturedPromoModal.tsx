@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import type { FeaturedPromo, MenuItem, MenuCategory, Restaurant, CartItem, OptionGroup, SizeOption } from '../types';
-import { fetchMenuForRestaurant } from '../services/databaseService';
+import type { FeaturedPromo, MenuItem, MenuCategory, Restaurant, CartItem, OptionGroup, SizeOption, Addon } from '../types';
+import { fetchMenuForRestaurant, fetchAddonsForRestaurant } from '../services/databaseService';
 import { useCart } from '../hooks/useCart';
 import { useNotification } from '../hooks/useNotification';
 import { formatPromoDays } from '../utils/promoUtils';
@@ -15,8 +15,10 @@ interface FeaturedPromoModalProps {
 
 export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, onClose, promo, restaurant }) => {
     const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([]);
+    const [allAddons, setAllAddons] = useState<Addon[]>([]);
     const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
-    const [selectedOptions, setSelectedOptions] = useState<{ [groupId: string]: string[] }>({});
+    const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
+    const [selectedOptions, setSelectedOptions] = useState<{ [groupId: string]: string[] | { [optName: string]: number } }>({});
     const [selectedSize, setSelectedSize] = useState<SizeOption | null>(null);
     const [notes, setNotes] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -27,9 +29,14 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
         if (isOpen && promo && restaurant) {
             setIsLoading(true);
             setNotes('');
-            fetchMenuForRestaurant(restaurant.id)
-                .then(cats => {
+            setSelectedAddonIds(new Set());
+            Promise.all([
+                fetchMenuForRestaurant(restaurant.id),
+                fetchAddonsForRestaurant(restaurant.id)
+            ])
+                .then(([cats, addons]) => {
                     setMenuCategories(cats);
+                    setAllAddons(addons || []);
                     const max = promo.maxItemSelections || 1;
                     if (promo.itemIds && promo.itemIds.length > 0) {
                         const numericIds = promo.itemIds.map(Number);
@@ -38,7 +45,7 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
                         setSelectedItemIds([]);
                     }
                 })
-                .catch(err => console.error("Error loading menu for promo modal:", err))
+                .catch(err => console.error("Error loading menu/addons for promo modal:", err))
                 .finally(() => setIsLoading(false));
         }
     }, [isOpen, promo, restaurant]);
@@ -221,6 +228,50 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
         }
     }, [selectedItemIds, selectedItem?.id, currentOptionGroups, currentSizes]);
 
+    // Available Addons for sandwiches/burgers/selected items
+    const availableAddons = useMemo(() => {
+        if (!selectedItem) return [];
+        const itemAddonIds = selectedItem.availableAddonIds || (selectedItem as any).available_addon_ids || [];
+        if (Array.isArray(itemAddonIds) && itemAddonIds.length > 0) {
+            return allAddons.filter(a => itemAddonIds.includes(Number(a.id)));
+        }
+        // Se o item for da categoria Lanche/Sanduíche/Hambúrguer ou se o restaurante tiver adicionais cadastrados
+        const isSandwichOrBurger = selectedItem.name?.toLowerCase().includes('x-') ||
+            selectedItem.name?.toLowerCase().includes('lanche') ||
+            selectedItem.name?.toLowerCase().includes('sanduíche') ||
+            selectedItem.name?.toLowerCase().includes('sanduiche') ||
+            selectedItem.name?.toLowerCase().includes('hambúrguer') ||
+            selectedItem.name?.toLowerCase().includes('hamburguer') ||
+            selectedItem.name?.toLowerCase().includes('burger') ||
+            promo.title?.toLowerCase().includes('x-') ||
+            promo.title?.toLowerCase().includes('lanche') ||
+            promo.title?.toLowerCase().includes('sanduíche') ||
+            promo.title?.toLowerCase().includes('burger');
+
+        if (isSandwichOrBurger) {
+            return allAddons;
+        }
+        return [];
+    }, [selectedItem, allAddons, promo.title]);
+
+    const handleAddonToggle = (addonId: number) => {
+        setSelectedAddonIds(prev => {
+            const next = new Set(prev);
+            if (next.has(addonId)) {
+                next.delete(addonId);
+            } else {
+                next.add(addonId);
+            }
+            return next;
+        });
+    };
+
+    const addonsExtraPrice = useMemo(() => {
+        return availableAddons
+            .filter(a => selectedAddonIds.has(Number(a.id)))
+            .reduce((total, addon) => total + Number(addon.price || 0), 0);
+    }, [availableAddons, selectedAddonIds]);
+
     // Calculate additional price from options (hook must be called unconditionally before early returns)
     const optionsExtraPrice = useMemo(() => {
         let total = 0;
@@ -246,8 +297,8 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
                 });
             }
         });
-        return total;
-    }, [currentOptionGroups, selectedOptions]);
+        return total + addonsExtraPrice;
+    }, [currentOptionGroups, selectedOptions, addonsExtraPrice]);
 
     if (!isOpen || !promo) return null;
 
@@ -352,6 +403,16 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
             }
         });
 
+        // Add selected addons to cart options / details
+        const selectedAddonsList = availableAddons.filter(a => selectedAddonIds.has(Number(a.id)));
+        selectedAddonsList.forEach(addon => {
+            cartSelectedOptions.push({
+                groupTitle: 'Adicionais',
+                optionName: addon.name,
+                price: Number(addon.price || 0)
+            });
+        });
+
         const optionsSummary = cartSelectedOptions.map(o => `${o.groupTitle}: ${o.optionName}`).join(' | ');
         const optionKey = cartSelectedOptions.map(o => `${o.groupTitle}:${o.optionName}`).sort().join('-');
 
@@ -382,6 +443,7 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
             promotionName: promo.title,
             includeFreeDelivery: Boolean(promo.includeFreeDelivery),
             selectedOptions: cartSelectedOptions.length > 0 ? cartSelectedOptions : undefined,
+            selectedAddons: selectedAddonsList.length > 0 ? selectedAddonsList : undefined,
             sizeName: selectedSize?.name && selectedSize.name !== 'Único' ? selectedSize.name : undefined,
             notes: formattedNotes || undefined
         };
@@ -650,6 +712,60 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
                         </div>
                     )}
 
+                    {/* SEÇÃO DE ADICIONAIS (Para sanduíches, hambúrgueres e itens com adicionais) */}
+                    {availableAddons.length > 0 && (
+                        <div className="p-4 bg-white rounded-xl shadow-sm border border-gray-200 space-y-3">
+                            <div className="flex justify-between items-center">
+                                <h3 className="font-bold text-sm text-gray-800 flex items-center gap-2">
+                                    <span>🥓 Adicionais e Extras (Opcional)</span>
+                                    <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-0.5 rounded-full font-medium">
+                                        Personalize seu sanduíche / pedido
+                                    </span>
+                                </h3>
+                                {selectedAddonIds.size > 0 && (
+                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 border border-orange-200">
+                                        {selectedAddonIds.size} selecionado{selectedAddonIds.size > 1 ? 's' : ''}
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                                {availableAddons.map(addon => {
+                                    const isChecked = selectedAddonIds.has(Number(addon.id));
+                                    return (
+                                        <label
+                                            key={addon.id}
+                                            className={`flex items-center justify-between p-3 border rounded-xl transition-all cursor-pointer ${
+                                                isChecked
+                                                    ? 'bg-orange-50 border-orange-500 ring-1 ring-orange-400 text-orange-950 font-bold'
+                                                    : 'border-gray-200 hover:bg-gray-50 text-gray-700'
+                                            }`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isChecked}
+                                                    onChange={() => handleAddonToggle(Number(addon.id))}
+                                                    className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                                                />
+                                                <span className="text-sm">{addon.name}</span>
+                                            </div>
+                                            {Number(addon.price) > 0 ? (
+                                                <span className="text-xs font-bold text-gray-600">
+                                                    + R$ {Number(addon.price).toFixed(2)}
+                                                </span>
+                                            ) : (
+                                                <span className="text-xs font-bold text-green-600">
+                                                    Grátis
+                                                </span>
+                                            )}
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Observações */}
                     <div>
                         <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
@@ -659,7 +775,7 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
                             type="text" 
                             value={notes} 
                             onChange={e => setNotes(e.target.value)}
-                            placeholder="Ex: Pouco gelo, caprichar no recheio..."
+                            placeholder="Ex: Sem cebola, caprichar no molho..."
                             className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-gray-50"
                         />
                     </div>

@@ -528,8 +528,25 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
 
                             <div>
                                 <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
-                                    Quantidade de Itens que o Cliente Pode Marcar / Escolher (Ex: 1 para 1 sabor, 2 para 2 pizzas, 6 para esfihas)
+                                    Quantidade de Itens que o Cliente Pode Marcar / Escolher
                                 </label>
+                                <div className="flex flex-wrap items-center gap-2 mb-2">
+                                    <span className="text-xs text-gray-500 font-medium">Atalhos rápidos:</span>
+                                    {[1, 2, 3, 4, 6, 10, 12].map(num => (
+                                        <button
+                                            key={num}
+                                            type="button"
+                                            onClick={() => setCurrentPromo(prev => ({ ...prev, maxItemSelections: num }))}
+                                            className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
+                                                (currentPromo.maxItemSelections || 1) === num
+                                                    ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-200'
+                                            }`}
+                                        >
+                                            {num} {num === 1 ? 'item' : 'itens'} {num === 1 ? '(ex: 1 pizza / 1 lanche)' : num === 2 ? '(ex: 2 pizzas)' : num === 6 ? '(ex: 6 esfihas)' : ''}
+                                        </button>
+                                    ))}
+                                </div>
                                 <input 
                                     type="number"
                                     min="1"
@@ -538,7 +555,9 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
                                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono font-bold"
                                     placeholder="Ex: 1, 2 ou 6"
                                 />
-                                <p className="text-[10px] text-gray-500 mt-1">Quantos produtos/sabores o cliente pode selecionar nesta promoção destaque.</p>
+                                <p className="text-[10px] text-gray-500 mt-1">
+                                    Quantos produtos/sabores o cliente pode selecionar nesta promoção destaque (ex: 1 para 1 sabor de pizza ou lanche, 2 para 2 pizzas na promoção, 6 para combo de 6 esfihas).
+                                </p>
                             </div>
 
                             {/* Products selection */}
@@ -572,22 +591,78 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
                             </div>
 
                             <div className="space-y-3 pt-3 border-t">
-                                <div className="flex justify-between items-center">
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                                     <div>
                                         <label className="block text-xs font-black text-gray-800 uppercase">
                                             ⚙️ Grupos de Variações e Escolhas (Opcional)
                                         </label>
                                         <p className="text-[11px] text-gray-500">
-                                            Ex: Borda da Pizza 1, Borda da Pizza 2, Escolha o Suco, Acompanhamento do Açaí (Único).
+                                            Ex: Borda da Pizza (1 borda se for 1 pizza, ou 2 bordas se forem 2 pizzas), Suco, Açaí.
                                         </p>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={addOptionGroup}
-                                        className="px-3 py-1.5 bg-orange-600 text-white font-bold text-xs rounded-xl hover:bg-orange-700 shadow-sm transition-all flex items-center gap-1 cursor-pointer"
-                                    >
-                                        + Adicionar Grupo
-                                    </button>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const bordaGroup: OptionGroup = {
+                                                    id: crypto.randomUUID(),
+                                                    title: 'Borda Recheada da Pizza',
+                                                    minSelections: 1,
+                                                    maxSelections: 1,
+                                                    options: [
+                                                        { name: 'Sem Borda Recheada', price: 0 },
+                                                        { name: 'Borda de Catupiry', price: 6 },
+                                                        { name: 'Borda de Cheddar', price: 6 },
+                                                        { name: 'Borda de Chocolate', price: 7 }
+                                                    ]
+                                                };
+                                                setCurrentPromo(prev => ({ ...prev, optionGroups: [...(prev.optionGroups || []), bordaGroup] }));
+                                            }}
+                                            className="px-2.5 py-1.5 bg-amber-50 text-amber-800 border border-amber-200 font-bold text-xs rounded-xl hover:bg-amber-100 transition-all flex items-center gap-1 cursor-pointer"
+                                        >
+                                            🍕 + 1 Borda de Pizza
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const borda1: OptionGroup = {
+                                                    id: crypto.randomUUID(),
+                                                    title: 'Borda da 1ª Pizza',
+                                                    minSelections: 1,
+                                                    maxSelections: 1,
+                                                    options: [
+                                                        { name: 'Sem Borda Recheada', price: 0 },
+                                                        { name: 'Borda de Catupiry', price: 6 },
+                                                        { name: 'Borda de Cheddar', price: 6 },
+                                                        { name: 'Borda de Chocolate', price: 7 }
+                                                    ]
+                                                };
+                                                const borda2: OptionGroup = {
+                                                    id: crypto.randomUUID(),
+                                                    title: 'Borda da 2ª Pizza',
+                                                    minSelections: 1,
+                                                    maxSelections: 1,
+                                                    options: [
+                                                        { name: 'Sem Borda Recheada', price: 0 },
+                                                        { name: 'Borda de Catupiry', price: 6 },
+                                                        { name: 'Borda de Cheddar', price: 6 },
+                                                        { name: 'Borda de Chocolate', price: 7 }
+                                                    ]
+                                                };
+                                                setCurrentPromo(prev => ({ ...prev, optionGroups: [...(prev.optionGroups || []), borda1, borda2] }));
+                                            }}
+                                            className="px-2.5 py-1.5 bg-amber-50 text-amber-800 border border-amber-200 font-bold text-xs rounded-xl hover:bg-amber-100 transition-all flex items-center gap-1 cursor-pointer"
+                                        >
+                                            🍕🍕 + 2 Bordas (2 Pizzas)
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={addOptionGroup}
+                                            className="px-3 py-1.5 bg-orange-600 text-white font-bold text-xs rounded-xl hover:bg-orange-700 shadow-sm transition-all flex items-center gap-1 cursor-pointer"
+                                        >
+                                            + Adicionar Grupo Livre
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <div className="space-y-3">
