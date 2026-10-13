@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { FeaturedPromo, MenuItem, MenuCategory } from '../types';
+import type { FeaturedPromo, MenuItem, MenuCategory, OptionGroup } from '../types';
 import { fetchFeaturedPromos, createFeaturedPromo, updateFeaturedPromo, deleteFeaturedPromo, fetchMenuForRestaurant } from '../services/databaseService';
 import { supabase } from '../services/api';
 import { useNotification } from '../hooks/useNotification';
@@ -25,7 +25,9 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
         itemIds: [],
         includeFreeDelivery: false,
         active: true,
-        availableDays: ALL_DAYS
+        availableDays: ALL_DAYS,
+        maxItemSelections: 1,
+        optionGroups: []
     });
     const [isUploading, setIsUploading] = useState(false);
     const { addToast } = useNotification();
@@ -62,7 +64,8 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
             includeFreeDelivery: false,
             active: true,
             availableDays: ALL_DAYS,
-            maxItemSelections: 1
+            maxItemSelections: 1,
+            optionGroups: []
         });
         setIsEditing(true);
     };
@@ -71,9 +74,76 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
         setCurrentPromo({
             ...promo,
             availableDays: promo.availableDays && promo.availableDays.length > 0 ? promo.availableDays : ALL_DAYS,
-            maxItemSelections: promo.maxItemSelections || 1
+            maxItemSelections: promo.maxItemSelections || 1,
+            optionGroups: promo.optionGroups || []
         });
         setIsEditing(true);
+    };
+
+    const addOptionGroup = () => {
+        const newGroup: OptionGroup = {
+            id: crypto.randomUUID(),
+            title: '',
+            minSelections: 0,
+            maxSelections: 1,
+            options: [{ name: '', price: 0 }]
+        };
+        setCurrentPromo(prev => ({
+            ...prev,
+            optionGroups: [...(prev.optionGroups || []), newGroup]
+        }));
+    };
+
+    const removeOptionGroup = (groupId: string) => {
+        setCurrentPromo(prev => ({
+            ...prev,
+            optionGroups: (prev.optionGroups || []).filter(g => g.id !== groupId)
+        }));
+    };
+
+    const updateOptionGroup = (groupId: string, field: string, value: any) => {
+        setCurrentPromo(prev => ({
+            ...prev,
+            optionGroups: (prev.optionGroups || []).map(g => g.id === groupId ? { ...g, [field]: value } : g)
+        }));
+    };
+
+    const addOptionToGroup = (groupId: string) => {
+        setCurrentPromo(prev => ({
+            ...prev,
+            optionGroups: (prev.optionGroups || []).map(g => {
+                if (g.id === groupId) {
+                    return { ...g, options: [...g.options, { name: '', price: 0 }] };
+                }
+                return g;
+            })
+        }));
+    };
+
+    const removeOptionFromGroup = (groupId: string, optionIndex: number) => {
+        setCurrentPromo(prev => ({
+            ...prev,
+            optionGroups: (prev.optionGroups || []).map(g => {
+                if (g.id === groupId) {
+                    return { ...g, options: g.options.filter((_, i) => i !== optionIndex) };
+                }
+                return g;
+            })
+        }));
+    };
+
+    const updateOptionInGroup = (groupId: string, optionIndex: number, field: string, value: any) => {
+        setCurrentPromo(prev => ({
+            ...prev,
+            optionGroups: (prev.optionGroups || []).map(g => {
+                if (g.id === groupId) {
+                    const newOptions = [...g.options];
+                    newOptions[optionIndex] = { ...newOptions[optionIndex], [field]: value };
+                    return { ...g, options: newOptions };
+                }
+                return g;
+            })
+        }));
     };
 
     const handleSave = async (e: React.FormEvent) => {
@@ -498,6 +568,127 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
                                             </label>
                                         );
                                     })}
+                                </div>
+                            </div>
+
+                            <div className="space-y-3 pt-3 border-t">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <label className="block text-xs font-black text-gray-800 uppercase">
+                                            ⚙️ Grupos de Variações e Escolhas (Opcional)
+                                        </label>
+                                        <p className="text-[11px] text-gray-500">
+                                            Ex: Borda da Pizza 1, Borda da Pizza 2, Escolha o Suco, Acompanhamento do Açaí (Único).
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={addOptionGroup}
+                                        className="px-3 py-1.5 bg-orange-600 text-white font-bold text-xs rounded-xl hover:bg-orange-700 shadow-sm transition-all flex items-center gap-1 cursor-pointer"
+                                    >
+                                        + Adicionar Grupo
+                                    </button>
+                                </div>
+
+                                <div className="space-y-3">
+                                    {(currentPromo.optionGroups || []).map((group, gIdx) => (
+                                        <div key={group.id} className="p-3.5 bg-gray-50 border border-gray-200 rounded-2xl relative space-y-2.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => removeOptionGroup(group.id)}
+                                                className="absolute top-3 right-3 text-red-500 hover:text-red-700 text-xs font-bold cursor-pointer"
+                                            >
+                                                ✕ Remover
+                                            </button>
+
+                                            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 pr-16">
+                                                <div className="sm:col-span-6">
+                                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Título do Grupo</label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Ex: Borda da Pizza 1, Suco Natural"
+                                                        value={group.title}
+                                                        onChange={e => updateOptionGroup(group.id, 'title', e.target.value)}
+                                                        className="w-full p-2 text-xs border rounded-lg bg-white font-bold"
+                                                    />
+                                                </div>
+                                                <div className="sm:col-span-3">
+                                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Mínimo</label>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        value={group.minSelections}
+                                                        onChange={e => updateOptionGroup(group.id, 'minSelections', parseInt(e.target.value) || 0)}
+                                                        className="w-full p-2 text-xs border rounded-lg bg-white font-bold"
+                                                    />
+                                                </div>
+                                                <div className="sm:col-span-3">
+                                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Máximo</label>
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        value={group.maxSelections}
+                                                        onChange={e => updateOptionGroup(group.id, 'maxSelections', parseInt(e.target.value) || 1)}
+                                                        className="w-full p-2 text-xs border rounded-lg bg-white font-bold"
+                                                    />
+                                                </div>
+
+                                             <div className="flex items-center gap-2 pt-1">
+                                                 <input
+                                                     type="checkbox"
+                                                     id={`qty-per-opt-${group.id}`}
+                                                     checked={group.allowQuantityPerOption || false}
+                                                     onChange={e => updateOptionGroup(group.id, 'allowQuantityPerOption', e.target.checked)}
+                                                     className="rounded text-orange-600 focus:ring-orange-500 w-4 h-4 cursor-pointer"
+                                                 />
+                                                 <label htmlFor={`qty-per-opt-${group.id}`} className="text-xs text-gray-700 font-medium cursor-pointer">
+                                                     Permitir escolher quantidade de cada opção (ex: 3x Carne, 2x Frango, 1x Queijo)
+                                                 </label>
+                                             </div>
+                                            </div>
+
+                                            {/* Opções do Grupo */}
+                                            <div className="space-y-2 pt-1">
+                                                <span className="text-[10px] font-bold text-gray-500 uppercase">Opções / Escolhas:</span>
+                                                {group.options.map((opt, oIdx) => (
+                                                    <div key={oIdx} className="grid grid-cols-12 gap-2 items-center">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Nome da opção (ex: Catupiry, Laranja)"
+                                                            value={opt.name}
+                                                            onChange={e => updateOptionInGroup(group.id, oIdx, 'name', e.target.value)}
+                                                            className="col-span-7 p-1.5 text-xs border rounded-lg bg-white"
+                                                        />
+                                                        <div className="col-span-4 flex items-center gap-1">
+                                                            <span className="text-[10px] text-gray-400">+R$</span>
+                                                            <input
+                                                                type="number"
+                                                                step="0.01"
+                                                                placeholder="0.00"
+                                                                value={opt.price}
+                                                                onChange={e => updateOptionInGroup(group.id, oIdx, 'price', parseFloat(e.target.value) || 0)}
+                                                                className="w-full p-1.5 text-xs border rounded-lg bg-white font-mono"
+                                                            />
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeOptionFromGroup(group.id, oIdx)}
+                                                            className="col-span-1 text-red-400 hover:text-red-600 text-xs font-bold text-center cursor-pointer"
+                                                        >
+                                                            🗑
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => addOptionToGroup(group.id)}
+                                                    className="text-xs font-bold text-orange-600 hover:underline pt-1 block cursor-pointer"
+                                                >
+                                                    + Adicionar Opção
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
 

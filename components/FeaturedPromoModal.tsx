@@ -73,7 +73,7 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
         });
     };
 
-    const isItemsValid = participatingItems.length === 0 || selectedItemIds.length === requiredCount;
+    const isItemsValid = participatingItems.length === 0 || maxSelections > 1 || selectedItemIds.length === requiredCount;
 
     const selectedItems = useMemo(() => {
         return participatingItems.filter(i => selectedItemIds.includes(i.id));
@@ -86,43 +86,90 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
         return participatingItems[0];
     }, [selectedItems, participatingItems]);
 
-    // Parse option groups safely (supports both optionGroups and option_groups snake_case from DB)
+    // Parse option groups safely (supports promo.optionGroups, item optionGroups, and snake_case)
     const currentOptionGroups: OptionGroup[] = useMemo(() => {
-        if (!selectedItem) return [];
-        const raw = (selectedItem as any).optionGroups || (selectedItem as any).option_groups;
-        let parsed: OptionGroup[] = [];
-        if (raw) {
-            try {
-                parsed = Array.isArray(raw)
-                    ? raw
-                    : (typeof raw === 'string' ? JSON.parse(raw) : []);
-            } catch (e) {
-                console.error("Error parsing optionGroups in promo modal:", e);
-                parsed = [];
+        let groups: OptionGroup[] = [];
+        if (promo && promo.optionGroups && Array.isArray(promo.optionGroups) && promo.optionGroups.length > 0) {
+            groups = JSON.parse(JSON.stringify(promo.optionGroups));
+        }
+
+        // Se houver itens participantes e maxSelections > 1 (ex: 6 Esfihas), os sabores devem seguir os itens participantes
+        if (participatingItems.length > 0 && maxSelections > 1) {
+            groups = groups.map(g => {
+                const titleLower = g.title.toLowerCase();
+                if (titleLower.includes('sabor') || titleLower.includes('sabores') || titleLower.includes('esfiha') || titleLower.includes('6')) {
+                    return {
+                        ...g,
+                        minSelections: maxSelections,
+                        maxSelections: maxSelections,
+                        allowQuantityPerOption: true,
+                        options: participatingItems.map(pi => ({
+                            name: pi.name,
+                            price: Number(pi.price || 0)
+                        }))
+                    };
+                }
+                return g;
+            });
+
+            if (!groups.some(g => {
+                const tl = g.title.toLowerCase();
+                return tl.includes('sabor') || tl.includes('sabores') || tl.includes('esfiha');
+            })) {
+                groups.push({
+                    id: 'group_participating_flavors',
+                    title: `Escolha os ${maxSelections} Sabores (Quantidade livre por sabor)`,
+                    minSelections: maxSelections,
+                    maxSelections: maxSelections,
+                    allowQuantityPerOption: true,
+                    options: participatingItems.map(pi => ({
+                        name: pi.name,
+                        price: Number(pi.price || 0)
+                    }))
+                });
             }
         }
 
-        // Se o item tiver marmitaOptions/sabores simples mas sem optionGroups formal
-        const marmitaRaw = (selectedItem as any).marmitaOptions || (selectedItem as any).marmita_options;
-        if ((!parsed || parsed.length === 0) && marmitaRaw) {
-            try {
-                const marmitaList: string[] = Array.isArray(marmitaRaw)
-                    ? marmitaRaw
-                    : (typeof marmitaRaw === 'string' ? JSON.parse(marmitaRaw) : []);
-                if (marmitaList.length > 0) {
-                    parsed = [{
-                        id: 'marmita-sabor-options',
-                        title: 'Opção / Sabor',
-                        minSelections: 1,
-                        maxSelections: 1,
-                        options: marmitaList.map(opt => ({ name: opt, price: 0 }))
-                    }];
+        if (selectedItem) {
+            const raw = (selectedItem as any).optionGroups || (selectedItem as any).option_groups;
+            if (raw) {
+                try {
+                    const itemGroups = Array.isArray(raw)
+                        ? raw
+                        : (typeof raw === 'string' ? JSON.parse(raw) : []);
+                    // Append item option groups if not already present by title
+                    itemGroups.forEach((ig: OptionGroup) => {
+                        if (!groups.some(g => g.title.toLowerCase() === ig.title.toLowerCase())) {
+                            groups.push(ig);
+                        }
+                    });
+                } catch (e) {
+                    console.error("Error parsing optionGroups in promo modal:", e);
                 }
-            } catch {}
+            }
+
+            // Se o item tiver marmitaOptions/sabores simples mas sem optionGroups formal
+            const marmitaRaw = (selectedItem as any).marmitaOptions || (selectedItem as any).marmita_options;
+            if (groups.length === 0 && marmitaRaw) {
+                try {
+                    const marmitaList: string[] = Array.isArray(marmitaRaw)
+                        ? marmitaRaw
+                        : (typeof marmitaRaw === 'string' ? JSON.parse(marmitaRaw) : []);
+                    if (marmitaList.length > 0) {
+                        groups.push({
+                            id: 'marmita-sabor-options',
+                            title: 'Opção / Sabor',
+                            minSelections: 1,
+                            maxSelections: 1,
+                            options: marmitaList.map(opt => ({ name: opt, price: 0 }))
+                        });
+                    }
+                } catch {}
+            }
         }
 
-        return parsed;
-    }, [selectedItem]);
+        return groups;
+    }, [promo, selectedItem, participatingItems, maxSelections]);
 
     // Parse sizes safely
     const currentSizes: SizeOption[] = useMemo(() => {
@@ -147,15 +194,22 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
             return;
         }
 
-        const initialOpts: { [groupId: string]: string[] } = {};
+        const initialOpts: { [groupId: string]: any } = {};
         currentOptionGroups.forEach(group => {
-            const defaults = group.options.filter(o => o.default).map(o => o.name);
-            if (defaults.length > 0) {
-                initialOpts[group.id] = defaults;
-            } else if (group.minSelections === 1 && group.maxSelections === 1 && group.options.length === 1) {
-                initialOpts[group.id] = [group.options[0].name];
+            const isQty = group.allowQuantityPerOption || (group.maxSelections > 1 && !group.title.toLowerCase().includes('borda'));
+            if (isQty) {
+                const counts: { [name: string]: number } = {};
+                group.options.forEach(o => { counts[o.name] = o.default ? 1 : 0; });
+                initialOpts[group.id] = counts;
             } else {
-                initialOpts[group.id] = [];
+                const defaults = group.options.filter(o => o.default).map(o => o.name);
+                if (defaults.length > 0) {
+                    initialOpts[group.id] = defaults;
+                } else if (group.minSelections === 1 && group.maxSelections === 1 && group.options.length === 1) {
+                    initialOpts[group.id] = [group.options[0].name];
+                } else {
+                    initialOpts[group.id] = [];
+                }
             }
         });
         setSelectedOptions(initialOpts);
@@ -171,13 +225,26 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
     const optionsExtraPrice = useMemo(() => {
         let total = 0;
         currentOptionGroups.forEach(group => {
-            const selectedInGroup = selectedOptions[group.id] || [];
-            selectedInGroup.forEach(optName => {
-                const opt = group.options.find(o => o.name === optName);
-                if (opt && opt.price > 0) {
-                    total += Number(opt.price);
-                }
-            });
+            const isQty = group.allowQuantityPerOption || (group.maxSelections > 1 && !group.title.toLowerCase().includes('borda'));
+            if (isQty) {
+                const groupCounts = (selectedOptions[group.id] || {}) as { [name: string]: number };
+                Object.entries(groupCounts).forEach(([optName, count]) => {
+                    if (count > 0) {
+                        const opt = group.options.find(o => o.name === optName);
+                        if (opt && opt.price > 0) {
+                            total += Number(opt.price) * count;
+                        }
+                    }
+                });
+            } else {
+                const selectedInGroup = (selectedOptions[group.id] || []) as string[];
+                selectedInGroup.forEach(optName => {
+                    const opt = group.options.find(o => o.name === optName);
+                    if (opt && opt.price > 0) {
+                        total += Number(opt.price);
+                    }
+                });
+            }
         });
         return total;
     }, [currentOptionGroups, selectedOptions]);
@@ -187,7 +254,7 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
     // Toggle option selection with radio/checkbox logic
     const handleOptionToggle = (groupId: string, optionName: string, maxSelections: number) => {
         setSelectedOptions(prev => {
-            const current = prev[groupId] || [];
+            const current = (prev[groupId] || []) as string[];
             const isSelected = current.includes(optionName);
 
             if (isSelected) {
@@ -205,9 +272,30 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
         });
     };
 
+    const handleOptionQuantityChange = (groupId: string, optionName: string, delta: number, maxSelections: number) => {
+        setSelectedOptions(prev => {
+            const groupCounts = (prev[groupId] || {}) as { [name: string]: number };
+            const currentCount = groupCounts[optionName] || 0;
+            const currentTotal = Object.values(groupCounts).reduce((a, b) => a + b, 0);
+
+            if (delta > 0 && currentTotal >= maxSelections) {
+                return prev;
+            }
+            const newCount = Math.max(0, currentCount + delta);
+            return { ...prev, [groupId]: { ...groupCounts, [optionName]: newCount } };
+        });
+    };
+
     const isGroupValid = (group: OptionGroup) => {
-        const selectedCount = (selectedOptions[group.id] || []).length;
-        return selectedCount >= group.minSelections && selectedCount <= group.maxSelections;
+        const isQty = group.allowQuantityPerOption || (group.maxSelections > 1 && !group.title.toLowerCase().includes('borda'));
+        if (isQty) {
+            const groupCounts = (selectedOptions[group.id] || {}) as { [name: string]: number };
+            const totalCount = Object.values(groupCounts).reduce((a, b) => a + b, 0);
+            return totalCount >= group.minSelections && totalCount <= group.maxSelections;
+        } else {
+            const selectedCount = ((selectedOptions[group.id] || []) as string[]).length;
+            return selectedCount >= group.minSelections && selectedCount <= group.maxSelections;
+        }
     };
 
     const isAllValid = () => {
@@ -234,17 +322,34 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
 
         const cartSelectedOptions: { groupTitle: string; optionName: string; price: number }[] = [];
         currentOptionGroups.forEach(group => {
-            const selectedInGroup = selectedOptions[group.id] || [];
-            selectedInGroup.forEach(optName => {
-                const opt = group.options.find(o => o.name === optName);
-                if (opt) {
-                    cartSelectedOptions.push({
-                        groupTitle: group.title,
-                        optionName: optName,
-                        price: Number(opt.price || 0)
-                    });
-                }
-            });
+            const isQty = group.allowQuantityPerOption || (group.maxSelections > 1 && !group.title.toLowerCase().includes('borda'));
+            if (isQty) {
+                const groupCounts = (selectedOptions[group.id] || {}) as { [name: string]: number };
+                Object.entries(groupCounts).forEach(([optName, count]) => {
+                    if (count > 0) {
+                        const opt = group.options.find(o => o.name === optName);
+                        if (opt) {
+                            cartSelectedOptions.push({
+                                groupTitle: group.title,
+                                optionName: count > 1 ? `${count}x ${optName}` : optName,
+                                price: Number(opt.price || 0) * count
+                            });
+                        }
+                    }
+                });
+            } else {
+                const selectedInGroup = (selectedOptions[group.id] || []) as string[];
+                selectedInGroup.forEach(optName => {
+                    const opt = group.options.find(o => o.name === optName);
+                    if (opt) {
+                        cartSelectedOptions.push({
+                            groupTitle: group.title,
+                            optionName: optName,
+                            price: Number(opt.price || 0)
+                        });
+                    }
+                });
+            }
         });
 
         const optionsSummary = cartSelectedOptions.map(o => `${o.groupTitle}: ${o.optionName}`).join(' | ');
@@ -350,8 +455,8 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
                         )}
                     </div>
 
-                    {/* Step 1: Escolha dos itens participantes */}
-                    {participatingItems.length > 0 && (
+                    {/* Step 1: Escolha dos itens participantes (Apenas se maxSelections === 1) */}
+                    {participatingItems.length > 0 && maxSelections === 1 && (
                         <div className="space-y-3">
                             <div className="flex justify-between items-center">
                                 <label className="block text-sm font-bold text-gray-800">
@@ -434,7 +539,11 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
                         <div className="space-y-4">
                             {currentOptionGroups.map((group) => {
                                 const isValid = isGroupValid(group);
-                                const selectedCount = (selectedOptions[group.id] || []).length;
+                                const isQty = group.allowQuantityPerOption || (group.maxSelections > 1 && !group.title.toLowerCase().includes('borda'));
+                                const groupCounts = isQty ? ((selectedOptions[group.id] || {}) as { [name: string]: number }) : {};
+                                const selectedCount = isQty 
+                                    ? Object.values(groupCounts).reduce((a, b) => a + b, 0)
+                                    : ((selectedOptions[group.id] || []) as string[]).length;
                                 const isRequired = group.minSelections > 0;
 
                                 return (
@@ -463,34 +572,76 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
 
                                         <div className="space-y-2">
                                             {group.options.map(option => {
-                                                const isSelected = (selectedOptions[group.id] || []).includes(option.name);
+                                                const count = isQty ? (groupCounts[option.name] || 0) : (((selectedOptions[group.id] || []) as string[]).includes(option.name) ? 1 : 0);
 
-                                                return (
-                                                    <label 
-                                                        key={option.name} 
-                                                        className={`flex items-center justify-between p-3 border rounded-xl transition-all cursor-pointer ${
-                                                            isSelected 
-                                                                ? 'bg-orange-50 border-orange-500 ring-1 ring-orange-400 text-orange-950 font-bold' 
-                                                                : 'border-gray-200 hover:bg-gray-50 text-gray-700'
-                                                        }`}
-                                                    >
-                                                        <div className="flex items-center gap-3">
-                                                            <input 
-                                                                type={group.maxSelections === 1 ? "radio" : "checkbox"}
-                                                                name={`group-${group.id}`}
-                                                                checked={isSelected}
-                                                                onChange={() => handleOptionToggle(group.id, option.name, group.maxSelections)}
-                                                                className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
-                                                            />
-                                                            <span className="text-sm">{option.name}</span>
+                                                if (isQty) {
+                                                    return (
+                                                        <div 
+                                                            key={option.name} 
+                                                            className={`flex items-center justify-between p-3 border rounded-xl transition-all ${
+                                                                count > 0 
+                                                                    ? 'bg-orange-50 border-orange-500 ring-1 ring-orange-400 text-orange-950 font-bold' 
+                                                                    : 'border-gray-200 bg-white text-gray-700'
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-center gap-3">
+                                                                <span className="text-sm">{option.name}</span>
+                                                                {option.price > 0 && (
+                                                                    <span className="text-xs font-bold text-gray-500">
+                                                                        + R$ {Number(option.price).toFixed(2)}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleOptionQuantityChange(group.id, option.name, -1, group.maxSelections)}
+                                                                    disabled={count === 0}
+                                                                    className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold flex items-center justify-center disabled:opacity-30 cursor-pointer transition-all"
+                                                                >
+                                                                    -
+                                                                </button>
+                                                                <span className="w-6 text-center text-sm font-black">{count}</span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleOptionQuantityChange(group.id, option.name, 1, group.maxSelections)}
+                                                                    disabled={selectedCount >= group.maxSelections}
+                                                                    className="w-7 h-7 rounded-lg bg-orange-600 hover:bg-orange-700 text-white font-bold flex items-center justify-center disabled:opacity-30 cursor-pointer transition-all"
+                                                                >
+                                                                    +
+                                                                </button>
+                                                            </div>
                                                         </div>
-                                                        {option.price > 0 && (
-                                                            <span className="text-xs font-bold text-gray-600">
-                                                                + R$ {Number(option.price).toFixed(2)}
-                                                            </span>
-                                                        )}
-                                                    </label>
-                                                );
+                                                    );
+                                                } else {
+                                                    const isSelected = count > 0;
+                                                    return (
+                                                        <label 
+                                                            key={option.name} 
+                                                            className={`flex items-center justify-between p-3 border rounded-xl transition-all cursor-pointer ${
+                                                                isSelected 
+                                                                    ? 'bg-orange-50 border-orange-500 ring-1 ring-orange-400 text-orange-950 font-bold' 
+                                                                    : 'border-gray-200 hover:bg-gray-50 text-gray-700'
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-center gap-3">
+                                                                <input 
+                                                                    type={group.maxSelections === 1 ? "radio" : "checkbox"}
+                                                                    name={`group-${group.id}`}
+                                                                    checked={isSelected}
+                                                                    onChange={() => handleOptionToggle(group.id, option.name, group.maxSelections)}
+                                                                    className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                                                                />
+                                                                <span className="text-sm">{option.name}</span>
+                                                            </div>
+                                                            {option.price > 0 && (
+                                                                <span className="text-xs font-bold text-gray-600">
+                                                                    + R$ {Number(option.price).toFixed(2)}
+                                                                </span>
+                                                            )}
+                                                        </label>
+                                                    );
+                                                }
                                             })}
                                         </div>
                                     </div>

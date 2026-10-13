@@ -154,6 +154,7 @@ export interface OptionGroup {
   minSelections: number;
   maxSelections: number;
   options: CustomizationOption[];
+  allowQuantityPerOption?: boolean;
 }
 
 export interface MenuItem {
@@ -197,6 +198,7 @@ export interface Combo {
   availableDays?: number[]; // [0..6]
   availableStartTime?: string; // "HH:MM" ex: "13:00"
   availableEndTime?: string; // "HH:MM" ex: "18:00"
+  optionGroups?: OptionGroup[] | null;
 }
 
 export interface MenuCategory {
@@ -233,6 +235,7 @@ export interface Promotion {
   upsellPrice?: number; // ex: 14.99 ou 9.99
   upsellOptions?: string[]; // ex: ["Prestígio", "Brigadeiro"]
   upsellMaxSelections?: number; // ex: 1, 2, 6 (Quantidade máxima de escolhas permitidas)
+  optionGroups?: OptionGroup[] | null;
 }
 
 export interface FeaturedPromo {
@@ -248,6 +251,7 @@ export interface FeaturedPromo {
   active: boolean;
   availableDays?: number[]; // [0, 1, 2, 3, 4, 5, 6] 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
   maxItemSelections?: number; // ex: 1, 2, 6 (Quantidade máxima de escolhas de produtos participantes)
+  optionGroups?: OptionGroup[] | null;
 }
 
 export interface Coupon {
