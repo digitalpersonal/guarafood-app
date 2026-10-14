@@ -532,7 +532,7 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
                                 </label>
                                 <div className="flex flex-wrap items-center gap-2 mb-2">
                                     <span className="text-xs text-gray-500 font-medium">Atalhos rápidos:</span>
-                                    {[1, 2, 3, 4, 6, 10, 12].map(num => (
+                                                                   {[1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20].map(num => (
                                         <button
                                             key={num}
                                             type="button"
@@ -543,7 +543,7 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
                                                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-200'
                                             }`}
                                         >
-                                            {num} {num === 1 ? 'item' : 'itens'} {num === 1 ? '(ex: 1 pizza / 1 lanche)' : num === 2 ? '(ex: 2 pizzas)' : num === 6 ? '(ex: 6 esfihas)' : ''}
+                                            {num} {num === 1 ? 'item' : 'itens'} {num === 1 ? '(1 pizza/lanche)' : num === 2 ? '(2 pizzas)' : num === 6 ? '(6 esfihas)' : ''}
                                         </button>
                                     ))}
                                 </div>

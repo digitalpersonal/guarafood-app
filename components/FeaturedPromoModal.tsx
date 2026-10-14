@@ -56,31 +56,87 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
     }, [menuCategories]);
 
     const participatingItems: MenuItem[] = useMemo(() => {
-        if (!promo || !promo.itemIds || promo.itemIds.length === 0) return [];
-        const numericItemIds = promo.itemIds.map(Number);
-        return allItems.filter(item => numericItemIds.includes(Number(item.id)));
+        if (!promo) return [];
+        const numericItemIds = (promo.itemIds || []).map(Number);
+        let items = allItems.filter(item => numericItemIds.includes(Number(item.id)));
+
+        // If the restaurant explicitly chose specific items for this promo, respect them strictly
+        if (items.length > 0) {
+            return items;
+        }
+
+        // Otherwise fallback to category or name matching for legacy/unconfigured promos
+        const promoTitleLower = (promo.title || '').toLowerCase();
+        const promoDescLower = (promo.description || '').toLowerCase();
+        const upsellTitleLower = (promo.upsellTitle || '').toLowerCase();
+        const isEsfihaPromo = promoTitleLower.includes('esfiha') || promoDescLower.includes('esfiha') || promoTitleLower.includes('esfirra') || upsellTitleLower.includes('esfiha');
+        const isPizzaPromo = promoTitleLower.includes('pizza') || promoDescLower.includes('pizza') || upsellTitleLower.includes('pizza');
+
+        const matched = allItems.filter(item => {
+            const name = (item.name || '').toLowerCase();
+            if (isEsfihaPromo) {
+                return name.includes('esfiha') || name.includes('esfirra');
+            }
+            if (isPizzaPromo) {
+                return name.includes('pizza');
+            }
+            return false;
+        });
+
+        if (matched.length > 0) {
+            items = matched;
+        } else if (allItems.length > 0) {
+            items = allItems.slice(0, 15);
+        }
+        return items;
     }, [allItems, promo]);
 
-    const maxSelections = promo?.maxItemSelections || 1;
-    const requiredCount = Math.min(maxSelections, participatingItems.length);
+    const maxSelections = useMemo(() => {
+        let explicit = Number(promo?.maxItemSelections || promo?.upsellMaxSelections || 0);
+        if (explicit > 1) return explicit;
 
-    const handleItemToggle = (itemId: number) => {
-        setSelectedItemIds(prev => {
-            if (prev.includes(itemId)) {
-                return prev.filter(id => id !== itemId);
-            } else {
-                if (maxSelections === 1) {
-                    return [itemId];
-                }
-                if (prev.length >= maxSelections) {
-                    return [...prev.slice(1), itemId];
-                }
-                return [...prev, itemId];
+        const text = `${promo?.title || ''} ${promo?.description || ''}`.toLowerCase();
+        const match = text.match(/(\d+)\s*(esfiha|esfirra|pizza|salgado|item|pedaço|unidades|unidade)/i);
+        if (match && match[1]) {
+            const num = parseInt(match[1], 10);
+            if (num > 1 && num <= 50) return num;
+        }
+
+        const numMatch = text.match(/\b(2|3|4|5|6|7|8|9|10|11|12|14|15|18|20|24|30|50)\b/);
+        if (numMatch) {
+            const num = parseInt(numMatch[1], 10);
+            if (text.includes('esfiha') || text.includes('esfirra') || text.includes('pizza') || text.includes('combo') || text.includes('caixa')) {
+                return num;
             }
+        }
+
+        return explicit > 0 ? explicit : (participatingItems.length > 1 ? 6 : 1);
+    }, [promo, participatingItems.length]);
+
+    const requiredCount = Math.min(maxSelections, Math.max(1, participatingItems.length));
+
+    const participatingCounts = (selectedOptions['participating_flavors'] || {}) as { [name: string]: number };
+    const totalParticipatingCount = Object.values(participatingCounts).reduce((a, b) => a + b, 0);
+
+    const handleParticipatingQuantityChange = (itemName: string, delta: number) => {
+        setSelectedOptions(prev => {
+            const groupCounts = (prev['participating_flavors'] || {}) as { [name: string]: number };
+            const currentCount = groupCounts[itemName] || 0;
+            const currentTotal = Object.values(groupCounts).reduce((a, b) => a + b, 0);
+
+            if (delta > 0 && currentTotal >= maxSelections) {
+                return prev;
+            }
+            const newCount = Math.max(0, currentCount + delta);
+            return { ...prev, participating_flavors: { ...groupCounts, [itemName]: newCount } };
         });
     };
 
-    const isItemsValid = participatingItems.length === 0 || maxSelections > 1 || selectedItemIds.length === requiredCount;
+    const isParticipatingValid = maxSelections === 1 
+        ? selectedItemIds.length === 1 
+        : totalParticipatingCount === maxSelections;
+
+    const isItemsValid = participatingItems.length === 0 || isParticipatingValid;
 
     const selectedItems = useMemo(() => {
         return participatingItems.filter(i => selectedItemIds.includes(i.id));
@@ -100,45 +156,48 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
             groups = JSON.parse(JSON.stringify(promo.optionGroups));
         }
 
-        // Se houver itens participantes e maxSelections > 1 (ex: 6 Esfihas), os sabores devem seguir os itens participantes
-        if (participatingItems.length > 0 && maxSelections > 1) {
+        // Se houver itens participantes, removemos grupos de sabor/esfiha/pizza gerados automaticamente, pois os itens participantes já são exibidos com fotos e quantidades/seleção no topo
+        if (participatingItems.length > 0) {
             groups = groups.map(g => {
                 const titleLower = g.title.toLowerCase();
-                if (titleLower.includes('sabor') || titleLower.includes('sabores') || titleLower.includes('esfiha') || titleLower.includes('6')) {
-                    return {
-                        ...g,
-                        minSelections: maxSelections,
-                        maxSelections: maxSelections,
-                        allowQuantityPerOption: true,
-                        options: participatingItems.map(pi => ({
-                            name: pi.name,
-                            price: Number(pi.price || 0)
-                        }))
-                    };
+                if ((titleLower.includes('sabor') || titleLower.includes('sabores') || titleLower.includes('esfiha') || titleLower.includes('pizza') || titleLower.includes('6')) && !titleLower.includes('borda')) {
+                    return null;
                 }
                 return g;
-            });
-
-            if (!groups.some(g => {
-                const tl = g.title.toLowerCase();
-                return tl.includes('sabor') || tl.includes('sabores') || tl.includes('esfiha');
-            })) {
-                groups.push({
-                    id: 'group_participating_flavors',
-                    title: `Escolha os ${maxSelections} Sabores (Quantidade livre por sabor)`,
-                    minSelections: maxSelections,
-                    maxSelections: maxSelections,
-                    allowQuantityPerOption: true,
-                    options: participatingItems.map(pi => ({
-                        name: pi.name,
-                        price: Number(pi.price || 0)
-                    }))
-                });
-            }
+            }).filter(Boolean) as OptionGroup[];
         }
 
         // Se a promoção já tem option_groups próprios explicitamente configurados, usamos a configuração da promoção
-        // e NÃO duplicamos com optionGroups dos itens originais (a menos que a promoção não tenha nenhum grupo configurado).
+        // MAS garantimos que se houver grupo de borda, ele contenha a lista completa de bordas da pizzaria.
+        const completeBordasOptions = [
+            { name: 'Sem Borda Recheada', price: 0 },
+            { name: 'Sem borda', price: 0 },
+            { name: 'Borda de Catupiry', price: 6 },
+            { name: 'Borda de Cheddar', price: 6 },
+            { name: 'Borda de Queijo', price: 12 },
+            { name: 'Borda de Chocolate', price: 7 },
+            { name: 'Borda de Chocolate ao Leite', price: 12 },
+            { name: 'Borda de Chocolate Branco', price: 12 },
+            { name: 'Borda de Queijo com Bacon', price: 12 },
+            { name: 'Borda de Calabresa com Queijo', price: 12 },
+            { name: 'Borda Vulcão de Catupiry', price: 25 },
+            { name: 'Borda Vulcão de Cheddar', price: 25 }
+        ];
+
+        groups = groups.map(g => {
+            if (g.title.toLowerCase().includes('borda')) {
+                // Merge existing options with complete list ensuring no duplicates by name
+                const existingNames = new Set(g.options.map(o => o.name.toLowerCase()));
+                const mergedOptions = [...g.options];
+                completeBordasOptions.forEach(cb => {
+                    if (!existingNames.has(cb.name.toLowerCase())) {
+                        mergedOptions.push(cb);
+                    }
+                });
+                return { ...g, options: mergedOptions };
+            }
+            return g;
+        });
         if (groups.length === 0 && selectedItem) {
             const raw = (selectedItem as any).optionGroups || (selectedItem as any).option_groups;
             if (raw) {
@@ -172,12 +231,23 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
             }
         }
 
-        // Se a promoção for de apenas 1 pizza (maxSelections === 1), garanta que nunca apareça "Borda da 2ª Pizza"
+        // Se a promoção for de apenas 1 pizza/item (maxSelections === 1), garanta que nunca apareça "Borda da 2ª Pizza" ou grupos extras de borda
         if (maxSelections === 1) {
-            groups = groups.filter(g => !g.title.toLowerCase().includes('2ª pizza') && !g.title.toLowerCase().includes('segunda pizza'));
-            // E se houver apenas 1 borda restante chamada "Borda da 1ª Pizza", renomear para "Borda da Pizza"
+            let seenBorda = false;
+            groups = groups.filter(g => {
+                const titleLower = g.title.toLowerCase();
+                if (titleLower.includes('2ª pizza') || titleLower.includes('segunda pizza') || titleLower.includes('borda da 2ª') || titleLower.includes('borda da 2a')) {
+                    return false;
+                }
+                if (titleLower.includes('borda')) {
+                    if (seenBorda) return false;
+                    seenBorda = true;
+                }
+                return true;
+            });
             groups = groups.map(g => {
-                if (g.title.toLowerCase().includes('borda da 1ª pizza') || g.title.toLowerCase().includes('borda da 1a pizza')) {
+                const tl = g.title.toLowerCase();
+                if (tl.includes('borda')) {
                     return { ...g, title: 'Borda Recheada da Pizza' };
                 }
                 return g;
@@ -244,19 +314,25 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
         if (Array.isArray(itemAddonIds) && itemAddonIds.length > 0) {
             return allAddons.filter(a => itemAddonIds.includes(Number(a.id)));
         }
-        // Se o item for da categoria Lanche/Sanduíche/Hambúrguer ou se o restaurante tiver adicionais cadastrados
         const promoTitleLower = promo.title ? promo.title.toLowerCase() : '';
-        const isSandwichOrBurger = selectedItem.name?.toLowerCase().includes('x-') ||
-            selectedItem.name?.toLowerCase().includes('lanche') ||
-            selectedItem.name?.toLowerCase().includes('sanduíche') ||
-            selectedItem.name?.toLowerCase().includes('sanduiche') ||
-            selectedItem.name?.toLowerCase().includes('hambúrguer') ||
-            selectedItem.name?.toLowerCase().includes('hamburguer') ||
-            selectedItem.name?.toLowerCase().includes('burger') ||
+        const itemNameLower = selectedItem.name ? selectedItem.name.toLowerCase() : '';
+        const isPizzaOrDrinkOrAcai = itemNameLower.includes('pizza') || itemNameLower.includes('refrigerante') || itemNameLower.includes('suco') || itemNameLower.includes('açaí') || itemNameLower.includes('acai');
+        
+        const isSandwichOrBurger = itemNameLower.includes('x-') ||
+            itemNameLower.includes('lanche') ||
+            itemNameLower.includes('sanduíche') ||
+            itemNameLower.includes('sanduiche') ||
+            itemNameLower.includes('hambúrguer') ||
+            itemNameLower.includes('hamburguer') ||
+            itemNameLower.includes('burger') ||
+            itemNameLower.includes('dog') ||
+            itemNameLower.includes('salgado') ||
             promoTitleLower.includes('x-') ||
             promoTitleLower.includes('lanche') ||
             promoTitleLower.includes('sanduíche') ||
-            promoTitleLower.includes('burger');
+            promoTitleLower.includes('burger') ||
+            promoTitleLower.includes('combo') ||
+            (!isPizzaOrDrinkOrAcai && allAddons.length > 0);
 
         if (isSandwichOrBurger) {
             return allAddons;
@@ -413,6 +489,24 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
             }
         });
 
+        if (participatingItems.length > 0 && maxSelections > 1) {
+            Object.entries(participatingCounts).forEach(([optName, count]) => {
+                if (count > 0) {
+                    cartSelectedOptions.unshift({
+                        groupTitle: `Sabores (${maxSelections} itens)`,
+                        optionName: count > 1 ? `${count}x ${optName}` : optName,
+                        price: 0
+                    });
+                }
+            });
+        } else if (participatingItems.length > 0 && maxSelections === 1 && selectedItems.length > 0) {
+            cartSelectedOptions.unshift({
+                groupTitle: 'Sabor',
+                optionName: selectedItems[0].name,
+                price: 0
+            });
+        }
+
         // Add selected addons to cart options / details
         const selectedAddonsList = availableAddons.filter(a => selectedAddonIds.has(Number(a.id)));
         selectedAddonsList.forEach(addon => {
@@ -426,9 +520,11 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
         const optionsSummary = cartSelectedOptions.map(o => `${o.groupTitle}: ${o.optionName}`).join(' | ');
         const optionKey = cartSelectedOptions.map(o => `${o.groupTitle}:${o.optionName}`).sort().join('-');
 
-        const itemNameSuffix = selectedItems.length > 0
+        const itemNameSuffix = selectedItems.length > 0 && maxSelections === 1
             ? ` (${selectedItems.map(i => i.name).join(', ')})`
-            : '';
+            : (participatingItems.length > 0 && maxSelections > 1
+                ? ` (${Object.entries(participatingCounts).filter(([_, c]) => c > 0).map(([n, c]) => `${c}x ${n}`).join(', ')})`
+                : '');
 
         let formattedNotes = '';
         if (optionsSummary && notes.trim()) {
@@ -527,55 +623,101 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
                         )}
                     </div>
 
-                    {/* Step 1: Escolha dos itens participantes (Apenas se maxSelections === 1) */}
-                    {participatingItems.length > 0 && maxSelections === 1 && (
+                    {/* Step 1: Escolha dos itens participantes e quantidades por sabor */}
+                    {participatingItems.length > 0 && (
                         <div className="space-y-3">
                             <div className="flex justify-between items-center">
                                 <label className="block text-sm font-bold text-gray-800">
                                     {maxSelections > 1 
-                                        ? `1. Escolha até ${maxSelections} opções (${selectedItemIds.length}/${maxSelections}):`
-                                        : '1. Escolha a opção participante:'
+                                        ? `Escolha os Sabores (${totalParticipatingCount}/${maxSelections}):`
+                                        : 'Escolha a opção participante:'
                                     }
                                 </label>
                                 {maxSelections > 1 && (
                                     <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
-                                        selectedItemIds.length === requiredCount ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200 font-black'
+                                        totalParticipatingCount === maxSelections 
+                                            ? 'bg-green-50 text-green-700 border-green-200' 
+                                            : 'bg-orange-50 text-orange-600 border-orange-200 font-black animate-pulse'
                                     }`}>
-                                        {selectedItemIds.length} / {requiredCount} selecionados
+                                        {totalParticipatingCount} / {maxSelections} selecionados
                                     </span>
                                 )}
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                 {participatingItems.map(item => {
-                                    const isSelected = selectedItemIds.includes(item.id);
-                                    return (
-                                        <div
-                                            key={item.id}
-                                            onClick={() => handleItemToggle(item.id)}
-                                            className={`p-3 rounded-xl border text-left transition-all flex items-center gap-3 cursor-pointer ${
-                                                isSelected 
-                                                    ? 'border-orange-600 bg-orange-50/70 ring-2 ring-orange-500/20 shadow-sm font-bold' 
-                                                    : 'border-gray-200 hover:border-gray-300 bg-white'
-                                            }`}
-                                        >
-                                            {item.imageUrl && (
-                                                <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
-                                                    <OptimizedImage src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
-                                                </div>
-                                            )}
-                                            <div className="min-w-0 flex-grow">
-                                                <p className="text-xs font-bold text-gray-800 truncate">{item.name}</p>
-                                                {item.description && (
-                                                    <p className="text-[11px] text-gray-500 truncate">{item.description}</p>
+                                    if (maxSelections === 1) {
+                                        const isSelected = selectedItemIds.includes(item.id);
+                                        return (
+                                            <div
+                                                key={item.id}
+                                                onClick={() => setSelectedItemIds([item.id])}
+                                                className={`p-3 rounded-xl border text-left transition-all flex items-center gap-3 cursor-pointer ${
+                                                    isSelected 
+                                                        ? 'border-orange-600 bg-orange-50/70 ring-2 ring-orange-500/20 shadow-sm font-bold' 
+                                                        : 'border-gray-200 hover:border-gray-300 bg-white'
+                                                }`}
+                                            >
+                                                {item.imageUrl && (
+                                                    <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
+                                                        <OptimizedImage src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                                                    </div>
                                                 )}
+                                                <div className="min-w-0 flex-grow">
+                                                    <p className="text-xs font-bold text-gray-800 truncate">{item.name}</p>
+                                                    {item.description && (
+                                                        <p className="text-[11px] text-gray-500 truncate">{item.description}</p>
+                                                    )}
+                                                </div>
+                                                <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 rounded-full border border-orange-600 bg-orange-600 text-white">
+                                                    {isSelected && <span className="text-xs font-black">✓</span>}
+                                                </div>
                                             </div>
-                                            <div className={`w-5 h-5 flex items-center justify-center flex-shrink-0 ${
-                                                maxSelections === 1 ? 'rounded-full border' : 'rounded border'
-                                            } ${isSelected ? 'border-orange-600 bg-orange-600 text-white' : 'border-gray-300 bg-white'}`}>
-                                                {isSelected && <span className="text-xs font-black">✓</span>}
+                                        );
+                                    } else {
+                                        const count = participatingCounts[item.name] || 0;
+                                        const isSelected = count > 0;
+                                        return (
+                                            <div
+                                                key={item.id}
+                                                className={`p-3 rounded-xl border text-left transition-all flex items-center justify-between gap-3 ${
+                                                    isSelected 
+                                                        ? 'border-orange-600 bg-orange-50/70 ring-1 ring-orange-400 shadow-sm' 
+                                                        : 'border-gray-200 bg-white'
+                                                }`}
+                                            >
+                                                {item.imageUrl && (
+                                                    <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
+                                                        <OptimizedImage src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                                                    </div>
+                                                )}
+                                                <div className="min-w-0 flex-grow">
+                                                    <p className="text-xs font-bold text-gray-800 truncate">{item.name}</p>
+                                                    {item.description && (
+                                                        <p className="text-[11px] text-gray-500 truncate">{item.description}</p>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-2 flex-shrink-0">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleParticipatingQuantityChange(item.name, -1)}
+                                                        disabled={count === 0}
+                                                        className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold flex items-center justify-center disabled:opacity-30 cursor-pointer transition-all"
+                                                    >
+                                                        -
+                                                    </button>
+                                                    <span className="w-6 text-center text-sm font-black text-orange-600">{count}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleParticipatingQuantityChange(item.name, 1)}
+                                                        disabled={totalParticipatingCount >= maxSelections}
+                                                        className="w-7 h-7 rounded-lg bg-orange-600 hover:bg-orange-700 text-white font-bold flex items-center justify-center disabled:opacity-30 cursor-pointer transition-all"
+                                                    >
+                                                        +
+                                                    </button>
+                                                </div>
                                             </div>
-                                        </div>
-                                    );
+                                        );
+                                    }
                                 })}
                             </div>
                         </div>
