@@ -106,6 +106,11 @@ export interface Restaurant {
   im?: string;
   blingApiKey?: string;
   fiscalProvider?: string;
+  fiscalCsc?: string;
+  fiscalCscId?: string;
+  fiscalEnv?: 'homologacao' | 'producao';
+  nuvemClientId?: string;
+  nuvemClientSecret?: string;
   staff?: StaffMember[]; // NEW: List of staff members
   loyaltyProgram?: LoyaltyProgram; // NEW: Fidelity Program
   printers?: PrinterConfig[]; // NEW: Configuração de Múltiplas Impressoras e Roteamento de Categorias
