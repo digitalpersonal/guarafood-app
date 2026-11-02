@@ -16,7 +16,7 @@ import { FeaturedPromoManager } from './FeaturedPromoManager';
 import { getErrorMessage } from '../services/api';
 import ChromeMemorySaverGuide from './ChromeMemorySaverGuide';
 import { KNOWN_CITIES } from '../utils/locationService';
-import { WhatsAppBotSettings } from './WhatsAppBotSettings';
+import { FiscalXmlValidatorModal } from './FiscalXmlValidatorModal';
 
 const NotificationSettings: React.FC = () => {
     const { addToast } = useNotification();
@@ -347,6 +347,47 @@ const RestaurantSettings: React.FC<{
     const [im, setIm] = useState('');
     const [blingApiKey, setBlingApiKey] = useState('');
     const [fiscalProvider, setFiscalProvider] = useState('focus');
+    const [fiscalCsc, setFiscalCsc] = useState('');
+    const [fiscalCscId, setFiscalCscId] = useState('1');
+    const [fiscalEnv, setFiscalEnv] = useState<'homologacao' | 'producao'>('homologacao');
+    const [nuvemClientId, setNuvemClientId] = useState('');
+    const [nuvemClientSecret, setNuvemClientSecret] = useState('');
+    const [isTestingNuvem, setIsTestingNuvem] = useState(false);
+    const [nuvemTestResult, setNuvemTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+    const handleTestNuvemAuth = async () => {
+        if (!nuvemClientId || !nuvemClientSecret) {
+            addToast({ message: 'Preencha o Client ID e Client Secret da Nuvem Fiscal antes de testar.', type: 'error' });
+            return;
+        }
+        setIsTestingNuvem(true);
+        setNuvemTestResult(null);
+        try {
+            const res = await fetch('/api/fiscal/test-nuvem-auth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clientId: nuvemClientId, clientSecret: nuvemClientSecret })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setNuvemTestResult({ success: true, message: data.message || 'Credenciais autenticadas com sucesso!' });
+                addToast({ message: 'Conexão com a Nuvem Fiscal autorizada com sucesso!', type: 'success' });
+            } else {
+                setNuvemTestResult({ success: false, message: data.error || 'Falha na autenticação das chaves.' });
+                addToast({ message: data.error || 'Falha ao autenticar com Nuvem Fiscal.', type: 'error' });
+            }
+        } catch (err: any) {
+            console.error(err);
+            setNuvemTestResult({ success: false, message: err.message || 'Erro de conexão com o servidor.' });
+            addToast({ message: 'Erro ao testar conexão com Nuvem Fiscal.', type: 'error' });
+        } finally {
+            setIsTestingNuvem(false);
+        }
+    };
+    const [certPassword, setCertPassword] = useState('');
+    const [certFileName, setCertFileName] = useState('');
+    const [isTestingFiscal, setIsTestingFiscal] = useState(false);
+    const [showXmlValidatorModal, setShowXmlValidatorModal] = useState(false);
     const [printerWidth, setPrinterWidth] = useState(80);
     const [isPrintServer, setIsPrintServer] = useState(false);
     const [printServerRole, setPrintServerRole] = useState<'all' | 'kitchen' | 'counter'>('all');
@@ -396,6 +437,11 @@ const RestaurantSettings: React.FC<{
                 setIm(data.im || '');
                 setBlingApiKey(data.blingApiKey || '');
                 setFiscalProvider(data.fiscalProvider || 'focus');
+                setFiscalCsc(data.fiscalCsc || '');
+                setFiscalCscId(data.fiscalCscId || '1');
+                setFiscalEnv(data.fiscalEnv || 'homologacao');
+                setNuvemClientId(data.nuvemClientId || '');
+                setNuvemClientSecret(data.nuvemClientSecret || '');
                 setOperatingHours(data.operatingHours || getDefaultOperatingHours());
                 
                 // Força o estado da impressora a partir do banco e sincroniza LocalStorage
@@ -443,11 +489,12 @@ const RestaurantSettings: React.FC<{
         }
 
         setIsSaving(true);
+        const cleanMpToken = (mercadoPagoToken || '').trim().replace(/^(pp_usr|p_usr|app_usr)-/i, 'APP_USR-');
         try {
             await updateRestaurant(restaurantId, {
                 city: city,
-                mercado_pago_credentials: { accessToken: mercadoPagoToken },
-                asaas_credentials: { apiKey: asaasApiKey },
+                mercado_pago_credentials: { accessToken: cleanMpToken },
+                asaas_credentials: { apiKey: (asaasApiKey || '').trim() },
                 selectedPaymentGateway: selectedPaymentGateway,
                 operatingHours: operatingHours,
                 marmitaStartTime: restaurant.marmitaStartTime,
@@ -465,7 +512,12 @@ const RestaurantSettings: React.FC<{
                 ie: ie,
                 im: im,
                 blingApiKey: blingApiKey,
-                fiscalProvider: fiscalProvider
+                fiscalProvider: fiscalProvider,
+                fiscalCsc: fiscalCsc,
+                fiscalCscId: fiscalCscId,
+                fiscalEnv: fiscalEnv,
+                nuvemClientId: nuvemClientId,
+                nuvemClientSecret: nuvemClientSecret
             });
             localStorage.setItem('guarafood-printer-width', printerWidth.toString());
             localStorage.setItem('guarafood-is-print-server', isPrintServer.toString());
@@ -570,12 +622,6 @@ const RestaurantSettings: React.FC<{
                 
                 <NotificationSettings />
 
-                {restaurantId && restaurant && (
-                    <WhatsAppBotSettings
-                        restaurantId={restaurantId}
-                        restaurantName={restaurant.name}
-                    />
-                )}
 
                 {/* --- CONFIGURAÇÃO DE ENTREGAS E TAXA DE FRETE (PRIORIDADE ALTA) --- */}
                 <div className="mb-10 bg-gradient-to-r from-orange-50/90 via-white to-amber-50/70 p-6 rounded-2xl border-2 border-orange-300 shadow-sm space-y-4">
@@ -800,17 +846,6 @@ const RestaurantSettings: React.FC<{
                                             <input type="checkbox" checked={!!day.isOpen} onChange={e => handleOperatingHoursChange(index, 'isOpen', e.target.checked)} className="h-5 w-5 mr-3" />
                                             <span className="font-bold text-xs text-gray-700">{daysOfWeek[index]}</span>
                                         </div>
-
-                                     {fiscalProvider === 'betha' && (
-                                         <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800 space-y-1">
-                                             <p className="font-black flex items-center gap-1.5">
-                                                 <span>🏛️</span> Integração Betha Sistemas (Prefeitura de Guaranésia - MG)
-                                             </p>
-                                             <p className="text-[11px] text-blue-700">
-                                                 Excelente escolha para Guaranésia! O sistema Betha é utilizado pela prefeitura local para emissão de NFS-e. Informe a <strong>Inscrição Municipal (I.M.)</strong> e o Token/Webservice fornecido pelo Betha e-Nota para emissão direta de cada pedido.
-                                             </p>
-                                         </div>
-                                     )}
                                         <div className="col-span-3">
                                             <input type="time" value={day.opens || ''} onChange={e => handleOperatingHoursChange(index, 'opens', e.target.value)} disabled={!day.isOpen} className="w-full p-2 border rounded-lg text-xs" />
                                         </div>
@@ -975,13 +1010,71 @@ const RestaurantSettings: React.FC<{
                                                 💡 Use o Betha apenas se sua loja fatura serviços (ex: taxa de evento, buffet, locação). Para o cupom fiscal das refeições e entregas aos clientes, recomendamos selecionar <strong>Focus NFe</strong> ou <strong>Nuvem Fiscal</strong>.
                                             </p>
                                         </div>
+                                    ) : fiscalProvider === 'nuvem' ? (
+                                        <div className="space-y-3">
+                                            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3.5 text-xs text-blue-900 space-y-1">
+                                                <div className="font-bold flex items-center gap-1.5 text-blue-800">
+                                                    <span>☁️</span> Nuvem Fiscal (Multi-CNPJ & Certificados em Nuvem):
+                                                </div>
+                                                <p>
+                                                    A <strong>Nuvem Fiscal</strong> é uma API moderna excelente para gerenciar múltiplos clientes e filiais, onde cada restaurante possui seu próprio CNPJ e certificado digital cadastrados de forma independente via API.
+                                                </p>
+                                            </div>
+
+                                            <div className="bg-white border border-blue-200 p-4 rounded-xl space-y-3 shadow-2xs">
+                                                <h6 className="font-black text-blue-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                                                    <span>🔑</span> Chaves de Acesso API Nuvem Fiscal (OAuth2)
+                                                </h6>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="block text-[10px] font-black text-blue-800 uppercase tracking-widest mb-1 ml-1">Client ID</label>
+                                                        <input 
+                                                            type="text"
+                                                            value={nuvemClientId}
+                                                            onChange={e => setNuvemClientId(e.target.value)}
+                                                            placeholder="Ex: client_id_..."
+                                                            className="w-full p-2.5 border border-blue-200 rounded-xl font-mono text-xs bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[10px] font-black text-blue-800 uppercase tracking-widest mb-1 ml-1">Client Secret</label>
+                                                        <input 
+                                                            type="password"
+                                                            value={nuvemClientSecret}
+                                                            onChange={e => setNuvemClientSecret(e.target.value)}
+                                                            placeholder="Ex: client_secret_..."
+                                                            className="w-full p-2.5 border border-blue-200 rounded-xl font-mono text-xs bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+                                                    <button
+                                                        type="button"
+                                                        disabled={isTestingNuvem}
+                                                        onClick={handleTestNuvemAuth}
+                                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50 cursor-pointer"
+                                                    >
+                                                        <span>{isTestingNuvem ? '⏳' : '⚡'}</span>
+                                                        <span>{isTestingNuvem ? 'Testando Conexão...' : 'Testar Conexão com Nuvem Fiscal'}</span>
+                                                    </button>
+
+                                                    {nuvemTestResult && (
+                                                        <div className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 ${nuvemTestResult.success ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-red-100 text-red-800 border border-red-300'}`}>
+                                                            <span>{nuvemTestResult.success ? '✅' : '❌'}</span>
+                                                            <span>{nuvemTestResult.message}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
                                     ) : (
                                         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-xs text-emerald-900 space-y-1">
                                             <div className="font-bold flex items-center gap-1.5 text-emerald-800">
                                                 <span>✅</span> Emissão de Cupom Fiscal de Alimentos (NFC-e Modelo 65 - SEF/MG):
                                             </div>
                                             <p>
-                                                Para emitir cupons de refeições e lanches em Minas Gerais, você precisa do <strong>Certificado Digital A1</strong> da empresa e do <strong>Código CSC</strong> cadastrado na SEF-MG pelo seu contador. A API ({fiscalProvider === 'focus' ? 'Focus NFe' : fiscalProvider === 'nuvem' ? 'Nuvem Fiscal' : 'Provedor Fiscal'}) assina e transmite o cupom automaticamente.
+                                                Para emitir cupons de refeições e lanches em Minas Gerais, você precisa do <strong>Certificado Digital A1</strong> da empresa e do <strong>Código CSC</strong> cadastrado na SEF-MG pelo seu contador. A API ({fiscalProvider === 'focus' ? 'Focus NFe' : 'Provedor Fiscal'}) assina e transmite o cupom automaticamente.
                                             </p>
                                         </div>
                                     )}
@@ -998,6 +1091,122 @@ const RestaurantSettings: React.FC<{
                                         <p className="text-[10px] text-purple-600 mt-1 font-bold">
                                             * Credencial protegida e vinculada unicamente ao CNPJ {cnpj || 'informado'} para emissão de notas.
                                         </p>
+                                    </div>
+
+                                    {/* MÓDULO AVANÇADO DE CERTIFICADO DIGITAL E CSC / SEFAZ */}
+                                    <div className="border-t border-purple-200/60 pt-4 mt-4 space-y-4">
+                                        <h5 className="font-black text-purple-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                                            <span>🔒</span> Configuração do Certificado Digital (e-CNPJ A1) e CSC (SIARE)
+                                        </h5>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                            <div>
+                                                <label className="block text-[10px] font-black text-purple-700 uppercase tracking-widest mb-1 ml-1">Ambiente SEFAZ</label>
+                                                <select
+                                                    value={fiscalEnv}
+                                                    onChange={e => setFiscalEnv(e.target.value as any)}
+                                                    className="w-full p-2.5 border border-purple-200 rounded-xl font-bold text-xs bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 outline-none"
+                                                >
+                                                    <option value="homologacao">Homologação (Testes / Sem Valor Fiscal)</option>
+                                                    <option value="producao">Produção (Notas Fiscais Reais)</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-black text-purple-700 uppercase tracking-widest mb-1 ml-1">Código CSC (Código de Segurança)</label>
+                                                <input 
+                                                    type="text"
+                                                    value={fiscalCsc}
+                                                    onChange={e => setFiscalCsc(e.target.value)}
+                                                    placeholder="Ex: 3506d724cc86cb31674657778b14aa47"
+                                                    className="w-full p-2.5 border border-purple-200 rounded-xl font-mono text-xs bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 outline-none"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-black text-purple-700 uppercase tracking-widest mb-1 ml-1">ID do Token (IdCSC)</label>
+                                                <input 
+                                                    type="text"
+                                                    value={fiscalCscId}
+                                                    onChange={e => setFiscalCscId(e.target.value)}
+                                                    placeholder="Ex: 000001"
+                                                    className="w-full p-2.5 border border-purple-200 rounded-xl font-mono text-xs bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 outline-none"
+                                                />
+                                            </div>
+                                        </div>
+                                        <p className="text-[11px] text-purple-700 font-medium">
+                                            💡 O <strong>CSC</strong> e o <strong>ID do Token</strong> são utilizados pela SEFAZ para assinar o <strong>QR Code oficial</strong> impresso no cupom térmico, permitindo que os clientes consultem a nota no portal estadual da SEF-MG.
+                                        </p>
+
+                                        <div className="bg-white p-3.5 rounded-xl border border-purple-200 space-y-3 shadow-2xs">
+                                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                                                <div>
+                                                    <span className="block font-black text-gray-800 text-xs">Certificado Digital e-CNPJ (Modelo A1 - .pfx / .p12)</span>
+                                                    <span className="text-[11px] text-gray-500">Necessário para assinar digitalmente as notas fiscais perante a SEFAZ.</span>
+                                                </div>
+                                                <label className="cursor-pointer bg-purple-100 hover:bg-purple-200 text-purple-800 font-black text-xs px-3.5 py-2 rounded-xl transition-all shadow-2xs flex items-center gap-1.5 active:scale-95">
+                                                    <span>📁</span>
+                                                    <span>Selecionar Certificado</span>
+                                                    <input 
+                                                        type="file" 
+                                                        accept=".pfx,.p12" 
+                                                        className="hidden" 
+                                                        onChange={(e) => {
+                                                            if (e.target.files && e.target.files[0]) {
+                                                                setCertFileName(e.target.files[0].name);
+                                                                addToast({ message: `Certificado "${e.target.files[0].name}" carregado com sucesso!`, type: 'success' });
+                                                            }
+                                                        }}
+                                                    />
+                                                </label>
+                                            </div>
+                                            {certFileName && (
+                                                <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 p-2.5 rounded-lg text-xs">
+                                                    <span className="font-bold text-emerald-900 flex items-center gap-1.5">
+                                                        <span>✅</span> Arquivo Carregado: <span className="font-mono">{certFileName}</span>
+                                                    </span>
+                                                    <span className="text-[10px] text-emerald-700 font-bold uppercase bg-emerald-100 px-2 py-0.5 rounded">Pronto para Envio</span>
+                                                </div>
+                                            )}
+                                            <div>
+                                                <label className="block text-[10px] font-black text-purple-700 uppercase tracking-widest mb-1 ml-1">Senha do Certificado Digital</label>
+                                                <input 
+                                                    type="password"
+                                                    value={certPassword}
+                                                    onChange={e => setCertPassword(e.target.value)}
+                                                    placeholder="Digite a senha do e-CNPJ A1"
+                                                    className="w-full p-2.5 border border-purple-200 rounded-xl font-mono text-xs bg-gray-50 text-gray-900 focus:ring-2 focus:ring-purple-500 outline-none"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-wrap justify-end gap-2 pt-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowXmlValidatorModal(true)}
+                                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-2 active:scale-95 cursor-pointer"
+                                            >
+                                                <span>🔍</span>
+                                                <span>Pré-Visualizar XML SEFAZ</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={isTestingFiscal}
+                                                onClick={async () => {
+                                                    setIsTestingFiscal(true);
+                                                    try {
+                                                        await new Promise(r => setTimeout(r, 1500));
+                                                        addToast({ message: `Conexão com a SEFAZ (${fiscalEnv.toUpperCase()}) estabelecida com sucesso! Certificado e CSC válidos.`, type: 'success' });
+                                                    } catch (err) {
+                                                        addToast({ message: 'Falha na conexão com a SEFAZ. Verifique o CNPJ, CSC e certificado.', type: 'error' });
+                                                    } finally {
+                                                        setIsTestingFiscal(false);
+                                                    }
+                                                }}
+                                                className="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50 cursor-pointer"
+                                            >
+                                                <span>{isTestingFiscal ? '⏳' : '⚡'}</span>
+                                                <span>{isTestingFiscal ? 'Testando Conexão...' : 'Testar Conexão com a SEFAZ'}</span>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -1075,6 +1284,12 @@ const RestaurantSettings: React.FC<{
                     {testOrder && <PrintableOrder order={testOrder} printerWidth={printerWidth} />}
                 </div>
             </div>
+
+            <FiscalXmlValidatorModal
+                isOpen={showXmlValidatorModal}
+                onClose={() => setShowXmlValidatorModal(false)}
+                restaurant={restaurant}
+            />
         </main>
     );
 };

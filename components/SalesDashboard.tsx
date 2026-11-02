@@ -263,7 +263,8 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                     let method = p.method.split('(')[0].trim();
                     if (method.toLowerCase().includes('dinheiro')) method = 'Dinheiro';
                     if (method.toLowerCase().includes('pix')) method = 'Pix';
-                    if (method.toLowerCase().includes('cartão')) method = 'Cartão';
+                    if (method.toLowerCase().includes('alelo') || method.toLowerCase().includes('voucher')) method = 'Cartão Alelo (Voucher)';
+                    else if (method.toLowerCase().includes('cartão')) method = 'Cartão';
                     if (method.toLowerCase().includes('conta')) method = 'Fiado / Conta';
                     const amount = Number(p.amount) || 0;
                     payments[method] = (payments[method] || 0) + amount;
@@ -275,7 +276,8 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                     let method = o.paymentMethod.split('(')[0].trim();
                     if (method.toLowerCase().includes('dinheiro')) method = 'Dinheiro';
                     if (method.toLowerCase().includes('pix')) method = 'Pix';
-                    if (method.toLowerCase().includes('cartão')) method = 'Cartão';
+                    if (method.toLowerCase().includes('alelo') || method.toLowerCase().includes('voucher')) method = 'Cartão Alelo (Voucher)';
+                    else if (method.toLowerCase().includes('cartão')) method = 'Cartão';
                     if (method.toLowerCase().includes('conta')) method = 'Fiado / Conta';
                     payments[method] = (payments[method] || 0) + balance;
                 }
@@ -283,7 +285,8 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                 let method = o.paymentMethod.split('(')[0].trim();
                 if (method.toLowerCase().includes('dinheiro')) method = 'Dinheiro';
                 if (method.toLowerCase().includes('pix')) method = 'Pix';
-                if (method.toLowerCase().includes('cartão')) method = 'Cartão';
+                if (method.toLowerCase().includes('alelo') || method.toLowerCase().includes('voucher')) method = 'Cartão Alelo (Voucher)';
+                else if (method.toLowerCase().includes('cartão')) method = 'Cartão';
                 if (method.toLowerCase().includes('conta')) method = 'Fiado / Conta';
                 
                 payments[method] = (payments[method] || 0) + (Number(o.totalPrice) || 0);
@@ -309,7 +312,8 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                         let method = p.method.split('(')[0].trim();
                         if (method.toLowerCase().includes('dinheiro')) method = 'Dinheiro';
                         if (method.toLowerCase().includes('pix')) method = 'Pix';
-                        if (method.toLowerCase().includes('cartão')) method = 'Cartão';
+                        if (method.toLowerCase().includes('alelo') || method.toLowerCase().includes('voucher')) method = 'Cartão Alelo (Voucher)';
+                        else if (method.toLowerCase().includes('cartão')) method = 'Cartão';
                         if (method.toLowerCase().includes('conta')) method = 'Fiado / Conta';
                         const amount = Number(p.amount) || 0;
                         payments[method] = (payments[method] || 0) + amount;
@@ -321,7 +325,8 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                         let method = o.paymentMethod.split('(')[0].trim();
                         if (method.toLowerCase().includes('dinheiro')) method = 'Dinheiro';
                         if (method.toLowerCase().includes('pix')) method = 'Pix';
-                        if (method.toLowerCase().includes('cartão')) method = 'Cartão';
+                        if (method.toLowerCase().includes('alelo') || method.toLowerCase().includes('voucher')) method = 'Cartão Alelo (Voucher)';
+                        else if (method.toLowerCase().includes('cartão')) method = 'Cartão';
                         if (method.toLowerCase().includes('conta')) method = 'Fiado / Conta';
                         payments[method] = (payments[method] || 0) + balance;
                     }
@@ -329,7 +334,8 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ currentStaffUser }) => 
                     let method = o.paymentMethod.split('(')[0].trim();
                     if (method.toLowerCase().includes('dinheiro')) method = 'Dinheiro';
                     if (method.toLowerCase().includes('pix')) method = 'Pix';
-                    if (method.toLowerCase().includes('cartão')) method = 'Cartão';
+                    if (method.toLowerCase().includes('alelo') || method.toLowerCase().includes('voucher')) method = 'Cartão Alelo (Voucher)';
+                    else if (method.toLowerCase().includes('cartão')) method = 'Cartão';
                     if (method.toLowerCase().includes('conta')) method = 'Fiado / Conta';
                     payments[method] = (payments[method] || 0) + (Number(o.totalPrice) || 0);
                 }

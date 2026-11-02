@@ -253,7 +253,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const paymentOptions = useMemo(() => {
         let options = restaurant.paymentGateways && restaurant.paymentGateways.length > 0 
             ? [...restaurant.paymentGateways] 
-            : ["Pix", "Cartão de Crédito", "Cartão de Débito", "Dinheiro"];
+            : ["Pix", "Cartão de Crédito", "Cartão de Débito", "Cartão Alelo (Voucher)", "Dinheiro"];
             
         // Remove "Fiado / Conta" if it exists
         options = options.filter(opt => opt !== "Fiado / Conta");
@@ -503,9 +503,17 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         } catch (err: any) {
             console.error("Pix Auto Error:", err);
             if (restaurant.manualPixKey) {
-                setPixError(err.message || 'Erro desconhecido');
+                setPixError(err.message || 'Erro ao conectar gateway Pix');
                 setIsManualPix(true);
                 setCurrentStep('PIX_PAYMENT');
+                try {
+                    const fallbackOrderData = buildOrderData("Pix (Comprovante via WhatsApp)");
+                    const fallbackOrder = await createOrder(fallbackOrderData);
+                    setSuccessfulOrder(fallbackOrder);
+                    persistOrderIdGlobally(fallbackOrder.id);
+                } catch (saveErr) {
+                    console.warn("Aviso ao pré-cadastrar pedido Pix manual:", saveErr);
+                }
             } else {
                 setPixError(`Erro ao gerar Pix: ${err.message}. Tente outra forma.`);
             }
@@ -545,7 +553,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         }
     };
 
-    const buildOrderData = (paymentMethodOverride?: string, finalPaymentMethodCalculated?: string): NewOrderData => {
+    function buildOrderData(paymentMethodOverride?: string, finalPaymentMethodCalculated?: string): NewOrderData {
         const customerAddress = deliveryMethod === 'PICKUP' 
             ? { zipCode: '00000-000', street: 'Retirada no Local', number: 'S/N', neighborhood: restaurant.name, complement: 'Cliente irá buscar' }
             : { zipCode: address.zipCode, street: address.street, number: address.number, neighborhood: address.neighborhood, complement: address.complement };
@@ -583,11 +591,16 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             mensalistaId, pointsRedeemed,
             status: pm === 'Pix' ? 'Aguardando Pagamento' : 'Novo Pedido',
         };
-    };
+    }
 
     const handleConfirmManualPix = async () => {
-        const orderData = buildOrderData("Pix (Comprovante via WhatsApp)");
-        await handlePayOnDelivery(orderData);
+        if (successfulOrder) {
+            clearCart();
+            setCurrentStep('SUCCESS');
+        } else {
+            const orderData = buildOrderData("Pix (Comprovante via WhatsApp)");
+            await handlePayOnDelivery(orderData);
+        }
     };
 
     const handleSubmitDetails = async (e: React.FormEvent) => {

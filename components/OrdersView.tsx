@@ -10,6 +10,7 @@ import { updateOrderStatus, createOrder } from '../services/orderService';
 import { getMensalistaByPhone, searchMensalistas } from '../services/mensalistaService';
 import type { Mensalista } from '../types';
 import PaymentDiagnostic from './PaymentDiagnostic';
+import FiscalInvoiceViewModal from './FiscalInvoiceViewModal';
 
 
 const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -146,7 +147,8 @@ const OrderCard: React.FC<{
     onToggleFiscal?: (id: string, currentVal: boolean) => void;
     updatingState?: UpdatingOrderState;
     restaurant?: Restaurant | null;
-}> = ({ order, onStatusUpdate, onNotify, onViewDetails, onPrint, enableFiscal, onToggleFiscal, updatingState, restaurant }) => {
+    onViewFiscalInvoice?: (order: Order) => void;
+}> = ({ order, onStatusUpdate, onNotify, onViewDetails, onPrint, enableFiscal, onToggleFiscal, updatingState, restaurant, onViewFiscalInvoice }) => {
     const { confirm } = useNotification();
     const { text, color } = statusConfig[order.status];
     const [isExpanded, setIsExpanded] = useState(false);
@@ -206,6 +208,37 @@ const OrderCard: React.FC<{
         }
 
         switch (order.status) {
+            case 'Aguardando Pagamento':
+                return (
+                    <div className="flex flex-col gap-1.5 mt-2">
+                        <div className="p-1.5 bg-purple-100/80 border border-purple-200 rounded-lg text-center">
+                            <span className="text-[10px] font-black text-purple-800 block uppercase">
+                                ⏳ Aguardando Confirmação Pix
+                            </span>
+                        </div>
+                        <div className="flex gap-1">
+                            <button 
+                                onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    handleConfirmAndUpdate("Confirmar que o Pix foi pago e aceitar o pedido?", 'Novo Pedido'); 
+                                }} 
+                                className={`${btnClass} bg-emerald-600 flex-grow font-black text-[11px] shadow-sm`}
+                                title="Confirmar pagamento recebido (via comprovante WhatsApp) e aceitar pedido"
+                            >
+                                ✅ Confirmar Pgto
+                            </button>
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); handleConfirmAndUpdate("Rejeitar / Cancelar pedido?", 'Cancelado'); }} 
+                                className={`${btnClass} bg-red-600`}
+                            >
+                                Cancelar
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); onNotify(order); }} className={`${btnClass} bg-blue-600 flex items-center justify-center gap-1`} title="Chamar Cliente no WhatsApp">
+                                <WhatsAppIcon className="w-3.5 h-3.5" /> Avisar
+                            </button>
+                        </div>
+                    </div>
+                );
             case 'Novo Pedido':
                  return (
                     <div className="flex flex-col gap-1.5 mt-2">
@@ -303,14 +336,28 @@ const OrderCard: React.FC<{
                             <span className="hidden sm:inline">Cozinha</span>
                         </button>
                     )}
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); onPrint(order, 'fiscal'); }} 
-                        className="px-1.5 py-0.5 text-[10px] font-black text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-300 rounded transition-colors flex items-center gap-0.5" 
-                        title="Imprimir Cupom Fiscal / Extrato Eletrônico"
-                    >
-                        <span>🧾</span>
-                        <span className="hidden sm:inline">Fiscal</span>
-                    </button>
+                    {enableFiscal && (
+                        <>
+                            {onViewFiscalInvoice && (
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); onViewFiscalInvoice(order); }} 
+                                    className="px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded transition-colors flex items-center gap-0.5" 
+                                    title="Visualizar XML da Nuvem Fiscal e DANFE Simplificado"
+                                >
+                                    <span>🔍</span>
+                                    <span className="hidden sm:inline">Ver NF</span>
+                                </button>
+                            )}
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); onPrint(order, 'fiscal'); }} 
+                                className="px-1.5 py-0.5 text-[10px] font-black text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-300 rounded transition-colors flex items-center gap-0.5" 
+                                title="Imprimir Cupom Fiscal / Extrato Eletrônico"
+                            >
+                                <span>🧾</span>
+                                <span className="hidden sm:inline">Fiscal</span>
+                            </button>
+                        </>
+                    )}
                     <button 
                         onClick={(e) => { e.stopPropagation(); onPrint(order, 'full'); }} 
                         className="p-1 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors" 
@@ -448,6 +495,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
     const [isSearchingMensalista, setIsSearchingMensalista] = useState(false);
     const [filterFiscalOnly, setFilterFiscalOnly] = useState(false);
     const [updatingOrders, setUpdatingOrders] = useState<Record<string, UpdatingOrderState>>({});
+    const [orderForFiscalView, setOrderForFiscalView] = useState<Order | null>(null);
 
     const fiscalSelectedCount = useMemo(() => {
         return orders.filter(o => o.fiscalExport).length;
@@ -763,8 +811,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
 
     const { activeOrders, historyOrders, groupedActiveOrders, groupedHistoryOrders } = useMemo(() => {
         const active = filteredOrders.filter(o => 
-            ['Novo Pedido', 'Preparando', 'A Caminho'].includes(o.status) && 
-            o.status !== 'Aguardando Pagamento'
+            ['Novo Pedido', 'Preparando', 'A Caminho', 'Aguardando Pagamento'].includes(o.status)
         );
         
         const history = filteredOrders.filter(o => ['Entregue', 'Cancelado'].includes(o.status));
@@ -809,11 +856,22 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
         }
     };
 
-    const activeSections = [
-        { title: 'Novos', status: 'Novo Pedido' as OrderStatus, bgColor: 'bg-blue-50' },
-        { title: 'Cozinha', status: 'Preparando' as OrderStatus, bgColor: 'bg-yellow-50' },
-        { title: 'Entrega/Retirada', status: 'A Caminho' as OrderStatus, bgColor: 'bg-orange-50' },
-    ];
+    const activeSections = useMemo(() => {
+        const sections = [
+            { title: 'Novos', status: 'Novo Pedido' as OrderStatus, bgColor: 'bg-blue-50' },
+            { title: 'Cozinha', status: 'Preparando' as OrderStatus, bgColor: 'bg-yellow-50' },
+            { title: 'Entrega/Retirada', status: 'A Caminho' as OrderStatus, bgColor: 'bg-orange-50' },
+        ];
+        const waitingOrders = (groupedActiveOrders['Aguardando Pagamento'] || []).filter(o => !o.tableNumber);
+        if (waitingOrders.length > 0) {
+            sections.unshift({
+                title: `Aguardando Pix (${waitingOrders.length})`,
+                status: 'Aguardando Pagamento' as OrderStatus,
+                bgColor: 'bg-purple-50'
+            });
+        }
+        return sections;
+    }, [groupedActiveOrders]);
     
     const historySections = [
         { title: 'Entregues', status: 'Entregue' as OrderStatus },
@@ -839,6 +897,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                                     onToggleFiscal={handleToggleFiscal}
                                     updatingState={updatingOrders[order.id]}
                                     restaurant={restaurant}
+                                    onViewFiscalInvoice={setOrderForFiscalView}
                                 />
                             ))}
                         </div>
@@ -1116,6 +1175,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                                                         onToggleFiscal={handleToggleFiscal}
                                                         updatingState={updatingOrders[order.id]}
                                                         restaurant={restaurant}
+                                                        onViewFiscalInvoice={setOrderForFiscalView}
                                                     />
                                                 ))
                                             ) : (
@@ -1150,6 +1210,15 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                     printerWidth={printerWidth} 
                     restaurant={restaurant}
                     onPrint={onPrint}
+                />
+            )}
+            {orderForFiscalView && (
+                <FiscalInvoiceViewModal
+                    isOpen={Boolean(orderForFiscalView)}
+                    onClose={() => setOrderForFiscalView(null)}
+                    order={orderForFiscalView}
+                    restaurant={restaurant}
+                    printerWidth={printerWidth}
                 />
             )}
             {orderToEdit && currentUser && (
@@ -1210,7 +1279,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                             <div>
                                 <label className="block text-xs font-black text-gray-500 uppercase mb-1">Forma de Pagamento</label>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Mensalista'].filter(m => m !== 'Mensalista' || restaurant?.hasMensalistas).map(m => (
+                                    {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Cartão Alelo (Voucher)', 'Mensalista'].filter(m => m !== 'Mensalista' || restaurant?.hasMensalistas).map(m => (
                                         <button 
                                             key={m}
                                             type="button"

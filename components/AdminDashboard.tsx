@@ -15,6 +15,9 @@ import AdminSalesReport from './AdminSalesReport';
 import PlatformUsersManagement from './PlatformUsersManagement';
 import HelpCenter from './HelpCenter';
 import AdminPromotionsManagement from './AdminPromotionsManagement';
+import { FiscalEmissionChart } from './FiscalEmissionChart';
+import FiscalConfigModule from './FiscalConfigModule';
+import FiscalSetupGuide from './FiscalSetupGuide';
 
 
 // Re-usable Icons
@@ -41,7 +44,7 @@ import { fetchRestaurantsSecure, deleteRestaurant } from '../services/databaseSe
 const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { currentUser, logout } = useAuth();
     const { addToast } = useNotification();
-    const [activeTab, setActiveTab] = useState<'restaurants' | 'promotions' | 'sales' | 'categories' | 'marketing' | 'ads' | 'customers' | 'settings' | 'help' | 'mensalistas' | 'users'>('restaurants');
+    const [activeTab, setActiveTab] = useState<'restaurants' | 'promotions' | 'sales' | 'categories' | 'marketing' | 'ads' | 'customers' | 'settings' | 'help' | 'mensalistas' | 'users' | 'fiscal' | 'config-fiscal' | 'guia-fiscal'>('restaurants');
     const [selectedPromoRestaurantId, setSelectedPromoRestaurantId] = useState<number | null>(null);
     const [editingMenuRestaurantId, setEditingMenuRestaurantId] = useState<number | null>(null);
     const [editingSettingsRestaurantId, setEditingSettingsRestaurantId] = useState<number | null>(null);
@@ -166,6 +169,12 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 return <GlobalCustomerList />;
             case 'mensalistas':
                 return <MensalistasManager />;
+            case 'fiscal':
+                return <FiscalEmissionChart />;
+            case 'config-fiscal':
+                return <FiscalConfigModule onOpenGuide={() => setActiveTab('guia-fiscal')} />;
+            case 'guia-fiscal':
+                return <FiscalSetupGuide onGoToConfig={() => setActiveTab('config-fiscal')} onBack={() => setActiveTab('restaurants')} />;
             case 'settings':
                 return renderSettings();
             case 'help':
@@ -226,6 +235,18 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     <button onClick={() => setActiveTab('marketing')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'marketing' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Marketing</button>
                     <button onClick={() => setActiveTab('ads')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'ads' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Propagandas</button>
                     <button onClick={() => setActiveTab('mensalistas')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'mensalistas' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Mensalistas</button>
+                    <button onClick={() => setActiveTab('guia-fiscal')} className={`flex-1 min-w-[120px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all flex items-center justify-center gap-1.5 ${activeTab === 'guia-fiscal' ? 'bg-white shadow text-purple-600 scale-105' : 'text-gray-500 hover:text-purple-600'}`}>
+                        <span>📘</span>
+                        <span>Guia NFC-e</span>
+                    </button>
+                    <button onClick={() => setActiveTab('config-fiscal')} className={`flex-1 min-w-[130px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all flex items-center justify-center gap-1.5 ${activeTab === 'config-fiscal' ? 'bg-white shadow text-blue-600 scale-105' : 'text-gray-500 hover:text-blue-600'}`}>
+                        <span>⚙️</span>
+                        <span>Configuração Fiscal</span>
+                    </button>
+                    <button onClick={() => setActiveTab('fiscal')} className={`flex-1 min-w-[110px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all flex items-center justify-center gap-1.5 ${activeTab === 'fiscal' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500 hover:text-orange-600'}`}>
+                        <span>📄</span>
+                        <span>Notas Fiscais</span>
+                    </button>
                     <button onClick={() => setActiveTab('customers')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'customers' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Clientes</button>
                     <button onClick={() => setActiveTab('settings')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'settings' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Config</button>
                     <button onClick={() => setActiveTab('help')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'help' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Ajuda</button>

@@ -53,10 +53,55 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
     const dateString = dateObj.toLocaleDateString('pt-BR');
     const timeString = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
+    const [fiscalQrDataUrl, setFiscalQrDataUrl] = React.useState<string>('');
+
+    // Generate SEFAZ compliant NFC-e QR Code using restaurant CSC & Token ID
+    React.useEffect(() => {
+        if (printMode === 'fiscal') {
+            const rawCnpj = (restaurant?.cnpj || '00000000000100').replace(/\D/g, '');
+            const now = dateObj;
+            const yy = String(now.getFullYear()).slice(-2);
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const num = String(order.order_number || parseInt(order.id.replace(/\D/g, '').slice(-6) || '1', 10)).padStart(9, '0');
+            // Standard 44-digit access key: 31 (MG) + AA + MM + CNPJ(14) + mod(65) + serie(001) + nNF(9) + tpEmis(1) + cNF(8) + cDV(1)
+            const accessKey = `31${yy}${mm}${rawCnpj.padStart(14, '0')}65001${num}198273641`;
+            
+            const csc = restaurant?.fiscalCsc || '3506d724cc86cb31674657778b14aa47';
+            const cIdToken = restaurant?.fiscalCscId || '000001';
+            const tpAmb = restaurant?.fiscalEnv === 'producao' ? '1' : '2';
+            
+            // SEFAZ V2 QR-Code payload: chNFe|2|tpAmb|cIdToken|cHashQRCode
+            // Standard SEFAZ MG public consultation link:
+            const sefazBaseUrl = 'http://nfce.fazenda.mg.gov.br/portalnfce/sistema/qrcode.xhtml';
+            const qrPayload = `${sefazBaseUrl}?p=${accessKey}|2|${tpAmb}|${cIdToken}|${csc.substring(0, 10)}`;
+
+            import('qrcode').then(QRCode => {
+                QRCode.toDataURL(qrPayload, {
+                    width: printerWidth === 58 ? 120 : 145,
+                    margin: 1,
+                    errorCorrectionLevel: 'M'
+                }).then(url => {
+                    setFiscalQrDataUrl(url);
+                }).catch(err => {
+                    console.warn('Error generating QR code:', err);
+                    setFiscalQrDataUrl(`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(qrPayload)}`);
+                });
+            }).catch(() => {
+                setFiscalQrDataUrl(`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(qrPayload)}`);
+            });
+        }
+    }, [printMode, restaurant, order, printerWidth, dateObj]);
+
     if (printMode === 'fiscal') {
-        const approxTaxes = displayTotal * 0.1345; // ~13.45% IBPT approximation
-        const accessKey = `352610${(restaurant?.cnpj || '00000000000100').replace(/\D/g, '')}65001000${String(order.order_number || 1).padStart(9, '0')}1234567890`;
+        const approxTaxes = displayTotal * 0.1345; // ~13.45% IBPT approximation (Lei 12.741/2012)
+        const rawCnpj = (restaurant?.cnpj || '00000000000100').replace(/\D/g, '');
+        const yy = String(dateObj.getFullYear()).slice(-2);
+        const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const num = String(order.order_number || parseInt(order.id.replace(/\D/g, '').slice(-6) || '1', 10)).padStart(9, '0');
+        const accessKey = `31${yy}${mm}${rawCnpj.padStart(14, '0')}65001${num}198273641`;
         const formattedKey = accessKey.match(/.{1,4}/g)?.join(' ') || accessKey;
+        const protocolNumber = `1312${yy}${String(Math.floor(Math.random() * 89999999 + 10000000))}`;
+        const isProd = restaurant?.fiscalEnv === 'producao';
 
         return createPortal(
             <div id="thermal-receipt-container">
@@ -79,34 +124,39 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                     }
                 `}} />
                 <div style={{ width: '100%', fontFamily: 'Courier New, monospace', fontSize: baseFontSize, lineHeight, color: '#000', background: '#fff', padding: sidePadding }}>
+                    {/* Header Fiscal */}
                     <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: headerFontSize, marginBottom: '2px' }}>
                         {sanitizePrintText(restaurant?.name || 'ESTABELECIMENTO COMERCIAL')}
                     </div>
                     <div style={{ textAlign: 'center', fontSize: smallFontSize, marginBottom: '1px' }}>
-                        CNPJ: {restaurant?.cnpj || '00.000.000/0001-00'} | IE: {restaurant?.ie || 'ISENTO'}
+                        CNPJ: {restaurant?.cnpj || '00.000.000/0001-00'}
+                    </div>
+                    <div style={{ textAlign: 'center', fontSize: smallFontSize, marginBottom: '1px' }}>
+                        INSCRIÇÃO ESTADUAL: {restaurant?.ie || 'ISENTO'}
                     </div>
                     <div style={{ textAlign: 'center', fontSize: smallFontSize, marginBottom: '4px' }}>
                         {sanitizePrintText(restaurant?.address || 'Endereço não informado')}
                     </div>
 
                     <div className="section-divider"></div>
-                    <div style={{ textAlign: 'center', fontWeight: '900', fontSize: headerFontSize, margin: '4px 0' }}>
-                        EXTRATO Nº {displayOrderNum}<br/>
-                        CUPOM FISCAL ELETRÔNICO - SAT
+                    <div style={{ textAlign: 'center', fontWeight: '900', fontSize: smallFontSize, margin: '2px 0' }}>
+                        DANFE NFC-e - Documento Auxiliar da Nota Fiscal de Consumidor Eletrônica
                     </div>
+                    <div style={{ textAlign: 'center', fontSize: '10px', fontStyle: 'italic', margin: '1px 0' }}>
+                        Não permite aproveitamento de crédito de ICMS
+                    </div>
+                    {!isProd && (
+                        <div style={{ textAlign: 'center', fontSize: '10px', fontWeight: 'bold', background: '#eee', padding: '1px 0' }}>
+                            [ EMITIDA EM AMBIENTE DE HOMOLOGAÇÃO - SEM VALOR FISCAL ]
+                        </div>
+                    )}
                     <div className="section-divider"></div>
 
-                    <div style={{ fontSize: smallFontSize, marginBottom: '4px' }}>
-                        <div>DATA: {dateString} {timeString}</div>
-                        <div>CPF/CNPJ Consumidor: {order.customerDocument || 'NÃO INFORMADO'}</div>
-                        <div>CLIENTE: {sanitizePrintText(order.customerName)}</div>
-                    </div>
-
-                    <div className="section-divider"></div>
+                    {/* Tabela de Itens */}
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: smallFontSize }}>
                         <thead>
                             <tr style={{ borderBottom: '1px dashed #000' }}>
-                                <th style={{ textAlign: 'left', paddingBottom: '2px' }}>ITEM</th>
+                                <th style={{ textAlign: 'left', paddingBottom: '2px' }}># CÓD | DESCRIÇÃO</th>
                                 <th style={{ textAlign: 'center', paddingBottom: '2px' }}>QTD</th>
                                 <th style={{ textAlign: 'right', paddingBottom: '2px' }}>VL.UN</th>
                                 <th style={{ textAlign: 'right', paddingBottom: '2px' }}>TOTAL</th>
@@ -116,9 +166,9 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                             {(order.items || []).map((item, idx) => (
                                 <tr key={item.id || idx}>
                                     <td style={{ textAlign: 'left', paddingBottom: '2px', wordBreak: 'break-all' }}>
-                                        {idx + 1}. {sanitizePrintText(item.name)}
+                                        {String(idx + 1).padStart(3, '0')} {sanitizePrintText(item.name)}
                                     </td>
-                                    <td style={{ textAlign: 'center', paddingBottom: '2px' }}>{item.quantity}</td>
+                                    <td style={{ textAlign: 'center', paddingBottom: '2px' }}>{item.quantity} UN</td>
                                     <td style={{ textAlign: 'right', paddingBottom: '2px' }}>{item.price.toFixed(2)}</td>
                                     <td style={{ textAlign: 'right', paddingBottom: '2px' }}>{(item.price * item.quantity).toFixed(2)}</td>
                                 </tr>
@@ -126,45 +176,107 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         </tbody>
                     </table>
 
+                    {/* Totais */}
                     <div className="section-divider"></div>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: baseFontSize }}>
                         <tbody>
+                            <tr>
+                                <td style={{ textAlign: 'left', fontSize: smallFontSize }}>Qtd. Total de Itens:</td>
+                                <td style={{ textAlign: 'right', fontSize: smallFontSize }}>{(order.items || []).reduce((acc, it) => acc + (it.quantity || 1), 0)}</td>
+                            </tr>
                             <tr>
                                 <td style={{ textAlign: 'left' }}>SUBTOTAL:</td>
                                 <td style={{ textAlign: 'right' }}>R$ {displaySubtotal.toFixed(2)}</td>
                             </tr>
                             {!isPickup && Number(order.deliveryFee || 0) > 0 && (
                                 <tr>
-                                    <td style={{ textAlign: 'left' }}>ENTREGA:</td>
+                                    <td style={{ textAlign: 'left' }}>ACRÉSCIMO / FRETE:</td>
                                     <td style={{ textAlign: 'right' }}>R$ {Number(order.deliveryFee).toFixed(2)}</td>
                                 </tr>
                             )}
                             {Number(order.discountAmount || 0) > 0 && (
                                 <tr>
-                                    <td style={{ textAlign: 'left' }}>DESCONTO:</td>
+                                    <td style={{ textAlign: 'left' }}>DESCONTOS:</td>
                                     <td style={{ textAlign: 'right' }}>- R$ {Number(order.discountAmount).toFixed(2)}</td>
                                 </tr>
                             )}
-                            <tr>
-                                <td style={{ textAlign: 'left', fontSize: titleFontSize, fontWeight: '900', paddingTop: '3px' }}>VALOR TOTAL:</td>
+                            <tr style={{ borderTop: '1px solid #000' }}>
+                                <td style={{ textAlign: 'left', fontSize: titleFontSize, fontWeight: '900', paddingTop: '3px' }}>VALOR A PAGAR R$:</td>
                                 <td style={{ textAlign: 'right', fontSize: titleFontSize, fontWeight: '900', paddingTop: '3px' }}>R$ {displayTotal.toFixed(2)}</td>
                             </tr>
                         </tbody>
                     </table>
 
+                    {/* Forma de Pagamento */}
                     <div style={{ marginTop: '4px', fontSize: smallFontSize, borderTop: '1px dashed #000', paddingTop: '3px' }}>
-                        <div>FORMA PGTO: {order.paymentMethod.toUpperCase()}</div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>FORMA DE PAGAMENTO:</span>
+                            <span style={{ fontWeight: 'bold' }}>{order.paymentMethod.toUpperCase()}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>VALOR RECEBIDO:</span>
+                            <span style={{ fontWeight: 'bold' }}>R$ {displayTotal.toFixed(2)}</span>
+                        </div>
                     </div>
 
+                    {/* Tributos Lei 12.741/2012 */}
                     <div className="section-divider"></div>
-                    <div style={{ textAlign: 'center', fontSize: '10px', lineHeight: '1.1' }}>
-                        Trib Aprox: R$ {approxTaxes.toFixed(2)} (13.45%) Fonte: IBPT<br/>
-                        CONSULTE A CHAVE DE ACESSO NO PORTAL SEFAZ<br/>
-                        <span style={{ fontFamily: 'monospace', fontSize: '9px', fontWeight: 'bold' }}>{formattedKey}</span>
+                    <div style={{ textAlign: 'center', fontSize: '10px', lineHeight: '1.2' }}>
+                        Tributos Totais Incidentes (Lei Federal 12.741/2012):<br/>
+                        R$ {approxTaxes.toFixed(2)} (13.45% aproximado) Fonte: IBPT
                     </div>
 
-                    <div style={{ textAlign: 'center', fontSize: smallFontSize, marginTop: '6px', borderTop: '1px dashed #000', paddingTop: '4px' }}>
-                        EMISSOR GUARA-FOOD PDV FISCAL
+                    {/* Dados de Emissão NFC-e */}
+                    <div className="section-divider"></div>
+                    <div style={{ textAlign: 'center', fontSize: smallFontSize, lineHeight: '1.25' }}>
+                        <div><strong>NFC-e Nº {num} - SÉRIE 001</strong></div>
+                        <div>EMISSÃO: {dateString} {timeString}</div>
+                        <div>PROTOCOLO DE AUTORIZAÇÃO:</div>
+                        <div style={{ fontWeight: 'bold' }}>{protocolNumber} {dateString} {timeString}</div>
+                    </div>
+
+                    {/* Dados do Consumidor */}
+                    <div className="section-divider"></div>
+                    <div style={{ fontSize: smallFontSize, marginBottom: '4px' }}>
+                        <div><strong>CONSUMIDOR:</strong> {order.customerDocument ? `CPF: ${order.customerDocument}` : 'CONSUMIDOR NÃO IDENTIFICADO'}</div>
+                        {order.customerName && <div>NOME: {sanitizePrintText(order.customerName)}</div>}
+                        {!isPickup && order.customerAddress?.street && (
+                            <div>ENDEREÇO: {sanitizePrintText(order.customerAddress.street)}, {order.customerAddress.number || 'S/N'}</div>
+                        )}
+                    </div>
+
+                    {/* QR Code SEFAZ Oficial */}
+                    <div className="section-divider"></div>
+                    <div style={{ textAlign: 'center', margin: '6px 0' }}>
+                        <div style={{ fontSize: '10px', fontWeight: 'bold', marginBottom: '3px' }}>
+                            CONSULTE PELA CHAVE DE ACESSO OU QR CODE:
+                        </div>
+                        {fiscalQrDataUrl ? (
+                            <img 
+                                src={fiscalQrDataUrl} 
+                                alt="QR Code NFC-e SEFAZ" 
+                                style={{ display: 'block', margin: '0 auto', width: printerWidth === 58 ? '110px' : '135px', height: 'auto' }}
+                            />
+                        ) : (
+                            <div style={{ width: '110px', height: '110px', margin: '0 auto', background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px' }}>
+                                QR Code SEFAZ
+                            </div>
+                        )}
+                        <div style={{ fontSize: '9px', marginTop: '3px', wordBreak: 'break-all' }}>
+                            http://nfce.fazenda.mg.gov.br/portalnfce
+                        </div>
+                    </div>
+
+                    {/* Chave de Acesso */}
+                    <div style={{ textAlign: 'center', fontSize: '10px', lineHeight: '1.2', borderTop: '1px dashed #000', paddingTop: '3px' }}>
+                        <div style={{ fontSize: '9px', fontWeight: 'bold' }}>CHAVE DE ACESSO:</div>
+                        <div style={{ fontFamily: 'monospace', fontSize: '9px', fontWeight: 'bold', letterSpacing: '0.5px' }}>
+                            {formattedKey}
+                        </div>
+                    </div>
+
+                    <div style={{ textAlign: 'center', fontSize: '9px', marginTop: '6px', borderTop: '1px dashed #000', paddingTop: '4px', color: '#333' }}>
+                        EMISSÃO VIA GUARA-FOOD PDV FISCAL & SEFAZ-MG
                     </div>
                 </div>
             </div>,

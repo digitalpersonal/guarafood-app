@@ -1281,7 +1281,7 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                             <div>
                                 <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Forma de Pagamento</label>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Mensalista'].map(m => (
+                                    {['Dinheiro', 'Pix', 'Cartão Débito', 'Cartão Crédito', 'Cartão Alelo (Voucher)', 'Mensalista'].map(m => (
                                         <button 
                                             key={m}
                                             onClick={() => {

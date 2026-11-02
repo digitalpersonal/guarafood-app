@@ -768,6 +768,7 @@ const ComandaManagement: React.FC<ComandaManagementProps> = ({ orders, currentSt
                                     <option value="PIX">PIX</option>
                                     <option value="Cartão de Crédito">Cartão de Crédito</option>
                                     <option value="Cartão de Débito">Cartão de Débito</option>
+                                    <option value="Cartão Alelo (Voucher)">Cartão Alelo (Voucher)</option>
                                     {restaurant?.hasMensalistas && <option value="Mensalista">Mensalista (Fiado/Mensal)</option>}
                                 </select>
                             </div>

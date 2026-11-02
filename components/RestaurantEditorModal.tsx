@@ -22,6 +22,7 @@ const PREDEFINED_PAYMENT_METHODS = [
     "Pix",
     "Cartão de Crédito",
     "Cartão de Débito",
+    "Cartão Alelo (Voucher)",
     "Dinheiro"
 ];
 
@@ -167,14 +168,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         }));
     };
 
-    const handleOperatingHoursChange = (dayIndex: number, field: any, value: any) => {
-        setFormData(prev => {
-            const newHours = [...(prev.operatingHours || getDefaultOperatingHours())];
-            newHours[dayIndex] = { ...newHours[dayIndex], [field]: value };
-            return { ...prev, operatingHours: newHours };
-        });
-    };
-
     const handleSubmit = async () => {
         if (!formData.name || !formData.address || !formData.phone) {
             setError('Campos obrigatórios faltando (Nome, Endereço, Telefone).'); return;
@@ -195,8 +188,10 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             } catch (err: any) { setError(err.message); setIsSaving(false); return; }
         }
 
-        const openDays = formData.operatingHours?.filter(d => d.isOpen) || [];
-        const dbPayload = {
+        // Preserva os horários de funcionamento gerenciados pela tela de configuração (que possui 2º turno / horários extras)
+        const operatingHoursToSave = existingRestaurant?.operatingHours || formData.operatingHours || getDefaultOperatingHours();
+        const openDays = Array.isArray(operatingHoursToSave) ? operatingHoursToSave.filter(d => d && d.isOpen) : [];
+        const dbPayload: any = {
             name: formData.name, 
             category: formData.category, 
             city: formData.city || 'Guaranésia',
@@ -206,16 +201,24 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             payment_gateways: formData.paymentGateways,
             address: formData.address, 
             phone: formData.phone, 
-            opening_hours: openDays.length > 0 ? openDays[0].opens : '',
-            closing_hours: openDays.length > 0 ? openDays[0].closes : '',
             delivery_fee: formData.deliveryFee || 0,
-            mercado_pago_credentials: formData.mercado_pago_credentials,
-            asaas_credentials: formData.asaas_credentials,
+            mercado_pago_credentials: {
+                accessToken: (formData.mercado_pago_credentials?.accessToken || '').trim().replace(/^(pp_usr|p_usr|app_usr)-/i, 'APP_USR-')
+            },
+            asaas_credentials: {
+                apiKey: (formData.asaas_credentials?.apiKey || '').trim()
+            },
             selected_payment_gateway: formData.selectedPaymentGateway,
-            operating_hours: formData.operatingHours,
-            manual_pix_key: formData.manualPixKey,
+            manual_pix_key: (formData.manualPixKey || '').trim(),
             active: formData.active
         };
+
+        // Apenas inclui horários iniciais padrão se for um novo restaurante
+        if (!existingRestaurant) {
+            dbPayload.operating_hours = operatingHoursToSave;
+            dbPayload.opening_hours = openDays.length > 0 ? openDays[0].opens : '';
+            dbPayload.closing_hours = openDays.length > 0 ? openDays[0].closes : '';
+        }
 
         try {
             if (!existingRestaurant || changeCredentials) {
@@ -329,10 +332,10 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
                         <div>
                             <label className="block text-xs font-black text-gray-800 uppercase mb-1">
-                                📞 Telefone / WhatsApp de Contato
+                                📞 Telefone de Contato (DDD + Número)
                             </label>
                             <p className="text-[11px] text-gray-500 mb-2 font-medium leading-tight">
-                                Insira o número do estabelecimento com DDD (ex: 35999998888) para receber pedidos, contatos e mensagens automáticas de clientes.
+                                Insira o telefone do estabelecimento com DDD para contato direto com clientes e delivery.
                             </p>
                             <input 
                                 name="phone" 
@@ -425,17 +428,6 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                         )}
                     </div>
 
-                    <div className="border-t pt-4">
-                        <h3 className="font-bold mb-2">Funcionamento</h3>
-                        {formData.operatingHours?.map((day, i) => (
-                            <div key={i} className="flex items-center gap-2 mb-1 text-xs">
-                                <input type="checkbox" checked={!!day.isOpen} onChange={e => handleOperatingHoursChange(i, 'isOpen', e.target.checked)} />
-                                <span className="w-20">{daysOfWeek[i]}</span>
-                                <input type="time" value={day.opens || ''} onChange={e => handleOperatingHoursChange(i, 'opens', e.target.value)} disabled={!day.isOpen} className="border rounded p-1" />
-                                <input type="time" value={day.closes || ''} onChange={e => handleOperatingHoursChange(i, 'closes', e.target.value)} disabled={!day.isOpen} className="border rounded p-1" />
-                            </div>
-                        ))}
-                    </div>
 
                     <div className="p-4 bg-gray-100 rounded">
                         <h3 className="font-bold text-sm mb-2">Acesso</h3>

@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { Order, OrderStatus, PaymentEntry } from '../types';
 import PrintableOrder from './PrintableOrder';
 import OrderEditorModal from './OrderEditorModal'; // Import the new modal
+import FiscalInvoiceViewModal from './FiscalInvoiceViewModal';
 import { recordOrderPayment } from '../services/orderService';
 import { useNotification } from '../hooks/useNotification';
 
@@ -54,6 +55,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
     const [isEditing, setIsEditing] = useState(false); // State to control editing modal
     const [currentOrder, setCurrentOrder] = useState<Order>(order); // Use internal state for order
     const [printMode, setPrintMode] = useState<'full' | 'kitchen' | 'admin' | 'fiscal'>('full');
+    const [showFiscalInvoiceModal, setShowFiscalInvoiceModal] = useState<boolean>(false);
 
     const hasKitchenPrinter = Boolean(restaurant?.printers?.some((p: any) => p.type === 'kitchen' && p.active !== false));
 
@@ -302,15 +304,28 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                                 <PrintIcon className="w-4 h-4 sm:w-5 sm:h-5"/>
                                 <span>{hasKitchenPrinter ? 'Via Caixa' : 'Imprimir'}</span>
                             </button>
-                            <button
-                                type="button"
-                                onClick={handlePrintFiscal}
-                                className="flex items-center space-x-1.5 px-3 sm:px-4 py-2 rounded-lg bg-purple-700 hover:bg-purple-800 text-white font-black transition-all active:scale-95 shadow-md text-xs sm:text-sm"
-                                title="Imprimir Cupom Fiscal Eletrônico (NFC-e / SAT)"
-                            >
-                                <span>🧾</span>
-                                <span>Cupom Fiscal</span>
-                            </button>
+                            {Boolean(restaurant?.enableFiscal) && (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={handlePrintFiscal}
+                                        className="flex items-center space-x-1.5 px-3 sm:px-4 py-2 rounded-lg bg-purple-700 hover:bg-purple-800 text-white font-black transition-all active:scale-95 shadow-md text-xs sm:text-sm"
+                                        title="Imprimir Cupom Fiscal Eletrônico (NFC-e / SAT)"
+                                    >
+                                        <span>🧾</span>
+                                        <span>Cupom Fiscal</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowFiscalInvoiceModal(true)}
+                                        className="flex items-center space-x-1.5 px-3 sm:px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-black transition-all active:scale-95 shadow-md text-xs sm:text-sm"
+                                        title="Visualizar XML da Nuvem Fiscal e DANFE Simplificado"
+                                    >
+                                        <span>🔍</span>
+                                        <span>Ver Nota (XML/DANFE)</span>
+                                    </button>
+                                </>
+                            )}
                             {hasKitchenPrinter && (
                                 <button
                                     type="button"
@@ -335,7 +350,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
             </div>
             <div className="hidden print:block">
                 <div id="printable-order">
-                    <PrintableOrder order={currentOrder} printerWidth={printerWidth} printMode={printMode} /> 
+                    <PrintableOrder order={currentOrder} printerWidth={printerWidth} printMode={printMode} restaurant={restaurant} /> 
                 </div>
             </div>
 
@@ -347,6 +362,16 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                     onSave={handleOrderUpdated}
                     restaurantId={currentOrder.restaurantId}
                     restaurantName={currentOrder.restaurantName}
+                />
+            )}
+
+            {showFiscalInvoiceModal && (
+                <FiscalInvoiceViewModal
+                    isOpen={showFiscalInvoiceModal}
+                    onClose={() => setShowFiscalInvoiceModal(false)}
+                    order={currentOrder}
+                    restaurant={restaurant}
+                    printerWidth={printerWidth}
                 />
             )}
         </>

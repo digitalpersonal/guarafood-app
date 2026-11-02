@@ -176,6 +176,7 @@ const AdminSalesReport: React.FC = () => {
                     let m = p.method.split('(')[0].trim();
                     if (m.toLowerCase().includes('dinheiro')) m = 'Dinheiro';
                     else if (m.toLowerCase().includes('pix')) m = 'Pix';
+                    else if (m.toLowerCase().includes('alelo') || m.toLowerCase().includes('voucher')) m = 'Cartão Alelo (Voucher)';
                     else if (m.toLowerCase().includes('cartão') || m.toLowerCase().includes('cartao')) m = 'Cartão';
                     else if (m.toLowerCase().includes('conta')) m = 'Conta / Fiado';
                     item.paymentBreakdown[m] = (item.paymentBreakdown[m] || 0) + (Number(p.amount) || 0);
@@ -184,6 +185,7 @@ const AdminSalesReport: React.FC = () => {
                 let m = (order.paymentMethod || 'Outros').split('(')[0].trim();
                 if (m.toLowerCase().includes('dinheiro')) m = 'Dinheiro';
                 else if (m.toLowerCase().includes('pix')) m = 'Pix';
+                else if (m.toLowerCase().includes('alelo') || m.toLowerCase().includes('voucher')) m = 'Cartão Alelo (Voucher)';
                 else if (m.toLowerCase().includes('cartão') || m.toLowerCase().includes('cartao')) m = 'Cartão';
                 else if (m.toLowerCase().includes('conta')) m = 'Conta / Fiado';
                 item.paymentBreakdown[m] = (item.paymentBreakdown[m] || 0) + orderTotal;

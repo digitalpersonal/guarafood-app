@@ -24,7 +24,7 @@ const MultiComandaPaymentModal: React.FC<MultiComandaPaymentModalProps> = ({
     onSuccess
 }) => {
     const { addToast } = useNotification();
-    const [paymentMethod, setPaymentMethod] = useState<'Dinheiro' | 'Cartão de Débito' | 'Cartão de Crédito' | 'Pix' | 'Mensalista'>('Dinheiro');
+    const [paymentMethod, setPaymentMethod] = useState<'Dinheiro' | 'Cartão de Débito' | 'Cartão de Crédito' | 'Cartão Alelo (Voucher)' | 'Pix' | 'Mensalista'>('Dinheiro');
     const [changeFor, setChangeFor] = useState('');
     const [mensalistaSearch, setMensalistaSearch] = useState('');
     const [selectedMensalista, setSelectedMensalista] = useState<Mensalista | null>(null);
@@ -244,7 +244,7 @@ const MultiComandaPaymentModal: React.FC<MultiComandaPaymentModalProps> = ({
                                 Forma de Pagamento
                             </label>
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {(['Dinheiro', 'Pix', 'Cartão de Crédito', 'Cartão de Débito', 'Mensalista'] as const).map(method => (
+                                {(['Dinheiro', 'Pix', 'Cartão de Crédito', 'Cartão de Débito', 'Cartão Alelo (Voucher)', 'Mensalista'] as const).map(method => (
                                     <button
                                         key={method}
                                         type="button"

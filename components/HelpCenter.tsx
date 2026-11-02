@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { APP_VERSION } from './VersionChecker';
+import FiscalSetupGuide from './FiscalSetupGuide';
 
 interface HelpSection {
     id: string;
@@ -505,6 +506,15 @@ const HelpCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         </div>
                     </section>
                 </div>
+            )
+        },
+        {
+            id: 'fiscal-setup',
+            title: 'NFC-e & Emissão Fiscal',
+            icon: '🧾',
+            badge: 'SEFAZ',
+            content: (
+                <FiscalSetupGuide />
             )
         },
         {
