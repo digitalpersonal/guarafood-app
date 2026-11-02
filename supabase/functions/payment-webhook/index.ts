@@ -55,44 +55,56 @@ serve(async (req: Request) => {
 
         const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
-        // 3. Buscar Access Token do Restaurante
+        // 3. Buscar credenciais do Restaurante e Gateway
         const { data: restaurant, error } = await supabaseAdmin
             .from('restaurants')
-            .select('mercado_pago_credentials')
+            .select('mercado_pago_credentials, asaas_credentials, selected_payment_gateway')
             .eq('id', restaurantId)
             .single()
 
-        if (error || !restaurant?.mercado_pago_credentials?.accessToken) {
+        if (error || (!restaurant?.mercado_pago_credentials?.accessToken && !restaurant?.asaas_credentials?.apiKey)) {
             console.error(`Credentials missing/error for restaurant ${restaurantId}:`, error);
             return new Response("Restaurant credentials not found", { status: 200, headers: corsHeaders })
         }
 
-        // 4. Consultar API do Mercado Pago
-        try {
-            const mpResponse = await fetch(`https://api.mercadopago.com/v1/payments/${dataId}`, {
-                headers: {
-                    'Authorization': `Bearer ${restaurant.mercado_pago_credentials.accessToken}`
-                }
-            });
-            
-            if (!mpResponse.ok) {
-                console.warn(`MP API Error (${mpResponse.status})`);
-                return new Response("Webhook Handled (MP API Error ignored)", { status: 200, headers: corsHeaders });
-            }
+        const gateway = restaurant.selected_payment_gateway || 'mercadopago';
 
-            const paymentInfo = await mpResponse.json();
-            const orderId = paymentInfo.external_reference;
-            const status = paymentInfo.status;
+        // 4. Consultar API do Gateway
+        try {
+            let orderId, status;
+            
+            if (gateway === 'mercadopago') {
+                const mpResponse = await fetch(`https://api.mercadopago.com/v1/payments/${dataId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${restaurant.mercado_pago_credentials.accessToken}`
+                    }
+                });
+                
+                if (!mpResponse.ok) {
+                    console.warn(`MP API Error (${mpResponse.status})`);
+                    return new Response("Webhook Handled (MP API Error ignored)", { status: 200, headers: corsHeaders });
+                }
+
+                const paymentInfo = await mpResponse.json();
+                orderId = paymentInfo.external_reference;
+                status = paymentInfo.status === 'approved' ? 'paid' : 'pending';
+            } else {
+                // Asaas
+                if (body.event !== 'PAYMENT_RECEIVED') {
+                     return new Response("Event Ignored", { status: 200, headers: corsHeaders })
+                }
+                orderId = body.payment.externalReference;
+                status = 'paid';
+            }
 
             console.log(`Order ${orderId} Status: ${status}`);
 
-            if (status === 'approved' && orderId) {
+            if (status === 'paid' && orderId) {
                 const { error: updateError } = await supabaseAdmin
                     .from('orders')
                     .update({ 
                         status: 'Novo Pedido',
-                        payment_status: 'paid',
-                        payment_details: paymentInfo
+                        payment_status: 'paid'
                     })
                     .eq('id', orderId);
                 
@@ -103,7 +115,7 @@ serve(async (req: Request) => {
                 }
             }
         } catch (fetchError) {
-            console.error("Error fetching from Mercado Pago:", fetchError);
+            console.error("Error fetching from Gateway:", fetchError);
         }
 
         return new Response("Webhook Processed", { status: 200, headers: corsHeaders })

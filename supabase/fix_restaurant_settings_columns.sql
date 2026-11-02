@@ -25,6 +25,10 @@ ADD COLUMN IF NOT EXISTS mercado_pago_credentials JSONB DEFAULT '{}';
 ALTER TABLE public.restaurants 
 ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true;
 
+-- 7. Adiciona a coluna para o nome da impressora QZ Tray
+ALTER TABLE public.restaurants 
+ADD COLUMN IF NOT EXISTS printer_name TEXT;
+
 -- 6. Limpeza de Cache da API
 -- Força o Supabase a ler a nova estrutura da tabela imediatamente.
 NOTIFY pgrst, 'reload schema';

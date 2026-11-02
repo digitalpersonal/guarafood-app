@@ -304,7 +304,11 @@ export const updateOrderStatus = async (
     options?: { onRetry?: (attempt: number, error: any, delayMs: number) => void; retryOptions?: RetryOptions }
 ): Promise<Order> => {
     return retryWithExponentialBackoff(async () => {
-        const { data, error } = await supabase.from('orders').update({ status }).eq('id', orderId).select().single();
+        const updatePayload: any = { status };
+        if (['Novo Pedido', 'Preparando', 'A Caminho', 'Entregue'].includes(status)) {
+            updatePayload.payment_status = 'paid';
+        }
+        const { data, error } = await supabase.from('orders').update(updatePayload).eq('id', orderId).select().single();
         if (error) {
             handleSupabaseError({ error, customMessage: 'Failed to update order status' });
             throw error;

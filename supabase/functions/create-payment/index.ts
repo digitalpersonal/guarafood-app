@@ -26,18 +26,38 @@ serve(async (req: Request) => {
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
     const { restaurantId, orderData } = await req.json()
 
-    // 1. Buscar credenciais do Mercado Pago
+    // 0.5 IDEMPOTENCY CHECK: Evitar pedidos duplicados no mesmo minuto
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
+    const { data: existingOrder } = await supabaseAdmin
+      .from('orders')
+      .select('id')
+      .eq('restaurant_id', restaurantId)
+      .eq('customer_phone', orderData.customerPhone)
+      .eq('total_price', orderData.totalPrice)
+      .gte('timestamp', oneMinuteAgo)
+      .maybeSingle();
+
+    if (existingOrder) {
+        console.log("Pedido duplicado detectado, abortando.", existingOrder.id);
+        throw new Error("Pedido já processado recentemente.");
+    }
+
+    // 1. Buscar credenciais do Restaurante e verificar Gateway
     const { data: restaurant, error: restError } = await supabaseAdmin
       .from('restaurants')
-      .select('mercado_pago_credentials, name')
+      .select('mercado_pago_credentials, asaas_credentials, selected_payment_gateway, name')
       .eq('id', restaurantId)
       .single()
 
-    if (restError || !restaurant?.mercado_pago_credentials?.accessToken) {
-        throw new Error("Token do Mercado Pago não configurado para este restaurante.")
-    }
+    if (restError) throw new Error("Erro ao buscar dados do restaurante.")
+    
+    const gateway = restaurant.selected_payment_gateway || 'mercadopago';
 
-    const accessToken = restaurant.mercado_pago_credentials.accessToken
+    if (gateway === 'mercadopago' && !restaurant.mercado_pago_credentials?.accessToken) {
+        throw new Error("Token do Mercado Pago não configurado para este restaurante.")
+    } else if (gateway === 'asaas' && !restaurant.asaas_credentials?.apiKey) {
+        throw new Error("API Key do Asaas não configurada para este restaurante.")
+    }
 
     // 2. SALVAR PEDIDO NO BANCO COM STATUS PENDENTE
     // Inserimos a preferência de sachês dentro do objeto customer_address para compatibilidade
@@ -74,35 +94,71 @@ serve(async (req: Request) => {
 
     if (orderError) throw new Error("Erro ao criar pedido no banco: " + orderError.message)
     
-    // 3. Gerar Pagamento no Mercado Pago
+    // 3. Gerar Pagamento
+    let paymentData: any = {};
     const notificationUrl = `${supabaseUrl}/functions/v1/payment-webhook?restaurantId=${restaurantId}`;
 
-    const mpResponse = await fetch('https://api.mercadopago.com/v1/payments', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-        'X-Idempotency-Key': crypto.randomUUID()
-      },
-      body: JSON.stringify({
-        transaction_amount: Number(orderData.totalPrice.toFixed(2)),
-        description: `Pedido #${order.id.substring(0,6)} - ${restaurant.name}`,
-        payment_method_id: 'pix',
-        payer: {
-          email: 'cliente@guarafood.com',
-          first_name: orderData.customerName.split(' ')[0],
-          last_name: 'Cliente'
-        },
-        external_reference: order.id, 
-        notification_url: notificationUrl
-      })
-    })
-
-    const paymentData = await mpResponse.json()
-
-    if (!mpResponse.ok) {
-      await supabaseAdmin.from('orders').update({ status: 'Cancelado' }).eq('id', order.id);
-      throw new Error(`Mercado Pago: ${paymentData.message || 'Erro ao gerar Pix'}`)
+    if (gateway === 'mercadopago') {
+        const mpResponse = await fetch('https://api.mercadopago.com/v1/payments', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${restaurant.mercado_pago_credentials.accessToken}`,
+            'Content-Type': 'application/json',
+            'X-Idempotency-Key': crypto.randomUUID()
+          },
+          body: JSON.stringify({
+            transaction_amount: Number(orderData.totalPrice.toFixed(2)),
+            description: `Pedido #${order.id.substring(0,6)} - ${restaurant.name}`,
+            payment_method_id: 'pix',
+            payer: {
+              email: 'cliente@guarafood.com',
+              first_name: orderData.customerName.split(' ')[0],
+              last_name: 'Cliente'
+            },
+            external_reference: order.id, 
+            notification_url: notificationUrl
+          })
+        })
+        paymentData = await mpResponse.json()
+        if (!mpResponse.ok) {
+          await supabaseAdmin.from('orders').update({ status: 'Cancelado' }).eq('id', order.id);
+          throw new Error(`Mercado Pago: ${paymentData.message || 'Erro ao gerar Pix'}`)
+        }
+    } else {
+        // Implementação Asaas (simplificada)
+        const asaasResponse = await fetch('https://www.asaas.com/api/v3/payments', {
+          method: 'POST',
+          headers: {
+            'access_token': restaurant.asaas_credentials.apiKey,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            billingType: 'PIX',
+            value: Number(orderData.totalPrice.toFixed(2)),
+            dueDate: new Date().toISOString().split('T')[0],
+            description: `Pedido #${order.id.substring(0,6)} - ${restaurant.name}`,
+            externalReference: order.id
+          })
+        })
+        const asaasData = await asaasResponse.json()
+        if (!asaasResponse.ok) {
+            await supabaseAdmin.from('orders').update({ status: 'Cancelado' }).eq('id', order.id);
+            throw new Error(`Asaas: ${asaasData.errors ? asaasData.errors[0].description : 'Erro ao gerar Pix'}`)
+        }
+        // Asaas retorna o QR Code em um endpoint separado (GET /payments/{id}/pixQrCode)
+        const qrResponse = await fetch(`https://www.asaas.com/api/v3/payments/${asaasData.id}/pixQrCode`, {
+            headers: { 'access_token': restaurant.asaas_credentials.apiKey }
+        })
+        const qrData = await qrResponse.json()
+        paymentData = {
+            id: asaasData.id,
+            point_of_interaction: {
+                transaction_data: {
+                    qr_code: qrData.payload,
+                    qr_code_base64: qrData.encodedImage
+                }
+            }
+        }
     }
     
     if (paymentData.id) {

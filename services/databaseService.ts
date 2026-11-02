@@ -138,6 +138,11 @@ const normalizeRestaurant = (data: any): Restaurant => {
         im: data.im || undefined,
         blingApiKey: data.bling_api_key || undefined,
         fiscalProvider: data.fiscal_provider || undefined,
+        fiscalCsc: data.fiscal_csc || undefined,
+        fiscalCscId: data.fiscal_csc_id || undefined,
+        fiscalEnv: data.fiscal_env || 'homologacao',
+        nuvemClientId: data.nuvem_client_id || undefined,
+        nuvemClientSecret: data.nuvem_client_secret || undefined,
         printers: extractPrinters(data)
     };
 };
@@ -194,6 +199,11 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         im: data.im || undefined,
         blingApiKey: data.bling_api_key || undefined,
         fiscalProvider: data.fiscal_provider || undefined,
+        fiscalCsc: data.fiscal_csc || undefined,
+        fiscalCscId: data.fiscal_csc_id || undefined,
+        fiscalEnv: data.fiscal_env || 'homologacao',
+        nuvemClientId: data.nuvem_client_id || undefined,
+        nuvemClientSecret: data.nuvem_client_secret || undefined,
         printers: extractPrinters(data)
     };
 };
@@ -421,6 +431,11 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     if (updates.disableDelivery !== undefined) dbUpdates.disable_delivery = updates.disableDelivery;
     if (updates.blingApiKey !== undefined) dbUpdates.bling_api_key = updates.blingApiKey;
     if (updates.fiscalProvider !== undefined) dbUpdates.fiscal_provider = updates.fiscalProvider;
+    if (updates.fiscalCsc !== undefined) dbUpdates.fiscal_csc = updates.fiscalCsc;
+    if (updates.fiscalCscId !== undefined) dbUpdates.fiscal_csc_id = updates.fiscalCscId;
+    if (updates.fiscalEnv !== undefined) dbUpdates.fiscal_env = updates.fiscalEnv;
+    if (updates.nuvemClientId !== undefined) dbUpdates.nuvem_client_id = updates.nuvemClientId;
+    if (updates.nuvemClientSecret !== undefined) dbUpdates.nuvem_client_secret = updates.nuvemClientSecret;
     if (updates.autoPrintOrders !== undefined) dbUpdates.auto_print_orders = updates.autoPrintOrders;
     if (updates.printers !== undefined) {
         dbUpdates.printer_name = JSON.stringify(updates.printers);
@@ -437,7 +452,7 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
         'closingHours', 'deliveryFee', 'operatingHours', 'manualPixKey', 
         'hasPixConfigured', 'printerWidth', 'printerName', 'selectedPaymentGateway', 'bannerImageUrl', 'marmitaStartTime', 'marmitaEndTime',
         'hasMensalistas', 'hasKiloService', 'pricePerKilo', 'loyaltyProgram', 'disableDelivery', 'printers',
-        'blingApiKey', 'fiscalProvider', 'autoPrintOrders'
+        'blingApiKey', 'fiscalProvider', 'fiscalCsc', 'fiscalCscId', 'fiscalEnv', 'nuvemClientId', 'nuvemClientSecret', 'autoPrintOrders'
     ];
     keysToRemove.forEach(key => delete dbUpdates[key]);
 
