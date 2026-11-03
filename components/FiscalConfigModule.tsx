@@ -489,52 +489,33 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                         </div>
                     </div>
 
-                    {/* SECTION 2: CREDENCIAIS DA API NUVEM FISCAL (OAUTH2) */}
+                    {/* SECTION 2: CREDENCIAIS DA API FOCUS NFE */}
                     <div className="space-y-4 bg-blue-50/50 p-5 rounded-2xl border border-blue-100">
                         <div className="flex items-center justify-between">
                             <h4 className="text-xs font-black uppercase tracking-wider text-blue-900 flex items-center gap-2">
-                                <span>☁️</span>
-                                <span>2. Credenciais API Nuvem Fiscal (OAuth2 da Plataforma)</span>
+                                <span>⚡</span>
+                               <span>2. Credenciais API Focus NFe (Emissão de NFC-e)</span>
                             </h4>
                             <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2.5 py-1 rounded-full uppercase">
                                 Multi-Empresas
                             </span>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
                             <div>
                                 <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1.5">
-                                    Client ID (Nuvem Fiscal)
+                                    API Key da Focus NFe
                                 </label>
                                 <input
                                     type="text"
                                     value={clientId}
                                     onChange={(e) => setClientId(e.target.value)}
-                                    placeholder="ex: client_id_live_..."
+                                    placeholder="Insira a API Key fornecida pela Focus NFe"
                                     className="w-full p-3.5 bg-white border border-blue-200 rounded-2xl text-xs font-mono font-bold text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none shadow-2xs"
                                 />
-                            </div>
-
-                            <div>
-                                <div className="flex justify-between items-center mb-1.5">
-                                    <label className="block text-xs font-black text-gray-700 uppercase tracking-wider">
-                                        Client Secret (Nuvem Fiscal)
-                                    </label>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowClientSecret(!showClientSecret)}
-                                        className="text-[10px] text-blue-700 font-bold hover:underline cursor-pointer"
-                                    >
-                                        {showClientSecret ? 'Ocultar' : 'Exibir'}
-                                    </button>
-                                </div>
-                                <input
-                                    type={showClientSecret ? 'text' : 'password'}
-                                    value={clientSecret}
-                                    onChange={(e) => setClientSecret(e.target.value)}
-                                    placeholder="ex: secret_live_..."
-                                    className="w-full p-3.5 bg-white border border-blue-200 rounded-2xl text-xs font-mono font-bold text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none shadow-2xs"
-                                />
+                                <p className="text-[10px] text-gray-500 mt-1.5">
+                                    Chave de acesso fornecida no painel da Focus NFe para autenticação e transmissão das notas fiscais.
+                                </p>
                             </div>
                         </div>
                     </div>
