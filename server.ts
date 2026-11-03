@@ -5,6 +5,7 @@ import multer from "multer";
 import cors from "cors";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
+import { supabase } from "./services/api";
 
 dotenv.config({ override: true });
 
@@ -137,7 +138,7 @@ async function startServer() {
     }
   });
 
-  // API endpoint para transmissão real de NFC-e via Nuvem Fiscal ou Provedor Fiscal
+  // API endpoint para transmissão real de NFC-e via Focus NFe ou Provedor Fiscal
   app.post("/api/fiscal/emit-nfe", async (req, res) => {
     try {
       const { restaurant, order } = req.body;
@@ -145,35 +146,51 @@ async function startServer() {
         return res.status(400).json({ error: "Dados do restaurante e do pedido são obrigatórios." });
       }
 
-      const apiKey = restaurant.blingApiKey || process.env.NUVEM_FISCAL_API_KEY || process.env.FOCUS_NFE_API_KEY;
-      const provider = restaurant.fiscalProvider || 'nuvem';
+      const apiKey = restaurant.blingApiKey || process.env.FOCUS_NFE_API_KEY;
+      const provider = restaurant.fiscalProvider || 'focus';
       const ambiente = restaurant.fiscalEnv === 'producao' ? 'producao' : 'homologacao';
 
       if (!apiKey) {
         return res.json({
           success: true,
           simulated: true,
-          message: "Nenhuma API Key fiscal informada. Retornando recibo simulado com sucesso.",
+          message: "Nenhuma API Key da Focus NFe informada. Retornando recibo simulado com sucesso.",
           nfeId: `NFE-SIM-${Date.now()}`,
           protocolo: `3312600${Math.floor(Math.random() * 100000000)}`,
           ambiente
         });
       }
 
-      if (provider === 'nuvem') {
+      if (provider === 'focus') {
+        // Endpoint da Focus NFe (homologação ou produção)
+        const baseUrl = ambiente === 'producao' 
+          ? "https://api.focusnfe.com.br/v2/nfe" 
+          : "https://homologacao.focusnfe.com.br/v2/nfe";
+
         const payload = {
-          ambiente,
-          infNFe: {
-            cnpjEmitente: restaurant.cnpj?.replace(/\D/g, ''),
-            xNome: restaurant.name,
-            valorTotal: order.totalPrice
-          }
+          cnpj_prestador: restaurant.cnpj?.replace(/\D/g, ''),
+          referencia: order.id,
+          natureza_operacao: "Venda de mercadoria",
+          consumidor_final: "1",
+          presenca_comprador: "1", // Operação presencial ou pela internet
+          valor_total: order.totalPrice,
+          items: (order.items || []).map((item: any, index: number) => ({
+            numero_item: index + 1,
+            codigo_produto: item.id || String(index + 1),
+            descricao: item.name,
+            NCM: "21069090", // NCM padrão para alimentos prontos/lanches
+            CFOP: "5102",
+            unidade_comercial: "UN",
+            quantidade_comercial: item.quantity,
+            valor_unitario: item.basePrice || item.price,
+            valor_bruto: (item.basePrice || item.price) * item.quantity
+          }))
         };
 
-        const response = await fetch("https://api.nuvemfiscal.com.br/v2/nfe", {
+        const response = await fetch(`${baseUrl}?ref=${order.id}`, {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${apiKey}`,
+            "Authorization": `Basic ${Buffer.from(apiKey + ':').toString('base64')}`,
             "Content-Type": "application/json"
           },
           body: JSON.stringify(payload),
@@ -183,7 +200,7 @@ async function startServer() {
         const data = await response.json();
         if (!response.ok) {
           return res.status(response.status).json({
-            error: data.message || "Erro ao transmitir NFC-e para a Nuvem Fiscal / SEFAZ",
+            error: data.mensagem || data.message || "Erro ao transmitir NFC-e para a Focus NFe / SEFAZ",
             details: data
           });
         }
@@ -204,6 +221,64 @@ async function startServer() {
     } catch (err: any) {
       console.error("Error in /api/fiscal/emit-nfe:", err);
       return res.status(500).json({ error: err.message || "Erro interno ao processar emissão fiscal." });
+    }
+  });
+
+  // Webhook para retorno da API de emissão fiscal (Focus NFe / Nuvem Fiscal)
+  app.post("/api/fiscal/webhook", async (req, res) => {
+    try {
+      // Exemplo de payload esperado da API
+      const { status, referencia, caminho_danfe, caminho_xml, chave_nfe, mensagem_sefaz } = req.body;
+      
+      console.log(`[Fiscal Webhook] Recebido status ${status} para pedido ${referencia}`);
+
+      if (!referencia) {
+        return res.status(400).json({ error: "Referência (order_id) ausente no webhook." });
+      }
+
+      if (status === "autorizado") {
+        await supabase.from("orders").update({
+          fiscal_status: "autorizado",
+          fiscal_danfe_url: caminho_danfe,
+          fiscal_xml_url: caminho_xml,
+          fiscal_key: chave_nfe
+        }).eq("id", referencia);
+      } else {
+        await supabase.from("orders").update({
+          fiscal_status: "rejeitado",
+          fiscal_error: mensagem_sefaz || "Erro desconhecido na SEFAZ"
+        }).eq("id", referencia);
+      }
+
+      return res.sendStatus(200);
+    } catch (err: any) {
+      console.error("Error in /api/fiscal/webhook:", err);
+      return res.status(500).json({ error: "Erro interno processando webhook." });
+    }
+  });
+
+  // Exportação em lote de XMLs e DANFEs
+  app.get("/api/fiscal/export", async (req, res) => {
+    try {
+      const { restaurantId, startDate, endDate } = req.query;
+
+      if (!restaurantId || !startDate || !endDate) {
+        return res.status(400).json({ error: "Parâmetros inválidos." });
+      }
+
+      const { data, error } = await supabase.from('orders')
+        .select('fiscal_xml_url, fiscal_danfe_url, order_number')
+        .eq('restaurant_id', Number(restaurantId))
+        .eq('fiscal_status', 'autorizado')
+        .gte('timestamp', startDate as string)
+        .lte('timestamp', endDate as string);
+
+      if (error) throw error;
+
+      return res.json({ success: true, files: data });
+    } catch (err: any) {
+      console.error("Error in /api/fiscal/export:", err);
+      return res.status(500).json({ error: "Erro ao buscar arquivos fiscais." });
     }
   });
 

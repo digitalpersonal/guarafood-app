@@ -338,11 +338,40 @@ const OrderCard: React.FC<{
                     )}
                     {enableFiscal && (
                         <>
+                            {order.fiscalStatus === 'autorizado' && (
+                                <span 
+                                    onClick={(e) => { e.stopPropagation(); onViewFiscalInvoice && onViewFiscalInvoice(order); }} 
+                                    className="px-1.5 py-0.5 text-[9px] font-black text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded cursor-pointer flex items-center gap-0.5"
+                                    title="Nota Fiscal Autorizada pela SEFAZ! Clique para abrir o DANFE e XML."
+                                >
+                                    <span>✅</span>
+                                    <span>NF OK</span>
+                                </span>
+                            )}
+                            {order.fiscalStatus === 'erro_autorizacao' && (
+                                <span 
+                                    onClick={(e) => { e.stopPropagation(); onViewFiscalInvoice && onViewFiscalInvoice(order); }} 
+                                    className="px-1.5 py-0.5 text-[9px] font-black text-rose-800 bg-rose-100 hover:bg-rose-200 border border-rose-300 rounded cursor-pointer flex items-center gap-0.5"
+                                    title={order.fiscalMessage || "Rejeição SEFAZ. Clique para ver detalhes."}
+                                >
+                                    <span>⚠️</span>
+                                    <span>Erro NF</span>
+                                </span>
+                            )}
+                            {order.fiscalStatus === 'processando' && (
+                                <span 
+                                    className="px-1.5 py-0.5 text-[9px] font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded animate-pulse flex items-center gap-0.5"
+                                    title="Enviando para a SEFAZ em segundo plano. Aguardando retorno do Webhook."
+                                >
+                                    <span>⏳</span>
+                                    <span>Enviando...</span>
+                                </span>
+                            )}
                             {onViewFiscalInvoice && (
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); onViewFiscalInvoice(order); }} 
                                     className="px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded transition-colors flex items-center gap-0.5" 
-                                    title="Visualizar XML da Nuvem Fiscal e DANFE Simplificado"
+                                    title="Visualizar XML e DANFE da Nota Fiscal"
                                 >
                                     <span>🔍</span>
                                     <span className="hidden sm:inline">Ver NF</span>

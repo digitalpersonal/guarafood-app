@@ -20,8 +20,12 @@ const isValidKey = (key: string | undefined) => key && key.length > 50;
 
 export const SUPABASE_URL = isValidUrl(ENV_SUPABASE_URL) ? ENV_SUPABASE_URL! : FALLBACK_URL;
 export const SUPABASE_ANON_KEY = isValidKey(ENV_SUPABASE_ANON_KEY) ? ENV_SUPABASE_ANON_KEY! : FALLBACK_KEY;
+export const FISCAL_WEBHOOK_SECRET = (import.meta as any).env?.FISCAL_WEBHOOK_SECRET || process.env.FISCAL_WEBHOOK_SECRET;
 
 // Validação simples para ajudar no debug
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     console.error("GuaraFood: Credenciais do Supabase não encontradas! Verifique o arquivo config.ts ou as variáveis de ambiente do Vercel.");
+}
+if (!FISCAL_WEBHOOK_SECRET) {
+    console.warn("GuaraFood: FISCAL_WEBHOOK_SECRET não configurado. Webhooks fiscais não estão protegidos!");
 }

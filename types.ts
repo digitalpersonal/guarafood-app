@@ -350,6 +350,12 @@ export interface Order {
   comandaNumber?: string; // NEW: Para múltiplas comandas por mesa
   paymentHistory?: PaymentEntry[]; // NEW: Para pagamentos fracionados
   mensalistaId?: string; // NEW: Para pedidos de mensalistas
+  fiscalStatus?: 'autorizado' | 'processando' | 'erro_autorizacao' | 'rejeitado' | 'cancelado';
+  fiscalDanfeUrl?: string;
+  fiscalXmlUrl?: string;
+  fiscalKey?: string;
+  fiscalNumber?: string;
+  fiscalMessage?: string;
 }
 
 export type Role = 'admin' | 'merchant' | 'waiter' | 'manager' | 'operator' | 'kitchen';
