@@ -35,7 +35,13 @@ const normalizeOrder = (data: any): Order => {
         tableNumber: data.table_number || data.customer_address?.tableNumber,
         comandaNumber: data.comanda_number || data.customer_address?.comandaNumber,
         paymentHistory: data.payment_history || data.payment_details?.history || [],
-        mensalistaId: data.mensalista_id
+        mensalistaId: data.mensalista_id,
+        fiscalStatus: data.fiscal_status || data.payment_details?.fiscal?.status,
+        fiscalDanfeUrl: data.fiscal_danfe_url || data.payment_details?.fiscal?.danfe_url,
+        fiscalXmlUrl: data.fiscal_xml_url || data.payment_details?.fiscal?.xml_url,
+        fiscalKey: data.fiscal_key || data.payment_details?.fiscal?.chave,
+        fiscalNumber: data.fiscal_number || data.payment_details?.fiscal?.numero,
+        fiscalMessage: data.fiscal_message || data.payment_details?.fiscal?.mensagem
     };
 };
 
@@ -162,6 +168,11 @@ export const fetchOrders = async (restaurantId?: number, options?: { limit?: num
     // Se não houver limite definido, usamos 150 como limite seguro e leve para evitar travamento em dispositivos móveis.
     const finalLimit = options?.limit || 150;
     query = query.limit(finalLimit);
+
+    // Filtra apenas pedidos das últimas 48 horas para evitar poluição visual com pedidos antigos esquecidos
+    const fortyEightHoursAgo = new Date();
+    fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48);
+    query = query.gte('timestamp', fortyEightHoursAgo.toISOString());
 
     const { data, error } = await query.order('timestamp', { ascending: false });
     if (error) {
