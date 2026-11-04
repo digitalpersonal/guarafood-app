@@ -17,6 +17,7 @@ export const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOp
     const [description, setDescription] = useState('');
     const [discountType, setDiscountType] = useState<'PERCENTAGE' | 'FIXED' | 'UPSELL'>('PERCENTAGE');
     const [discountValue, setDiscountValue] = useState('');
+    const [selectionMode, setSelectionMode] = useState<'SINGLE' | 'MULTI'>('MULTI'); // Nova opção
     const [availableDays, setAvailableDays] = useState<number[]>(ALL_DAYS);
     const [availableStartTime, setAvailableStartTime] = useState('');
     const [availableEndTime, setAvailableEndTime] = useState('');
@@ -71,6 +72,7 @@ export const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOp
             setDescription(existingPromotion.description);
             setDiscountType(existingPromotion.discountType || 'PERCENTAGE');
             setDiscountValue(existingPromotion.discountValue != null ? existingPromotion.discountValue.toString() : '');
+            setSelectionMode(existingPromotion.selectionMode || 'MULTI'); // Carrega o modo
             setAvailableDays(existingPromotion.availableDays && existingPromotion.availableDays.length > 0 ? existingPromotion.availableDays : ALL_DAYS);
             setAvailableStartTime(existingPromotion.availableStartTime || '');
             setAvailableEndTime(existingPromotion.availableEndTime || '');
@@ -340,6 +342,7 @@ export const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOp
             availableDays: availableDays && availableDays.length > 0 ? availableDays : ALL_DAYS,
             availableStartTime: availableStartTime || undefined,
             availableEndTime: availableEndTime || undefined,
+            selectionMode, // Salva o novo campo
             upsellTitle: discountType === 'UPSELL' ? upsellTitle : undefined,
             upsellDescription: discountType === 'UPSELL' ? upsellDescription : undefined,
             upsellPrice: discountType === 'UPSELL' ? numericDiscount : undefined,
@@ -410,6 +413,42 @@ export const PromotionEditorModal: React.FC<PromotionEditorModalProps> = ({ isOp
                                 className="w-full p-2.5 border rounded-xl bg-slate-50 text-sm font-medium focus:bg-white focus:border-orange-500 transition-colors"
                             />
                         </div>
+                    </div>
+
+                    {/* Novo: Modo de Seleção */}
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+                        <label className="block text-xs font-black text-slate-800 uppercase tracking-wide">
+                            Modo de Seleção dos Itens
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setSelectionMode('SINGLE')}
+                                className={`p-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                                    selectionMode === 'SINGLE'
+                                        ? 'bg-blue-600 text-white border-blue-600'
+                                        : 'bg-white text-slate-800 border-slate-200 hover:bg-blue-50'
+                                }`}
+                            >
+                                ☝️ Item Único
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSelectionMode('MULTI')}
+                                className={`p-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                                    selectionMode === 'MULTI'
+                                        ? 'bg-blue-600 text-white border-blue-600'
+                                        : 'bg-white text-slate-800 border-slate-200 hover:bg-blue-50'
+                                }`}
+                            >
+                                📦 Seleção Múltipla
+                            </button>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-1">
+                            {selectionMode === 'SINGLE' 
+                                ? 'O cliente seleciona apenas 1 item principal para a promoção.' 
+                                : 'O cliente pode selecionar vários itens para esta promoção (ex: 1 pizza grande com 2 sabores).'}
+                        </p>
                     </div>
 
                     {/* Vigência / Datas */}
