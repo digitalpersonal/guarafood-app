@@ -93,13 +93,13 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
 
     const maxSelections = useMemo(() => {
         let explicit = Number(promo?.maxItemSelections || promo?.upsellMaxSelections || 0);
-        if (explicit > 1) return explicit;
+        if (explicit > 0) return explicit;
 
         const text = `${promo?.title || ''} ${promo?.description || ''}`.toLowerCase();
         const match = text.match(/(\d+)\s*(esfiha|esfirra|pizza|salgado|item|pedaço|unidades|unidade)/i);
         if (match && match[1]) {
             const num = parseInt(match[1], 10);
-            if (num > 1 && num <= 50) return num;
+            if (num > 0 && num <= 50) return num;
         }
 
         const numMatch = text.match(/\b(2|3|4|5|6|7|8|9|10|11|12|14|15|18|20|24|30|50)\b/);
@@ -110,7 +110,7 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
             }
         }
 
-        return explicit > 0 ? explicit : (participatingItems.length > 1 ? 6 : 1);
+        return 1; // Padrão seguro para item único
     }, [promo, participatingItems.length]);
 
     const requiredCount = Math.min(maxSelections, Math.max(1, participatingItems.length));
