@@ -528,6 +528,41 @@ export const FeaturedPromoManager: React.FC<FeaturedPromoManagerProps> = ({ rest
 
                             <div>
                                 <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                                    Modo de Seleção de Itens (Item Único ou Múltiplos Sabores)
+                                </label>
+                                <div className="grid grid-cols-2 gap-3 mb-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurrentPromo(prev => ({ ...prev, itemSelectionMode: 'SINGLE', maxItemSelections: 1 }))}
+                                        className={`p-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                                            (currentPromo.itemSelectionMode || 'SINGLE') === 'SINGLE'
+                                                ? 'bg-blue-600 text-white border-blue-600'
+                                                : 'bg-gray-50 text-gray-800 border-gray-200 hover:bg-blue-50'
+                                        }`}
+                                    >
+                                        ☝️ Item Único (Ex: 1 Prato Feito / 1 Lanche)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurrentPromo(prev => ({ ...prev, itemSelectionMode: 'MULTI', maxItemSelections: prev.maxItemSelections && prev.maxItemSelections > 1 ? prev.maxItemSelections : 2 }))}
+                                        className={`p-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                                            currentPromo.itemSelectionMode === 'MULTI'
+                                                ? 'bg-blue-600 text-white border-blue-600'
+                                                : 'bg-gray-50 text-gray-800 border-gray-200 hover:bg-blue-50'
+                                        }`}
+                                    >
+                                        🍕 Múltiplos Sabores / Itens (Ex: 1 Pizza com 2 Sabores)
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-gray-500 mb-3">
+                                    {(currentPromo.itemSelectionMode || 'SINGLE') === 'SINGLE'
+                                        ? 'O cliente seleciona apenas 1 item único (ex: hambúrguer ou prato).'
+                                        : 'O cliente pode selecionar vários itens/sabores (ex: 1 pizza grande com 2 sabores diferentes).'}
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
                                     Quantidade de Itens que o Cliente Pode Marcar / Escolher
                                 </label>
                                 <div className="flex flex-wrap items-center gap-2 mb-2">
