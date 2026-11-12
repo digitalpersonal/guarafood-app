@@ -14,6 +14,7 @@ const normalizeOrder = (data: any): Order => {
         status: data.status,
         customerName: data.customer_name,
         customerPhone: data.customer_phone,
+        customerDocument: data.customer_cpf || data.customer_document || data.customerDocument || data.payment_details?.customer_cpf || data.payment_details?.customer_document || null,
         fiscalExport: data.fiscalExport || false,
         customerAddress: data.customer_address,
         wantsSachets: wantsSachets,
@@ -350,6 +351,25 @@ export const updateOrderFiscalExport = async (orderId: string, fiscalExport: boo
     }, {
         maxRetries: 3,
         initialDelayMs: 350
+    });
+};
+
+export const updateOrderCustomerDocument = async (orderId: string, document: string | null, customerName?: string): Promise<void> => {
+    return retryWithExponentialBackoff(async () => {
+        const cleanDoc = document ? document.trim() : null;
+        const updatePayload: any = { customer_cpf: cleanDoc };
+        if (customerName && customerName.trim()) {
+            updatePayload.customer_name = customerName.trim();
+        }
+        const { error } = await supabase.from('orders').update(updatePayload).eq('id', orderId);
+        if (error) {
+            handleSupabaseError({ error, customMessage: 'Falha ao atualizar CPF/CNPJ do pedido' });
+            throw error;
+        }
+        window.dispatchEvent(new Event('guarafood:update-orders'));
+    }, {
+        maxRetries: 2,
+        initialDelayMs: 300
     });
 };
 
