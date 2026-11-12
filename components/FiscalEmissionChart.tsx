@@ -53,18 +53,19 @@ export const FiscalEmissionChart: React.FC = () => {
             return true;
         });
 
-        // Generate map for the last 'timeframe' days
+        // Generate map for the last 'timeframe' days based strictly on real orders
         for (let i = timeframe - 1; i >= 0; i--) {
             const d = new Date();
             d.setDate(now.getDate() - i);
             const dateStr = d.toISOString().split('T')[0]; // YYYY-MM-DD
             const displayDate = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 
-            // Find orders on this date
+            // Encontra pedidos reais neste dia que possuem emissão fiscal registrada
             const dayOrders = filtered.filter(o => {
                 if (!o.timestamp) return false;
                 const oDate = new Date(o.timestamp).toISOString().split('T')[0];
-                return oDate === dateStr;
+                const hasFiscal = o.fiscal_status || o.fiscalExport || o.fiscal_key;
+                return oDate === dateStr && hasFiscal;
             });
 
             let authorized = 0;
@@ -73,28 +74,24 @@ export const FiscalEmissionChart: React.FC = () => {
             let totalAmount = 0;
 
             dayOrders.forEach(o => {
-                totalAmount += o.total || 0;
-                if (o.status === 'completed' || o.status === 'delivering' || o.status === 'ready') {
+                totalAmount += o.total || o.totalPrice || 0;
+                if (o.fiscal_status === 'autorizado' || o.fiscalExport) {
                     authorized += 1;
-                } else if (o.status === 'cancelled') {
+                } else if (o.fiscal_status === 'rejeitado') {
                     error += 1;
                 } else {
                     pending += 1;
                 }
             });
 
-            const totalInvoices = dayOrders.length > 0 ? dayOrders.length : (i % 3 === 0 ? Math.floor(Math.random() * 8) + 2 : Math.floor(Math.random() * 5));
-            const authCount = dayOrders.length > 0 ? authorized : Math.max(0, totalInvoices - 1);
-            const pendCount = dayOrders.length > 0 ? pending : (totalInvoices > authCount ? 1 : 0);
-
             result.push({
                 date: dateStr,
                 displayDate,
-                totalInvoices: authCount + pendCount + error,
-                authorized: authCount,
-                pending: pendCount,
-                error: error,
-                totalAmount: totalAmount > 0 ? totalAmount : totalInvoices * 48.50
+                totalInvoices: dayOrders.length,
+                authorized,
+                pending,
+                error,
+                totalAmount
             });
         }
 
@@ -296,23 +293,30 @@ export const FiscalEmissionChart: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {orders.slice(0, 8).map((order, idx) => (
+                            {orders.filter(o => o.fiscal_status || o.fiscalExport || o.fiscal_key).slice(0, 8).map((order, idx) => (
                                 <tr key={order.id || idx} className="hover:bg-gray-50/50 transition-colors">
-                                    <td className="py-3 px-3 font-bold text-gray-900">#{order.id}</td>
+                                    <td className="py-3 px-3 font-bold text-gray-900">#{order.order_number || order.id.substring(0, 6)}</td>
                                     <td className="py-3 px-3 text-gray-700 font-medium">{order.restaurantName || `Restaurante #${order.restaurantId}`}</td>
                                     <td className="py-3 px-3 text-gray-600">{order.customerName || 'Cliente Balcão'}</td>
-                                    <td className="py-3 px-3 font-bold text-gray-900">R$ {(order.total || 0).toFixed(2)}</td>
+                                    <td className="py-3 px-3 font-bold text-gray-900">R$ {(order.total || order.totalPrice || 0).toFixed(2)}</td>
                                     <td className="py-3 px-3">
-                                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-bold text-[10px] inline-flex items-center gap-1">
-                                            <span>✅</span> Autorizada (NFC-e)
+                                        <span className={`border px-2 py-0.5 rounded-full font-bold text-[10px] inline-flex items-center gap-1 ${
+                                            order.fiscal_status === 'rejeitado' 
+                                                ? 'bg-red-50 text-red-700 border-red-200' 
+                                                : order.fiscal_status === 'autorizado' || order.fiscalExport
+                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                                        }`}>
+                                            <span>{order.fiscal_status === 'rejeitado' ? '❌' : order.fiscal_status === 'autorizado' || order.fiscalExport ? '✅' : '⏳'}</span> 
+                                            {order.fiscal_status === 'rejeitado' ? 'Rejeitada' : order.fiscal_status === 'autorizado' || order.fiscalExport ? 'Autorizada (NFC-e)' : 'Pendente'}
                                         </span>
                                     </td>
                                     <td className="py-3 px-3 text-right text-gray-400">
-                                        {new Date(order.timestamp).toLocaleString('pt-BR')}
+                                        {order.timestamp ? new Date(order.timestamp).toLocaleString('pt-BR') : '-'}
                                     </td>
                                 </tr>
                             ))}
-                            {orders.length === 0 && (
+                            {orders.filter(o => o.fiscal_status || o.fiscalExport || o.fiscal_key).length === 0 && (
                                 <tr>
                                     <td colSpan={6} className="text-center py-6 text-gray-400">
                                         Nenhuma transmissão fiscal registrada no período.

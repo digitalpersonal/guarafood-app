@@ -46,43 +46,32 @@ export const FiscalInvoicesStatusList: React.FC = () => {
         load();
     }, []);
 
-    // Map orders to Fiscal Invoices with realistic processing statuses
+    // Map orders to Fiscal Invoices based strictly on real database fiscal status
     const invoices: FiscalInvoiceItem[] = useMemo(() => {
         const restMap = new Map(restaurants.map(r => [String(r.id), r.name]));
 
-        return orders.map((o, idx) => {
-            const restName = restMap.get(String(o.restaurantId)) || 'Restaurante Principal';
-            let status: 'Autorizada' | 'Pendente' | 'Rejeitada' = 'Autorizada';
-            let errorMessage = undefined;
+        // Filtra apenas pedidos que possuem status fiscal registrado ou exportação fiscal ativa
+        const fiscalOrders = orders.filter(o => o.fiscal_status || o.fiscalExport || o.fiscal_key);
 
-            // Determine deterministic status based on order status or index
-            if (o.status === 'cancelled') {
-                status = 'Rejeitada';
-                errorMessage = 'Rejeitada pela SEFAZ: Inconsistência nos tributos do item.';
-            } else if (idx % 7 === 0) {
-                status = 'Pendente';
-                errorMessage = 'Aguardando retorno do processamento assíncrono SEFAZ.';
-            } else if (idx % 13 === 0) {
-                status = 'Rejeitada';
-                errorMessage = 'Rejeitada: CNPJ do destinatário inválido ou certificado expirado.';
-            } else {
-                status = 'Autorizada';
-            }
-
-            const mockKey = `352610078912340001896500${String(idx + 1000).padStart(9, '0')}1849203912`;
-            const mockProtocol = `1352600${String(idx + 50000).padStart(7, '0')}`;
+        return fiscalOrders.map((o, idx) => {
+            const restName = restMap.get(String(o.restaurantId)) || 'Restaurante';
+            
+            let status: 'Autorizada' | 'Pendente' | 'Rejeitada' = 'Pendente';
+            if (o.fiscal_status === 'autorizado') status = 'Autorizada';
+            else if (o.fiscal_status === 'rejeitado') status = 'Rejeitada';
+            else if (o.fiscalExport) status = 'Autorizada';
 
             return {
                 id: `NFCe-${1000 + idx}`,
                 orderId: o.id,
                 restaurantName: restName,
                 customerName: o.customerName || 'Cliente GuaraFood',
-                amount: o.total || 45.00,
+                amount: o.total || o.totalPrice || 0,
                 status,
-                protocol: mockProtocol,
-                key: mockKey,
+                protocol: o.fiscal_key ? o.fiscal_key.substring(0, 15) : 'PENDENTE',
+                key: o.fiscal_key || '',
                 issuedAt: o.timestamp || new Date().toISOString(),
-                errorMessage
+                errorMessage: o.fiscal_error || undefined
             };
         });
     }, [orders, restaurants]);
