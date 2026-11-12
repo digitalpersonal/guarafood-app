@@ -1,6 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { Order, Restaurant } from '../types';
 import { useNotification } from '../hooks/useNotification';
+import FiscalDanfeReceipt from './FiscalDanfeReceipt';
+import FiscalDocumentModal from './FiscalDocumentModal';
+import { updateOrderCustomerDocument } from '../services/orderService';
 
 interface FiscalInvoiceViewModalProps {
     isOpen: boolean;
@@ -23,7 +27,13 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
     const [copiedXml, setCopiedXml] = useState<boolean>(false);
     const [copiedKey, setCopiedKey] = useState<boolean>(false);
     const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
-    const printRef = useRef<HTMLDivElement>(null);
+    const [isPrinting, setIsPrinting] = useState<boolean>(false);
+    const [currentOrder, setCurrentOrder] = useState<Order>(order || ({} as Order));
+    const [isDocModalOpen, setIsDocModalOpen] = useState<boolean>(false);
+
+    useEffect(() => {
+        if (order) setCurrentOrder(order);
+    }, [order]);
 
     // Fechar ao pressionar ESC
     useEffect(() => {
@@ -190,8 +200,13 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
             <CRT>1</CRT>
         </emit>
         <dest>
-            ${order.customerDocument ? `<CPF>${order.customerDocument.replace(/\D/g, '')}</CPF>` : ''}
-            <xNome>${(order.customerName || 'CONSUMIDOR').replace(/[&<>'"]/g, '')}</xNome>
+            ${(() => {
+                const doc = currentOrder.customerDocument ? currentOrder.customerDocument.replace(/\D/g, '') : '';
+                if (doc.length === 14) return `<CNPJ>${doc}</CNPJ>`;
+                if (doc.length === 11) return `<CPF>${doc}</CPF>`;
+                return '';
+            })()}
+            <xNome>${(currentOrder.customerName || 'CONSUMIDOR').replace(/[&<>'"]/g, '')}</xNome>
             <indIEDest>9</indIEDest>
         </dest>
         ${itemsXml}
@@ -284,48 +299,36 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
         addToast({ message: 'Download do arquivo XML iniciado!', type: 'success' });
     };
 
-    const handlePrintDanfe = () => {
-        const printWindow = window.open('', '_blank', 'width=450,height=700');
-        if (!printWindow) {
+    const executePrint = () => {
+        setIsPrinting(true);
+        setTimeout(() => {
             window.print();
-            return;
+            setTimeout(() => {
+                setIsPrinting(false);
+            }, 600);
+        }, 150);
+    };
+
+    const handlePrintDanfe = () => {
+        if (!currentOrder.customerDocument) {
+            setIsDocModalOpen(true);
+        } else {
+            executePrint();
         }
+    };
 
-        const danfeHtml = printRef.current?.innerHTML || '';
-        const paperWidth = `${selectedWidth}mm`;
-
-        printWindow.document.write(`
-            <!DOCTYPE html>
-            <html>
-                <head>
-                    <title>DANFE NFC-e #${orderNum}</title>
-                    <style>
-                        @page { margin: 0; size: ${paperWidth} auto; }
-                        body {
-                            margin: 0;
-                            padding: ${selectedWidth === 58 ? '2mm' : '3mm'};
-                            width: ${paperWidth};
-                            font-family: 'Courier New', Courier, monospace;
-                            font-size: ${selectedWidth === 58 ? '11px' : '12px'};
-                            color: #000;
-                            background: #fff;
-                            line-height: 1.15;
-                        }
-                        .section-divider {
-                            border-top: 1.5px dashed #000;
-                            margin: 4px 0;
-                            width: 100%;
-                        }
-                        table { width: 100%; border-collapse: collapse; font-size: inherit; }
-                        img { max-width: 100%; height: auto; }
-                    </style>
-                </head>
-                <body onload="window.print(); window.close();">
-                    ${danfeHtml}
-                </body>
-            </html>
-        `);
-        printWindow.document.close();
+    const handleConfirmDoc = (doc: string | null, name?: string) => {
+        setIsDocModalOpen(false);
+        const updated: Order = {
+            ...currentOrder,
+            customerDocument: doc || undefined,
+            customerName: name || currentOrder.customerName
+        };
+        setCurrentOrder(updated);
+        updateOrderCustomerDocument(currentOrder.id, doc, name).catch(err => {
+            console.warn('Erro ao atualizar CPF/CNPJ no banco:', err);
+        });
+        executePrint();
     };
 
     return (
@@ -440,167 +443,44 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
                     {/* TAB 1: DANFE SIMPLIFICADO */}
                     {activeTab === 'danfe' && (
                         <div className="space-y-4 max-w-xl mx-auto">
-                            <div className="flex items-center justify-between bg-white p-3 rounded-2xl border border-gray-200 shadow-2xs">
+                            <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-3 rounded-2xl border border-gray-200 shadow-2xs">
                                 <div className="text-xs text-gray-600">
                                     Visualização fiel do cupom térmico impresso aos clientes.
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={handlePrintDanfe}
-                                    className="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-black shadow-md transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
-                                >
-                                    <span>🖨️</span>
-                                    <span>Imprimir Cupom Térmico</span>
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsDocModalOpen(true)}
+                                        className="px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer shadow-2xs"
+                                        title="Inserir ou editar CPF/CNPJ do cliente na nota"
+                                    >
+                                        <span>👤</span>
+                                        <span>
+                                            {currentOrder.customerDocument 
+                                                ? `${currentOrder.customerDocument.replace(/\D/g, '').length === 14 ? 'CNPJ' : 'CPF'}: ${currentOrder.customerDocument}` 
+                                                : 'CPF na Nota?'}
+                                        </span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handlePrintDanfe}
+                                        className="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-black shadow-md transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                                    >
+                                        <span>🖨️</span>
+                                        <span>Imprimir Cupom Térmico</span>
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Container do Cupom Térmico (DANFE NFC-e) */}
-                            <div className="bg-white p-5 rounded-2xl shadow-md border border-gray-300 font-mono text-gray-900 mx-auto transition-all"
+                            <div className="bg-white p-5 rounded-2xl shadow-md border border-gray-300 mx-auto transition-all"
                                  style={{ maxWidth: selectedWidth === 58 ? '300px' : '380px' }}>
-                                <div ref={printRef} className="space-y-2 text-xs leading-tight">
-                                    {/* Cabeçalho */}
-                                    <div className="text-center font-bold text-sm">
-                                        {emitName}
-                                    </div>
-                                    <div className="text-center text-[10px] text-gray-600 space-y-0.5">
-                                        <div>CNPJ: {emitCnpj}</div>
-                                        <div>INSCRIÇÃO ESTADUAL: {emitIe}</div>
-                                        <div className="text-[9px]">{emitAddress}</div>
-                                    </div>
-
-                                    <div className="border-t border-dashed border-gray-400 my-1"></div>
-                                    <div className="text-center font-black text-xs uppercase">
-                                        DANFE NFC-e - Documento Auxiliar da Nota Fiscal de Consumidor Eletrônica
-                                    </div>
-                                    <div className="text-center italic text-[9px] text-gray-500">
-                                        Não permite aproveitamento de crédito de ICMS
-                                    </div>
-                                    {!isProd && (
-                                        <div className="text-center font-bold text-[9px] bg-gray-100 p-1 border">
-                                            [ EMITIDA EM AMBIENTE DE HOMOLOGAÇÃO - SEM VALOR FISCAL ]
-                                        </div>
-                                    )}
-
-                                    {/* Itens */}
-                                    <div className="border-t border-dashed border-gray-400 my-1"></div>
-                                    <table className="w-full text-[10px]">
-                                        <thead>
-                                            <tr className="border-b border-dashed border-gray-400 text-left">
-                                                <th className="pb-1"># CÓD | DESCRIÇÃO</th>
-                                                <th className="pb-1 text-center">QTD</th>
-                                                <th className="pb-1 text-right">VL.UN</th>
-                                                <th className="pb-1 text-right">TOTAL</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {(order.items || []).map((item, idx) => (
-                                                <tr key={idx} className="align-top">
-                                                    <td className="py-0.5 pr-1 break-words">
-                                                        {String(idx + 1).padStart(3, '0')} {item.name}
-                                                    </td>
-                                                    <td className="py-0.5 text-center whitespace-nowrap">{item.quantity} UN</td>
-                                                    <td className="py-0.5 text-right whitespace-nowrap">{item.price.toFixed(2)}</td>
-                                                    <td className="py-0.5 text-right whitespace-nowrap">{(item.price * item.quantity).toFixed(2)}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-
-                                    {/* Totais */}
-                                    <div className="border-t border-dashed border-gray-400 my-1"></div>
-                                    <div className="text-[11px] space-y-0.5">
-                                        <div className="flex justify-between">
-                                            <span>Qtd. Total de Itens:</span>
-                                            <span className="font-bold">{(order.items || []).reduce((acc, it) => acc + (it.quantity || 1), 0)}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span>Subtotal:</span>
-                                            <span>R$ {displaySubtotal.toFixed(2)}</span>
-                                        </div>
-                                        {Number(order.deliveryFee || 0) > 0 && (
-                                            <div className="flex justify-between">
-                                                <span>Acréscimo / Entrega:</span>
-                                                <span>R$ {Number(order.deliveryFee).toFixed(2)}</span>
-                                            </div>
-                                        )}
-                                        {Number(order.discountAmount || 0) > 0 && (
-                                            <div className="flex justify-between">
-                                                <span>Descontos:</span>
-                                                <span>- R$ {Number(order.discountAmount).toFixed(2)}</span>
-                                            </div>
-                                        )}
-                                        <div className="flex justify-between font-black text-sm border-t border-gray-900 pt-1 mt-1">
-                                            <span>VALOR A PAGAR R$:</span>
-                                            <span>R$ {displayTotal.toFixed(2)}</span>
-                                        </div>
-                                    </div>
-
-                                    {/* Pagamento */}
-                                    <div className="border-t border-dashed border-gray-400 my-1 text-[10px] space-y-0.5">
-                                        <div className="flex justify-between">
-                                            <span>FORMA DE PAGAMENTO:</span>
-                                            <span className="font-bold">{order.paymentMethod.toUpperCase()}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span>VALOR RECEBIDO:</span>
-                                            <span className="font-bold">R$ {displayTotal.toFixed(2)}</span>
-                                        </div>
-                                    </div>
-
-                                    {/* Tributos */}
-                                    <div className="border-t border-dashed border-gray-400 my-1 text-center text-[9px] text-gray-600 leading-tight">
-                                        Tributos Totais Incidentes (Lei Federal 12.741/2012):<br/>
-                                        R$ {approxTaxes.toFixed(2)} (13.45% aproximado) Fonte: IBPT
-                                    </div>
-
-                                    {/* Dados da NFC-e */}
-                                    <div className="border-t border-dashed border-gray-400 my-1 text-center text-[10px] space-y-0.5">
-                                        <div className="font-bold">NFC-e Nº {numNfFormatted} - SÉRIE {serie}</div>
-                                        <div>EMISSÃO: {dateString} {timeString}</div>
-                                        <div>PROTOCOLO DE AUTORIZAÇÃO:</div>
-                                        <div className="font-bold">{protocolNumber}</div>
-                                    </div>
-
-                                    {/* Consumidor */}
-                                    <div className="border-t border-dashed border-gray-400 my-1 text-[10px]">
-                                        <div><strong>CONSUMIDOR:</strong> {order.customerDocument ? `CPF: ${order.customerDocument}` : 'CONSUMIDOR NÃO IDENTIFICADO'}</div>
-                                        {order.customerName && <div>NOME: {order.customerName}</div>}
-                                    </div>
-
-                                    {/* QR Code */}
-                                    <div className="border-t border-dashed border-gray-400 my-1 text-center py-1">
-                                        <div className="text-[9px] font-bold mb-1">
-                                            CONSULTE PELA CHAVE OU QR CODE:
-                                        </div>
-                                        {qrCodeDataUrl ? (
-                                            <img
-                                                src={qrCodeDataUrl}
-                                                alt="QR Code NFC-e SEFAZ"
-                                                className="mx-auto my-1 block"
-                                                style={{ width: selectedWidth === 58 ? '110px' : '140px', height: 'auto' }}
-                                            />
-                                        ) : (
-                                            <div className="w-28 h-28 mx-auto bg-gray-100 flex items-center justify-center text-[9px] border">
-                                                QR Code SEFAZ
-                                            </div>
-                                        )}
-                                        <div className="text-[8px] text-gray-500 break-all">
-                                            http://nfce.fazenda.mg.gov.br/portalnfce
-                                        </div>
-                                    </div>
-
-                                    {/* Chave de Acesso */}
-                                    <div className="border-t border-dashed border-gray-400 my-1 text-center text-[9px] pt-1">
-                                        <div className="font-bold">CHAVE DE ACESSO:</div>
-                                        <div className="font-mono font-bold tracking-tight text-[8.5px]">
-                                            {formattedKey}
-                                        </div>
-                                    </div>
-
-                                    <div className="border-t border-dashed border-gray-400 pt-1 text-center text-[8px] text-gray-500">
-                                        EMISSÃO VIA GUARA-FOOD PDV FISCAL & SEFAZ-MG
-                                    </div>
-                                </div>
+                                <FiscalDanfeReceipt
+                                    order={currentOrder}
+                                    restaurant={restaurant}
+                                    printerWidth={selectedWidth}
+                                    qrCodeDataUrlOverride={qrCodeDataUrl}
+                                />
                             </div>
                         </div>
                     )}
@@ -766,6 +646,100 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
                     </div>
                 </div>
             </div>
+
+            {/* Portal de Impressão Direta com 100% de Fidelidade Visual */}
+            {isPrinting && createPortal(
+                <div id="thermal-receipt-container">
+                    <style dangerouslySetInnerHTML={{ __html: `
+                        @media screen {
+                            #thermal-receipt-container { display: none !important; }
+                        }
+                        @media print {
+                            @page {
+                                margin: 0 !important;
+                                size: ${selectedWidth}mm auto;
+                            }
+                            html, body {
+                                margin: 0 !important;
+                                padding: 0 !important;
+                                width: ${selectedWidth}mm !important;
+                                font-family: 'Courier New', Courier, monospace !important;
+                                color: #000 !important;
+                                background: #fff !important;
+                                -webkit-print-color-adjust: exact !important;
+                                print-color-adjust: exact !important;
+                            }
+                            body * {
+                                display: none !important;
+                            }
+                            #thermal-receipt-container,
+                            #thermal-receipt-container *,
+                            body > #thermal-receipt-container,
+                            body > #thermal-receipt-container * {
+                                visibility: visible !important;
+                            }
+                            #thermal-receipt-container {
+                                display: block !important;
+                                position: absolute !important;
+                                left: 0 !important;
+                                top: 0 !important;
+                                width: ${selectedWidth}mm !important;
+                                max-width: ${selectedWidth}mm !important;
+                                padding: ${selectedWidth === 58 ? '1mm' : '2mm'} !important;
+                                box-sizing: border-box !important;
+                                margin: 0 !important;
+                                background: #fff !important;
+                                z-index: 99999999 !important;
+                            }
+                            #thermal-receipt-container style {
+                                display: none !important;
+                            }
+                            #thermal-receipt-container table {
+                                display: table !important;
+                                width: 100% !important;
+                                border-collapse: collapse !important;
+                            }
+                            #thermal-receipt-container thead {
+                                display: table-header-group !important;
+                            }
+                            #thermal-receipt-container tbody {
+                                display: table-row-group !important;
+                            }
+                            #thermal-receipt-container tr {
+                                display: table-row !important;
+                            }
+                            #thermal-receipt-container th,
+                            #thermal-receipt-container td {
+                                display: table-cell !important;
+                            }
+                            #thermal-receipt-container img {
+                                display: block !important;
+                                margin-left: auto !important;
+                                margin-right: auto !important;
+                            }
+                        }
+                    `}} />
+                    <div style={{ width: '100%', boxSizing: 'border-box' }}>
+                        <FiscalDanfeReceipt
+                            order={currentOrder}
+                            restaurant={restaurant}
+                            printerWidth={selectedWidth}
+                            qrCodeDataUrlOverride={qrCodeDataUrl}
+                        />
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {isDocModalOpen && (
+                <FiscalDocumentModal
+                    isOpen={isDocModalOpen}
+                    onClose={() => setIsDocModalOpen(false)}
+                    order={currentOrder}
+                    onConfirm={handleConfirmDoc}
+                    actionLabel="Confirmar e Imprimir"
+                />
+            )}
         </div>
     );
 };

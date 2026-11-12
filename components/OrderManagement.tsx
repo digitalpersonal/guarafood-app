@@ -65,13 +65,13 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     });
     const [printJob, setPrintJob] = useState<{ 
         order: Order, 
-        mode: 'full' | 'kitchen' | 'admin', 
+        mode: 'full' | 'kitchen' | 'admin' | 'fiscal', 
         items?: CartItem[], 
         jobId?: string 
     } | null>(null);
     const [printQueue, setPrintQueue] = useState<Array<{ 
         order: Order, 
-        mode: 'full' | 'kitchen' | 'admin', 
+        mode: 'full' | 'kitchen' | 'admin' | 'fiscal', 
         items?: CartItem[], 
         jobId?: string 
     }>>([]);
@@ -683,7 +683,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }
     }, [orders, playNotification, restaurant?.printers]);
 
-    const handleManualPrint = (order: Order, mode: 'full' | 'kitchen' | 'admin' = 'full') => {
+    const handleManualPrint = (order: Order, mode: 'full' | 'kitchen' | 'admin' | 'fiscal' = 'full') => {
         if (!order.items || order.items.length === 0) {
             addToast({ message: 'O pedido não possui itens para imprimir.', type: 'warning' });
             return;

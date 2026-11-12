@@ -11,6 +11,8 @@ import { getMensalistaByPhone, searchMensalistas } from '../services/mensalistaS
 import type { Mensalista } from '../types';
 import PaymentDiagnostic from './PaymentDiagnostic';
 import FiscalInvoiceViewModal from './FiscalInvoiceViewModal';
+import FiscalDocumentModal from './FiscalDocumentModal';
+import { updateOrderCustomerDocument } from '../services/orderService';
 
 
 const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -148,7 +150,8 @@ const OrderCard: React.FC<{
     updatingState?: UpdatingOrderState;
     restaurant?: Restaurant | null;
     onViewFiscalInvoice?: (order: Order) => void;
-}> = ({ order, onStatusUpdate, onNotify, onViewDetails, onPrint, enableFiscal, onToggleFiscal, updatingState, restaurant, onViewFiscalInvoice }) => {
+    onRequestFiscalPrint?: (order: Order) => void;
+}> = ({ order, onStatusUpdate, onNotify, onViewDetails, onPrint, enableFiscal, onToggleFiscal, updatingState, restaurant, onViewFiscalInvoice, onRequestFiscalPrint }) => {
     const { confirm } = useNotification();
     const { text, color } = statusConfig[order.status];
     const [isExpanded, setIsExpanded] = useState(false);
@@ -378,7 +381,14 @@ const OrderCard: React.FC<{
                                 </button>
                             )}
                             <button 
-                                onClick={(e) => { e.stopPropagation(); onPrint(order, 'fiscal'); }} 
+                                onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    if (onRequestFiscalPrint) {
+                                        onRequestFiscalPrint(order);
+                                    } else {
+                                        onPrint(order, 'fiscal');
+                                    }
+                                }} 
                                 className="px-1.5 py-0.5 text-[10px] font-black text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-300 rounded transition-colors flex items-center gap-0.5" 
                                 title="Imprimir Cupom Fiscal / Extrato Eletrônico"
                             >
@@ -503,7 +513,7 @@ const OrderCard: React.FC<{
 interface OrdersViewProps {
     orders: Order[];
     printerWidth?: number;
-    onPrint: (order: Order) => void;
+    onPrint: (order: Order, mode?: 'full' | 'kitchen' | 'admin' | 'fiscal') => void;
     currentStaffUser?: StaffMember | null;
     restaurant: Restaurant | null;
 }
@@ -525,6 +535,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
     const [filterFiscalOnly, setFilterFiscalOnly] = useState(false);
     const [updatingOrders, setUpdatingOrders] = useState<Record<string, UpdatingOrderState>>({});
     const [orderForFiscalView, setOrderForFiscalView] = useState<Order | null>(null);
+    const [orderForFiscalDoc, setOrderForFiscalDoc] = useState<Order | null>(null);
 
     const fiscalSelectedCount = useMemo(() => {
         return orders.filter(o => o.fiscalExport).length;
@@ -927,6 +938,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                                     updatingState={updatingOrders[order.id]}
                                     restaurant={restaurant}
                                     onViewFiscalInvoice={setOrderForFiscalView}
+                                    onRequestFiscalPrint={setOrderForFiscalDoc}
                                 />
                             ))}
                         </div>
@@ -1205,6 +1217,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                                                         updatingState={updatingOrders[order.id]}
                                                         restaurant={restaurant}
                                                         onViewFiscalInvoice={setOrderForFiscalView}
+                                                        onRequestFiscalPrint={setOrderForFiscalDoc}
                                                     />
                                                 ))
                                             ) : (
@@ -1248,6 +1261,27 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                     order={orderForFiscalView}
                     restaurant={restaurant}
                     printerWidth={printerWidth}
+                />
+            )}
+            {orderForFiscalDoc && (
+                <FiscalDocumentModal
+                    isOpen={Boolean(orderForFiscalDoc)}
+                    onClose={() => setOrderForFiscalDoc(null)}
+                    order={orderForFiscalDoc}
+                    onConfirm={(doc, name) => {
+                        const targetOrder = orderForFiscalDoc;
+                        const updated: Order = {
+                            ...targetOrder,
+                            customerDocument: doc || undefined,
+                            customerName: name || targetOrder.customerName
+                        };
+                        setOrderForFiscalDoc(null);
+                        updateOrderCustomerDocument(targetOrder.id, doc, name).catch(err => {
+                            console.warn('Erro ao atualizar CPF/CNPJ no banco:', err);
+                        });
+                        onPrint(updated, 'fiscal');
+                    }}
+                    actionLabel="Imprimir Cupom Fiscal"
                 />
             )}
             {orderToEdit && currentUser && (
