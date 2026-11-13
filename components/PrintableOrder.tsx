@@ -1,5 +1,4 @@
 import React from 'react';
-import { createPortal } from 'react-dom';
 import type { Order, Restaurant } from '../types';
 
 import FiscalDanfeReceipt from './FiscalDanfeReceipt';
@@ -52,86 +51,14 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
         : (displaySubtotal + Number(order.deliveryFee || 0) - Number(order.discountAmount || 0));
 
     if (printMode === 'fiscal') {
-        return createPortal(
-            <div id="thermal-receipt-container">
-                <style dangerouslySetInnerHTML={{ __html: `
-                    @media screen {
-                        #thermal-receipt-container { display: none !important; }
-                    }
-                    @media print {
-                        @page {
-                            margin: 0 !important;
-                            size: ${paperSize} auto;
-                        }
-                        html, body {
-                            margin: 0 !important;
-                            padding: 0 !important;
-                            width: ${paperSize} !important;
-                            font-family: 'Courier New', Courier, monospace !important;
-                            color: #000 !important;
-                            background: #fff !important;
-                            -webkit-print-color-adjust: exact !important;
-                            print-color-adjust: exact !important;
-                        }
-                        body * {
-                            display: none !important;
-                        }
-                        #thermal-receipt-container,
-                        #thermal-receipt-container *,
-                        body > #thermal-receipt-container,
-                        body > #thermal-receipt-container * {
-                            visibility: visible !important;
-                        }
-                        #thermal-receipt-container {
-                            display: block !important;
-                            position: absolute !important;
-                            left: 0 !important;
-                            top: 0 !important;
-                            width: ${paperSize} !important;
-                            max-width: ${paperSize} !important;
-                            padding: ${sidePadding} !important;
-                            box-sizing: border-box !important;
-                            margin: 0 !important;
-                            background: #fff !important;
-                            z-index: 9999999 !important;
-                        }
-                        #thermal-receipt-container style {
-                            display: none !important;
-                        }
-                        #thermal-receipt-container table {
-                            display: table !important;
-                            width: 100% !important;
-                            border-collapse: collapse !important;
-                        }
-                        #thermal-receipt-container thead {
-                            display: table-header-group !important;
-                        }
-                        #thermal-receipt-container tbody {
-                            display: table-row-group !important;
-                        }
-                        #thermal-receipt-container tr {
-                            display: table-row !important;
-                        }
-                        #thermal-receipt-container th,
-                        #thermal-receipt-container td {
-                            display: table-cell !important;
-                        }
-                        #thermal-receipt-container img {
-                            display: block !important;
-                            margin-left: auto !important;
-                            margin-right: auto !important;
-                        }
-                    }
-                `}} />
-                <div style={{ width: '100%', boxSizing: 'border-box' }}>
-                    <FiscalDanfeReceipt
-                        order={order}
-                        restaurant={restaurant}
-                        printerWidth={printerWidth}
-                    />
-                </div>
-            </div>,
-            document.body
+        return (
+            <div id="thermal-receipt-container" style={{ width: paperSize, margin: '0 auto', background: '#fff', color: '#000' }}>
+                <FiscalDanfeReceipt
+                    order={order}
+                    restaurant={restaurant}
+                    printerWidth={printerWidth}
+                />
+            </div>
         );
     }
 
@@ -157,7 +84,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                 @media print {
                     @page {
                         margin: 0 !important;
-                        size: ${paperSize} auto;
+                        size: ${paperSize};
                     }
                     
                     /* Aggressive reset for printing */
@@ -167,6 +94,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         width: ${paperSize} !important;
                         height: auto !important;
                         min-height: 0 !important;
+                        max-height: none !important;
                         overflow: visible !important;
                         -webkit-print-color-adjust: exact !important;
                         print-color-adjust: exact !important;
@@ -204,11 +132,12 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                     }
 
                     #thermal-receipt-container {
-                        position: absolute !important;
-                        left: 0 !important;
-                        top: 0 !important;
+                        position: static !important;
+                        left: auto !important;
+                        top: auto !important;
                         width: ${paperSize} !important;
                         max-width: ${paperSize} !important;
+                        height: auto !important;
                         margin: 0 !important;
                         padding: 0 !important;
                         background: white !important;
@@ -502,7 +431,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
         </div>
     );
 
-    return createPortal(content, document.body);
+    return content;
 };
 
 export default PrintableOrder;

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
 import { useSound } from '../hooks/useSound';
@@ -9,6 +9,7 @@ import { clearTodayTableOrders } from '../services/orderService';
 import type { Restaurant, OperatingHours, Order } from '../types';
 import Spinner from './Spinner';
 import PrintableOrder from './PrintableOrder';
+import { printThermalElement } from '../utils/thermalPrint';
 import PrinterManagement from './PrinterManagement';
 import MensalistasManager from './MensalistasManager';
 import MercadoPagoGuide from './MercadoPagoGuide';
@@ -395,6 +396,7 @@ const RestaurantSettings: React.FC<{
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [testOrder, setTestOrder] = useState<Order | null>(null);
+    const testPrintRef = useRef<HTMLDivElement>(null);
 
     const restaurantId = restaurantIdOverride || currentUser?.restaurantId;
 
@@ -600,8 +602,14 @@ const RestaurantSettings: React.FC<{
         
         setTestOrder(dummyOrder);
         
-        setTimeout(() => {
-            window.print();
+        setTimeout(async () => {
+            if (testPrintRef.current) {
+                await printThermalElement(testPrintRef.current, printerWidth);
+            } else {
+                window.focus();
+                window.print();
+            }
+            setTestOrder(null);
         }, 300);
     };
 
@@ -1279,7 +1287,7 @@ const RestaurantSettings: React.FC<{
                 </div>
             </div>
 
-            <div className="hidden print:block">
+            <div ref={testPrintRef} className="hidden" aria-hidden="true">
                 <div id="printable-order">
                     {testOrder && <PrintableOrder order={testOrder} printerWidth={printerWidth} />}
                 </div>

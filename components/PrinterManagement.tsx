@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, PrinterConfig, PrinterType, MenuCategory, Order, CartItem } from '../types';
 import { fetchMenuForRestaurant, updateRestaurant } from '../services/databaseService';
 import { useNotification } from '../hooks/useNotification';
 import PrintableOrder from './PrintableOrder';
+import { printThermalElement } from '../utils/thermalPrint';
 
 interface PrinterManagementProps {
     restaurant: Restaurant;
@@ -87,16 +88,20 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
         }
     }, [restaurant.printers]);
 
+    const testPrintRef = useRef<HTMLDivElement>(null);
+
     // Disparador de impressão de teste
     useEffect(() => {
         if (testPrintJob) {
-            const timer = setTimeout(() => {
-                window.focus();
-                window.print();
-                setTimeout(() => {
-                    setTestPrintJob(null);
-                }, 1000);
-            }, 400);
+            const timer = setTimeout(async () => {
+                if (testPrintRef.current) {
+                    await printThermalElement(testPrintRef.current, testPrintJob.printerWidth);
+                } else {
+                    window.focus();
+                    window.print();
+                }
+                setTestPrintJob(null);
+            }, 300);
             return () => clearTimeout(timer);
         }
     }, [testPrintJob]);
@@ -1462,7 +1467,7 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
             )}
 
             {/* ELEMENTO OCULTO PARA DISPARO DE IMPRESSÃO DE TESTE */}
-            <div className="hidden print:block">
+            <div ref={testPrintRef} className="hidden" aria-hidden="true">
                 {testPrintJob && (
                     <PrintableOrder
                         order={testPrintJob.order}

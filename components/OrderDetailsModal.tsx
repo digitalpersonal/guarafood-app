@@ -4,8 +4,10 @@ import type { Order, OrderStatus, PaymentEntry } from '../types';
 import PrintableOrder from './PrintableOrder';
 import OrderEditorModal from './OrderEditorModal'; // Import the new modal
 import FiscalInvoiceViewModal from './FiscalInvoiceViewModal';
-import { recordOrderPayment } from '../services/orderService';
+import FiscalDocumentModal from './FiscalDocumentModal';
+import { recordOrderPayment, updateOrderCustomerDocument } from '../services/orderService';
 import { useNotification } from '../hooks/useNotification';
+import { printThermalElement } from '../utils/thermalPrint';
 
 const XIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -56,6 +58,9 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
     const [currentOrder, setCurrentOrder] = useState<Order>(order); // Use internal state for order
     const [printMode, setPrintMode] = useState<'full' | 'kitchen' | 'admin' | 'fiscal'>('full');
     const [showFiscalInvoiceModal, setShowFiscalInvoiceModal] = useState<boolean>(false);
+    const [isFiscalDocModalOpen, setIsFiscalDocModalOpen] = useState<boolean>(false);
+    const [isLocalPrinting, setIsLocalPrinting] = useState<boolean>(false);
+    const printSourceRef = useRef<HTMLDivElement | null>(null);
 
     const hasKitchenPrinter = Boolean(restaurant?.printers?.some((p: any) => p.type === 'kitchen' && p.active !== false));
 
@@ -75,12 +80,20 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
         };
     }, [onClose]);
 
+    const triggerLocalPrint = (mode: 'full' | 'kitchen' | 'admin' | 'fiscal') => {
+        setPrintMode(mode);
+        setIsLocalPrinting(true);
+        setTimeout(async () => {
+            await printThermalElement(printSourceRef.current, printerWidth);
+            setIsLocalPrinting(false);
+        }, 120);
+    };
+
     const handlePrintFull = () => {
         if (onPrint) {
             onPrint(currentOrder, 'full');
         } else {
-            setPrintMode('full');
-            setTimeout(() => window.print(), 100);
+            triggerLocalPrint('full');
         }
     };
 
@@ -88,17 +101,32 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
         if (onPrint) {
             onPrint(currentOrder, 'kitchen');
         } else {
-            setPrintMode('kitchen');
-            setTimeout(() => window.print(), 100);
+            triggerLocalPrint('kitchen');
         }
     };
 
     const handlePrintFiscal = () => {
+        setIsFiscalDocModalOpen(true);
+    };
+
+    const handleConfirmFiscalDoc = (document: string | null, customerName?: string) => {
+        setIsFiscalDocModalOpen(false);
+        const updatedOrder: Order = {
+            ...currentOrder,
+            customerDocument: document || undefined,
+            customerName: customerName || currentOrder.customerName
+        };
+        setCurrentOrder(updatedOrder);
+
+        // Atualiza no banco de dados
+        updateOrderCustomerDocument(currentOrder.id, document, customerName).catch(err => {
+            console.warn('Erro ao atualizar CPF/CNPJ no banco:', err);
+        });
+
         if (onPrint) {
-            onPrint(currentOrder, 'fiscal');
+            onPrint(updatedOrder, 'fiscal');
         } else {
-            setPrintMode('fiscal');
-            setTimeout(() => window.print(), 100);
+            triggerLocalPrint('fiscal');
         }
     };
 
@@ -348,11 +376,11 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                     </div>
                 </div>
             </div>
-            <div className="hidden print:block">
-                <div id="printable-order">
-                    <PrintableOrder order={currentOrder} printerWidth={printerWidth} printMode={printMode} restaurant={restaurant} /> 
+            {isLocalPrinting && (
+                <div ref={printSourceRef} className="hidden" aria-hidden="true">
+                    <PrintableOrder order={currentOrder} printerWidth={printerWidth} printMode={printMode} restaurant={restaurant} />
                 </div>
-            </div>
+            )}
 
             {isEditing && (
                 <OrderEditorModal
@@ -372,6 +400,16 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                     order={currentOrder}
                     restaurant={restaurant}
                     printerWidth={printerWidth}
+                />
+            )}
+
+            {isFiscalDocModalOpen && (
+                <FiscalDocumentModal
+                    isOpen={isFiscalDocModalOpen}
+                    onClose={() => setIsFiscalDocModalOpen(false)}
+                    order={currentOrder}
+                    onConfirm={handleConfirmFiscalDoc}
+                    actionLabel="Imprimir Cupom Fiscal"
                 />
             )}
         </>

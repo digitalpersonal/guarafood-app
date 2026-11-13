@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useState, useEffect, useRef } from 'react';
 import type { Order, Restaurant } from '../types';
 import { useNotification } from '../hooks/useNotification';
 import FiscalDanfeReceipt from './FiscalDanfeReceipt';
+import { printThermalElement } from '../utils/thermalPrint';
 
 interface FiscalInvoiceViewModalProps {
     isOpen: boolean;
@@ -25,7 +25,7 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
     const [copiedXml, setCopiedXml] = useState<boolean>(false);
     const [copiedKey, setCopiedKey] = useState<boolean>(false);
     const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
-    const [isPrinting, setIsPrinting] = useState<boolean>(false);
+    const receiptRef = useRef<HTMLDivElement>(null);
 
     // Fechar ao pressionar ESC
     useEffect(() => {
@@ -286,14 +286,12 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
         addToast({ message: 'Download do arquivo XML iniciado!', type: 'success' });
     };
 
-    const handlePrintDanfe = () => {
-        setIsPrinting(true);
-        setTimeout(() => {
+    const handlePrintDanfe = async () => {
+        if (receiptRef.current) {
+            await printThermalElement(receiptRef.current, selectedWidth);
+        } else {
             window.print();
-            setTimeout(() => {
-                setIsPrinting(false);
-            }, 600);
-        }, 150);
+        }
     };
 
     return (
@@ -423,7 +421,7 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
                             </div>
 
                             {/* Container do Cupom Térmico (DANFE NFC-e) */}
-                            <div className="bg-white p-5 rounded-2xl shadow-md border border-gray-300 mx-auto transition-all"
+                            <div ref={receiptRef} className="bg-white p-5 rounded-2xl shadow-md border border-gray-300 mx-auto transition-all"
                                  style={{ maxWidth: selectedWidth === 58 ? '300px' : '380px' }}>
                                 <FiscalDanfeReceipt
                                     order={order}
@@ -596,90 +594,6 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
                     </div>
                 </div>
             </div>
-
-            {/* Portal de Impressão Direta com 100% de Fidelidade Visual */}
-            {isPrinting && createPortal(
-                <div id="thermal-receipt-container">
-                    <style dangerouslySetInnerHTML={{ __html: `
-                        @media screen {
-                            #thermal-receipt-container { display: none !important; }
-                        }
-                        @media print {
-                            @page {
-                                margin: 0 !important;
-                                size: ${selectedWidth}mm auto;
-                            }
-                            html, body {
-                                margin: 0 !important;
-                                padding: 0 !important;
-                                width: ${selectedWidth}mm !important;
-                                font-family: 'Courier New', Courier, monospace !important;
-                                color: #000 !important;
-                                background: #fff !important;
-                                -webkit-print-color-adjust: exact !important;
-                                print-color-adjust: exact !important;
-                            }
-                            body * {
-                                display: none !important;
-                            }
-                            #thermal-receipt-container,
-                            #thermal-receipt-container *,
-                            body > #thermal-receipt-container,
-                            body > #thermal-receipt-container * {
-                                visibility: visible !important;
-                            }
-                            #thermal-receipt-container {
-                                display: block !important;
-                                position: absolute !important;
-                                left: 0 !important;
-                                top: 0 !important;
-                                width: ${selectedWidth}mm !important;
-                                max-width: ${selectedWidth}mm !important;
-                                padding: ${selectedWidth === 58 ? '1mm' : '2mm'} !important;
-                                box-sizing: border-box !important;
-                                margin: 0 !important;
-                                background: #fff !important;
-                                z-index: 99999999 !important;
-                            }
-                            #thermal-receipt-container style {
-                                display: none !important;
-                            }
-                            #thermal-receipt-container table {
-                                display: table !important;
-                                width: 100% !important;
-                                border-collapse: collapse !important;
-                            }
-                            #thermal-receipt-container thead {
-                                display: table-header-group !important;
-                            }
-                            #thermal-receipt-container tbody {
-                                display: table-row-group !important;
-                            }
-                            #thermal-receipt-container tr {
-                                display: table-row !important;
-                            }
-                            #thermal-receipt-container th,
-                            #thermal-receipt-container td {
-                                display: table-cell !important;
-                            }
-                            #thermal-receipt-container img {
-                                display: block !important;
-                                margin-left: auto !important;
-                                margin-right: auto !important;
-                            }
-                        }
-                    `}} />
-                    <div style={{ width: '100%', boxSizing: 'border-box' }}>
-                        <FiscalDanfeReceipt
-                            order={order}
-                            restaurant={restaurant}
-                            printerWidth={selectedWidth}
-                            qrCodeDataUrlOverride={qrCodeDataUrl}
-                        />
-                    </div>
-                </div>,
-                document.body
-            )}
         </div>
     );
 };
