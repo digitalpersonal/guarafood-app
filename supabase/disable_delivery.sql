@@ -1,5 +1,0 @@
--- 🛠️ ADICIONA COLUNA PARA DESATIVAR ENTREGAS (APENAS RETIRADA)
-ALTER TABLE public.restaurants 
-ADD COLUMN IF NOT EXISTS disable_delivery BOOLEAN DEFAULT false;
-
-NOTIFY pgrst, 'reload schema';
