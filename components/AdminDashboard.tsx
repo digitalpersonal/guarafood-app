@@ -1,0 +1,263 @@
+
+import React, { useState } from 'react';
+import { useAuth } from '../services/authService';
+import { APP_VERSION } from './VersionChecker';
+import { useNotification } from '../hooks/useNotification';
+import RestaurantManagement from './RestaurantManagement';
+import CategoryManagement from './CategoryManagement';
+import MarketingManagement from './MarketingManagement';
+import AdManagement from './AdManagement';
+import MenuManagement from './MenuManagement';
+import RestaurantSettings from './RestaurantSettings';
+import GlobalCustomerList from './GlobalCustomerList';
+import MensalistasManager from './MensalistasManager';
+import AdminSalesReport from './AdminSalesReport';
+import PlatformUsersManagement from './PlatformUsersManagement';
+import HelpCenter from './HelpCenter';
+import AdminPromotionsManagement from './AdminPromotionsManagement';
+import { FiscalEmissionChart } from './FiscalEmissionChart';
+import FiscalConfigModule from './FiscalConfigModule';
+import FiscalSetupGuide from './FiscalSetupGuide';
+
+
+// Re-usable Icons
+const ArrowLeftIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+  </svg>
+);
+const LogoutIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+    </svg>
+);
+const MegaphoneIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 110-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253.062.51.123.769.183L12 18.25c.162.277.568.277.73 0l.901-1.537c.259-.06.516-.121.769-.183m-3.06-9.18c.253-.062.51-.123.769-.183L12 5.75c.162-.277.568-.277.73 0l.901 1.537c.259.06.516.121.769.183m-3.06 9.18c1.106.263 2.253.403 3.44.403 1.187 0 2.334-.14 3.44-.403m-6.88-9.18c1.106-.263 2.253-.403 3.44-.403 1.187 0 2.334.14 3.44.403M12 21.25a3.25 3.25 0 110-6.5 3.25 3.25 0 010 6.5z" />
+    </svg>
+);
+const ArrowDownTrayIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+);
+import { fetchRestaurantsSecure, deleteRestaurant } from '../services/databaseService';
+
+const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+    const { currentUser, logout } = useAuth();
+    const { addToast } = useNotification();
+    const [activeTab, setActiveTab] = useState<'restaurants' | 'promotions' | 'sales' | 'categories' | 'marketing' | 'ads' | 'customers' | 'settings' | 'help' | 'mensalistas' | 'users' | 'fiscal' | 'config-fiscal' | 'guia-fiscal'>('restaurants');
+    const [selectedPromoRestaurantId, setSelectedPromoRestaurantId] = useState<number | null>(null);
+    const [editingMenuRestaurantId, setEditingMenuRestaurantId] = useState<number | null>(null);
+    const [editingSettingsRestaurantId, setEditingSettingsRestaurantId] = useState<number | null>(null);
+
+    // Se estiver editando um cardápio específico, mostra o componente de Menu
+    if (editingMenuRestaurantId) {
+        return (
+            <MenuManagement 
+                restaurantId={editingMenuRestaurantId} 
+                onBack={() => setEditingMenuRestaurantId(null)} 
+            />
+        );
+    }
+
+    // Se estiver editando as configurações de um restaurante específico
+    if (editingSettingsRestaurantId) {
+        return (
+            <RestaurantSettings 
+                restaurantIdOverride={editingSettingsRestaurantId} 
+                onBack={() => setEditingSettingsRestaurantId(null)} 
+            />
+        );
+    }
+
+    const handleDownloadIcons = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        img.src = `${window.location.origin}/vite.svg?t=${new Date().getTime()}`; 
+        img.crossOrigin = "Anonymous";
+        
+        img.onload = () => {
+            const sizes = [192, 512];
+            sizes.forEach(size => {
+                canvas.width = size;
+                canvas.height = size;
+                if (ctx) {
+                    ctx.clearRect(0, 0, size, size);
+                    ctx.drawImage(img, 0, 0, size, size);
+                    try {
+                        const link = document.createElement('a');
+                        link.download = `icon-${size}.png`;
+                        link.href = canvas.toDataURL('image/png');
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    } catch (e) {
+                        console.error("Canvas Security Error:", e);
+                        addToast({ message: 'Erro de segurança do navegador ao salvar imagem.', type: 'error' });
+                    }
+                }
+            });
+            addToast({ message: 'Ícones baixados! Verifique sua pasta de downloads.', type: 'success' });
+        };
+        img.onerror = (e) => {
+             console.error("Image load error:", e);
+             addToast({ message: 'Erro ao encontrar o arquivo vite.svg na raiz do site.', type: 'error' });
+        };
+    };
+
+    const renderSettings = () => (
+        <div className="bg-white p-6 rounded-lg shadow-md max-w-2xl mx-auto">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Configurações do Sistema</h2>
+            <div className="border rounded-lg bg-gray-50 p-4 border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <img src="/vite.svg" alt="Icon" className="w-6 h-6" />
+                    Ícones do App (PWA)
+                </h3>
+                <p className="text-sm text-gray-600 mb-4">
+                    Para que o aplicativo possa ser instalado no Android e iOS, é necessário ter os ícones PNG (192px e 512px).
+                </p>
+                <button 
+                    onClick={handleDownloadIcons} 
+                    className="bg-blue-600 text-white font-bold px-4 py-2.5 rounded-lg hover:bg-blue-700 text-sm flex items-center gap-2 shadow-sm transition-colors"
+                >
+                    <ArrowDownTrayIcon className="w-5 h-5" />
+                    Gerar e Baixar Ícones (PNG)
+                </button>
+            </div>
+        </div>
+    );
+
+    const renderContent = () => {
+        switch (activeTab) {
+            case 'restaurants':
+                return (
+                    <RestaurantManagement 
+                        onEditMenu={(restaurant) => setEditingMenuRestaurantId(restaurant.id)} 
+                        onEditSettings={(restaurant) => setEditingSettingsRestaurantId(restaurant.id)}
+                        onManagePromotions={(restaurant) => {
+                            setSelectedPromoRestaurantId(restaurant.id);
+                            setActiveTab('promotions');
+                        }}
+                    />
+                );
+            case 'promotions':
+                return <AdminPromotionsManagement initialRestaurantId={selectedPromoRestaurantId} />;
+            case 'sales':
+                if (currentUser && currentUser.canAccessFinancial === false) {
+                    return (
+                        <div className="p-8 text-center bg-white rounded-3xl max-w-md mx-auto my-12 border border-gray-200 shadow-sm animate-fadeIn">
+                            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl font-bold">
+                                🔒
+                            </div>
+                            <h3 className="text-xl font-black text-gray-800 mb-1">Acesso Financeiro Bloqueado</h3>
+                            <p className="text-xs text-gray-500">
+                                Seu perfil de usuário não possui permissão para visualizar relatórios de vendas, faturamento e dados financeiros da plataforma GuaráFood.
+                            </p>
+                        </div>
+                    );
+                }
+                return <AdminSalesReport />;
+            case 'users':
+                return <PlatformUsersManagement />;
+            case 'categories':
+                return <CategoryManagement />;
+            case 'marketing':
+                return <MarketingManagement />;
+            case 'ads':
+                return <AdManagement />;
+            case 'customers':
+                return <GlobalCustomerList />;
+            case 'mensalistas':
+                return <MensalistasManager />;
+            case 'fiscal':
+                return <FiscalEmissionChart />;
+            case 'config-fiscal':
+                return <FiscalConfigModule onOpenGuide={() => setActiveTab('guia-fiscal')} />;
+            case 'guia-fiscal':
+                return <FiscalSetupGuide onGoToConfig={() => setActiveTab('config-fiscal')} onBack={() => setActiveTab('restaurants')} />;
+            case 'settings':
+                return renderSettings();
+            case 'help':
+                return <HelpCenter onBack={() => setActiveTab('restaurants')} />;
+            default:
+                return null;
+        }
+    };
+
+    return (
+        <div className="w-full min-h-screen bg-gray-50">
+             <header className="p-4 sticky top-0 bg-gray-50 z-20 border-b">
+                <div className="flex justify-between items-center gap-4">
+                    <div className="flex items-center space-x-4">
+                        <button onClick={onBack} className="bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition-colors flex-shrink-0">
+                            <ArrowLeftIcon className="w-6 h-6 text-gray-800"/>
+                        </button>
+                        <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Administração GuaraFood</h1>
+                        <span className="text-[10px] bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full font-bold">v{APP_VERSION}</span>
+                        {currentUser?.canAccessFinancial === false && (
+                            <span className="text-[10px] bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 border border-amber-200">
+                                <span>🔒</span>
+                                <span>Operacional (Sem Financeiro)</span>
+                            </span>
+                        )}
+                    </div>
+                     <button onClick={logout} className="flex items-center space-x-2 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition-colors font-semibold" title="Sair">
+                        <LogoutIcon className="w-6 h-6" />
+                        <span className="hidden sm:inline">Sair</span>
+                    </button>
+                </div>
+            </header>
+            
+            <nav className="p-4 border-b bg-gray-50 sticky top-[89px] z-10">
+                <div className="flex space-x-2 rounded-lg bg-gray-200 p-1 overflow-x-auto no-scrollbar">
+                    <button onClick={() => setActiveTab('restaurants')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'restaurants' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Restaurantes</button>
+                    <button 
+                        onClick={() => { setSelectedPromoRestaurantId(null); setActiveTab('promotions'); }} 
+                        className={`flex-1 min-w-[110px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all flex items-center justify-center gap-1.5 ${activeTab === 'promotions' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500 hover:text-orange-600'}`}
+                    >
+                        <span>🎁</span>
+                        <span>Promoções</span>
+                    </button>
+                    {currentUser?.canAccessFinancial !== false ? (
+                        <button onClick={() => setActiveTab('sales')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'sales' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Relatório Vendas</button>
+                    ) : (
+                        <button 
+                            onClick={() => addToast({ message: 'Acesso Financeiro Bloqueado: Seu perfil não possui permissão para relatórios de vendas.', type: 'warning' })} 
+                            className="flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md text-gray-400 bg-gray-100/60 cursor-not-allowed opacity-60 flex items-center justify-center gap-1"
+                            title="Acesso Financeiro Bloqueado"
+                        >
+                            <span>🔒</span>
+                            <span>Vendas</span>
+                        </button>
+                    )}
+                    <button onClick={() => setActiveTab('users')} className={`flex-1 min-w-[110px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'users' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Equipe & Usuários</button>
+                    <button onClick={() => setActiveTab('categories')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'categories' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Categorias</button>
+                    <button onClick={() => setActiveTab('marketing')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'marketing' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Marketing</button>
+                    <button onClick={() => setActiveTab('ads')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'ads' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Propagandas</button>
+                    <button onClick={() => setActiveTab('mensalistas')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'mensalistas' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Mensalistas</button>
+                    <button onClick={() => setActiveTab('guia-fiscal')} className={`flex-1 min-w-[120px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all flex items-center justify-center gap-1.5 ${activeTab === 'guia-fiscal' ? 'bg-white shadow text-purple-600 scale-105' : 'text-gray-500 hover:text-purple-600'}`}>
+                        <span>📘</span>
+                        <span>Guia NFC-e</span>
+                    </button>
+                    <button onClick={() => setActiveTab('config-fiscal')} className={`flex-1 min-w-[130px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all flex items-center justify-center gap-1.5 ${activeTab === 'config-fiscal' ? 'bg-white shadow text-blue-600 scale-105' : 'text-gray-500 hover:text-blue-600'}`}>
+                        <span>⚙️</span>
+                        <span>Configuração Fiscal</span>
+                    </button>
+                    <button onClick={() => setActiveTab('fiscal')} className={`flex-1 min-w-[110px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all flex items-center justify-center gap-1.5 ${activeTab === 'fiscal' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500 hover:text-orange-600'}`}>
+                        <span>📄</span>
+                        <span>Notas Fiscais</span>
+                    </button>
+                    <button onClick={() => setActiveTab('customers')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'customers' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Clientes</button>
+                    <button onClick={() => setActiveTab('settings')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'settings' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Config</button>
+                    <button onClick={() => setActiveTab('help')} className={`flex-1 min-w-[100px] text-center font-bold text-xs uppercase p-3 rounded-md transition-all ${activeTab === 'help' ? 'bg-white shadow text-orange-600 scale-105' : 'text-gray-500'}`}>Ajuda</button>
+                </div>
+            </nav>
+            
+            <main className="p-4">
+                {renderContent()}
+            </main>
+        </div>
+    );
+};
+
+export default AdminDashboard;
