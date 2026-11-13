@@ -1,0 +1,6 @@
+{
+  "name": "GuaraFood",
+  "description": "Sistema de gestão para restaurantes com integração de pedidos e impressão.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
