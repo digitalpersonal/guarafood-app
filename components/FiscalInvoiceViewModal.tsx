@@ -26,7 +26,6 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
     const [selectedWidth, setSelectedWidth] = useState<number>(printerWidth || 80);
     const [copiedXml, setCopiedXml] = useState<boolean>(false);
     const [copiedKey, setCopiedKey] = useState<boolean>(false);
-    const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
     const [isPrinting, setIsPrinting] = useState<boolean>(false);
     const [currentOrder, setCurrentOrder] = useState<Order>(order || ({} as Order));
     const [isDocModalOpen, setIsDocModalOpen] = useState<boolean>(false);
@@ -69,7 +68,8 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
     const accessKey = `31${yy}${mm}${cleanCnpj.padStart(14, '0')}65001${numNfFormatted}198273641`;
     const formattedKey = accessKey.match(/.{1,4}/g)?.join(' ') || accessKey;
 
-    const protocolNumber = `1312${yy}${String(Math.floor(Math.random() * 89999999 + 10000000))}`;
+    const deterministicSeed = Math.abs(orderNum * 987654321) % 89999999;
+    const protocolNumber = order?.fiscalProtocol || `1312${yy}${String(deterministicSeed + 10000000)}`;
     const isProd = restaurant?.fiscalEnv === 'producao';
 
     const displaySubtotal = Number(order.subtotal) > 0 
@@ -86,29 +86,9 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
     const cIdToken = restaurant?.fiscalCscId || '000001';
     const tpAmb = isProd ? '1' : '2';
 
-    // Gerar QR Code SEFAZ V2
+    // Payload QR Code SEFAZ V2
     const sefazBaseUrl = 'http://nfce.fazenda.mg.gov.br/portalnfce/sistema/qrcode.xhtml';
     const qrPayload = `${sefazBaseUrl}?p=${accessKey}|2|${tpAmb}|${cIdToken}|${csc.substring(0, 10)}`;
-
-    useEffect(() => {
-        let isMounted = true;
-        import('qrcode').then(QRCode => {
-            QRCode.toDataURL(qrPayload, {
-                width: selectedWidth === 58 ? 125 : 155,
-                margin: 1,
-                errorCorrectionLevel: 'M'
-            }).then(url => {
-                if (isMounted) setQrCodeDataUrl(url);
-            }).catch(err => {
-                console.warn('QR Code generation fallback:', err);
-                if (isMounted) setQrCodeDataUrl(`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrPayload)}`);
-            });
-        }).catch(() => {
-            if (isMounted) setQrCodeDataUrl(`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrPayload)}`);
-        });
-
-        return () => { isMounted = false; };
-    }, [qrPayload, selectedWidth]);
 
     // Gerar XML canônico padrão SEFAZ NFC-e / Nuvem Fiscal
     const generateXml = () => {
@@ -479,7 +459,6 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
                                     order={currentOrder}
                                     restaurant={restaurant}
                                     printerWidth={selectedWidth}
-                                    qrCodeDataUrlOverride={qrCodeDataUrl}
                                 />
                             </div>
                         </div>
@@ -663,19 +642,19 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
                                 margin: 0 !important;
                                 padding: 0 !important;
                                 width: ${selectedWidth}mm !important;
-                                font-family: 'Courier New', Courier, monospace !important;
+                                height: auto !important;
+                                min-height: 0 !important;
+                                overflow: visible !important;
                                 color: #000 !important;
                                 background: #fff !important;
                                 -webkit-print-color-adjust: exact !important;
                                 print-color-adjust: exact !important;
                             }
-                            body * {
+                            body > *:not(#thermal-receipt-container) {
                                 display: none !important;
                             }
                             #thermal-receipt-container,
-                            #thermal-receipt-container *,
-                            body > #thermal-receipt-container,
-                            body > #thermal-receipt-container * {
+                            #thermal-receipt-container * {
                                 visibility: visible !important;
                             }
                             #thermal-receipt-container {
@@ -685,7 +664,7 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
                                 top: 0 !important;
                                 width: ${selectedWidth}mm !important;
                                 max-width: ${selectedWidth}mm !important;
-                                padding: ${selectedWidth === 58 ? '1mm' : '2mm'} !important;
+                                padding: 1mm ${selectedWidth === 58 ? '1mm' : '2mm'} 6mm ${selectedWidth === 58 ? '1mm' : '2mm'} !important;
                                 box-sizing: border-box !important;
                                 margin: 0 !important;
                                 background: #fff !important;
@@ -694,28 +673,8 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
                             #thermal-receipt-container style {
                                 display: none !important;
                             }
-                            #thermal-receipt-container table {
-                                display: table !important;
-                                width: 100% !important;
-                                border-collapse: collapse !important;
-                            }
-                            #thermal-receipt-container thead {
-                                display: table-header-group !important;
-                            }
-                            #thermal-receipt-container tbody {
-                                display: table-row-group !important;
-                            }
-                            #thermal-receipt-container tr {
-                                display: table-row !important;
-                            }
-                            #thermal-receipt-container th,
-                            #thermal-receipt-container td {
-                                display: table-cell !important;
-                            }
-                            #thermal-receipt-container img {
-                                display: block !important;
-                                margin-left: auto !important;
-                                margin-right: auto !important;
+                            header, footer, nav {
+                                display: none !important;
                             }
                         }
                     `}} />
@@ -724,7 +683,6 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
                             order={currentOrder}
                             restaurant={restaurant}
                             printerWidth={selectedWidth}
-                            qrCodeDataUrlOverride={qrCodeDataUrl}
                         />
                     </div>
                 </div>,

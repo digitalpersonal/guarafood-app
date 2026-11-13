@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo } from 'react';
+import QRCode from 'qrcode';
 import type { Order, Restaurant } from '../types';
 
 interface FiscalDanfeReceiptProps {
@@ -7,8 +8,16 @@ interface FiscalDanfeReceiptProps {
     printerWidth?: number; // 80 or 58
     className?: string;
     style?: React.CSSProperties;
-    qrCodeDataUrlOverride?: string;
 }
+
+const sanitizeFiscalText = (str?: string): string => {
+    if (!str) return '';
+    return str
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'")
+        .replace(/[–—]/g, '-')
+        .trim();
+};
 
 export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
     order,
@@ -16,14 +25,12 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
     printerWidth = 80,
     className = '',
     style = {},
-    qrCodeDataUrlOverride
 }) => {
     const is58mm = printerWidth === 58;
-    const [qrCodeUrl, setQrCodeUrl] = useState<string>(qrCodeDataUrlOverride || '');
 
     // Dados fiscais calculados e determinísticos
-    const dateObj = order.createdAt 
-        ? new Date(order.createdAt) 
+    const dateObj = order.createdAt
+        ? new Date(order.createdAt)
         : (order.timestamp ? new Date(order.timestamp) : new Date());
     const dateString = dateObj.toLocaleDateString('pt-BR');
     const timeString = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -31,8 +38,9 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
     const emitCnpj = restaurant?.cnpj || '00.000.000/0001-00';
     const cleanCnpj = emitCnpj.replace(/\D/g, '').padEnd(14, '0');
     const emitIe = restaurant?.ie || 'ISENTO';
-    const emitName = (restaurant?.name || 'ESTABELECIMENTO COMERCIAL').trim().toUpperCase();
-    const emitAddress = restaurant?.address || 'Endereço Comercial, 100 - Centro, Guaranésia - MG';
+    const emitName = sanitizeFiscalText(restaurant?.name || order.restaurantName || 'ESTABELECIMENTO COMERCIAL').toUpperCase();
+    const emitAddress = sanitizeFiscalText(restaurant?.address || order.restaurantAddress || 'Endereço Comercial');
+    const emitPhone = sanitizeFiscalText(restaurant?.phone || order.restaurantPhone || '');
 
     const orderNum = order.order_number || parseInt(order.id.replace(/\D/g, '').slice(-6) || '1042', 10);
     const numNfFormatted = String(orderNum).padStart(9, '0');
@@ -50,12 +58,12 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
     const protocolNumber = order.fiscalProtocol || `1312${yy}${String(deterministicSeed + 10000000)}`;
     const isProd = restaurant?.fiscalEnv === 'producao';
 
-    const displaySubtotal = Number(order.subtotal) > 0 
-        ? Number(order.subtotal) 
+    const displaySubtotal = Number(order.subtotal) > 0
+        ? Number(order.subtotal)
         : (order.items || []).reduce((acc, item) => acc + (Number(item.price || 0) * (item.quantity || 1)), 0);
-    
-    const displayTotal = Number(order.totalPrice) > 0 
-        ? Number(order.totalPrice) 
+
+    const displayTotal = Number(order.totalPrice) > 0
+        ? Number(order.totalPrice)
         : (displaySubtotal + Number(order.deliveryFee || 0) - Number(order.discountAmount || 0));
 
     const totalItemCount = (order.items || []).reduce((acc, it) => acc + (it.quantity || 1), 0);
@@ -65,50 +73,49 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
     const cIdToken = restaurant?.fiscalCscId || '000001';
     const tpAmb = isProd ? '1' : '2';
 
-    // Gerar QR Code SEFAZ V2
+    // Gerar QR Code SEFAZ V2 de forma síncrona e vetorial (nunca falha nem imprime em branco)
     const sefazBaseUrl = 'http://nfce.fazenda.mg.gov.br/portalnfce/sistema/qrcode.xhtml';
     const qrPayload = `${sefazBaseUrl}?p=${accessKey}|2|${tpAmb}|${cIdToken}|${csc.substring(0, 10)}`;
 
-    useEffect(() => {
-        if (qrCodeDataUrlOverride) {
-            setQrCodeUrl(qrCodeDataUrlOverride);
-            return;
+    const qrSvgData = useMemo(() => {
+        try {
+            const qr = QRCode.create(qrPayload, { errorCorrectionLevel: 'M' });
+            const size = qr.modules.size;
+            let pathD = '';
+            for (let row = 0; row < size; row++) {
+                for (let col = 0; col < size; col++) {
+                    if (qr.modules.get(row, col)) {
+                        pathD += `M${col},${row}h1v1h-1z`;
+                    }
+                }
+            }
+            return { size, pathD };
+        } catch (err) {
+            console.warn('Erro ao gerar SVG QR Code:', err);
+            return null;
         }
+    }, [qrPayload]);
 
-        let isMounted = true;
-        import('qrcode').then(QRCode => {
-            QRCode.toDataURL(qrPayload, {
-                width: is58mm ? 120 : 150,
-                margin: 1,
-                errorCorrectionLevel: 'M'
-            }).then(url => {
-                if (isMounted) setQrCodeUrl(url);
-            }).catch(err => {
-                console.warn('QR Code generation fallback:', err);
-                if (isMounted) setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrPayload)}`);
-            });
-        }).catch(() => {
-            if (isMounted) setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrPayload)}`);
-        });
+    // Tipografia de alto contraste (#000 puro) otimizada para bobina térmica (80mm / 58mm) e pré-visualização
+    const baseFontSize = is58mm ? '11px' : '12px';
+    const headerFontSize = is58mm ? '13.5px' : '15px';
+    const smallFontSize = is58mm ? '10px' : '11px';
+    const microFontSize = is58mm ? '9px' : '9.5px';
+    const totalFontSize = is58mm ? '14px' : '16px';
+    const qrDisplaySize = is58mm ? 116 : 142;
 
-        return () => { isMounted = false; };
-    }, [qrPayload, is58mm, qrCodeDataUrlOverride]);
-
-    // Tamanhos de fonte tipográficos proporcionais
-    const baseFontSize = is58mm ? '10px' : '11px';
-    const headerFontSize = is58mm ? '12px' : '13px';
-    const smallFontSize = is58mm ? '8.5px' : '9.5px';
-    const microFontSize = is58mm ? '7.5px' : '8.5px';
-    const totalFontSize = is58mm ? '12px' : '13.5px';
+    const cleanDoc = order.customerDocument ? order.customerDocument.replace(/\D/g, '') : '';
+    const docLabel = cleanDoc.length === 14 ? 'CNPJ' : 'CPF';
 
     return (
         <div
             className={`fiscal-danfe-ticket ${className}`}
             style={{
                 width: '100%',
-                fontFamily: "'Courier New', Courier, monospace",
+                fontFamily: "Arial, Helvetica, -apple-system, sans-serif",
                 fontSize: baseFontSize,
-                lineHeight: 1.2,
+                fontWeight: 600,
+                lineHeight: 1.25,
                 color: '#000',
                 backgroundColor: '#fff',
                 boxSizing: 'border-box',
@@ -117,222 +124,238 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
             }}
         >
             {/* CABEÇALHO DO EMITENTE */}
-            <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: headerFontSize, marginBottom: '2px', wordBreak: 'break-word' }}>
+            <div style={{ textAlign: 'center', fontWeight: 900, fontSize: headerFontSize, marginBottom: '3px', wordBreak: 'break-word', letterSpacing: '0.2px' }}>
                 {emitName}
             </div>
-            <div style={{ textAlign: 'center', fontSize: smallFontSize, color: '#333', lineHeight: 1.25 }}>
-                <div>CNPJ: {emitCnpj}</div>
-                <div>INSCRIÇÃO ESTADUAL: {emitIe}</div>
-                <div style={{ fontSize: microFontSize }}>{emitAddress}</div>
+            <div style={{ textAlign: 'center', fontSize: smallFontSize, fontWeight: 700, color: '#000', lineHeight: 1.3 }}>
+                <div>CNPJ: {emitCnpj} • IE: {emitIe}</div>
+                <div style={{ fontSize: microFontSize, fontWeight: 600 }}>{emitAddress}</div>
+                {emitPhone && <div style={{ fontSize: microFontSize, fontWeight: 600 }}>Fone: {emitPhone}</div>}
             </div>
 
             {/* DIVISOR */}
-            <div style={{ borderTop: '1px dashed #000', margin: '4px 0', width: '100%' }}></div>
+            <div style={{ borderTop: '1.5px dashed #000', margin: '5px 0', width: '100%' }}></div>
 
-            {/* TÍTULO DO DOCUMENTO */}
-            <div style={{ textAlign: 'center', fontWeight: '900', fontSize: baseFontSize, textTransform: 'uppercase' }}>
-                DANFE NFC-e - Documento Auxiliar da Nota Fiscal de Consumidor Eletrônica
+            {/* TÍTULO OFICIAL DO DOCUMENTO */}
+            <div style={{
+                textAlign: 'center',
+                border: '1.5px solid #000',
+                padding: '4px 5px',
+                marginBottom: '4px',
+            }}>
+                <div style={{ fontWeight: 900, fontSize: smallFontSize, textTransform: 'uppercase', lineHeight: 1.2 }}>
+                    DANFE NFC-e
+                </div>
+                <div style={{ fontWeight: 700, fontSize: microFontSize, lineHeight: 1.2, marginTop: '1px' }}>
+                    Documento Auxiliar da Nota Fiscal de Consumidor Eletrônica
+                </div>
+                <div style={{ fontWeight: 600, fontSize: microFontSize, fontStyle: 'italic', marginTop: '2px' }}>
+                    Não permite aproveitamento de crédito de ICMS
+                </div>
             </div>
-            <div style={{ textAlign: 'center', fontStyle: 'italic', fontSize: microFontSize, color: '#444' }}>
-                Não permite aproveitamento de crédito de ICMS
-            </div>
+
             {!isProd && (
-                <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: microFontSize, background: '#f0f0f0', border: '1px solid #ccc', padding: '1px 3px', margin: '3px 0' }}>
-                    [ EMITIDA EM AMBIENTE DE HOMOLOGAÇÃO - SEM VALOR FISCAL ]
+                <div style={{
+                    textAlign: 'center',
+                    fontWeight: 900,
+                    fontSize: microFontSize,
+                    border: '1px dashed #000',
+                    padding: '2px 4px',
+                    marginBottom: '4px',
+                    textTransform: 'uppercase'
+                }}>
+                    EMITIDA EM AMBIENTE DE HOMOLOGAÇÃO - SEM VALOR FISCAL
                 </div>
             )}
 
             {/* DIVISOR */}
-            <div style={{ borderTop: '1px dashed #000', margin: '4px 0', width: '100%' }}></div>
+            <div style={{ borderTop: '1.5px dashed #000', margin: '5px 0', width: '100%' }}></div>
 
             {/* TABELA DE ITENS */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: smallFontSize }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: smallFontSize, tableLayout: 'fixed' }}>
                 <thead>
-                    <tr style={{ borderBottom: '1px dashed #000', textAlign: 'left' }}>
-                        <th style={{ paddingBottom: '2px', fontWeight: 'bold', width: '45%' }}># CÓD | DESCRIÇÃO</th>
-                        <th style={{ paddingBottom: '2px', fontWeight: 'bold', textAlign: 'center', width: '18%' }}>QTD</th>
-                        <th style={{ paddingBottom: '2px', fontWeight: 'bold', textAlign: 'right', width: '18%' }}>VL.UN</th>
-                        <th style={{ paddingBottom: '2px', fontWeight: 'bold', textAlign: 'right', width: '19%' }}>TOTAL</th>
+                    <tr style={{ borderBottom: '1.5px solid #000', textAlign: 'left' }}>
+                        <th style={{ paddingBottom: '3px', fontWeight: 900, width: '46%', textAlign: 'left' }}>CÓD | DESCRIÇÃO</th>
+                        <th style={{ paddingBottom: '3px', fontWeight: 900, textAlign: 'center', width: '16%' }}>QTD</th>
+                        <th style={{ paddingBottom: '3px', fontWeight: 900, textAlign: 'right', width: '18%' }}>VL.UN</th>
+                        <th style={{ paddingBottom: '3px', fontWeight: 900, textAlign: 'right', width: '20%' }}>TOTAL</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {(order.items || []).map((item, idx) => (
-                        <tr key={idx} style={{ verticalAlign: 'top' }}>
-                            <td style={{ padding: '2px 0', wordBreak: 'break-word' }}>
-                                {String(idx + 1).padStart(3, '0')} {item.name}
-                                {item.notes && (
-                                    <div style={{ fontSize: microFontSize, color: '#555' }}>
-                                        Obs: {item.notes}
+                    {(order.items || []).map((item, idx) => {
+                        const unitPrice = Number(item.price || 0);
+                        const qty = Number(item.quantity || 1);
+                        const itemTotal = unitPrice * qty;
+                        return (
+                            <tr key={item.id || idx} style={{ verticalAlign: 'top', borderBottom: '1px dotted #ccc' }}>
+                                <td style={{ padding: '3px 4px 3px 0', wordBreak: 'break-word', fontWeight: 700, textAlign: 'left' }}>
+                                    <div>
+                                        {String(idx + 1).padStart(3, '0')} {sanitizeFiscalText(item.name)}
+                                        {item.sizeName ? ` (${sanitizeFiscalText(item.sizeName)})` : ''}
+                                        {item.weight && item.isKiloItem ? ` (${Number(item.weight).toFixed(3)}kg)` : ''}
                                     </div>
-                                )}
-                            </td>
-                            <td style={{ padding: '2px 0', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                {item.quantity} UN
-                            </td>
-                            <td style={{ padding: '2px 0', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                {Number(item.price || 0).toFixed(2)}
-                            </td>
-                            <td style={{ padding: '2px 0', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                {(Number(item.price || 0) * (item.quantity || 1)).toFixed(2)}
-                            </td>
-                        </tr>
-                    ))}
+                                    {item.notes && (
+                                        <div style={{ fontSize: microFontSize, fontWeight: 600, marginTop: '1px' }}>
+                                            Obs: {sanitizeFiscalText(item.notes)}
+                                        </div>
+                                    )}
+                                </td>
+                                <td style={{ padding: '3px 0', textAlign: 'center', whiteSpace: 'nowrap', fontWeight: 700 }}>
+                                    {qty} UN
+                                </td>
+                                <td style={{ padding: '3px 0', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700 }}>
+                                    {unitPrice.toFixed(2)}
+                                </td>
+                                <td style={{ padding: '3px 0', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 900 }}>
+                                    {itemTotal.toFixed(2)}
+                                </td>
+                            </tr>
+                        );
+                    })}
                 </tbody>
             </table>
 
             {/* DIVISOR */}
-            <div style={{ borderTop: '1px dashed #000', margin: '4px 0', width: '100%' }}></div>
+            <div style={{ borderTop: '1.5px dashed #000', margin: '5px 0', width: '100%' }}></div>
 
             {/* TOTAIS DO DOCUMENTO FISCAL */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: baseFontSize, lineHeight: 1.3 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: baseFontSize, lineHeight: 1.35 }}>
                 <tbody>
                     <tr>
-                        <td style={{ textAlign: 'left', padding: '1px 0' }}>Qtd. Total de Itens:</td>
-                        <td style={{ textAlign: 'right', fontWeight: 'bold', padding: '1px 0' }}>{totalItemCount}</td>
+                        <td style={{ textAlign: 'left', padding: '1px 0', fontWeight: 700 }}>Qtd. Total de Itens</td>
+                        <td style={{ textAlign: 'right', padding: '1px 0', fontWeight: 900 }}>{totalItemCount}</td>
                     </tr>
                     <tr>
-                        <td style={{ textAlign: 'left', padding: '1px 0' }}>Subtotal:</td>
-                        <td style={{ textAlign: 'right', padding: '1px 0' }}>R$ {displaySubtotal.toFixed(2)}</td>
+                        <td style={{ textAlign: 'left', padding: '1px 0', fontWeight: 700 }}>Valor Total dos Produtos</td>
+                        <td style={{ textAlign: 'right', padding: '1px 0', fontWeight: 700 }}>R$ {displaySubtotal.toFixed(2)}</td>
                     </tr>
                     {Number(order.deliveryFee || 0) > 0 && (
                         <tr>
-                            <td style={{ textAlign: 'left', padding: '1px 0' }}>Acréscimo / Entrega:</td>
-                            <td style={{ textAlign: 'right', padding: '1px 0' }}>R$ {Number(order.deliveryFee).toFixed(2)}</td>
+                            <td style={{ textAlign: 'left', padding: '1px 0', fontWeight: 700 }}>Acréscimo / Entrega</td>
+                            <td style={{ textAlign: 'right', padding: '1px 0', fontWeight: 700 }}>R$ {Number(order.deliveryFee).toFixed(2)}</td>
                         </tr>
                     )}
                     {Number(order.discountAmount || 0) > 0 && (
                         <tr>
-                            <td style={{ textAlign: 'left', padding: '1px 0' }}>Descontos:</td>
-                            <td style={{ textAlign: 'right', padding: '1px 0' }}>- R$ {Number(order.discountAmount).toFixed(2)}</td>
+                            <td style={{ textAlign: 'left', padding: '1px 0', fontWeight: 700 }}>Descontos</td>
+                            <td style={{ textAlign: 'right', padding: '1px 0', fontWeight: 700 }}>- R$ {Number(order.discountAmount).toFixed(2)}</td>
                         </tr>
                     )}
-                    <tr style={{ borderTop: '1.5px solid #000' }}>
-                        <td style={{ textAlign: 'left', fontWeight: '900', fontSize: totalFontSize, paddingTop: '3px' }}>
-                            VALOR A PAGAR R$:
+                    <tr style={{ borderTop: '2px solid #000' }}>
+                        <td style={{ textAlign: 'left', fontWeight: 900, fontSize: totalFontSize, paddingTop: '4px', paddingBottom: '2px' }}>
+                            VALOR A PAGAR R$
                         </td>
-                        <td style={{ textAlign: 'right', fontWeight: '900', fontSize: totalFontSize, paddingTop: '3px' }}>
+                        <td style={{ textAlign: 'right', fontWeight: 900, fontSize: totalFontSize, paddingTop: '4px', paddingBottom: '2px', whiteSpace: 'nowrap' }}>
                             R$ {displayTotal.toFixed(2)}
                         </td>
                     </tr>
                 </tbody>
             </table>
 
-            {/* DIVISOR */}
-            <div style={{ borderTop: '1px dashed #000', margin: '4px 0', width: '100%' }}></div>
-
-            {/* FORMAS DE PAGAMENTO */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: smallFontSize, lineHeight: 1.3 }}>
-                <tbody>
-                    <tr>
-                        <td style={{ textAlign: 'left', padding: '1px 0' }}>FORMA DE PAGAMENTO:</td>
-                        <td style={{ textAlign: 'right', fontWeight: 'bold', padding: '1px 0' }}>
-                            {order.paymentMethod.toUpperCase()}
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style={{ textAlign: 'left', padding: '1px 0' }}>VALOR RECEBIDO:</td>
-                        <td style={{ textAlign: 'right', fontWeight: 'bold', padding: '1px 0' }}>
-                            R$ {displayTotal.toFixed(2)}
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-
-            {/* DIVISOR */}
-            <div style={{ borderTop: '1px dashed #000', margin: '4px 0', width: '100%' }}></div>
-
-            {/* TRIBUTOS LEI 12.741/2012 */}
-            <div style={{ textAlign: 'center', fontSize: microFontSize, color: '#444', lineHeight: 1.25 }}>
-                Tributos Totais Incidentes (Lei Federal 12.741/2012):<br />
-                R$ {approxTaxes.toFixed(2)} (13.45% aproximado) Fonte: IBPT
+            {/* BOX DE PAGAMENTO */}
+            <div style={{ border: '1.5px solid #000', padding: '4px 6px', margin: '4px 0' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: smallFontSize, lineHeight: 1.3 }}>
+                    <tbody>
+                        <tr>
+                            <td style={{ textAlign: 'left', fontWeight: 900 }}>FORMA DE PAGAMENTO</td>
+                            <td style={{ textAlign: 'right', fontWeight: 900 }}>VALOR PAGO R$</td>
+                        </tr>
+                        <tr>
+                            <td style={{ textAlign: 'left', fontWeight: 700, paddingTop: '2px' }}>
+                                {sanitizeFiscalText(order.paymentMethod).toUpperCase()}
+                            </td>
+                            <td style={{ textAlign: 'right', fontWeight: 900, paddingTop: '2px', whiteSpace: 'nowrap' }}>
+                                {displayTotal.toFixed(2)}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
 
             {/* DIVISOR */}
-            <div style={{ borderTop: '1px dashed #000', margin: '4px 0', width: '100%' }}></div>
-
-            {/* DADOS DA EMISSÃO SEFAZ */}
-            <div style={{ textAlign: 'center', fontSize: smallFontSize, lineHeight: 1.3 }}>
-                <div style={{ fontWeight: 'bold' }}>NFC-e Nº {numNfFormatted} - SÉRIE {serie}</div>
-                <div>EMISSÃO: {dateString} {timeString}</div>
-                <div>PROTOCOLO DE AUTORIZAÇÃO:</div>
-                <div style={{ fontWeight: 'bold' }}>{protocolNumber}</div>
-            </div>
-
-            {/* DIVISOR */}
-            <div style={{ borderTop: '1px dashed #000', margin: '4px 0', width: '100%' }}></div>
+            <div style={{ borderTop: '1.5px dashed #000', margin: '5px 0', width: '100%' }}></div>
 
             {/* DADOS DO CONSUMIDOR */}
-            <div style={{ fontSize: smallFontSize, lineHeight: 1.3 }}>
-                <div>
-                    <strong>CONSUMIDOR:</strong>{' '}
-                    {order.customerDocument 
-                        ? `${order.customerDocument.replace(/\D/g, '').length === 14 ? 'CNPJ' : 'CPF'}: ${order.customerDocument}` 
+            <div style={{ fontSize: smallFontSize, lineHeight: 1.35, textAlign: 'center', padding: '2px 0' }}>
+                <div style={{ fontWeight: 900, textTransform: 'uppercase' }}>
+                    {order.customerDocument
+                        ? `CONSUMIDOR - ${docLabel}: ${order.customerDocument}`
                         : 'CONSUMIDOR NÃO IDENTIFICADO'}
                 </div>
                 {order.customerName && (
-                    <div>NOME: {order.customerName}</div>
+                    <div style={{ fontWeight: 700 }}>NOME: {sanitizeFiscalText(order.customerName).toUpperCase()}</div>
                 )}
             </div>
 
             {/* DIVISOR */}
-            <div style={{ borderTop: '1px dashed #000', margin: '4px 0', width: '100%' }}></div>
+            <div style={{ borderTop: '1.5px dashed #000', margin: '5px 0', width: '100%' }}></div>
 
-            {/* QR CODE SEFAZ */}
-            <div style={{ textAlign: 'center', padding: '2px 0' }}>
-                <div style={{ fontSize: microFontSize, fontWeight: 'bold', marginBottom: '2px' }}>
-                    CONSULTE PELA CHAVE OU QR CODE:
-                </div>
-                {qrCodeUrl ? (
-                    <img
-                        src={qrCodeUrl}
-                        alt="QR Code NFC-e SEFAZ"
-                        style={{
-                            display: 'block',
-                            margin: '3px auto',
-                            width: is58mm ? '110px' : '140px',
-                            height: 'auto',
-                            imageRendering: 'pixelated'
-                        }}
-                    />
-                ) : (
-                    <div
-                        style={{
-                            width: is58mm ? '100px' : '130px',
-                            height: is58mm ? '100px' : '130px',
-                            margin: '3px auto',
-                            backgroundColor: '#f5f5f5',
-                            border: '1px dashed #999',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: microFontSize
-                        }}
-                    >
-                        QR Code SEFAZ
-                    </div>
-                )}
-                <div style={{ fontSize: microFontSize, color: '#555', wordBreak: 'break-all' }}>
+            {/* CONSULTA CHAVE DE ACESSO E QR CODE */}
+            <div style={{ textAlign: 'center', fontSize: microFontSize, lineHeight: 1.3 }}>
+                <div style={{ fontWeight: 900 }}>Consulte pela Chave de Acesso em:</div>
+                <div style={{ fontWeight: 700, wordBreak: 'break-all' }}>
                     http://nfce.fazenda.mg.gov.br/portalnfce
                 </div>
-            </div>
-
-            {/* DIVISOR */}
-            <div style={{ borderTop: '1px dashed #000', margin: '4px 0', width: '100%' }}></div>
-
-            {/* CHAVE DE ACESSO */}
-            <div style={{ textAlign: 'center', fontSize: microFontSize, lineHeight: 1.25 }}>
-                <div style={{ fontWeight: 'bold' }}>CHAVE DE ACESSO:</div>
-                <div style={{ fontWeight: 'bold', letterSpacing: '0.3px', marginTop: '1px' }}>
+                <div style={{
+                    fontFamily: "'Courier New', Courier, monospace",
+                    fontWeight: 900,
+                    fontSize: is58mm ? '9px' : '10px',
+                    letterSpacing: '0.3px',
+                    marginTop: '3px',
+                    marginBottom: '4px'
+                }}>
                     {formattedKey}
                 </div>
             </div>
 
+            {/* QR CODE SEFAZ VETORIAL */}
+            <div style={{ textAlign: 'center', padding: '3px 0' }}>
+                {qrSvgData && (
+                    <svg
+                        viewBox={`-2 -2 ${qrSvgData.size + 4} ${qrSvgData.size + 4}`}
+                        width={qrDisplaySize}
+                        height={qrDisplaySize}
+                        shapeRendering="crispEdges"
+                        style={{
+                            display: 'block',
+                            margin: '2px auto',
+                            backgroundColor: '#fff'
+                        }}
+                        aria-label="QR Code NFC-e SEFAZ"
+                    >
+                        <rect x="-2" y="-2" width={qrSvgData.size + 4} height={qrSvgData.size + 4} fill="#ffffff" />
+                        <path d={qrSvgData.pathD} fill="#000000" />
+                    </svg>
+                )}
+            </div>
+
+            {/* DADOS DA EMISSÃO SEFAZ */}
+            <div style={{ textAlign: 'center', fontSize: smallFontSize, lineHeight: 1.35, marginTop: '3px' }}>
+                <div style={{ fontWeight: 900 }}>
+                    NFC-e nº {numNfFormatted} Série {serie} • {dateString} {timeString}
+                </div>
+                <div style={{ fontWeight: 700, fontSize: microFontSize, marginTop: '2px' }}>
+                    Protocolo de Autorização: <span style={{ fontWeight: 900 }}>{protocolNumber}</span>
+                </div>
+                <div style={{ fontWeight: 700, fontSize: microFontSize }}>
+                    Data de Autorização: {dateString} {timeString}
+                </div>
+            </div>
+
             {/* DIVISOR */}
-            <div style={{ borderTop: '1px dashed #000', margin: '4px 0', width: '100%' }}></div>
+            <div style={{ borderTop: '1.5px dashed #000', margin: '5px 0', width: '100%' }}></div>
+
+            {/* TRIBUTOS LEI 12.741/2012 */}
+            <div style={{ textAlign: 'center', fontSize: microFontSize, fontWeight: 700, lineHeight: 1.3 }}>
+                Tributos Totais Incidentes (Lei Federal 12.741/2012): R$ {approxTaxes.toFixed(2)} (13,45% aprox. IBPT)
+            </div>
+
+            {/* DIVISOR */}
+            <div style={{ borderTop: '1.5px dashed #000', margin: '5px 0', width: '100%' }}></div>
 
             {/* RODAPÉ FISCAL */}
-            <div style={{ textAlign: 'center', fontSize: microFontSize, color: '#555' }}>
-                EMISSÃO VIA GUARA-FOOD PDV FISCAL & SEFAZ-MG
+            <div style={{ textAlign: 'center', fontSize: microFontSize, fontWeight: 900 }}>
+                PEDIDO #{String(orderNum).padStart(3, '0')} • GUARA-FOOD PDV FISCAL
             </div>
         </div>
     );

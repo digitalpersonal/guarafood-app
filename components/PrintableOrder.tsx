@@ -67,19 +67,19 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                             margin: 0 !important;
                             padding: 0 !important;
                             width: ${paperSize} !important;
-                            font-family: 'Courier New', Courier, monospace !important;
+                            height: auto !important;
+                            min-height: 0 !important;
+                            overflow: visible !important;
                             color: #000 !important;
                             background: #fff !important;
                             -webkit-print-color-adjust: exact !important;
                             print-color-adjust: exact !important;
                         }
-                        body * {
+                        body > *:not(#thermal-receipt-container) {
                             display: none !important;
                         }
                         #thermal-receipt-container,
-                        #thermal-receipt-container *,
-                        body > #thermal-receipt-container,
-                        body > #thermal-receipt-container * {
+                        #thermal-receipt-container * {
                             visibility: visible !important;
                         }
                         #thermal-receipt-container {
@@ -89,37 +89,17 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                             top: 0 !important;
                             width: ${paperSize} !important;
                             max-width: ${paperSize} !important;
-                            padding: ${sidePadding} !important;
+                            padding: 1mm ${sidePadding} 6mm ${sidePadding} !important;
                             box-sizing: border-box !important;
                             margin: 0 !important;
                             background: #fff !important;
-                            z-index: 9999999 !important;
+                            z-index: 99999999 !important;
                         }
                         #thermal-receipt-container style {
                             display: none !important;
                         }
-                        #thermal-receipt-container table {
-                            display: table !important;
-                            width: 100% !important;
-                            border-collapse: collapse !important;
-                        }
-                        #thermal-receipt-container thead {
-                            display: table-header-group !important;
-                        }
-                        #thermal-receipt-container tbody {
-                            display: table-row-group !important;
-                        }
-                        #thermal-receipt-container tr {
-                            display: table-row !important;
-                        }
-                        #thermal-receipt-container th,
-                        #thermal-receipt-container td {
-                            display: table-cell !important;
-                        }
-                        #thermal-receipt-container img {
-                            display: block !important;
-                            margin-left: auto !important;
-                            margin-right: auto !important;
+                        header, footer, nav {
+                            display: none !important;
                         }
                     }
                 `}} />
