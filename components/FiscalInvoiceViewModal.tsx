@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useState, useEffect, useRef } from 'react';
 import type { Order, Restaurant } from '../types';
 import { useNotification } from '../hooks/useNotification';
 import FiscalDanfeReceipt from './FiscalDanfeReceipt';
 import FiscalDocumentModal from './FiscalDocumentModal';
+import PrintableOrder from './PrintableOrder';
 import { updateOrderCustomerDocument } from '../services/orderService';
+import { printThermalElement } from '../utils/thermalPrint';
 
 interface FiscalInvoiceViewModalProps {
     isOpen: boolean;
@@ -29,6 +30,7 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
     const [isPrinting, setIsPrinting] = useState<boolean>(false);
     const [currentOrder, setCurrentOrder] = useState<Order>(order || ({} as Order));
     const [isDocModalOpen, setIsDocModalOpen] = useState<boolean>(false);
+    const printSourceRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
         if (order) setCurrentOrder(order);
@@ -281,12 +283,10 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
 
     const executePrint = () => {
         setIsPrinting(true);
-        setTimeout(() => {
-            window.print();
-            setTimeout(() => {
-                setIsPrinting(false);
-            }, 600);
-        }, 150);
+        setTimeout(async () => {
+            await printThermalElement(printSourceRef.current, selectedWidth);
+            setIsPrinting(false);
+        }, 120);
     };
 
     const handlePrintDanfe = () => {
@@ -626,66 +626,16 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
                 </div>
             </div>
 
-            {/* Portal de Impressão Direta com 100% de Fidelidade Visual */}
-            {isPrinting && createPortal(
-                <div id="thermal-receipt-container">
-                    <style dangerouslySetInnerHTML={{ __html: `
-                        @media screen {
-                            #thermal-receipt-container { display: none !important; }
-                        }
-                        @media print {
-                            @page {
-                                margin: 0 !important;
-                                size: ${selectedWidth}mm auto;
-                            }
-                            html, body {
-                                margin: 0 !important;
-                                padding: 0 !important;
-                                width: ${selectedWidth}mm !important;
-                                height: auto !important;
-                                min-height: 0 !important;
-                                overflow: visible !important;
-                                color: #000 !important;
-                                background: #fff !important;
-                                -webkit-print-color-adjust: exact !important;
-                                print-color-adjust: exact !important;
-                            }
-                            body > *:not(#thermal-receipt-container) {
-                                display: none !important;
-                            }
-                            #thermal-receipt-container {
-                                display: block !important;
-                                position: relative !important;
-                                left: 0 !important;
-                                top: 0 !important;
-                                width: ${selectedWidth}mm !important;
-                                max-width: ${selectedWidth}mm !important;
-                                padding: 0 !important;
-                                margin: 0 !important;
-                                background: #fff !important;
-                                box-sizing: border-box !important;
-                                visibility: visible !important;
-                            }
-                            #thermal-receipt-container * {
-                                visibility: visible !important;
-                            }
-                            #thermal-receipt-container style {
-                                display: none !important;
-                            }
-                            header, footer, nav {
-                                display: none !important;
-                            }
-                        }
-                    `}} />
-                    <div style={{ width: '100%', boxSizing: 'border-box' }}>
-                        <FiscalDanfeReceipt
-                            order={currentOrder}
-                            restaurant={restaurant}
-                            printerWidth={selectedWidth}
-                        />
-                    </div>
-                </div>,
-                document.body
+            {/* Fonte oculta para impressão térmica isolada com 100% de fidelidade visual */}
+            {isPrinting && (
+                <div ref={printSourceRef} className="hidden" aria-hidden="true">
+                    <PrintableOrder
+                        order={currentOrder}
+                        restaurant={restaurant}
+                        printerWidth={selectedWidth}
+                        printMode="fiscal"
+                    />
+                </div>
             )}
 
             {isDocModalOpen && (

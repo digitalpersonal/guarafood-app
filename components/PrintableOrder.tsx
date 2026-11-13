@@ -1,5 +1,4 @@
 import React from 'react';
-import { createPortal } from 'react-dom';
 import type { Order, Restaurant } from '../types';
 
 import FiscalDanfeReceipt from './FiscalDanfeReceipt';
@@ -52,65 +51,25 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
         : (displaySubtotal + Number(order.deliveryFee || 0) - Number(order.discountAmount || 0));
 
     if (printMode === 'fiscal') {
-        return createPortal(
-            <div id="thermal-receipt-container">
-                <style dangerouslySetInnerHTML={{ __html: `
-                    @media screen {
-                        #thermal-receipt-container { display: none !important; }
-                    }
-                    @media print {
-                        @page {
-                            margin: 0 !important;
-                            size: ${paperSize} auto;
-                        }
-                        html, body {
-                            margin: 0 !important;
-                            padding: 0 !important;
-                            width: ${paperSize} !important;
-                            height: auto !important;
-                            min-height: 0 !important;
-                            overflow: visible !important;
-                            color: #000 !important;
-                            background: #fff !important;
-                            -webkit-print-color-adjust: exact !important;
-                            print-color-adjust: exact !important;
-                        }
-                        body > *:not(#thermal-receipt-container) {
-                            display: none !important;
-                        }
-                        #thermal-receipt-container {
-                            display: block !important;
-                            position: relative !important;
-                            left: 0 !important;
-                            top: 0 !important;
-                            width: ${paperSize} !important;
-                            max-width: ${paperSize} !important;
-                            padding: 0 !important;
-                            margin: 0 !important;
-                            background: #fff !important;
-                            box-sizing: border-box !important;
-                            visibility: visible !important;
-                        }
-                        #thermal-receipt-container * {
-                            visibility: visible !important;
-                        }
-                        #thermal-receipt-container style {
-                            display: none !important;
-                        }
-                        header, footer, nav {
-                            display: none !important;
-                        }
-                    }
-                `}} />
-                <div style={{ width: '100%', boxSizing: 'border-box' }}>
-                    <FiscalDanfeReceipt
-                        order={order}
-                        restaurant={restaurant}
-                        printerWidth={printerWidth}
-                    />
-                </div>
-            </div>,
-            document.body
+        return (
+            <div
+                id="thermal-receipt-container"
+                style={{
+                    width: paperSize,
+                    maxWidth: paperSize,
+                    margin: 0,
+                    padding: `1mm ${sidePadding} 3mm ${sidePadding}`,
+                    backgroundColor: '#fff',
+                    color: '#000',
+                    boxSizing: 'border-box',
+                }}
+            >
+                <FiscalDanfeReceipt
+                    order={order}
+                    restaurant={restaurant}
+                    printerWidth={printerWidth}
+                />
+            </div>
         );
     }
 
@@ -124,105 +83,9 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
         return null; 
     }
 
-    const content = (
+    return (
         <div id="thermal-receipt-container">
             <style dangerouslySetInnerHTML={{ __html: `
-                @media screen {
-                    #thermal-receipt-container {
-                        display: none !important;
-                    }
-                }
-
-                @media print {
-                    @page {
-                        margin: 0 !important;
-                        size: ${paperSize} auto;
-                    }
-                    
-                    /* Aggressive reset for printing */
-                    html, body {
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        width: ${paperSize} !important;
-                        height: auto !important;
-                        min-height: 0 !important;
-                        overflow: visible !important;
-                        -webkit-print-color-adjust: exact !important;
-                        print-color-adjust: exact !important;
-                    }
-
-                    /* Hide everything on the page */
-                    body * {
-                        display: none !important;
-                    }
-
-                    /* Show ONLY the thermal container and its children */
-                    #thermal-receipt-container, 
-                    #thermal-receipt-container *,
-                    body > #thermal-receipt-container,
-                    body > #thermal-receipt-container * {
-                        display: block !important;
-                        visibility: visible !important;
-                    }
-
-                    /* Explicitly keep tables behaving correctly */
-                    #thermal-receipt-container table {
-                        display: table !important;
-                    }
-                    #thermal-receipt-container tr {
-                        display: table-row !important;
-                    }
-                    #thermal-receipt-container th,
-                    #thermal-receipt-container td {
-                        display: table-cell !important;
-                    }
-
-                    /* CRITICAL: Explicitly hide the style tag itself from the print output */
-                    #thermal-receipt-container style {
-                        display: none !important;
-                    }
-
-                    #thermal-receipt-container {
-                        position: absolute !important;
-                        left: 0 !important;
-                        top: 0 !important;
-                        width: ${paperSize} !important;
-                        max-width: ${paperSize} !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        background: white !important;
-                        z-index: 999999 !important;
-                        box-sizing: border-box !important;
-                    }
-
-                    #thermal-content {
-                        width: 100% !important;
-                        max-width: ${paperSize} !important;
-                        margin: 0 !important;
-                        padding: 1mm ${sidePadding} 6mm ${sidePadding} !important;
-                        box-sizing: border-box !important;
-                    }
-
-                    .section-divider {
-                        border-top: 1px dashed black !important;
-                        margin: 3px 0 !important;
-                        width: 100% !important;
-                        height: 1px !important;
-                        display: block !important;
-                    }
-
-                    /* Prevent items from being split across page breaks if they occur */
-                    .item-row, .receipt-header, .payment-box, .condiments-box {
-                        break-inside: avoid !important;
-                        page-break-inside: avoid !important;
-                    }
-
-                    /* Fix for some browsers that add headers/footers */
-                    header, footer, nav {
-                        display: none !important;
-                    }
-                }
-
                 #thermal-content {
                     font-family: Arial, Helvetica, -apple-system, sans-serif; 
                     color: #000 !important;
@@ -230,9 +93,9 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                     background: #fff !important;
                     width: ${paperSize};
                     max-width: ${paperSize};
-                    padding: 4px ${sidePadding} 30px ${sidePadding};
+                    padding: 1mm ${sidePadding} 3mm ${sidePadding};
                     box-sizing: border-box;
-                    margin: 0 auto;
+                    margin: 0;
                 }
 
                 #thermal-content * {
@@ -275,8 +138,10 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                 }
 
                 .section-divider {
-                    border-top: 1px solid #000;
+                    border-top: 1px dashed #000;
                     margin: 3px 0;
+                    width: 100%;
+                    height: 1px;
                 }
 
                 .label-center {
@@ -303,6 +168,11 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                     margin: 3px 0;
                     font-size: ${headerFontSize};
                     font-weight: 900 !important;
+                }
+
+                .item-row, .receipt-header, .payment-box, .condiments-box {
+                    break-inside: avoid;
+                    page-break-inside: avoid;
                 }
             ` }} />
 
@@ -480,8 +350,6 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
             </div>
         </div>
     );
-
-    return createPortal(content, document.body);
 };
 
 export default PrintableOrder;
