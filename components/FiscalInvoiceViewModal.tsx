@@ -655,16 +655,15 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
                             }
                             #thermal-receipt-container {
                                 display: block !important;
-                                position: absolute !important;
+                                position: relative !important;
                                 left: 0 !important;
                                 top: 0 !important;
                                 width: ${selectedWidth}mm !important;
                                 max-width: ${selectedWidth}mm !important;
-                                padding: 0 ${selectedWidth === 58 ? '1mm' : '2mm'} 4mm ${selectedWidth === 58 ? '1mm' : '2mm'} !important;
-                                box-sizing: border-box !important;
+                                padding: 0 !important;
                                 margin: 0 !important;
                                 background: #fff !important;
-                                z-index: 99999999 !important;
+                                box-sizing: border-box !important;
                                 visibility: visible !important;
                             }
                             #thermal-receipt-container * {
