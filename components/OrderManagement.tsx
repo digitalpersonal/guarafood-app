@@ -12,7 +12,6 @@ import MenuManagement from './MenuManagement';
 import RestaurantSettings from './RestaurantSettings';
 import PrinterManagement from './PrinterManagement';
 import PrintableOrder from './PrintableOrder';
-import { printThermalElement } from '../utils/thermalPrint';
 import TableManagement from './TableManagement';
 import ComandaManagement from './ComandaManagement';
 import WaiterMonitor from './WaiterMonitor';
@@ -135,7 +134,6 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const heartbeatIntervalRef = useRef<number | null>(null);
     const reconnectGraceTimeoutRef = useRef<number | null>(null);
     const appStartTimeRef = useRef<number>(Date.now());
-    const printSourceRef = useRef<HTMLDivElement | null>(null);
     const [isBrowserOffline, setIsBrowserOffline] = useState(!navigator.onLine);
 
     // Screen Wake Lock API
@@ -547,16 +545,13 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 const printJobId = printJob.jobId;
                 const orderId = printJob.order.id;
                 try {
+                    window.focus();
+                    
                     if (printJob.mode === 'full' && !printJob.jobId) {
                         printedOrderIdsRef.current.add(printJob.order.id);
                     }
-
-                    const stationId = localStorage.getItem('guarafood-print-station-id') || localStorage.getItem('guarafood-print-server-role');
-                    const defaultPrinter = restaurant?.printers?.find(p => p.isDefault) || restaurant?.printers?.[0];
-                    const configuredPrinter = (stationId && stationId !== 'all' ? restaurant?.printers?.find(p => p.id === stationId) : null) || defaultPrinter;
-                    const activeWidth = configuredPrinter?.width || restaurant?.printerWidth || printerWidth;
-
-                    await printThermalElement(printSourceRef.current, activeWidth);
+                    
+                    window.print();
 
                     // Se era um trabalho da fila remota (jobId), marcamos como feito no banco
                     if (printJobId) {
@@ -977,21 +972,23 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
             <main className="flex-grow">{renderContent()}</main>
 
-            <div ref={printSourceRef} className="hidden" aria-hidden="true">
-                {printJob && (() => {
-                    const stationId = localStorage.getItem('guarafood-print-station-id') || localStorage.getItem('guarafood-print-server-role');
-                    const defaultPrinter = restaurant?.printers?.find(p => p.isDefault) || restaurant?.printers?.[0];
-                    const configuredPrinter = (stationId && stationId !== 'all' ? restaurant?.printers?.find(p => p.id === stationId) : null) || defaultPrinter;
-                    const activeWidth = configuredPrinter?.width || restaurant?.printerWidth || printerWidth;
-                    return (
-                        <PrintableOrder 
-                            order={printJob.items ? { ...printJob.order, items: printJob.items } : printJob.order} 
-                            printerWidth={activeWidth} 
-                            printMode={printJob.mode}
-                            restaurant={restaurant}
-                        />
-                    );
-                })()}
+            <div className="hidden print:block">
+                <div id="printable-order">
+                    {printJob && (() => {
+                        const stationId = localStorage.getItem('guarafood-print-station-id') || localStorage.getItem('guarafood-print-server-role');
+                        const defaultPrinter = restaurant?.printers?.find(p => p.isDefault) || restaurant?.printers?.[0];
+                        const configuredPrinter = (stationId && stationId !== 'all' ? restaurant?.printers?.find(p => p.id === stationId) : null) || defaultPrinter;
+                        const activeWidth = configuredPrinter?.width || restaurant?.printerWidth || printerWidth;
+                        return (
+                            <PrintableOrder 
+                                order={printJob.items ? { ...printJob.order, items: printJob.items } : printJob.order} 
+                                printerWidth={activeWidth} 
+                                printMode={printJob.mode}
+                                restaurant={restaurant}
+                            />
+                        );
+                    })()}
+                </div>
             </div>
 
             <PinPadModal 
