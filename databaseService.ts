@@ -1,0 +1,1574 @@
+
+import { supabase, supabaseAnon, handleSupabaseError } from './api';
+import type { Restaurant, MenuCategory, Addon, Promotion, MenuItem, Combo, Coupon, Banner, RestaurantCategory, Expense, Order, OperatingHours, FeaturedPromo, PrinterConfig, ComandaAtiva, PlatformUser, StaffMember } from '../types';
+import { decodeDaysFromDescription, encodeDaysInDescription, isPromoActiveToday, decodePromoMetadata, encodePromoMetadata } from '../utils/promoUtils';
+
+// ==============================================================================
+// 🔄 NORMALIZADORES (Banco de Dados -> App)
+// ==============================================================================
+
+const extractPrinters = (data: any): PrinterConfig[] => {
+    if (!data) return [];
+    if (data.printers && Array.isArray(data.printers)) {
+        return data.printers;
+    }
+    if (data.printer_name && typeof data.printer_name === 'string') {
+        try {
+            const parsed = JSON.parse(data.printer_name);
+            if (Array.isArray(parsed)) return parsed;
+            if (parsed && Array.isArray(parsed.printers)) return parsed.printers;
+        } catch {
+            // printer_name was a simple printer name string
+        }
+    }
+    if (data.id && typeof window !== 'undefined') {
+        try {
+            const cached = localStorage.getItem(`guarafood-printers-${data.id}`);
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed)) return parsed;
+            }
+        } catch {}
+    }
+    return [];
+};
+
+const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+const getDefaultOperatingHours = (): OperatingHours[] =>
+    daysOfWeek.map((_, index) => ({
+        dayOfWeek: index,
+        opens: '18:00',
+        closes: '23:00',
+        isOpen: false,
+    }));
+
+const ensureOperatingHours = (hours: any): OperatingHours[] => {
+    let parsedHours = hours;
+    if (typeof hours === 'string') {
+        try {
+            parsedHours = JSON.parse(hours);
+        } catch (e) {
+            return getDefaultOperatingHours();
+        }
+    }
+    if (Array.isArray(parsedHours) && parsedHours.length === 7) {
+        return parsedHours.map((d, i) => (d && typeof d === 'object' ? d : { dayOfWeek: i, opens: '18:00', closes: '23:00', isOpen: false }));
+    }
+    return getDefaultOperatingHours();
+};
+
+// Normalizer for orders (Maps DB snake_case to App camelCase)
+const normalizeOrder = (data: any): Order => {
+    return {
+        id: data.id,
+        order_number: data.order_number, 
+        timestamp: data.timestamp || data.created_at,
+        status: data.status,
+        customerName: data.customer_name,
+        customerPhone: data.customer_phone,
+        customerAddress: data.customer_address,
+        items: data.items,
+        totalPrice: data.total_price,
+        restaurantId: data.restaurant_id,
+        restaurantName: data.restaurant_name,
+        restaurantAddress: data.restaurant_address,
+        restaurantPhone: data.restaurant_phone,
+        paymentMethod: data.payment_method,
+        couponCode: data.coupon_code,
+        discountAmount: data.discount_amount,
+        subtotal: data.subtotal,
+        deliveryFee: data.delivery_fee,
+        payment_id: data.payment_id,
+        payment_details: data.payment_details,
+        paymentStatus: data.payment_status,
+        wantsSachets: data.customer_address?.wantsSachets === true
+    };
+};
+
+// Normalizer for public views (Masks sensitive data)
+const normalizeRestaurant = (data: any): Restaurant => {
+    if (!data) return data;
+    
+    let mpCreds = data.mercado_pago_credentials;
+    if (typeof mpCreds === 'string') {
+        try { mpCreds = JSON.parse(mpCreds); } catch(e) { mpCreds = { accessToken: '' }; }
+    }
+    if (!mpCreds || typeof mpCreds !== 'object') {
+        mpCreds = { accessToken: '' };
+    }
+    
+    const hasMpToken = !!mpCreds?.accessToken && typeof mpCreds.accessToken === 'string' && mpCreds.accessToken.trim().length > 0;
+    
+    return {
+        id: data.id,
+        name: data.name,
+        category: data.category,
+        description: data.description,
+        city: data.city || 'Guaranésia',
+        deliveryTime: data.delivery_time,
+        rating: data.rating,
+        imageUrl: data.image_url,
+        paymentGateways: data.payment_gateways || [],
+        address: data.address,
+        phone: data.phone,
+        openingHours: data.opening_hours,
+        closingHours: data.closing_hours,
+        deliveryFee: data.delivery_fee,
+        operatingHours: ensureOperatingHours(data.operating_hours),
+        mercado_pago_credentials: { accessToken: hasMpToken ? "PROTECTED" : "" },
+        manualPixKey: data.manual_pix_key,
+        hasPixConfigured: hasMpToken,
+        active: data.active !== false,
+        isDeleted: getDeletedRestaurantIds().includes(data.id),
+        disableDelivery: data.disable_delivery || false,
+        printerWidth: data.printer_width,
+        printerName: data.printer_name,
+        bannerImageUrl: data.banner_image_url,
+        marmitaStartTime: data.marmita_start_time,
+        marmitaEndTime: data.marmita_end_time,
+        hasMensalistas: data.has_mensalistas,
+        hasKiloService: data.has_kilo_service,
+        pricePerKilo: data.price_per_kilo,
+        staff: data.staff || [], // NEW
+        loyaltyProgram: data.loyalty_program || undefined,
+        enableFiscal: data.enable_fiscal ?? data.enableFiscal ?? false,
+        cnpj: data.cnpj || undefined,
+        ie: data.ie || undefined,
+        im: data.im || undefined,
+        blingApiKey: data.bling_api_key || undefined,
+        fiscalProvider: data.fiscal_provider || undefined,
+        fiscalCsc: data.fiscal_csc || undefined,
+        fiscalCscId: data.fiscal_csc_id || undefined,
+        fiscalEnv: data.fiscal_env || 'homologacao',
+        nuvemClientId: data.nuvem_client_id || undefined,
+        nuvemClientSecret: data.nuvem_client_secret || undefined,
+        printers: extractPrinters(data)
+    };
+};
+
+// Normalizer for Admin/Settings (Keeps sensitive data)
+const normalizeRestaurantSecure = (data: any): Restaurant => {
+    if (!data) return data;
+    
+    let mpCreds = data.mercado_pago_credentials;
+    if (typeof mpCreds === 'string') {
+        try { mpCreds = JSON.parse(mpCreds); } catch(e) { mpCreds = { accessToken: '' }; }
+    }
+    if (!mpCreds || typeof mpCreds !== 'object') {
+        mpCreds = { accessToken: '' };
+    }
+    
+    const hasMpToken = !!mpCreds?.accessToken && typeof mpCreds.accessToken === 'string' && mpCreds.accessToken.trim().length > 0;
+    
+    return {
+        id: data.id,
+        name: data.name,
+        category: data.category,
+        description: data.description,
+        city: data.city || 'Guaranésia',
+        deliveryTime: data.delivery_time,
+        rating: data.rating,
+        imageUrl: data.image_url,
+        paymentGateways: data.payment_gateways || [],
+        address: data.address,
+        phone: data.phone,
+        openingHours: data.opening_hours,
+        closingHours: data.closing_hours,
+        deliveryFee: data.delivery_fee,
+        operatingHours: ensureOperatingHours(data.operating_hours),
+        mercado_pago_credentials: mpCreds,
+        manualPixKey: data.manual_pix_key,
+        hasPixConfigured: hasMpToken,
+        active: data.active !== false,
+        isDeleted: getDeletedRestaurantIds().includes(data.id),
+        disableDelivery: data.disable_delivery || false,
+        printerWidth: data.printer_width,
+        printerName: data.printer_name,
+        bannerImageUrl: data.banner_image_url,
+        marmitaStartTime: data.marmita_start_time,
+        marmitaEndTime: data.marmita_end_time,
+        hasMensalistas: data.has_mensalistas,
+        hasKiloService: data.has_kilo_service,
+        pricePerKilo: data.price_per_kilo,
+        staff: data.staff || [], // NEW
+        loyaltyProgram: data.loyalty_program || undefined,
+        enableFiscal: data.enable_fiscal ?? data.enableFiscal ?? false,
+        cnpj: data.cnpj || undefined,
+        ie: data.ie || undefined,
+        im: data.im || undefined,
+        blingApiKey: data.bling_api_key || undefined,
+        fiscalProvider: data.fiscal_provider || undefined,
+        fiscalCsc: data.fiscal_csc || undefined,
+        fiscalCscId: data.fiscal_csc_id || undefined,
+        fiscalEnv: data.fiscal_env || 'homologacao',
+        nuvemClientId: data.nuvem_client_id || undefined,
+        nuvemClientSecret: data.nuvem_client_secret || undefined,
+        printers: extractPrinters(data)
+    };
+};
+
+const normalizeCategory = (data: any): MenuCategory => {
+    const rawRestId = data.restaurant_id !== undefined ? data.restaurant_id : data.restaurantId;
+    return {
+        ...data,
+        restaurantId: rawRestId !== undefined && rawRestId !== null ? Number(rawRestId) : undefined,
+        displayOrder: data.display_order,
+        iconUrl: data.icon_url,
+        availableStartTime: data.available_start_time,
+        availableEndTime: data.available_end_time
+    };
+};
+
+const normalizeItem = (data: any): MenuItem => {
+    const rawRestId = data.restaurant_id !== undefined ? data.restaurant_id : data.restaurantId;
+    return {
+        ...data,
+        restaurantId: rawRestId !== undefined && rawRestId !== null ? Number(rawRestId) : (data.restaurantId ? Number(data.restaurantId) : undefined) as any,
+        categoryId: data.category_id !== undefined ? Number(data.category_id) : data.categoryId,
+        imageUrl: data.image_url || data.imageUrl,
+        originalPrice: data.original_price !== undefined ? Number(data.original_price) : data.originalPrice,
+        isPizza: data.is_pizza !== undefined ? data.is_pizza : data.isPizza,
+        isAcai: data.is_acai !== undefined ? data.is_acai : data.isAcai,
+        isMarmita: data.is_marmita !== undefined ? data.is_marmita : data.isMarmita,
+        marmitaOptions: data.marmita_options || data.marmitaOptions,
+        freeAddonCount: data.free_addon_count !== undefined ? data.free_addon_count : data.freeAddonCount,
+        availableAddonIds: data.available_addon_ids || data.availableAddonIds,
+        isDailySpecial: data.is_daily_special !== undefined ? data.is_daily_special : data.isDailySpecial,
+        isWeeklySpecial: data.is_weekly_special !== undefined ? data.is_weekly_special : data.isWeeklySpecial,
+        displayOrder: data.display_order !== undefined ? data.display_order : data.displayOrder,
+        available: data.available !== false, // Assume true if null
+        optionGroups: data.option_groups || data.optionGroups,
+        availableDays: data.available_days || data.availableDays,
+        availableStartTime: data.available_start_time || data.availableStartTime,
+        availableEndTime: data.available_end_time || data.availableEndTime
+    };
+};
+
+const normalizeCombo = (data: any): Combo => {
+    const rawRestId = data.restaurant_id !== undefined ? data.restaurant_id : data.restaurantId;
+    return {
+        ...data,
+        restaurantId: rawRestId !== undefined && rawRestId !== null ? Number(rawRestId) : (data.restaurantId ? Number(data.restaurantId) : undefined) as any,
+        categoryId: data.category_id !== undefined ? Number(data.category_id) : data.categoryId,
+        imageUrl: data.image_url || data.imageUrl,
+        originalPrice: data.original_price !== undefined ? Number(data.original_price) : data.originalPrice,
+        menuItemIds: data.menu_item_ids || data.menuItemIds || [],
+        availableDays: data.available_days || data.availableDays,
+        availableStartTime: data.available_start_time || data.availableStartTime,
+        availableEndTime: data.available_end_time || data.availableEndTime
+    };
+};
+
+const normalizeAddon = (data: any): Addon => {
+    const rawRestId = data.restaurant_id !== undefined ? data.restaurant_id : data.restaurantId;
+    return {
+        ...data,
+        restaurantId: rawRestId !== undefined && rawRestId !== null ? Number(rawRestId) : (data.restaurantId ? Number(data.restaurantId) : undefined) as any
+    };
+};
+
+const normalizePromotion = (data: any): Promotion => {
+    let availableDays = data.available_days;
+    let rawDescription = data.description || '';
+    
+    const decoded = decodePromoMetadata(rawDescription);
+    const description = decoded.cleanDescription;
+
+    if (!availableDays || !Array.isArray(availableDays) || availableDays.length === 0) {
+        if (decoded.availableDays) {
+            availableDays = decoded.availableDays;
+        }
+    }
+
+    const discountType = decoded.type || data.discount_type || 'PERCENTAGE';
+
+    let categoryIds = data.category_ids || [];
+    let itemIds = data.item_ids || [];
+    let comboIds = data.combo_ids || [];
+
+    if ((!categoryIds || categoryIds.length === 0) && (!itemIds || itemIds.length === 0) && (!comboIds || comboIds.length === 0) && data.target_type && Array.isArray(data.target_ids)) {
+        const parsedIds = data.target_ids.map((id: any) => Number(id)).filter((n: number) => !isNaN(n));
+        if (data.target_type === 'CATEGORY') categoryIds = parsedIds;
+        else if (data.target_type === 'ITEM') itemIds = parsedIds;
+        else if (data.target_type === 'COMBO') comboIds = parsedIds;
+    }
+
+    return {
+        ...data,
+        description,
+        discountType,
+        discountValue: Number(data.discount_value || 0),
+        itemIds,
+        comboIds,
+        categoryIds,
+        startDate: data.start_date,
+        endDate: data.end_date,
+        restaurantId: data.restaurant_id,
+        availableDays: Array.isArray(availableDays) && availableDays.length > 0 ? availableDays : [0, 1, 2, 3, 4, 5, 6],
+        availableStartTime: decoded.availableStartTime || data.available_start_time,
+        availableEndTime: decoded.availableEndTime || data.available_end_time,
+        upsellTitle: decoded.upsellTitle || data.upsell_title,
+        upsellDescription: decoded.upsellDescription || data.upsell_description,
+        upsellPrice: decoded.upsellPrice !== undefined ? decoded.upsellPrice : (data.upsell_price ? Number(data.upsell_price) : undefined),
+        upsellOptions: decoded.upsellOptions || data.upsell_options,
+        upsellMaxSelections: decoded.upsellMaxSelections !== undefined ? Number(decoded.upsellMaxSelections) : (data.upsell_max_selections ? Number(data.upsell_max_selections) : 1)
+    };
+};
+
+const normalizeCoupon = (data: any): Coupon => ({
+    ...data,
+    discountType: data.discount_type,
+    discountValue: data.discount_value,
+    minOrderValue: data.min_order_value,
+    expirationDate: data.expiration_date,
+    isActive: data.is_active,
+    restaurantId: data.restaurant_id
+});
+
+const normalizeBanner = (data: any): Banner => ({
+    ...data,
+    imageUrl: data.image_url,
+    ctaText: data.cta_text,
+    targetType: data.target_type,
+    targetValue: data.target_value
+});
+
+const normalizeExpense = (data: any): Expense => ({
+    ...data,
+    restaurantId: data.restaurant_id
+});
+
+const normalizeRestaurantCategory = (data: any): RestaurantCategory => data;
+
+// ==============================================================================
+// 🏢 RESTAURANTS
+// ==============================================================================
+
+export const fetchRestaurants = async (): Promise<Restaurant[]> => {
+    const { data, error } = await supabaseAnon.from('restaurants').select('*').eq('active', true);
+    handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants' });
+    const deletedIds = getDeletedRestaurantIds();
+    return (data || [])
+        .filter(r => !deletedIds.includes(r.id) && r.category !== 'Sistema')
+        .map(normalizeRestaurant);
+};
+
+export const fetchRestaurantsSecure = async (includeDeleted: boolean = false): Promise<Restaurant[]> => {
+    const { data, error } = await supabase.from('restaurants').select('*');
+    handleSupabaseError({ error, customMessage: 'Failed to fetch restaurants (secure)' });
+    const deletedIds = getDeletedRestaurantIds();
+    let list = (data || [])
+        .filter(r => r.category !== 'Sistema')
+        .map(normalizeRestaurantSecure);
+    if (!includeDeleted) {
+        list = list.filter(r => !deletedIds.includes(r.id));
+    }
+    return list;
+};
+
+export const fetchRestaurantById = async (id: number): Promise<Restaurant | null> => {
+    if (!id || isNaN(Number(id))) {
+        console.warn("[databaseService] fetchRestaurantById called with invalid or empty ID:", id);
+        return null;
+    }
+    const { data, error } = await supabaseAnon.from('restaurants').select('*').eq('id', id).single();
+    handleSupabaseError({ error, customMessage: 'Failed to fetch restaurant' });
+    return data ? normalizeRestaurant(data) : null;
+};
+
+export const fetchRestaurantByIdSecure = async (id: number): Promise<Restaurant | null> => {
+    if (!id || isNaN(Number(id))) {
+        console.warn("[databaseService] fetchRestaurantByIdSecure called with invalid or empty ID:", id);
+        return null;
+    }
+    const { data, error } = await supabase.from('restaurants').select('*').eq('id', id).single();
+    handleSupabaseError({ error, customMessage: 'Failed to fetch restaurant details' });
+    return data ? normalizeRestaurantSecure(data) : null;
+};
+
+export const updateRestaurant = async (id: number, updates: Partial<Restaurant>): Promise<Restaurant> => {
+    // SENIOR FIX: Mapping all camelCase fields to snake_case for DB
+    const dbUpdates: any = { ...updates };
+    
+    if (updates.deliveryTime !== undefined) dbUpdates.delivery_time = updates.deliveryTime;
+    if (updates.city !== undefined) dbUpdates.city = updates.city;
+    if (updates.imageUrl !== undefined) dbUpdates.image_url = updates.imageUrl;
+    if (updates.paymentGateways !== undefined) dbUpdates.payment_gateways = updates.paymentGateways;
+    if (updates.openingHours !== undefined) dbUpdates.opening_hours = updates.openingHours;
+    if (updates.closingHours !== undefined) dbUpdates.closing_hours = updates.closingHours;
+    if (updates.deliveryFee !== undefined) dbUpdates.delivery_fee = updates.deliveryFee;
+    if (updates.operatingHours !== undefined) {
+        dbUpdates.operating_hours = updates.operatingHours;
+        
+        // SENIOR SYNC: Update legacy fields for summary display on main page
+        const firstOpenDay = updates.operatingHours.find(d => d.isOpen);
+        if (firstOpenDay) {
+            dbUpdates.opening_hours = firstOpenDay.opens;
+            dbUpdates.closing_hours = firstOpenDay.closes;
+        } else {
+            dbUpdates.opening_hours = 'Fechado';
+            dbUpdates.closing_hours = 'Fechado';
+        }
+    }
+    if (updates.marmitaStartTime !== undefined) dbUpdates.marmita_start_time = updates.marmitaStartTime;
+    if (updates.marmitaEndTime !== undefined) dbUpdates.marmita_end_time = updates.marmitaEndTime;
+    if (updates.manualPixKey !== undefined) dbUpdates.manual_pix_key = updates.manualPixKey;
+    if (updates.printerWidth !== undefined) dbUpdates.printer_width = updates.printerWidth;
+    if (updates.printerName !== undefined) dbUpdates.printer_name = updates.printerName;
+    if (updates.asaas_credentials !== undefined) dbUpdates.asaas_credentials = updates.asaas_credentials;
+    if (updates.selectedPaymentGateway !== undefined) dbUpdates.selected_payment_gateway = updates.selectedPaymentGateway;
+    if (updates.bannerImageUrl !== undefined) dbUpdates.banner_image_url = updates.bannerImageUrl;
+    if (updates.hasMensalistas !== undefined) dbUpdates.has_mensalistas = updates.hasMensalistas;
+    if (updates.hasKiloService !== undefined) dbUpdates.has_kilo_service = updates.hasKiloService;
+    if (updates.pricePerKilo !== undefined) dbUpdates.price_per_kilo = updates.pricePerKilo;
+    if (updates.enableFiscal !== undefined) {
+        dbUpdates.enable_fiscal = updates.enableFiscal;
+        dbUpdates.enableFiscal = updates.enableFiscal;
+    }
+    if (updates.staff !== undefined) dbUpdates.staff = updates.staff;
+    if (updates.loyaltyProgram !== undefined) dbUpdates.loyalty_program = updates.loyaltyProgram;
+    if (updates.disableDelivery !== undefined) dbUpdates.disable_delivery = updates.disableDelivery;
+    if (updates.blingApiKey !== undefined) dbUpdates.bling_api_key = updates.blingApiKey;
+    if (updates.fiscalProvider !== undefined) dbUpdates.fiscal_provider = updates.fiscalProvider;
+    if (updates.fiscalCsc !== undefined) dbUpdates.fiscal_csc = updates.fiscalCsc;
+    if (updates.fiscalCscId !== undefined) dbUpdates.fiscal_csc_id = updates.fiscalCscId;
+    if (updates.fiscalEnv !== undefined) dbUpdates.fiscal_env = updates.fiscalEnv;
+    if (updates.nuvemClientId !== undefined) dbUpdates.nuvem_client_id = updates.nuvemClientId;
+    if (updates.nuvemClientSecret !== undefined) dbUpdates.nuvem_client_secret = updates.nuvemClientSecret;
+    if (updates.autoPrintOrders !== undefined) dbUpdates.auto_print_orders = updates.autoPrintOrders;
+    if (updates.printers !== undefined) {
+        dbUpdates.printer_name = JSON.stringify(updates.printers);
+        if (id && typeof window !== 'undefined') {
+            try {
+                localStorage.setItem(`guarafood-printers-${id}`, JSON.stringify(updates.printers));
+            } catch {}
+        }
+    }
+
+    // Clean up all camelCase keys to prevent Supabase "column does not exist" errors
+    const keysToRemove = [
+        'deliveryTime', 'imageUrl', 'paymentGateways', 'openingHours', 
+        'closingHours', 'deliveryFee', 'operatingHours', 'manualPixKey', 
+        'hasPixConfigured', 'printerWidth', 'printerName', 'selectedPaymentGateway', 'bannerImageUrl', 'marmitaStartTime', 'marmitaEndTime',
+        'hasMensalistas', 'hasKiloService', 'pricePerKilo', 'loyaltyProgram', 'disableDelivery', 'printers',
+        'blingApiKey', 'fiscalProvider', 'fiscalCsc', 'fiscalCscId', 'fiscalEnv', 'nuvemClientId', 'nuvemClientSecret', 'autoPrintOrders'
+    ];
+    keysToRemove.forEach(key => delete dbUpdates[key]);
+
+    const { data, error } = await supabase.from('restaurants').update(dbUpdates).eq('id', id).select().single();
+    
+    if (error) {
+        handleSupabaseError({ error, customMessage: 'Erro ao atualizar dados do restaurante no banco' });
+    }
+    
+    return normalizeRestaurantSecure(data);
+};
+
+// ==============================================================================
+// 🗑️ DELETED / EXCLUDED RESTAURANTS MANAGEMENT
+// ==============================================================================
+export const getDeletedRestaurantIds = (): number[] => {
+    try {
+        const stored = localStorage.getItem('guarafood-deleted-restaurant-ids');
+        return stored ? JSON.parse(stored) : [];
+    } catch {
+        return [];
+    }
+};
+
+export const addDeletedRestaurantId = (id: number): void => {
+    try {
+        const ids = getDeletedRestaurantIds();
+        if (!ids.includes(id)) {
+            ids.push(id);
+            localStorage.setItem('guarafood-deleted-restaurant-ids', JSON.stringify(ids));
+        }
+    } catch (e) {
+        console.warn("Error saving deleted restaurant id:", e);
+    }
+};
+
+export const removeDeletedRestaurantId = (id: number): void => {
+    try {
+        const ids = getDeletedRestaurantIds().filter(existingId => existingId !== id);
+        localStorage.setItem('guarafood-deleted-restaurant-ids', JSON.stringify(ids));
+    } catch (e) {
+        console.warn("Error removing deleted restaurant id:", e);
+    }
+};
+
+export const restoreRestaurant = async (id: number): Promise<void> => {
+    removeDeletedRestaurantId(id);
+    try {
+        await supabase.from('restaurants').update({ active: true }).eq('id', id);
+    } catch (e) {
+        console.warn("Error re-activating restaurant in db:", e);
+    }
+    try {
+        localStorage.removeItem('guarafood-cached-all-restaurants');
+        localStorage.removeItem('guarafood-cached-restaurant');
+    } catch (e) {
+        console.warn("Error invalidating cache:", e);
+    }
+};
+
+export const deleteRestaurant = async (id: number, permanent: boolean = false): Promise<void> => {
+    // 0. Mark inactive immediately so filters hide it instantly in database
+    try {
+        await supabase.from('restaurants').update({ active: false }).eq('id', id);
+    } catch (e) {
+        console.warn("Could not mark restaurant inactive:", e);
+    }
+
+    // Always register in deleted list so it disappears immediately from active views
+    addDeletedRestaurantId(id);
+
+    if (permanent) {
+        // 1. Try Database Cascade RPC function first
+        try {
+            const { data: rpcData, error: rpcError } = await supabase.rpc('delete_restaurant_cascade', { p_restaurant_id: id });
+            if (!rpcError && rpcData?.success) {
+                console.log("Restaurant deleted via cascade RPC function successfully:", rpcData);
+            }
+        } catch (rpcErr) {
+            console.warn("RPC delete_restaurant_cascade attempt failed:", rpcErr);
+        }
+
+        // 2. Try Edge Function
+        try {
+            await supabase.functions.invoke('delete-restaurant-and-user', { body: { restaurantId: id } });
+        } catch (e) {
+            console.warn("Edge function invocation failed:", e);
+        }
+
+        // 2. Comprehensive manual cleanup in reverse dependency order
+        try {
+            await supabase.from('combos').delete().eq('restaurant_id', id);
+            await supabase.from('menu_items').delete().eq('restaurant_id', id);
+            await supabase.from('menu_categories').delete().eq('restaurant_id', id);
+            await supabase.from('addons').delete().eq('restaurant_id', id);
+            await supabase.from('promotions').delete().eq('restaurant_id', id);
+            await supabase.from('coupons').delete().eq('restaurant_id', id);
+            await supabase.from('expenses').delete().eq('restaurant_id', id);
+            await supabase.from('featured_promos').delete().eq('restaurant_id', id);
+            await supabase.from('customer_loyalty').delete().eq('restaurant_id', id);
+            await supabase.from('mensalistas').delete().eq('restaurant_id', id);
+            await supabase.from('comandas').delete().eq('restaurant_id', id);
+            await supabase.from('tables').delete().eq('restaurant_id', id);
+            await supabase.from('orders').delete().eq('restaurant_id', id);
+            try {
+                await supabase.from('profiles').update({ restaurant_id: null }).eq('restaurant_id', id);
+            } catch {
+                // profiles might not have permission, continue
+            }
+
+            // 3. Delete the Restaurant row
+            const { error: delError } = await supabase.from('restaurants').delete().eq('id', id);
+            if (delError) {
+                console.warn("Could not hard delete restaurant row from table:", delError.message);
+            }
+        } catch (manualError: any) {
+            console.warn("Manual deletion note:", manualError);
+        }
+    }
+
+    // Clear local caches so the restaurant is removed from lists everywhere
+    try {
+        localStorage.removeItem('guarafood-cached-restaurant');
+        const cachedAll = localStorage.getItem('guarafood-cached-all-restaurants');
+        if (cachedAll) {
+            const parsed = JSON.parse(cachedAll);
+            const filtered = parsed.filter((r: any) => r.id !== id);
+            localStorage.setItem('guarafood-cached-all-restaurants', JSON.stringify(filtered));
+        }
+    } catch (e) {
+        console.warn("Cache cleanup error:", e);
+    }
+};
+
+// ==============================================================================
+// 📦 ORDERS (ADMIN GLOBAL)
+// ==============================================================================
+
+export const fetchAllOrdersAdmin = async (): Promise<Order[]> => {
+    const { data, error } = await supabase
+        .from('orders')
+        .select('*, restaurants!inner(active)')
+        .eq('restaurants.active', true)
+        .order('timestamp', { ascending: false })
+        .limit(5000); // Increased limit for global admin stats
+    
+    handleSupabaseError({ error, customMessage: 'Failed to fetch all orders for admin' });
+    return (data || []).map(normalizeOrder);
+};
+
+// ==============================================================================
+// 📂 RESTAURANT CATEGORIES
+// ==============================================================================
+
+export const fetchRestaurantCategories = async (): Promise<RestaurantCategory[]> => {
+    const { data, error } = await supabaseAnon.from('restaurant_categories').select('*').order('name');
+    handleSupabaseError({ error, customMessage: 'Failed to fetch categories' });
+    return (data || []).map(normalizeRestaurantCategory);
+};
+
+export const createRestaurantCategory = async (name: string, iconUrl?: string): Promise<RestaurantCategory | null> => {
+    const { data, error } = await supabase.from('restaurant_categories').insert({ name, icon_url: iconUrl }).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to create category' });
+    return data ? normalizeRestaurantCategory(data) : null;
+};
+
+export const updateRestaurantCategory = async (id: number, name: string, iconUrl?: string): Promise<RestaurantCategory | null> => {
+    const { data, error } = await supabase.from('restaurant_categories').update({ name, icon_url: iconUrl }).eq('id', id).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to update category' });
+    return data ? normalizeRestaurantCategory(data) : null;
+};
+
+export const deleteRestaurantCategory = async (id: number): Promise<void> => {
+    const { error } = await supabase.from('restaurant_categories').delete().eq('id', id);
+    handleSupabaseError({ error, customMessage: 'Failed to delete category' });
+};
+
+// ==============================================================================
+// 🖼️ BANNERS
+// ==============================================================================
+
+export const fetchBanners = async (): Promise<Banner[]> => {
+    const { data, error } = await supabase.from('banners').select('*');
+    handleSupabaseError({ error, customMessage: 'Failed to fetch banners' });
+    return (data || []).map(normalizeBanner);
+};
+
+export const fetchActiveBanners = async (): Promise<Banner[]> => {
+    const { data, error } = await supabaseAnon.from('banners').select('*').eq('active', true);
+    handleSupabaseError({ error, customMessage: 'Failed to fetch active banners' });
+    return (data || []).map(normalizeBanner);
+};
+
+export const createBanner = async (banner: Omit<Banner, 'id'>): Promise<Banner> => {
+    const payload = {
+        title: banner.title,
+        description: banner.description,
+        image_url: banner.imageUrl,
+        cta_text: banner.ctaText,
+        target_type: banner.targetType,
+        target_value: banner.targetValue,
+        active: banner.active
+    };
+    const { data, error } = await supabase.from('banners').insert(payload).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to create banner' });
+    return normalizeBanner(data);
+};
+
+export const updateBanner = async (id: number, banner: Partial<Banner>): Promise<Banner> => {
+    const payload: any = {};
+    if (banner.title !== undefined) payload.title = banner.title;
+    if (banner.description !== undefined) payload.description = banner.description;
+    if (banner.imageUrl !== undefined) payload.image_url = banner.imageUrl;
+    if (banner.ctaText !== undefined) payload.cta_text = banner.ctaText;
+    if (banner.targetType !== undefined) payload.target_type = banner.targetType;
+    if (banner.targetValue !== undefined) payload.target_value = banner.targetValue;
+    if (banner.active !== undefined) payload.active = banner.active;
+
+    const { data, error } = await supabase.from('banners').update(payload).eq('id', id).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to update banner' });
+    return normalizeBanner(data);
+};
+
+export const deleteBanner = async (id: number): Promise<void> => {
+    const { error } = await supabase.from('banners').delete().eq('id', id);
+    handleSupabaseError({ error, customMessage: 'Failed to delete banner' });
+};
+
+// ==============================================================================
+// 🍔 MENU MANAGEMENT
+// ==============================================================================
+
+export const fetchMenuForRestaurant = async (restaurantId: number, ignoreDayFilter = false): Promise<MenuCategory[]> => {
+    if (!restaurantId || isNaN(Number(restaurantId))) {
+        console.warn("[databaseService] fetchMenuForRestaurant called with invalid or empty ID:", restaurantId);
+        return [];
+    }
+    const { data: categoriesData, error: catError } = await supabaseAnon
+        .from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true });
+    handleSupabaseError({ error: catError, customMessage: 'Failed to fetch menu categories' });
+
+    const { data: itemsData, error: itemError } = await supabaseAnon
+        .from('menu_items').select('*').eq('restaurant_id', restaurantId).order('display_order', { ascending: true });
+    handleSupabaseError({ error: itemError, customMessage: 'Failed to fetch menu items' });
+
+    const { data: combosData, error: comboError } = await supabaseAnon.from('combos').select('*').eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error: comboError, customMessage: 'Failed to fetch combos' });
+
+    const today = new Date().toISOString();
+    const { data: promosData, error: promoError } = await supabaseAnon
+        .from('promotions').select('*').eq('restaurant_id', restaurantId).lte('start_date', today).gte('end_date', today);
+
+    const promotions = (promosData || []).map(normalizePromotion);
+    const todayIndex = new Date().getDay();
+
+    const categories: MenuCategory[] = (categoriesData || []).map(normalizeCategory).map(category => {
+        let items = (itemsData || []).map(normalizeItem).filter(item => item.categoryId === category.id);
+        
+        // Sort by manual display_order primarily
+        items.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+
+        items = items.map(item => {
+            const activePromo = promotions.find(p => 
+                ((p.itemIds && p.itemIds.includes(item.id)) || 
+                (p.categoryIds && p.categoryIds.includes(item.categoryId!))) &&
+                isPromoActiveToday(p)
+            );
+            if (activePromo) {
+                if (activePromo.discountType === 'UPSELL') {
+                    return { ...item, activePromotion: activePromo };
+                }
+                let newPrice = activePromo.discountType === 'PERCENTAGE' ? item.price * (1 - activePromo.discountValue / 100) : Math.max(0, item.price - activePromo.discountValue);
+                return { ...item, price: newPrice, originalPrice: item.price, activePromotion: activePromo };
+            }
+            return item;
+        });
+
+        let categoryCombos = (combosData || []).map(normalizeCombo).filter(combo => combo.categoryId === category.id);
+        categoryCombos = categoryCombos.map(combo => {
+             const activePromo = promotions.find(p => 
+                ((p.comboIds && p.comboIds.includes(combo.id)) ||
+                (p.categoryIds && p.categoryIds.includes(combo.categoryId!))) &&
+                isPromoActiveToday(p)
+             );
+             if (activePromo) {
+                let newPrice = activePromo.discountType === 'PERCENTAGE' ? combo.price * (1 - activePromo.discountValue / 100) : Math.max(0, combo.price - activePromo.discountValue);
+                return { ...combo, price: newPrice, originalPrice: combo.price, activePromotion: activePromo };
+            }
+            return combo;
+        });
+        return { ...category, items, combos: categoryCombos };
+    });
+    return categories;
+};
+
+export const createCategory = async (restaurantId: number, name: string): Promise<MenuCategory> => {
+    const { data, error } = await supabase.from('menu_categories').insert({ restaurant_id: restaurantId, name }).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to create category' });
+    return normalizeCategory(data);
+};
+
+export const updateCategory = async (restaurantId: number, id: number, name: string, iconUrl?: string | null, availableStartTime?: string, availableEndTime?: string): Promise<void> => {
+    const { error } = await supabase.from('menu_categories').update({ name, icon_url: iconUrl, available_start_time: availableStartTime || null, available_end_time: availableEndTime || null }).eq('id', id).eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to update category' });
+};
+
+export const deleteCategory = async (restaurantId: number, name: string): Promise<void> => {
+    const { error } = await supabase.from('menu_categories').delete().eq('restaurant_id', restaurantId).eq('name', name);
+    handleSupabaseError({ error, customMessage: 'Failed to delete category' });
+};
+
+export const updateCategoryOrder = async (restaurantId: number, categories: MenuCategory[]): Promise<void> => {
+    const updates = categories.map((cat, index) => ({ id: cat.id, name: cat.name, restaurant_id: restaurantId, display_order: index }));
+    const { error } = await supabase.from('menu_categories').upsert(updates, { onConflict: 'id' });
+    handleSupabaseError({ error, customMessage: 'Failed to update category order' });
+};
+
+export const createMenuItem = async (restaurantId: number, item: any): Promise<void> => {
+    const { data: catData } = await supabase.from('menu_categories').select('id').eq('restaurant_id', restaurantId).eq('name', item.category).single();
+    if (!catData) throw new Error(`Categoria ${item.category} não encontrada.`);
+    const payload: any = {
+        restaurant_id: restaurantId, category_id: catData.id, name: item.name, description: item.description, price: item.price,
+        original_price: item.originalPrice, image_url: item.imageUrl, is_pizza: item.isPizza, is_acai: item.isAcai,
+        is_marmita: item.isMarmita, marmita_options: item.marmitaOptions, available_addon_ids: item.availableAddonIds,
+        sizes: item.sizes, is_daily_special: item.isDailySpecial, is_weekly_special: item.isWeeklySpecial,
+        available: item.available !== false, option_groups: item.optionGroups,
+        available_days: item.availableDays,
+        available_start_time: item.availableStartTime || null,
+        available_end_time: item.availableEndTime || null
+    };
+    if (item.displayOrder !== undefined) {
+        payload.display_order = item.displayOrder;
+    }
+    const { error } = await supabase.from('menu_items').insert(payload);
+    if (error) {
+        delete payload.available_days;
+        delete payload.available_start_time;
+        delete payload.available_end_time;
+        const { error: err2 } = await supabase.from('menu_items').insert(payload);
+        handleSupabaseError({ error: err2, customMessage: 'Failed to create item' });
+        return;
+    }
+};
+
+export const updateMenuItem = async (restaurantId: number, id: number, item: any): Promise<void> => {
+    const { data: catData } = await supabase.from('menu_categories').select('id').eq('restaurant_id', restaurantId).eq('name', item.category).single();
+    if (!catData) throw new Error(`Categoria ${item.category} não encontrada.`);
+    const payload: any = {
+        category_id: catData.id, name: item.name, description: item.description, price: item.price, original_price: item.originalPrice,
+        image_url: item.imageUrl, is_pizza: item.isPizza, is_acai: item.isAcai, is_marmita: item.isMarmita,
+        marmita_options: item.marmitaOptions, available_addon_ids: item.availableAddonIds, sizes: item.sizes,
+        is_daily_special: item.isDailySpecial, is_weekly_special: item.isWeeklySpecial,
+        available: item.available !== false, option_groups: item.optionGroups,
+        available_days: item.availableDays,
+        available_start_time: item.availableStartTime || null,
+        available_end_time: item.availableEndTime || null
+    };
+    if (item.displayOrder !== undefined) {
+        payload.display_order = item.displayOrder;
+    }
+    const { error } = await supabase.from('menu_items').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
+    if (error) {
+        delete payload.available_days;
+        delete payload.available_start_time;
+        delete payload.available_end_time;
+        const { error: err2 } = await supabase.from('menu_items').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
+        handleSupabaseError({ error: err2, customMessage: 'Failed to update item' });
+        return;
+    }
+};
+
+export const deleteMenuItem = async (restaurantId: number, id: number): Promise<void> => {
+    const { error } = await supabase.from('menu_items').delete().eq('id', id).eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to delete item' });
+};
+
+export const updateMenuItemOrder = async (restaurantId: number, items: MenuItem[]): Promise<void> => {
+    const promises = items.map((item, index) => 
+        supabase
+            .from('menu_items')
+            .update({ display_order: index })
+            .eq('id', item.id)
+            .eq('restaurant_id', restaurantId)
+    );
+    const results = await Promise.all(promises);
+    const firstWithError = results.find(r => r.error);
+    if (firstWithError) {
+        handleSupabaseError({ error: firstWithError.error, customMessage: 'Failed to reorder items' });
+    }
+};
+
+// --- ADDONS ---
+export const fetchAddonsForRestaurant = async (restaurantId: number): Promise<Addon[]> => {
+    if (!restaurantId || isNaN(Number(restaurantId))) {
+        console.warn("[databaseService] fetchAddonsForRestaurant called with invalid or empty ID:", restaurantId);
+        return [];
+    }
+    const { data, error } = await supabaseAnon.from('addons').select('*').eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to fetch addons' });
+    return (data || []).map(normalizeAddon);
+};
+
+export const createAddon = async (restaurantId: number, addon: Partial<Addon>): Promise<void> => {
+    const { error } = await supabase.from('addons').insert({ ...addon, restaurant_id: restaurantId });
+    handleSupabaseError({ error, customMessage: 'Failed to create addon' });
+};
+
+export const updateAddon = async (restaurantId: number, id: number, addon: Partial<Addon>): Promise<void> => {
+    const { error } = await supabase.from('addons').update(addon).eq('id', id).eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to update addon' });
+};
+
+export const deleteAddon = async (restaurantId: number, id: number): Promise<void> => {
+    const { error } = await supabase.from('addons').delete().eq('id', id).eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to delete addon' });
+};
+
+// --- COMBOS ---
+export const createCombo = async (restaurantId: number, combo: any): Promise<void> => {
+    const payload: any = { 
+        restaurant_id: restaurantId, 
+        name: combo.name, 
+        description: combo.description, 
+        price: combo.price, 
+        image_url: combo.imageUrl, 
+        menu_item_ids: combo.menuItemIds,
+        available_days: combo.availableDays,
+        available_start_time: combo.availableStartTime || null,
+        available_end_time: combo.availableEndTime || null
+    };
+    const { error } = await supabase.from('combos').insert(payload);
+    if (error) {
+        delete payload.available_days;
+        delete payload.available_start_time;
+        delete payload.available_end_time;
+        const { error: err2 } = await supabase.from('combos').insert(payload);
+        handleSupabaseError({ error: err2, customMessage: 'Failed to create combo' });
+        return;
+    }
+};
+
+export const updateCombo = async (restaurantId: number, id: number, combo: any): Promise<void> => {
+    const payload: any = { 
+        name: combo.name, 
+        description: combo.description, 
+        price: combo.price, 
+        image_url: combo.imageUrl, 
+        menu_item_ids: combo.menuItemIds,
+        available_days: combo.availableDays,
+        available_start_time: combo.availableStartTime || null,
+        available_end_time: combo.availableEndTime || null
+    };
+    const { error } = await supabase.from('combos').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
+    if (error) {
+        delete payload.available_days;
+        delete payload.available_start_time;
+        delete payload.available_end_time;
+        const { error: err2 } = await supabase.from('combos').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
+        handleSupabaseError({ error: err2, customMessage: 'Failed to update combo' });
+        return;
+    }
+};
+
+export const deleteCombo = async (restaurantId: number, id: number): Promise<void> => {
+    const { error } = await supabase.from('combos').delete().eq('id', id).eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to delete combo' });
+};
+
+// --- PROMOTIONS ---
+export const fetchPromotionsForRestaurant = async (restaurantId: number): Promise<Promotion[]> => {
+    const { data, error } = await supabase.from('promotions').select('*').eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to fetch promotions', tableName: 'promotions' });
+    return (data || []).map(normalizePromotion);
+};
+
+export const createPromotion = async (restaurantId: number, promo: any): Promise<void> => {
+    const days = promo.availableDays && promo.availableDays.length > 0 ? promo.availableDays : [0, 1, 2, 3, 4, 5, 6];
+    const encodedDesc = encodePromoMetadata(promo.description, {
+        type: promo.discountType,
+        upsellTitle: promo.upsellTitle,
+        upsellDescription: promo.upsellDescription,
+        upsellPrice: promo.upsellPrice,
+        upsellOptions: promo.upsellOptions,
+        upsellMaxSelections: promo.upsellMaxSelections,
+        availableStartTime: promo.availableStartTime,
+        availableEndTime: promo.availableEndTime,
+        availableDays: days
+    });
+
+    const isUpsell = promo.discountType === 'UPSELL';
+
+    // Postgres enum promotion_target requires 'CATEGORY' | 'ITEM' | 'COMBO'
+    let targetType: 'CATEGORY' | 'ITEM' | 'COMBO' = 'CATEGORY';
+    let targetIds: string[] = [];
+
+    if (promo.categoryIds && promo.categoryIds.length > 0) {
+        targetType = 'CATEGORY';
+        targetIds = promo.categoryIds.map((id: any) => String(id));
+    } else if (promo.itemIds && promo.itemIds.length > 0) {
+        targetType = 'ITEM';
+        targetIds = promo.itemIds.map((id: any) => String(id));
+    } else if (promo.comboIds && promo.comboIds.length > 0) {
+        targetType = 'COMBO';
+        targetIds = promo.comboIds.map((id: any) => String(id));
+    } else {
+        targetType = 'CATEGORY';
+        targetIds = [];
+    }
+
+    const payload: any = { 
+        restaurant_id: restaurantId, 
+        name: promo.name, 
+        description: encodedDesc, 
+        discount_type: isUpsell ? 'FIXED' : promo.discountType, 
+        discount_value: isUpsell ? (Number(promo.upsellPrice) || 0) : Number(promo.discountValue || 0), 
+        target_type: targetType,
+        target_ids: targetIds,
+        item_ids: promo.itemIds || [], 
+        combo_ids: promo.comboIds || [], 
+        category_ids: promo.categoryIds || [], 
+        start_date: promo.startDate, 
+        end_date: promo.endDate,
+        available_days: days,
+        available_start_time: promo.availableStartTime || null,
+        available_end_time: promo.availableEndTime || null,
+        upsell_title: isUpsell ? (promo.upsellTitle || null) : null,
+        upsell_description: isUpsell ? (promo.upsellDescription || null) : null,
+        upsell_price: isUpsell ? (Number(promo.upsellPrice) || null) : null,
+        upsell_options: isUpsell && promo.upsellOptions ? promo.upsellOptions : null,
+        upsell_max_selections: isUpsell ? (Number(promo.upsellMaxSelections) || 1) : 1
+    };
+
+    const { error } = await supabase.from('promotions').insert(payload);
+    if (error) {
+        // Fallback for older database schemas where optional columns might not exist
+        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days') || error.message?.includes('upsell_')) {
+            const fallback = { ...payload };
+            delete fallback.available_days;
+            delete fallback.available_start_time;
+            delete fallback.available_end_time;
+            delete fallback.upsell_title;
+            delete fallback.upsell_description;
+            delete fallback.upsell_price;
+            delete fallback.upsell_options;
+            const { error: err2 } = await supabase.from('promotions').insert(fallback);
+            if (err2) {
+                if (err2.code === 'PGRST204' || err2.code === '42703') {
+                    delete fallback.target_type;
+                    delete fallback.target_ids;
+                    const { error: err3 } = await supabase.from('promotions').insert(fallback);
+                    handleSupabaseError({ error: err3, customMessage: 'Failed to create promotion' });
+                    return;
+                }
+                handleSupabaseError({ error: err2, customMessage: 'Failed to create promotion' });
+                return;
+            }
+            return;
+        }
+        handleSupabaseError({ error, customMessage: 'Failed to create promotion' });
+    }
+};
+
+export const updatePromotion = async (restaurantId: number, id: number, promo: any): Promise<void> => {
+    const days = promo.availableDays && promo.availableDays.length > 0 ? promo.availableDays : [0, 1, 2, 3, 4, 5, 6];
+    const encodedDesc = encodePromoMetadata(promo.description, {
+        type: promo.discountType,
+        upsellTitle: promo.upsellTitle,
+        upsellDescription: promo.upsellDescription,
+        upsellPrice: promo.upsellPrice,
+        upsellOptions: promo.upsellOptions,
+        upsellMaxSelections: promo.upsellMaxSelections,
+        availableStartTime: promo.availableStartTime,
+        availableEndTime: promo.availableEndTime,
+        availableDays: days
+    });
+
+    const isUpsell = promo.discountType === 'UPSELL';
+
+    let targetType: 'CATEGORY' | 'ITEM' | 'COMBO' = 'CATEGORY';
+    let targetIds: string[] = [];
+
+    if (promo.categoryIds && promo.categoryIds.length > 0) {
+        targetType = 'CATEGORY';
+        targetIds = promo.categoryIds.map((cid: any) => String(cid));
+    } else if (promo.itemIds && promo.itemIds.length > 0) {
+        targetType = 'ITEM';
+        targetIds = promo.itemIds.map((iid: any) => String(iid));
+    } else if (promo.comboIds && promo.comboIds.length > 0) {
+        targetType = 'COMBO';
+        targetIds = promo.comboIds.map((cid: any) => String(cid));
+    } else {
+        targetType = 'CATEGORY';
+        targetIds = [];
+    }
+
+    const payload: any = { 
+        name: promo.name, 
+        description: encodedDesc, 
+        discount_type: isUpsell ? 'FIXED' : promo.discountType, 
+        discount_value: isUpsell ? (Number(promo.upsellPrice) || 0) : Number(promo.discountValue || 0), 
+        target_type: targetType,
+        target_ids: targetIds,
+        item_ids: promo.itemIds || [], 
+        combo_ids: promo.comboIds || [], 
+        category_ids: promo.categoryIds || [], 
+        start_date: promo.startDate, 
+        end_date: promo.endDate,
+        available_days: days,
+        available_start_time: promo.availableStartTime || null,
+        available_end_time: promo.availableEndTime || null,
+        upsell_title: isUpsell ? (promo.upsellTitle || null) : null,
+        upsell_description: isUpsell ? (promo.upsellDescription || null) : null,
+        upsell_price: isUpsell ? (Number(promo.upsellPrice) || null) : null,
+        upsell_options: isUpsell && promo.upsellOptions ? promo.upsellOptions : null,
+        upsell_max_selections: isUpsell ? (Number(promo.upsellMaxSelections) || 1) : 1
+    };
+
+    const { error = null } = await supabase.from('promotions').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
+    if (error) {
+        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days') || error.message?.includes('upsell_')) {
+            const fallback = { ...payload };
+            delete fallback.available_days;
+            delete fallback.available_start_time;
+            delete fallback.available_end_time;
+            delete fallback.upsell_title;
+            delete fallback.upsell_description;
+            delete fallback.upsell_price;
+            delete fallback.upsell_options;
+            const { error: err2 } = await supabase.from('promotions').update(fallback).eq('id', id).eq('restaurant_id', restaurantId);
+            if (err2) {
+                if (err2.code === 'PGRST204' || err2.code === '42703') {
+                    delete fallback.target_type;
+                    delete fallback.target_ids;
+                    const { error: err3 } = await supabase.from('promotions').update(fallback).eq('id', id).eq('restaurant_id', restaurantId);
+                    handleSupabaseError({ error: err3, customMessage: 'Failed to update promotion' });
+                    return;
+                }
+                handleSupabaseError({ error: err2, customMessage: 'Failed to update promotion' });
+                return;
+            }
+            return;
+        }
+        handleSupabaseError({ error, customMessage: 'Failed to update promotion' });
+    }
+};
+
+export const deletePromotion = async (restaurantId: number, id: number): Promise<void> => {
+    const { error } = await supabase.from('promotions').delete().eq('id', id).eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to delete promotion' });
+};
+
+// --- COUPONS ---
+export const fetchCouponsForRestaurant = async (restaurantId: number): Promise<Coupon[]> => {
+    const { data, error } = await supabase.from('coupons').select('*').eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to fetch coupons' });
+    return (data || []).map(normalizeCoupon);
+};
+
+export const validateCouponByCode = async (code: string, restaurantId: number): Promise<Coupon | null> => {
+    const { data, error } = await supabase.from('coupons').select('*').eq('code', code.toUpperCase()).eq('restaurant_id', restaurantId).single();
+    if (error || !data) return null;
+    return normalizeCoupon(data);
+};
+
+export const createCoupon = async (restaurantId: number, coupon: any): Promise<void> => {
+    const payload = { restaurant_id: restaurantId, code: coupon.code, description: coupon.description, discount_type: coupon.discountType, discount_value: coupon.discountValue, min_order_value: coupon.minOrderValue, expiration_date: coupon.expirationDate, is_active: coupon.isActive };
+    const { error } = await supabase.from('coupons').insert(payload);
+    handleSupabaseError({ error, customMessage: 'Failed to create coupon' });
+};
+
+export const updateCoupon = async (restaurantId: number, id: number, coupon: any): Promise<void> => {
+    const payload = { code: coupon.code, description: coupon.description, discount_type: coupon.discountType, discount_value: coupon.discountValue, min_order_value: coupon.minOrderValue, expiration_date: coupon.expirationDate, is_active: coupon.isActive };
+    const { error } = await supabase.from('coupons').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to update coupon' });
+};
+
+export const deleteCoupon = async (restaurantId: number, id: number): Promise<void> => {
+    const { error } = await supabase.from('coupons').delete().eq('id', id).eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to delete coupon' });
+};
+
+// --- EXPENSES ---
+export const fetchCustomerLoyalty = async (restaurantId: number, phone: string): Promise<any | null> => {
+    try {
+        const { data, error } = await supabase
+            .from('customer_loyalty')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('customer_phone', phone)
+            .single();
+            
+        if (error && error.code !== 'PGRST116') {
+            handleSupabaseError({ error, customMessage: 'Failed to fetch customer loyalty', tableName: 'customer_loyalty' });
+        }
+        return data || null;
+    } catch (e) {
+        console.error("Error fetching customer loyalty:", e);
+        return null;
+    }
+};
+
+export const fetchExpenses = async (restaurantId: number): Promise<Expense[]> => {
+    const { data, error } = await supabase.from('expenses').select('*').eq('restaurant_id', restaurantId).order('date', { ascending: false });
+    handleSupabaseError({ error, customMessage: 'Failed to fetch expenses' });
+    return (data || []).map(normalizeExpense);
+};
+
+export const createExpense = async (restaurantId: number, expense: Omit<Expense, 'id' | 'restaurantId'>): Promise<Expense> => {
+    const payload = { restaurant_id: restaurantId, description: expense.description, amount: expense.amount, category: expense.category, date: expense.date };
+    const { data, error } = await supabase.from('expenses').insert(payload).select().single();
+    handleSupabaseError({ error, customMessage: 'Failed to create expense' });
+    return normalizeExpense(data);
+};
+
+export const deleteExpense = async (restaurantId: number, id: number): Promise<void> => {
+    const { error } = await supabase.from('expenses').delete().eq('id', id).eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to delete expense' });
+};
+
+// --- ADS ---
+export const fetchAds = async (onlyActive: boolean = false): Promise<any[]> => {
+    let query = supabase
+        .from('ads')
+        .select('*')
+        .order('display_order', { ascending: true });
+    
+    if (onlyActive) {
+        query = query.eq('is_active', true);
+    }
+    
+    const { data, error } = await query;
+    
+    if (error) {
+        console.error("Error fetching ads:", error);
+        return [];
+    }
+    return data || [];
+};
+
+export const createAd = async (ad: any): Promise<void> => {
+    const payload = {
+        image_url: ad.image_url,
+        link_url: ad.link_url,
+        alt_text: ad.alt_text,
+        is_active: ad.is_active,
+        display_order: Number(ad.display_order || 0)
+    };
+    const { error } = await supabase.from('ads').insert([payload]);
+    handleSupabaseError({ error, customMessage: 'Failed to create ad' });
+};
+
+export const updateAd = async (id: string, ad: any): Promise<void> => {
+    const payload = {
+        image_url: ad.image_url,
+        link_url: ad.link_url,
+        alt_text: ad.alt_text,
+        is_active: ad.is_active,
+        display_order: Number(ad.display_order || 0)
+    };
+    const { error } = await supabase.from('ads').update(payload).eq('id', id);
+    handleSupabaseError({ error, customMessage: 'Failed to update ad' });
+};
+
+export const deleteAd = async (id: string): Promise<void> => {
+    const { error } = await supabase.from('ads').delete().eq('id', id);
+    handleSupabaseError({ error, customMessage: 'Failed to delete ad' });
+};
+
+const normalizeFeaturedPromo = (data: any): FeaturedPromo => {
+    let availableDays = data.available_days;
+    let description = data.description || '';
+    if (!availableDays || !Array.isArray(availableDays) || availableDays.length === 0) {
+        const decoded = decodeDaysFromDescription(description);
+        if (decoded.availableDays) {
+            availableDays = decoded.availableDays;
+            description = decoded.cleanDescription;
+        }
+    } else {
+        description = description.replace(/\s*<!--days:[0-9,]+-->/g, '').trim();
+    }
+
+    return {
+        id: data.id,
+        restaurantId: data.restaurant_id,
+        title: data.title,
+        description,
+        fixedPrice: Number(data.fixed_price || 0),
+        originalPrice: data.original_price ? Number(data.original_price) : undefined,
+        imageUrl: data.image_url,
+        itemIds: data.item_ids || [],
+        includeFreeDelivery: data.include_free_delivery === true,
+        active: data.active !== false,
+        availableDays: Array.isArray(availableDays) && availableDays.length > 0 ? availableDays : [0, 1, 2, 3, 4, 5, 6],
+        maxItemSelections: data.max_item_selections ? Number(data.max_item_selections) : 1,
+        optionGroups: data.option_groups || data.optionGroups || null
+    };
+};
+
+export const fetchFeaturedPromos = async (restaurantId?: number, onlyActive?: boolean): Promise<FeaturedPromo[]> => {
+    let query = supabaseAnon.from('featured_promos').select('*').order('created_at', { ascending: false });
+    const shouldFilterActive = onlyActive !== undefined ? onlyActive : !restaurantId;
+    if (shouldFilterActive) {
+        query = query.eq('active', true);
+    }
+    if (restaurantId) {
+        query = query.eq('restaurant_id', restaurantId);
+    }
+    const { data, error } = await query;
+    if (error) {
+        console.warn("Featured promos table might not exist yet or failed to fetch:", error.message);
+        return [];
+    }
+    return (data || []).map(normalizeFeaturedPromo);
+};
+
+export const createFeaturedPromo = async (restaurantId: number, promo: Omit<FeaturedPromo, 'id' | 'restaurantId'>): Promise<void> => {
+    const days = promo.availableDays && promo.availableDays.length > 0 ? promo.availableDays : [0, 1, 2, 3, 4, 5, 6];
+    const payload: any = {
+        restaurant_id: restaurantId,
+        title: promo.title,
+        description: promo.description,
+        fixed_price: promo.fixedPrice,
+        original_price: promo.originalPrice,
+        image_url: promo.imageUrl,
+        item_ids: promo.itemIds,
+        include_free_delivery: promo.includeFreeDelivery,
+        active: promo.active,
+        available_days: days,
+        max_item_selections: promo.maxItemSelections || 1,
+        option_groups: promo.optionGroups && promo.optionGroups.length > 0 ? promo.optionGroups : null
+    };
+    const { error } = await supabase.from('featured_promos').insert(payload);
+    if (error) {
+        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days') || error.message?.includes('max_item_selections') || error.message?.includes('option_groups')) {
+            const descWithTag = encodeDaysInDescription(promo.description, days);
+            const fallback = { ...payload, description: descWithTag };
+            delete fallback.available_days;
+            delete fallback.max_item_selections;
+            delete fallback.option_groups;
+            const { error: err2 } = await supabase.from('featured_promos').insert(fallback);
+            handleSupabaseError({ error: err2, customMessage: 'Failed to create featured promo' });
+            return;
+        }
+        handleSupabaseError({ error, customMessage: 'Failed to create featured promo' });
+    }
+};
+
+export const updateFeaturedPromo = async (restaurantId: number, id: number, promo: Partial<FeaturedPromo>): Promise<void> => {
+    const payload: any = {};
+    if (promo.title !== undefined) payload.title = promo.title;
+    if (promo.fixedPrice !== undefined) payload.fixed_price = promo.fixedPrice;
+    if (promo.originalPrice !== undefined) payload.original_price = promo.originalPrice;
+    if (promo.imageUrl !== undefined) payload.image_url = promo.imageUrl;
+    if (promo.itemIds !== undefined) payload.item_ids = promo.itemIds;
+    if (promo.includeFreeDelivery !== undefined) payload.include_free_delivery = promo.includeFreeDelivery;
+    if (promo.active !== undefined) payload.active = promo.active;
+    if (promo.maxItemSelections !== undefined) payload.max_item_selections = promo.maxItemSelections;
+    if (promo.optionGroups !== undefined) payload.option_groups = promo.optionGroups && promo.optionGroups.length > 0 ? promo.optionGroups : null;
+
+    let days = promo.availableDays;
+    if (days !== undefined) {
+        payload.available_days = days;
+    }
+    if (promo.description !== undefined) {
+        payload.description = promo.description;
+    }
+
+    const { error } = await supabase.from('featured_promos').update(payload).eq('id', id).eq('restaurant_id', restaurantId);
+    if (error) {
+        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('available_days') || error.message?.includes('max_item_selections') || error.message?.includes('option_groups')) {
+            const daysToEncode = days && days.length > 0 ? days : [0, 1, 2, 3, 4, 5, 6];
+            const cleanDesc = (promo.description || '').replace(/\s*<!--days:[0-9,]+-->/g, '').trim();
+            const descWithTag = encodeDaysInDescription(cleanDesc, daysToEncode);
+            const fallback = { ...payload, description: descWithTag };
+            delete fallback.available_days;
+            delete fallback.max_item_selections;
+            delete fallback.option_groups;
+            const { error: err2 } = await supabase.from('featured_promos').update(fallback).eq('id', id).eq('restaurant_id', restaurantId);
+            handleSupabaseError({ error: err2, customMessage: 'Failed to update featured promo' });
+            return;
+        }
+        handleSupabaseError({ error, customMessage: 'Failed to update featured promo' });
+    }
+};
+
+export const deleteFeaturedPromo = async (restaurantId: number, id: number): Promise<void> => {
+    const { error } = await supabase.from('featured_promos').delete().eq('id', id).eq('restaurant_id', restaurantId);
+    handleSupabaseError({ error, customMessage: 'Failed to delete featured promo' });
+};
+
+export const fetchPopularItems = async (restaurantId: number, limit = 5): Promise<MenuItem[]> => {
+    const { data, error } = await supabaseAnon
+        .from('menu_items')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('available', true)
+        .limit(limit);
+        
+    handleSupabaseError({ error, customMessage: 'Failed to fetch popular items' });
+    return (data || []).map(normalizeItem);
+};
+
+// ==============================================================================
+// 📋 COMANDAS ATIVAS
+// ==============================================================================
+
+export const fetchComandasAtivas = async (restaurantId: number, status?: string): Promise<ComandaAtiva[]> => {
+    let query = supabase
+        .from('comandas_ativas')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .order('comanda_number', { ascending: true });
+
+    if (status) {
+        query = query.eq('status', status);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+        console.warn('Erro ao carregar comandas_ativas:', error);
+        return [];
+    }
+    return (data || []) as ComandaAtiva[];
+};
+
+export const createComandaAtiva = async (payload: {
+    restaurant_id: number;
+    customer_name: string;
+    status?: string;
+    total_value?: number;
+    comanda_number?: number;
+    table_number?: string;
+    notes?: string;
+}): Promise<ComandaAtiva | null> => {
+    const { data, error } = await supabase
+        .from('comandas_ativas')
+        .insert([{
+            restaurant_id: payload.restaurant_id,
+            customer_name: payload.customer_name,
+            status: payload.status || 'aberta',
+            total_value: payload.total_value || 0.00,
+            comanda_number: payload.comanda_number,
+            table_number: payload.table_number,
+            notes: payload.notes
+        }])
+        .select()
+        .single();
+
+    if (error) {
+        handleSupabaseError({ error, customMessage: 'Falha ao criar comanda ativa' });
+        return null;
+    }
+    return data as ComandaAtiva;
+};
+
+export const updateComandaAtiva = async (id: string, updates: Partial<ComandaAtiva>): Promise<void> => {
+    const { error } = await supabase
+        .from('comandas_ativas')
+        .update({
+            ...updates,
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
+
+    if (error) {
+        handleSupabaseError({ error, customMessage: 'Falha ao atualizar comanda ativa' });
+    }
+};
+
+export const deleteComandaAtiva = async (id: string): Promise<void> => {
+    const { error } = await supabase
+        .from('comandas_ativas')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        handleSupabaseError({ error, customMessage: 'Falha ao excluir comanda ativa' });
+    }
+};
+
+// ==============================================================================
+// 👥 USUÁRIOS DA PLATAFORMA GUARAFOOD E PERMISSÕES FINANCEIRAS
+// ==============================================================================
+
+const MASTER_ADMIN_USERS: PlatformUser[] = [
+    {
+        id: '951a4aa1-31b4-4aba-a343-f394173c26d6',
+        name: 'Administrador Geral',
+        email: 'digitalpersonal@gmail.com',
+        role: 'admin',
+        active: true,
+        canAccessFinancial: true,
+        createdAt: '2026-09-25T17:19:36.656Z'
+    },
+    {
+        id: '951a4aa1-31b4-4aba-a343-f394173c26d7',
+        name: 'Admin Suporte',
+        email: 'admin@guarafood.com.br',
+        role: 'admin',
+        active: true,
+        canAccessFinancial: true,
+        createdAt: '2026-09-25T17:19:36.656Z'
+    }
+];
+
+export const fetchSystemRestaurantId = async (): Promise<number> => {
+    const { data } = await supabase
+        .from('restaurants')
+        .select('id')
+        .eq('category', 'Sistema')
+        .maybeSingle();
+
+    if (data?.id) return data.id;
+
+    // Se não existir, tenta criar
+    const payload = {
+        name: 'GuaráFood Plataforma (Sistema)',
+        category: 'Sistema',
+        city: 'Guaranésia',
+        delivery_time: '0',
+        rating: 5,
+        image_url: '',
+        payment_gateways: [],
+        address: 'GuaráFood Admin',
+        phone: '35999999999',
+        opening_hours: '00:00',
+        closing_hours: '23:59',
+        delivery_fee: 0,
+        active: false,
+        staff: MASTER_ADMIN_USERS
+    };
+
+    const { data: created } = await supabase.from('restaurants').insert(payload).select('id').single();
+    return created?.id || 45;
+};
+
+export const fetchPlatformUsers = async (): Promise<PlatformUser[]> => {
+    try {
+        const { data, error } = await supabase
+            .from('restaurants')
+            .select('id, staff')
+            .eq('category', 'Sistema')
+            .maybeSingle();
+
+        if (error) {
+            console.warn("[databaseService] Erro ao buscar usuários da plataforma no Supabase:", error);
+            const cached = localStorage.getItem('guarafood-platform-users');
+            return cached ? JSON.parse(cached) : MASTER_ADMIN_USERS;
+        }
+
+        let staffList: PlatformUser[] = [];
+        if (data && Array.isArray(data.staff)) {
+            staffList = data.staff.map((s: any) => ({
+                id: s.id || crypto.randomUUID(),
+                name: s.name || 'Usuário',
+                email: s.email || '',
+                password: s.password || '',
+                role: s.role || 'operator',
+                active: s.active !== false,
+                canAccessFinancial: Boolean(s.canAccessFinancial),
+                createdAt: s.createdAt || new Date().toISOString()
+            }));
+        }
+
+        // Garante que os administradores mestres sempre estejam na lista
+        for (const master of MASTER_ADMIN_USERS) {
+            if (!staffList.some(u => u.email.toLowerCase() === master.email.toLowerCase())) {
+                staffList.unshift(master);
+            }
+        }
+
+        localStorage.setItem('guarafood-platform-users', JSON.stringify(staffList));
+        return staffList;
+    } catch (e) {
+        console.error("Erro ao carregar usuários da plataforma:", e);
+        const cached = localStorage.getItem('guarafood-platform-users');
+        return cached ? JSON.parse(cached) : MASTER_ADMIN_USERS;
+    }
+};
+
+export const savePlatformUsers = async (users: PlatformUser[]): Promise<void> => {
+    try {
+        localStorage.setItem('guarafood-platform-users', JSON.stringify(users));
+        const systemId = await fetchSystemRestaurantId();
+        const { error } = await supabase
+            .from('restaurants')
+            .update({ staff: users })
+            .eq('id', systemId);
+
+        if (error) {
+            console.error("[databaseService] Erro ao salvar usuários da plataforma no banco:", error);
+            throw new Error(`Erro ao salvar no banco: ${error.message}`);
+        }
+    } catch (err: any) {
+        console.error("Falha ao salvar usuários da plataforma:", err);
+        throw err;
+    }
+};
+
+export const fetchAllStaffAcrossRestaurants = async (): Promise<{ restaurantId: number; restaurantName: string; staff: StaffMember[] }[]> => {
+    try {
+        const { data, error } = await supabase
+            .from('restaurants')
+            .select('id, name, staff, category')
+            .neq('category', 'Sistema');
+
+        if (error || !data) return [];
+
+        return data.map(r => ({
+            restaurantId: r.id,
+            restaurantName: r.name,
+            staff: Array.isArray(r.staff) ? r.staff : []
+        }));
+    } catch (err) {
+        console.warn("Erro ao buscar equipe de todos os restaurantes:", err);
+        return [];
+    }
+};
+
