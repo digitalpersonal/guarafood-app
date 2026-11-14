@@ -1,10 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useState, useEffect, useRef } from 'react';
 import type { Order, Restaurant } from '../types';
 import { useNotification } from '../hooks/useNotification';
 import FiscalDanfeReceipt from './FiscalDanfeReceipt';
-import FiscalDocumentModal from './FiscalDocumentModal';
-import { updateOrderCustomerDocument } from '../services/orderService';
+import { printThermalElement } from '../utils/thermalPrint';
 
 interface FiscalInvoiceViewModalProps {
     isOpen: boolean;
@@ -27,13 +25,7 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
     const [copiedXml, setCopiedXml] = useState<boolean>(false);
     const [copiedKey, setCopiedKey] = useState<boolean>(false);
     const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
-    const [isPrinting, setIsPrinting] = useState<boolean>(false);
-    const [currentOrder, setCurrentOrder] = useState<Order>(order || ({} as Order));
-    const [isDocModalOpen, setIsDocModalOpen] = useState<boolean>(false);
-
-    useEffect(() => {
-        if (order) setCurrentOrder(order);
-    }, [order]);
+    const receiptRef = useRef<HTMLDivElement>(null);
 
     // Fechar ao pressionar ESC
     useEffect(() => {
@@ -200,13 +192,8 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
             <CRT>1</CRT>
         </emit>
         <dest>
-            ${(() => {
-                const doc = currentOrder.customerDocument ? currentOrder.customerDocument.replace(/\D/g, '') : '';
-                if (doc.length === 14) return `<CNPJ>${doc}</CNPJ>`;
-                if (doc.length === 11) return `<CPF>${doc}</CPF>`;
-                return '';
-            })()}
-            <xNome>${(currentOrder.customerName || 'CONSUMIDOR').replace(/[&<>'"]/g, '')}</xNome>
+            ${order.customerDocument ? `<CPF>${order.customerDocument.replace(/\D/g, '')}</CPF>` : ''}
+            <xNome>${(order.customerName || 'CONSUMIDOR').replace(/[&<>'"]/g, '')}</xNome>
             <indIEDest>9</indIEDest>
         </dest>
         ${itemsXml}
@@ -299,36 +286,12 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
         addToast({ message: 'Download do arquivo XML iniciado!', type: 'success' });
     };
 
-    const executePrint = () => {
-        setIsPrinting(true);
-        setTimeout(() => {
-            window.print();
-            setTimeout(() => {
-                setIsPrinting(false);
-            }, 600);
-        }, 150);
-    };
-
-    const handlePrintDanfe = () => {
-        if (!currentOrder.customerDocument) {
-            setIsDocModalOpen(true);
+    const handlePrintDanfe = async () => {
+        if (receiptRef.current) {
+            await printThermalElement(receiptRef.current, selectedWidth);
         } else {
-            executePrint();
+            window.print();
         }
-    };
-
-    const handleConfirmDoc = (doc: string | null, name?: string) => {
-        setIsDocModalOpen(false);
-        const updated: Order = {
-            ...currentOrder,
-            customerDocument: doc || undefined,
-            customerName: name || currentOrder.customerName
-        };
-        setCurrentOrder(updated);
-        updateOrderCustomerDocument(currentOrder.id, doc, name).catch(err => {
-            console.warn('Erro ao atualizar CPF/CNPJ no banco:', err);
-        });
-        executePrint();
     };
 
     return (
@@ -443,40 +406,25 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
                     {/* TAB 1: DANFE SIMPLIFICADO */}
                     {activeTab === 'danfe' && (
                         <div className="space-y-4 max-w-xl mx-auto">
-                            <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-3 rounded-2xl border border-gray-200 shadow-2xs">
+                            <div className="flex items-center justify-between bg-white p-3 rounded-2xl border border-gray-200 shadow-2xs">
                                 <div className="text-xs text-gray-600">
                                     Visualização fiel do cupom térmico impresso aos clientes.
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsDocModalOpen(true)}
-                                        className="px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer shadow-2xs"
-                                        title="Inserir ou editar CPF/CNPJ do cliente na nota"
-                                    >
-                                        <span>👤</span>
-                                        <span>
-                                            {currentOrder.customerDocument 
-                                                ? `${currentOrder.customerDocument.replace(/\D/g, '').length === 14 ? 'CNPJ' : 'CPF'}: ${currentOrder.customerDocument}` 
-                                                : 'CPF na Nota?'}
-                                        </span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={handlePrintDanfe}
-                                        className="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-black shadow-md transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
-                                    >
-                                        <span>🖨️</span>
-                                        <span>Imprimir Cupom Térmico</span>
-                                    </button>
-                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handlePrintDanfe}
+                                    className="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-black shadow-md transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                                >
+                                    <span>🖨️</span>
+                                    <span>Imprimir Cupom Térmico</span>
+                                </button>
                             </div>
 
                             {/* Container do Cupom Térmico (DANFE NFC-e) */}
-                            <div className="bg-white p-5 rounded-2xl shadow-md border border-gray-300 mx-auto transition-all"
+                            <div ref={receiptRef} className="bg-white p-5 rounded-2xl shadow-md border border-gray-300 mx-auto transition-all"
                                  style={{ maxWidth: selectedWidth === 58 ? '300px' : '380px' }}>
                                 <FiscalDanfeReceipt
-                                    order={currentOrder}
+                                    order={order}
                                     restaurant={restaurant}
                                     printerWidth={selectedWidth}
                                     qrCodeDataUrlOverride={qrCodeDataUrl}
@@ -646,100 +594,6 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
                     </div>
                 </div>
             </div>
-
-            {/* Portal de Impressão Direta com 100% de Fidelidade Visual */}
-            {isPrinting && createPortal(
-                <div id="thermal-receipt-container">
-                    <style dangerouslySetInnerHTML={{ __html: `
-                        @media screen {
-                            #thermal-receipt-container { display: none !important; }
-                        }
-                        @media print {
-                            @page {
-                                margin: 0 !important;
-                                size: ${selectedWidth}mm auto;
-                            }
-                            html, body {
-                                margin: 0 !important;
-                                padding: 0 !important;
-                                width: ${selectedWidth}mm !important;
-                                font-family: 'Courier New', Courier, monospace !important;
-                                color: #000 !important;
-                                background: #fff !important;
-                                -webkit-print-color-adjust: exact !important;
-                                print-color-adjust: exact !important;
-                            }
-                            body * {
-                                display: none !important;
-                            }
-                            #thermal-receipt-container,
-                            #thermal-receipt-container *,
-                            body > #thermal-receipt-container,
-                            body > #thermal-receipt-container * {
-                                visibility: visible !important;
-                            }
-                            #thermal-receipt-container {
-                                display: block !important;
-                                position: absolute !important;
-                                left: 0 !important;
-                                top: 0 !important;
-                                width: ${selectedWidth}mm !important;
-                                max-width: ${selectedWidth}mm !important;
-                                padding: ${selectedWidth === 58 ? '1mm' : '2mm'} !important;
-                                box-sizing: border-box !important;
-                                margin: 0 !important;
-                                background: #fff !important;
-                                z-index: 99999999 !important;
-                            }
-                            #thermal-receipt-container style {
-                                display: none !important;
-                            }
-                            #thermal-receipt-container table {
-                                display: table !important;
-                                width: 100% !important;
-                                border-collapse: collapse !important;
-                            }
-                            #thermal-receipt-container thead {
-                                display: table-header-group !important;
-                            }
-                            #thermal-receipt-container tbody {
-                                display: table-row-group !important;
-                            }
-                            #thermal-receipt-container tr {
-                                display: table-row !important;
-                            }
-                            #thermal-receipt-container th,
-                            #thermal-receipt-container td {
-                                display: table-cell !important;
-                            }
-                            #thermal-receipt-container img {
-                                display: block !important;
-                                margin-left: auto !important;
-                                margin-right: auto !important;
-                            }
-                        }
-                    `}} />
-                    <div style={{ width: '100%', boxSizing: 'border-box' }}>
-                        <FiscalDanfeReceipt
-                            order={currentOrder}
-                            restaurant={restaurant}
-                            printerWidth={selectedWidth}
-                            qrCodeDataUrlOverride={qrCodeDataUrl}
-                        />
-                    </div>
-                </div>,
-                document.body
-            )}
-
-            {isDocModalOpen && (
-                <FiscalDocumentModal
-                    isOpen={isDocModalOpen}
-                    onClose={() => setIsDocModalOpen(false)}
-                    order={currentOrder}
-                    onConfirm={handleConfirmDoc}
-                    actionLabel="Confirmar e Imprimir"
-                />
-            )}
         </div>
     );
 };

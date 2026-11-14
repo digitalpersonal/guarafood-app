@@ -322,6 +322,7 @@ export interface Order {
   status: OrderStatus;
   customerName: string;
   customerPhone: string;
+  customerDocument?: string;
   fiscalExport?: boolean;
   customerAddress?: {
     zipCode: string;

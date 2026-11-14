@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../services/authService';
 import { useNotification } from '../hooks/useNotification';
 import { useSound } from '../hooks/useSound';
@@ -9,6 +9,7 @@ import { clearTodayTableOrders } from '../services/orderService';
 import type { Restaurant, OperatingHours, Order } from '../types';
 import Spinner from './Spinner';
 import PrintableOrder from './PrintableOrder';
+import { printThermalElement } from '../utils/thermalPrint';
 import PrinterManagement from './PrinterManagement';
 import MensalistasManager from './MensalistasManager';
 import MercadoPagoGuide from './MercadoPagoGuide';
@@ -389,12 +390,11 @@ const RestaurantSettings: React.FC<{
     const [isTestingFiscal, setIsTestingFiscal] = useState(false);
     const [showXmlValidatorModal, setShowXmlValidatorModal] = useState(false);
     const [printerWidth, setPrinterWidth] = useState(80);
-    const [isPrintServer, setIsPrintServer] = useState(false);
-    const [printServerRole, setPrintServerRole] = useState<'all' | 'kitchen' | 'counter'>('all');
     const [operatingHours, setOperatingHours] = useState<OperatingHours[]>(getDefaultOperatingHours());
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [testOrder, setTestOrder] = useState<Order | null>(null);
+    const testPrintRef = useRef<HTMLDivElement>(null);
 
     const restaurantId = restaurantIdOverride || currentUser?.restaurantId;
 
@@ -448,11 +448,6 @@ const RestaurantSettings: React.FC<{
                 const savedWidth = data.printerWidth || 80;
                 setPrinterWidth(savedWidth);
                 localStorage.setItem('guarafood-printer-width', savedWidth.toString());
-                
-                const savedIsPrintServer = localStorage.getItem('guarafood-is-print-server') === 'true';
-                setIsPrintServer(savedIsPrintServer);
-                const savedRole = (localStorage.getItem('guarafood-print-server-role') as 'all' | 'kitchen' | 'counter') || 'all';
-                setPrintServerRole(savedRole);
             }
         } catch (err) { 
             console.error(err); 
@@ -520,8 +515,7 @@ const RestaurantSettings: React.FC<{
                 nuvemClientSecret: nuvemClientSecret
             });
             localStorage.setItem('guarafood-printer-width', printerWidth.toString());
-            localStorage.setItem('guarafood-is-print-server', isPrintServer.toString());
-            localStorage.setItem('guarafood-print-server-role', printServerRole);
+            window.dispatchEvent(new CustomEvent('guarafood:print-station-changed'));
             addToast({ message: 'Configurações salvas e sincronizadas!', type: 'success' });
         } catch (err: any) {
             console.error("Save Error:", err);
@@ -600,8 +594,14 @@ const RestaurantSettings: React.FC<{
         
         setTestOrder(dummyOrder);
         
-        setTimeout(() => {
-            window.print();
+        setTimeout(async () => {
+            if (testPrintRef.current) {
+                await printThermalElement(testPrintRef.current, printerWidth);
+            } else {
+                window.focus();
+                window.print();
+            }
+            setTestOrder(null);
         }, 300);
     };
 
@@ -1279,9 +1279,9 @@ const RestaurantSettings: React.FC<{
                 </div>
             </div>
 
-            <div className="hidden print:block">
+            <div ref={testPrintRef} className="hidden print:block" aria-hidden="true">
                 <div id="printable-order">
-                    {testOrder && <PrintableOrder order={testOrder} printerWidth={printerWidth} />}
+                    {testOrder && <PrintableOrder order={testOrder} printerWidth={printerWidth} restaurant={restaurant} />}
                 </div>
             </div>
 

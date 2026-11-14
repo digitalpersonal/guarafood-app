@@ -1,5 +1,6 @@
 
 import React, { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import type { Order, OrderStatus, PaymentEntry } from '../types';
 import PrintableOrder from './PrintableOrder';
 import OrderEditorModal from './OrderEditorModal'; // Import the new modal
@@ -7,6 +8,7 @@ import FiscalInvoiceViewModal from './FiscalInvoiceViewModal';
 import FiscalDocumentModal from './FiscalDocumentModal';
 import { recordOrderPayment, updateOrderCustomerDocument } from '../services/orderService';
 import { useNotification } from '../hooks/useNotification';
+import { printThermalElement } from '../utils/thermalPrint';
 
 const XIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -52,14 +54,16 @@ interface OrderDetailsModalProps {
 
 const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, printerWidth = 80, restaurant, onPrint }) => {
     const { addToast } = useNotification();
-    const { text, color } = statusConfig[order.status];
+    const { text, color } = statusConfig[order.status] || { text: order.status || 'Pedido', color: 'bg-gray-500' };
     const [isEditing, setIsEditing] = useState(false); // State to control editing modal
     const [currentOrder, setCurrentOrder] = useState<Order>(order); // Use internal state for order
     const [printMode, setPrintMode] = useState<'full' | 'kitchen' | 'admin' | 'fiscal'>('full');
     const [showFiscalInvoiceModal, setShowFiscalInvoiceModal] = useState<boolean>(false);
     const [isFiscalDocModalOpen, setIsFiscalDocModalOpen] = useState<boolean>(false);
+    const [isLocalPrinting, setIsLocalPrinting] = useState<boolean>(false);
+    const printSourceRef = useRef<HTMLDivElement | null>(null);
 
-    const hasKitchenPrinter = Boolean(restaurant?.printers?.some((p: any) => p.type === 'kitchen' && p.active !== false));
+    const hasKitchenPrinter = Boolean(restaurant?.printers?.some((p: any) => (p.type === 'kitchen' || p.type === 'bar' || p.printKitchenReceipt === true) && p.active !== false));
 
     useEffect(() => {
         setCurrentOrder(order); // Update internal state if parent order changes
@@ -77,21 +81,98 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
         };
     }, [onClose]);
 
+    const triggerLocalPrint = (mode: 'full' | 'kitchen' | 'admin' | 'fiscal') => {
+        const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const logTag = isMobileDevice ? '[OrderDetailsModal][Print][MOBILE]' : '[OrderDetailsModal][Print]';
+
+        if (!currentOrder || !(currentOrder.items || []).length) {
+            console.error(`${logTag} Erro: pedido sem itens para impressão local.`, {
+                orderId: currentOrder?.id,
+                mode,
+                isMobileDevice,
+            });
+            addToast({ message: 'O pedido não possui itens para imprimir.', type: 'warning' });
+            return;
+        }
+
+        const kitchenPrinter = mode === 'kitchen'
+            ? restaurant?.printers?.find((p: any) => (p.type === 'kitchen' || p.printKitchenReceipt === true) && p.active !== false)
+            : null;
+        const effectiveWidth = Number(kitchenPrinter?.width || printerWidth || 80);
+
+        try {
+            flushSync(() => {
+                setPrintMode(mode);
+                setIsLocalPrinting(true);
+            });
+
+            const container = printSourceRef.current;
+            const renderedHtml = container?.innerHTML?.trim() || '';
+            if (!container || !renderedHtml) {
+                console.error(`${logTag} Erro: payload não renderizado em PrintableOrder após flushSync.`, {
+                    orderId: currentOrder.id,
+                    mode,
+                    itemCount: currentOrder.items?.length || 0,
+                    hasContainer: Boolean(container),
+                    htmlLength: renderedHtml.length,
+                    isMobileDevice,
+                });
+                setIsLocalPrinting(false);
+                return;
+            }
+
+            printThermalElement(container, effectiveWidth, {
+                mode,
+                orderId: currentOrder.id,
+                orderNumber: currentOrder.order_number,
+                itemCount: currentOrder.items?.length || 0,
+                source: 'OrderDetailsModal.triggerLocalPrint',
+            }).finally(() => {
+                setIsLocalPrinting(false);
+            });
+        } catch (err) {
+            console.error(`${logTag} Falha ao disparar impressão local:`, err, {
+                orderId: currentOrder.id,
+                mode,
+                isMobileDevice,
+            });
+            setIsLocalPrinting(false);
+        }
+    };
+
     const handlePrintFull = () => {
         if (onPrint) {
             onPrint(currentOrder, 'full');
         } else {
-            setPrintMode('full');
-            setTimeout(() => window.print(), 100);
+            triggerLocalPrint('full');
         }
     };
 
     const handlePrintKitchen = () => {
-        if (onPrint) {
-            onPrint(currentOrder, 'kitchen');
-        } else {
-            setPrintMode('kitchen');
-            setTimeout(() => window.print(), 100);
+        const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const logTag = isMobileDevice ? '[OrderDetailsModal][ImprimirCozinha][MOBILE]' : '[OrderDetailsModal][ImprimirCozinha]';
+
+        if (!currentOrder || !currentOrder.id || !(currentOrder.items || []).length) {
+            console.error(`${logTag} Clique em "Imprimir Cozinha" sem pedido/itens válidos no payload.`, {
+                orderId: currentOrder?.id,
+                itemsCount: currentOrder?.items?.length || 0,
+                isMobileDevice,
+            });
+            addToast({ message: 'O pedido não possui itens para imprimir na cozinha.', type: 'warning' });
+            return;
+        }
+
+        try {
+            if (onPrint) {
+                onPrint(currentOrder, 'kitchen');
+            } else {
+                triggerLocalPrint('kitchen');
+            }
+        } catch (err) {
+            console.error(`${logTag} Erro ao processar clique em "Imprimir Cozinha":`, err, {
+                orderId: currentOrder.id,
+                isMobileDevice,
+            });
         }
     };
 
@@ -116,8 +197,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
         if (onPrint) {
             onPrint(updatedOrder, 'fiscal');
         } else {
-            setPrintMode('fiscal');
-            setTimeout(() => window.print(), 100);
+            triggerLocalPrint('fiscal');
         }
     };
 
@@ -367,11 +447,20 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                     </div>
                 </div>
             </div>
-            <div className="hidden print:block">
-                <div id="printable-order">
-                    <PrintableOrder order={currentOrder} printerWidth={printerWidth} printMode={printMode} restaurant={restaurant} /> 
+            {isLocalPrinting && (
+                <div ref={printSourceRef} className="hidden print:block" aria-hidden="true">
+                    <PrintableOrder
+                        order={currentOrder}
+                        printerWidth={
+                            printMode === 'kitchen'
+                                ? Number(restaurant?.printers?.find((p: any) => (p.type === 'kitchen' || p.printKitchenReceipt === true) && p.active !== false)?.width || printerWidth || 80)
+                                : printerWidth
+                        }
+                        printMode={printMode}
+                        restaurant={restaurant}
+                    />
                 </div>
-            </div>
+            )}
 
             {isEditing && (
                 <OrderEditorModal

@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, PrinterConfig, PrinterType, MenuCategory, Order, CartItem } from '../types';
 import { fetchMenuForRestaurant, updateRestaurant } from '../services/databaseService';
 import { useNotification } from '../hooks/useNotification';
 import PrintableOrder from './PrintableOrder';
+import { printThermalElement } from '../utils/thermalPrint';
 
 interface PrinterManagementProps {
     restaurant: Restaurant;
@@ -17,7 +18,7 @@ const DEFAULT_PRINTER_TYPES: { type: PrinterType; label: string; icon: string; d
 ];
 
 export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant, onUpdateRestaurant }) => {
-    const { addToast } = useNotification();
+    const { addToast, confirm: confirmDialog } = useNotification();
     
     // Lista de impressoras cadastradas
     const [printers, setPrinters] = useState<PrinterConfig[]>(() => {
@@ -55,6 +56,9 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                localStorage.getItem('guarafood-print-server-role') || 
                'all';
     });
+    const [isLocalPrintServerDisabled, setIsLocalPrintServerDisabled] = useState<boolean>(() => {
+        return localStorage.getItem('guarafood-is-print-server') === 'false';
+    });
 
     // Test print job state
     const [testPrintJob, setTestPrintJob] = useState<{ order: Order; printerWidth: number; mode: 'full' | 'kitchen' } | null>(null);
@@ -87,16 +91,20 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
         }
     }, [restaurant.printers]);
 
+    const testPrintRef = useRef<HTMLDivElement>(null);
+
     // Disparador de impressão de teste
     useEffect(() => {
         if (testPrintJob) {
-            const timer = setTimeout(() => {
-                window.focus();
-                window.print();
-                setTimeout(() => {
-                    setTestPrintJob(null);
-                }, 1000);
-            }, 400);
+            const timer = setTimeout(async () => {
+                if (testPrintRef.current) {
+                    await printThermalElement(testPrintRef.current, testPrintJob.printerWidth);
+                } else {
+                    window.focus();
+                    window.print();
+                }
+                setTestPrintJob(null);
+            }, 300);
             return () => clearTimeout(timer);
         }
     }, [testPrintJob]);
@@ -135,7 +143,7 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
         setFormId(initialId);
         setFormName(selectedPreset.defaultName);
         setFormType(selectedPreset.type);
-        setFormWidth(80);
+        setFormWidth(restaurant.printerWidth === 58 ? 58 : 80);
         setFormMappedCategoryIds([]);
         setFormIsDefault(printers.length === 0);
         setFormPrintFullReceipt(selectedPreset.type === 'cashier');
@@ -152,10 +160,10 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
         setFormId(printer.id);
         setFormName(printer.name);
         setFormType(printer.type);
-        setFormWidth(printer.width || 80);
-        setFormMappedCategoryIds(printer.mappedCategoryIds || []);
-        setFormIsDefault(printer.isDefault || false);
-        setFormPrintFullReceipt(printer.printFullReceipt || false);
+        setFormWidth(Number(printer.width) === 58 ? 58 : 80);
+        setFormMappedCategoryIds((printer.mappedCategoryIds || []).map(Number).filter(n => !isNaN(n)));
+        setFormIsDefault(Boolean(printer.isDefault));
+        setFormPrintFullReceipt(Boolean(printer.printFullReceipt));
         setFormPrintKitchenReceipt(printer.printKitchenReceipt !== false);
         setFormDeviceIdentifier(printer.deviceIdentifier || '');
         setFormNotes(printer.notes || '');
@@ -192,7 +200,7 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                 name: formName.trim(),
                 type: formType,
                 width: formWidth,
-                mappedCategoryIds: formMappedCategoryIds,
+                mappedCategoryIds: formMappedCategoryIds.map(Number).filter(n => !isNaN(n)),
                 isDefault: formIsDefault,
                 printFullReceipt: formPrintFullReceipt,
                 printKitchenReceipt: formPrintKitchenReceipt,
@@ -208,16 +216,39 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                 updatedList = [...printers, newPrinterConfig];
             }
 
-            // Se for marcada como default, desmarca as outras
+            // Se for marcada como default, desmarca as outras; se nenhuma for default, mantém a primeira
             if (formIsDefault) {
                 updatedList = updatedList.map(p => p.id === cleanId ? p : { ...p, isDefault: false });
+            } else if (!updatedList.some(p => p.isDefault) && updatedList.length > 0) {
+                updatedList = updatedList.map((p, idx) => idx === 0 ? { ...p, isDefault: true } : p);
             }
 
+            const shouldSyncWidth = formIsDefault || updatedList.length === 1 || newPrinterConfig.isDefault;
+            const updatePayload: Partial<Restaurant> = {
+                printers: updatedList,
+                ...(shouldSyncWidth ? { printerWidth: newPrinterConfig.width } : {})
+            };
+
             // Salva no banco de dados e localStorage
-            const updatedRestaurant = await updateRestaurant(restaurant.id, { printers: updatedList });
+            const updatedRestaurant = await updateRestaurant(restaurant.id, updatePayload);
             setPrinters(updatedList);
+            if (shouldSyncWidth) {
+                localStorage.setItem('guarafood-printer-width', String(newPrinterConfig.width));
+            }
+            if (updatedRestaurant) {
+                localStorage.setItem('guarafood-cached-restaurant', JSON.stringify(updatedRestaurant));
+            }
             if (onUpdateRestaurant && updatedRestaurant) {
                 onUpdateRestaurant(updatedRestaurant);
+            }
+
+            // Se este terminal estava apontando para o ID antigo antes de renomear, atualiza a estação local
+            if (editingPrinterId && currentStationId === editingPrinterId && cleanId !== editingPrinterId) {
+                handleChangeStation(cleanId);
+            } else if (localStorage.getItem('guarafood-is-print-server') === null) {
+                // Ativa a estação local caso ainda não tenha sido configurada neste dispositivo
+                localStorage.setItem('guarafood-is-print-server', 'true');
+                window.dispatchEvent(new CustomEvent('guarafood:print-station-changed', { detail: { stationId: currentStationId } }));
             }
 
             addToast({ 
@@ -235,7 +266,14 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
 
     // Excluir impressora
     const handleDeletePrinter = async (printer: PrinterConfig) => {
-        if (!confirm(`Tem certeza que deseja excluir a impressora "${printer.name}" (${printer.id})?`)) {
+        const confirmed = await confirmDialog({
+            title: 'Excluir Impressora',
+            message: `Tem certeza que deseja excluir a impressora "${printer.name}" (${printer.id})?`,
+            confirmText: 'Excluir',
+            cancelText: 'Cancelar',
+            isDestructive: true
+        });
+        if (!confirmed) {
             return;
         }
 
@@ -250,6 +288,9 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                 printerWidth: fallbackWidth
             });
             setPrinters(updatedList);
+            if (updatedRestaurant) {
+                localStorage.setItem('guarafood-cached-restaurant', JSON.stringify(updatedRestaurant));
+            }
             if (onUpdateRestaurant && updatedRestaurant) {
                 onUpdateRestaurant(updatedRestaurant);
             }
@@ -268,8 +309,14 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
 
     // Carregar configuração recomendada rápida (Caixa, Cozinha e Bar)
     const handleLoadPresetAll = async () => {
-        if (printers.length > 0 && !confirm("Deseja substituir as impressoras atuais pela configuração recomendada (Caixa, Cozinha e Bar)?")) {
-            return;
+        if (printers.length > 0) {
+            const confirmed = await confirmDialog({
+                title: 'Substituir Impressoras',
+                message: 'Deseja substituir as impressoras atuais pela configuração recomendada (Caixa, Cozinha e Bar)?',
+                confirmText: 'Substituir',
+                cancelText: 'Cancelar'
+            });
+            if (!confirmed) return;
         }
 
         // Tenta auto-mapear categorias para Cozinha e Bar de forma inteligente
@@ -287,12 +334,14 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
             }
         });
 
+        const baseWidth: 80 | 58 = restaurant.printerWidth === 58 ? 58 : 80;
+
         const presetPrinters: PrinterConfig[] = [
             {
                 id: 'caixa',
                 name: 'Impressora do Caixa / Balcão',
                 type: 'cashier',
-                width: 80,
+                width: baseWidth,
                 mappedCategoryIds: [],
                 isDefault: true,
                 printFullReceipt: true,
@@ -303,7 +352,7 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                 id: 'cozinha',
                 name: 'Impressora da Cozinha',
                 type: 'kitchen',
-                width: 80,
+                width: baseWidth,
                 mappedCategoryIds: kitchenCategoryIds,
                 isDefault: false,
                 printFullReceipt: false,
@@ -314,7 +363,7 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                 id: 'bar',
                 name: 'Impressora do Bar / Bebidas',
                 type: 'bar',
-                width: 80,
+                width: baseWidth,
                 mappedCategoryIds: barCategoryIds,
                 isDefault: false,
                 printFullReceipt: false,
@@ -326,6 +375,9 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
         try {
             const updatedRestaurant = await updateRestaurant(restaurant.id, { printers: presetPrinters });
             setPrinters(presetPrinters);
+            if (updatedRestaurant) {
+                localStorage.setItem('guarafood-cached-restaurant', JSON.stringify(updatedRestaurant));
+            }
             if (onUpdateRestaurant && updatedRestaurant) {
                 onUpdateRestaurant(updatedRestaurant);
             }
@@ -339,6 +391,19 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
     // Alterar qual impressora este computador atende
     const handleChangeStation = (stationId: string) => {
         setCurrentStationId(stationId);
+        if (stationId === 'off') {
+            localStorage.setItem('guarafood-is-print-server', 'false');
+            localStorage.setItem('guarafood-print-station-id', 'off');
+            localStorage.setItem('guarafood-print-server-role', 'off');
+            setIsLocalPrintServerDisabled(true);
+            window.dispatchEvent(new CustomEvent('guarafood:print-station-changed', { detail: { stationId: 'off' } }));
+            addToast({
+                message: 'Este dispositivo não imprimirá automaticamente pedidos remotos de garçons/mesas.',
+                type: 'info'
+            });
+            return;
+        }
+
         localStorage.setItem('guarafood-print-station-id', stationId);
         
         // Também sincroniza com a variável legada para compatibilidade contínua
@@ -350,6 +415,8 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
 
         localStorage.setItem('guarafood-print-server-role', role);
         localStorage.setItem('guarafood-is-print-server', 'true');
+        setIsLocalPrintServerDisabled(false);
+        window.dispatchEvent(new CustomEvent('guarafood:print-station-changed', { detail: { stationId } }));
 
         addToast({ 
             message: stationId === 'all' 
@@ -788,6 +855,7 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                                             {p.type === 'kitchen' ? '🍳' : p.type === 'bar' ? '🍹' : p.type === 'cashier' ? '🛎️' : '🖨️'} {p.name} (ID: {p.id})
                                         </option>
                                     ))}
+                                    <option value="off">⏸️ Desativar Impressão Automática Neste Aparelho (Ex: Celular Garçom)</option>
                                 </select>
 
                                 <button
@@ -802,11 +870,26 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                             </div>
 
                             <div className="mt-2.5 flex items-center gap-2 text-[11px] text-orange-900 font-medium">
-                                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                                <span className={`w-2 h-2 rounded-full shrink-0 ${currentStationId === 'off' || isLocalPrintServerDisabled ? 'bg-red-500' : 'bg-emerald-500'}`}></span>
                                 <span className="truncate">
-                                    Modo: <strong>{currentStationId === 'all' ? 'Imprime todos os setores' : `Filtrado para ${printers.find(p => p.id === currentStationId)?.name || currentStationId}`}</strong>
+                                    Modo: <strong>{currentStationId === 'off' || isLocalPrintServerDisabled ? 'Desativado neste aparelho (não recebe fila remota)' : currentStationId === 'all' ? 'Imprime todos os setores' : `Filtrado para ${printers.find(p => p.id === currentStationId)?.name || currentStationId}`}</strong>
                                 </span>
                             </div>
+
+                            {isLocalPrintServerDisabled && currentStationId !== 'off' && (
+                                <div className="mt-3 p-2.5 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between gap-2 flex-wrap">
+                                    <span className="text-[11px] text-red-800 font-bold">
+                                        ⚠️ Este terminal estava com o recebimento de impressão desativado localmente.
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleChangeStation(currentStationId || 'all')}
+                                        className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-[10px] font-black uppercase rounded-lg shadow-2xs"
+                                    >
+                                        Reativar Impressão Aqui
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -1099,18 +1182,26 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
 
             {/* MODAL DE CADASTRO / EDIÇÃO */}
             {isModalOpen && (
-                <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-                    <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border-2 border-orange-300 my-8 animate-in fade-in zoom-in-95 duration-150">
-                        <div className="flex items-center justify-between pb-4 border-b border-gray-100">
-                            <div className="flex items-center gap-2">
-                                <span className="text-2xl">
+                <div
+                    className="fixed inset-0 z-[130] bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4"
+                    onClick={() => !isSaving && setIsModalOpen(false)}
+                    role="dialog"
+                    aria-modal="true"
+                >
+                    <div
+                        className="bg-white rounded-2xl sm:rounded-3xl max-w-2xl w-full max-h-[92dvh] flex flex-col overflow-hidden shadow-2xl border-2 border-orange-300 animate-in fade-in zoom-in-95 duration-150"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="shrink-0 flex items-center justify-between p-4 sm:p-6 pb-3 sm:pb-4 border-b border-gray-100 bg-white">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-2xl shrink-0">
                                     {DEFAULT_PRINTER_TYPES.find(t => t.type === formType)?.icon || '🖨️'}
                                 </span>
-                                <div>
-                                    <h3 className="font-black text-gray-900 text-lg">
+                                <div className="min-w-0">
+                                    <h3 className="font-black text-gray-900 text-base sm:text-lg truncate">
                                         {editingPrinterId ? 'Editar Impressora' : 'Cadastrar Nova Impressora'}
                                     </h3>
-                                    <p className="text-xs text-gray-500">
+                                    <p className="text-xs text-gray-500 truncate">
                                         Identificador único e mapeamento de categorias
                                     </p>
                                 </div>
@@ -1118,13 +1209,15 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                             <button
                                 type="button"
                                 onClick={() => setIsModalOpen(false)}
-                                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold flex items-center justify-center text-sm"
+                                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold flex items-center justify-center text-sm shrink-0"
+                                aria-label="Fechar modal"
                             >
                                 ✕
                             </button>
                         </div>
 
-                        <form onSubmit={handleSavePrinter} className="mt-5 space-y-5">
+                        <form onSubmit={handleSavePrinter} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
                             {/* LINHA 1: TIPO DE SETOR */}
                             <div>
                                 <label className="block text-xs font-black uppercase text-gray-700 mb-2">
@@ -1137,10 +1230,22 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                                             type="button"
                                             onClick={() => {
                                                 setFormType(t.type);
-                                                if (!editingPrinterId && !formName) {
-                                                    setFormName(t.defaultName);
-                                                }
-                                                if (t.type === 'cashier') {
+                                                if (!editingPrinterId) {
+                                                    const isDefaultPresetName = !formName || DEFAULT_PRINTER_TYPES.some(p => p.defaultName === formName);
+                                                    if (isDefaultPresetName) {
+                                                        setFormName(t.defaultName);
+                                                    }
+                                                    const isDefaultPresetId = !formId || DEFAULT_PRINTER_TYPES.some(p => formId === p.defaultId || formId.startsWith(`${p.defaultId}_`));
+                                                    if (isDefaultPresetId) {
+                                                        let nextId = t.defaultId;
+                                                        if (printers.some(p => p.id === nextId)) {
+                                                            nextId = `${nextId}_${printers.length + 1}`;
+                                                        }
+                                                        setFormId(nextId);
+                                                    }
+                                                    setFormPrintFullReceipt(t.type === 'cashier');
+                                                    setFormPrintKitchenReceipt(t.type !== 'cashier');
+                                                } else if (t.type === 'cashier') {
                                                     setFormPrintFullReceipt(true);
                                                 }
                                             }}
@@ -1415,8 +1520,10 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                                 </div>
                             </div>
 
+                            </div>
+
                             {/* BOTÕES DO FORMULÁRIO */}
-                            <div className="pt-4 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+                            <div className="shrink-0 p-4 sm:px-6 border-t border-gray-100 bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
                                 {editingPrinterId ? (
                                     <button
                                         type="button"
@@ -1462,12 +1569,13 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
             )}
 
             {/* ELEMENTO OCULTO PARA DISPARO DE IMPRESSÃO DE TESTE */}
-            <div className="hidden print:block">
+            <div ref={testPrintRef} className="hidden print:block" aria-hidden="true">
                 {testPrintJob && (
                     <PrintableOrder
                         order={testPrintJob.order}
                         printerWidth={testPrintJob.printerWidth}
                         printMode={testPrintJob.mode}
+                        restaurant={restaurant}
                     />
                 )}
             </div>

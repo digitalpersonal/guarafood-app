@@ -42,14 +42,15 @@ interface TableManagementProps {
     orders: Order[];
     currentStaffUser?: StaffMember | null;
     onPrint?: (order: Order, mode: 'full' | 'kitchen', items?: CartItem[]) => void;
+    restaurant?: Restaurant | null;
 }
 
-const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffUser, onPrint }) => {
+const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffUser, onPrint, restaurant: initialRestaurant }) => {
     const { currentUser } = useAuth();
     const { addToast, confirm, prompt } = useNotification();
     const [selectedTable, setSelectedTable] = useState<string | null>(null);
     const [tableOrders, setTableOrders] = useState<Order[]>([]);
-    const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+    const [restaurant, setRestaurant] = useState<Restaurant | null>(initialRestaurant || null);
     const [selectedTableOrder, setSelectedTableOrder] = useState<Order | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -67,8 +68,8 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
     const [isSearchingMensalista, setIsSearchingMensalista] = useState(false);
     const [selectedMensalista, setSelectedMensalista] = useState<Mensalista | null>(null);
 
-    // Printing States
-    const [printedItems, setPrintedItems] = useState<Set<string>>(new Set());
+    // Printing States (tracks printed quantity per item index/id so additions & increments always print)
+    const [printedQuantities, setPrintedQuantities] = useState<Record<string, number>>({});
 
     // Multi-comanda payment states
     const [selectedOrderIdsForMultiPay, setSelectedOrderIdsForMultiPay] = useState<string[]>([]);
@@ -103,14 +104,20 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
     const tableNumbers = Array.from({ length: 30 }, (_, i) => (i + 1).toString());
 
     useEffect(() => {
+        if (initialRestaurant) {
+            setRestaurant(initialRestaurant);
+        }
+    }, [initialRestaurant]);
+
+    useEffect(() => {
         const loadRestaurant = async () => {
-            if (currentUser?.restaurantId) {
+            if (currentUser?.restaurantId && !initialRestaurant) {
                 const data = await fetchRestaurantByIdSecure(currentUser.restaurantId);
                 setRestaurant(data);
             }
         };
         loadRestaurant();
-    }, [currentUser?.restaurantId]);
+    }, [currentUser?.restaurantId, initialRestaurant]);
 
     const activeTables = useMemo(() => {
         // Filtramos pedidos de mesa abertos
@@ -362,27 +369,119 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
     };
 
     const triggerKitchenPrint = async (order: Order) => {
-        // Filter only items not yet printed for kitchen
-        const unprintedItems = order.items.filter(item => !printedItems.has(`${order.id}-${item.name}-${item.price}`));
-        if (unprintedItems.length === 0) {
-            addToast({ message: 'Todos os itens já foram enviados para a cozinha.', type: 'info' });
+        const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const logTag = isMobileDevice ? '[TableManagement][ImprimirCozinha][MOBILE]' : '[TableManagement][ImprimirCozinha]';
+
+        const items = order?.items || [];
+        if (!order || items.length === 0) {
+            console.error(`${logTag} Erro: comanda de mesa sem itens válidos para imprimir na cozinha.`, {
+                orderId: order?.id,
+                tableNumber: order?.tableNumber,
+                itemsCount: items.length,
+                isMobileDevice,
+            });
+            addToast({ message: 'Nenhum item lançado nesta comanda para imprimir.', type: 'warning' });
             return;
         }
+
+        const unprintedItems: CartItem[] = [];
+        const nextCounts: Record<string, number> = { ...printedQuantities };
+
+        items.forEach((item, idx) => {
+            const key = `${order.id}:${idx}:${item.id || item.name}`;
+            const currentQty = Number(item.quantity) || 1;
+            const alreadyPrintedQty = printedQuantities[key] || 0;
+            if (currentQty > alreadyPrintedQty) {
+                unprintedItems.push({
+                    ...item,
+                    quantity: currentQty - alreadyPrintedQty
+                });
+                nextCounts[key] = currentQty;
+            }
+        });
+
+        let itemsToSend = unprintedItems;
+        if (itemsToSend.length === 0) {
+            const shouldReprint = await confirm({
+                title: 'Reimprimir na Cozinha',
+                message: 'Todos os itens desta comanda já foram enviados para a cozinha. Deseja reimprimir tudo novamente?',
+                confirmText: 'Sim, Reimprimir',
+                cancelText: 'Cancelar'
+            });
+            if (!shouldReprint) return;
+            itemsToSend = items;
+        }
+
         try {
-            await requestKitchenPrint(order.id, unprintedItems);
+            const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            const isWaiterRole = currentStaffUser?.role === 'waiter' || currentUser?.role === 'waiter';
+            const storedIsPrintServer = localStorage.getItem('guarafood-is-print-server');
+            const stationId = localStorage.getItem('guarafood-print-station-id') || localStorage.getItem('guarafood-print-server-role') || 'all';
+            const printers = (restaurant?.printers || []).filter(p => p.active !== false);
+            const currentPrinterConfig = (stationId !== 'all' && stationId !== 'off') ? printers.find(p => p.id === stationId) : null;
+            const kitchenCapablePrinters = printers.filter(p => (p.type === 'kitchen' || p.type === 'bar' || p.type === 'other') && p.printKitchenReceipt !== false);
+            const isThisTerminalPrintCapable = stationId !== 'off' && (
+                storedIsPrintServer === 'true' ||
+                (storedIsPrintServer !== 'false' && !isMobileDevice && !isWaiterRole)
+            );
+            const canLocalKitchenPrint = Boolean(
+                onPrint &&
+                isThisTerminalPrintCapable &&
+                stationId !== 'counter' &&
+                (!currentPrinterConfig || currentPrinterConfig.printKitchenReceipt !== false) &&
+                (stationId === 'kitchen' || Boolean(currentPrinterConfig) || kitchenCapablePrinters.length <= 1)
+            );
+
+            if (canLocalKitchenPrint) {
+                onPrint!(order, 'kitchen', itemsToSend);
+                setPrintedQuantities(nextCounts);
+                addToast({ message: 'Comanda enviada para impressão da cozinha!', type: 'success' });
+                return;
+            }
+
+            await requestKitchenPrint(order.id, itemsToSend);
+            window.dispatchEvent(new Event('guarafood:update-orders'));
+            setPrintedQuantities(nextCounts);
             addToast({ message: 'Pedido enviado para a impressora da cozinha.', type: 'success' });
-            // Mark as printed locally
-            const newPrinted = new Set(printedItems);
-            unprintedItems.forEach(item => newPrinted.add(`${order.id}-${item.name}-${item.price}`));
-            setPrintedItems(newPrinted);
         } catch (e: any) {
+            console.error(`${logTag} Falha ao enviar comanda da mesa para cozinha:`, e, {
+                orderId: order?.id,
+                tableNumber: order?.tableNumber,
+                itemsCount: itemsToSend.length,
+                isMobileDevice,
+                userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+            });
             addToast({ message: `Erro ao enviar para cozinha: ${e.message}`, type: 'error' });
         }
     };
 
     const triggerBillPrint = async (order: Order) => {
         try {
+            const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            const isWaiterRole = currentStaffUser?.role === 'waiter' || currentUser?.role === 'waiter';
+            const storedIsPrintServer = localStorage.getItem('guarafood-is-print-server');
+            const stationId = localStorage.getItem('guarafood-print-station-id') || localStorage.getItem('guarafood-print-server-role') || 'all';
+            const printers = (restaurant?.printers || []).filter(p => p.active !== false);
+            const currentPrinterConfig = (stationId !== 'all' && stationId !== 'off') ? printers.find(p => p.id === stationId) : null;
+            const isThisTerminalPrintCapable = stationId !== 'off' && (
+                storedIsPrintServer === 'true' ||
+                (storedIsPrintServer !== 'false' && !isMobileDevice && !isWaiterRole)
+            );
+            const canLocalBillPrint = Boolean(
+                onPrint &&
+                isThisTerminalPrintCapable &&
+                stationId !== 'kitchen' &&
+                (!currentPrinterConfig || currentPrinterConfig.printFullReceipt !== false)
+            );
+
+            if (canLocalBillPrint) {
+                onPrint!(order, 'full');
+                addToast({ message: 'Conta enviada para impressão.', type: 'success' });
+                return;
+            }
+
             await requestBillPrint(order.id);
+            window.dispatchEvent(new Event('guarafood:update-orders'));
             addToast({ message: 'Conta enviada para impressão.', type: 'success' });
         } catch (e: any) {
             addToast({ message: `Erro ao enviar conta para impressão: ${e.message}`, type: 'error' });
@@ -1041,8 +1140,9 @@ const TableManagement: React.FC<TableManagementProps> = ({ orders, currentStaffU
                                     </div>
                                 )}
                                 <button 
+                                    type="button"
                                     onClick={() => triggerKitchenPrint(selectedTableOrder)}
-                                    className="bg-orange-100 text-orange-600 font-black py-4 rounded-2xl hover:bg-orange-200 active:scale-95 transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-2"
+                                    className="bg-orange-100 text-orange-600 font-black py-4 rounded-2xl hover:bg-orange-200 active:scale-95 transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-2 touch-manipulation"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m10.5 0a48.536 48.536 0 0 0-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5Zm-3 0h.008v.008H15V10.5Z" />

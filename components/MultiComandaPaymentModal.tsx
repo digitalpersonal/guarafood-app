@@ -1,8 +1,9 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { Order, PaymentEntry, Restaurant, Mensalista } from '../types';
 import { recordOrderPayment, updateOrderStatus } from '../services/orderService';
 import { searchMensalistas } from '../services/mensalistaService';
 import { useNotification } from '../hooks/useNotification';
+import { printThermalElement } from '../utils/thermalPrint';
 
 interface MultiComandaPaymentModalProps {
     isOpen: boolean;
@@ -33,6 +34,7 @@ const MultiComandaPaymentModal: React.FC<MultiComandaPaymentModalProps> = ({
     const [printReceipt, setPrintReceipt] = useState(true);
     const [isProcessing, setIsProcessing] = useState(false);
     const [isPrinting, setIsPrinting] = useState(false);
+    const printReceiptRef = useRef<HTMLDivElement>(null);
 
     // Calculate balances per order
     const orderBalances = useMemo(() => {
@@ -130,12 +132,17 @@ const MultiComandaPaymentModal: React.FC<MultiComandaPaymentModalProps> = ({
             // Print unified receipt if selected
             if (printReceipt) {
                 setIsPrinting(true);
-                setTimeout(() => {
-                    window.print();
+                setTimeout(async () => {
+                    if (printReceiptRef.current) {
+                        await printThermalElement(printReceiptRef.current, printerWidth);
+                    } else {
+                        window.focus();
+                        window.print();
+                    }
                     setIsPrinting(false);
                     onSuccess();
                     onClose();
-                }, 350);
+                }, 200);
             } else {
                 onSuccess();
                 onClose();
@@ -432,7 +439,7 @@ const MultiComandaPaymentModal: React.FC<MultiComandaPaymentModalProps> = ({
 
             {/* Thermal Print Receipt for Unified Bill */}
             {isPrinting && (
-                <div id="thermal-receipt-container" className="hidden print:block">
+                <div ref={printReceiptRef} id="thermal-receipt-container" className="hidden" aria-hidden="true">
                     <style dangerouslySetInnerHTML={{ __html: `
                         @page { margin: 0; size: ${printerWidth}mm auto; }
                         html, body { margin: 0; padding: 0; width: ${printerWidth}mm; background: white; }

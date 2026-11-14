@@ -39,6 +39,22 @@ body {
 
 /* Print styles */
 @media print {
+  @page {
+    margin: 0 !important;
+    size: auto;
+  }
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #fff !important;
+    color: #000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
   .no-print { display: none !important; }
   .print-only { display: block !important; }
 }

@@ -26,9 +26,10 @@ interface ComandaManagementProps {
     orders: Order[];
     currentStaffUser?: StaffMember | null;
     restaurant?: Restaurant | null;
+    onPrint?: (order: Order, mode: 'full' | 'kitchen', items?: CartItem[]) => void;
 }
 
-const ComandaManagement: React.FC<ComandaManagementProps> = ({ orders, currentStaffUser, restaurant: initialRestaurant }) => {
+const ComandaManagement: React.FC<ComandaManagementProps> = ({ orders, currentStaffUser, restaurant: initialRestaurant, onPrint }) => {
     const { currentUser } = useAuth();
     const { addToast, confirm, prompt } = useNotification();
     
@@ -58,14 +59,20 @@ const ComandaManagement: React.FC<ComandaManagementProps> = ({ orders, currentSt
     const comandaNumbers = useMemo(() => Array.from({ length: 200 }, (_, i) => (i + 1).toString()), []);
 
     useEffect(() => {
+        if (initialRestaurant) {
+            setRestaurant(initialRestaurant);
+        }
+    }, [initialRestaurant]);
+
+    useEffect(() => {
         const loadRestaurant = async () => {
-            if (currentUser?.restaurantId && !restaurant) {
+            if (currentUser?.restaurantId && !initialRestaurant) {
                 const data = await fetchRestaurantByIdSecure(currentUser.restaurantId);
                 setRestaurant(data);
             }
         };
         loadRestaurant();
-    }, [currentUser?.restaurantId, restaurant]);
+    }, [currentUser?.restaurantId, initialRestaurant]);
 
     useEffect(() => {
         const loadMenu = async () => {
@@ -227,12 +234,35 @@ const ComandaManagement: React.FC<ComandaManagementProps> = ({ orders, currentSt
         }
     };
 
+    const appendCartItemToComanda = async (cartItem: CartItem) => {
+        if (!selectedComandaOrder) return;
+        try {
+            const updatedItems = [...selectedComandaOrder.items, cartItem];
+            const updatedSubtotal = updatedItems.reduce((acc, i) => acc + (i.price * i.quantity), 0);
+            const updatedTotal = updatedSubtotal - (selectedComandaOrder.discountAmount || 0);
+
+            const updated = await updateOrderDetails(selectedComandaOrder.id, {
+                items: updatedItems,
+                totalPrice: updatedTotal,
+                subtotal: updatedSubtotal,
+                discountAmount: selectedComandaOrder.discountAmount
+            });
+
+            setSelectedComandaOrder(updated);
+            setIsAddItemModalOpen(false);
+            addToast({ message: `${cartItem.name} adicionado à comanda!`, type: 'success' });
+        } catch (e: any) {
+            addToast({ message: `Erro: ${e.message}`, type: 'error' });
+        }
+    };
+
     const handleAddItemFromMenu = (item: MenuItem) => {
         if (!selectedComandaOrder) return;
         
         const cartItem: CartItem = {
             id: `item-${item.id}-${Date.now()}`,
             restaurantId: item.restaurantId,
+            categoryId: item.categoryId,
             name: item.name,
             price: item.price,
             basePrice: item.price,
@@ -241,26 +271,7 @@ const ComandaManagement: React.FC<ComandaManagementProps> = ({ orders, currentSt
             description: item.description || ''
         };
 
-        (async () => {
-            try {
-                const updatedItems = [...selectedComandaOrder.items, cartItem];
-                const updatedSubtotal = updatedItems.reduce((acc, i) => acc + (i.price * i.quantity), 0);
-                const updatedTotal = updatedSubtotal - (selectedComandaOrder.discountAmount || 0);
-
-                const updated = await updateOrderDetails(selectedComandaOrder.id, {
-                    items: updatedItems,
-                    totalPrice: updatedTotal,
-                    subtotal: updatedSubtotal,
-                    discountAmount: selectedComandaOrder.discountAmount
-                });
-
-                setSelectedComandaOrder(updated);
-                setIsAddItemModalOpen(false);
-                addToast({ message: `${item.name} adicionado à comanda!`, type: 'success' });
-            } catch (e: any) {
-                addToast({ message: `Erro: ${e.message}`, type: 'error' });
-            }
-        })();
+        void appendCartItemToComanda(cartItem);
     };
 
     const handleToggleItemServed = async (index: number) => {
@@ -313,11 +324,60 @@ const ComandaManagement: React.FC<ComandaManagementProps> = ({ orders, currentSt
     };
 
     const triggerKitchenPrint = async () => {
-        if (!selectedComandaOrder) return;
+        const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const logTag = isMobileDevice ? '[ComandaManagement][ImprimirCozinha][MOBILE]' : '[ComandaManagement][ImprimirCozinha]';
+
+        if (!selectedComandaOrder) {
+            console.error(`${logTag} Erro: nenhuma comanda selecionada ao clicar em imprimir cozinha.`, { isMobileDevice });
+            return;
+        }
+        const items = selectedComandaOrder.items || [];
+        if (items.length === 0) {
+            console.error(`${logTag} Erro: comanda sem itens para imprimir na cozinha.`, {
+                orderId: selectedComandaOrder.id,
+                comandaNumber: selectedComandaOrder.comandaNumber,
+                isMobileDevice,
+            });
+            addToast({ message: 'Nenhum item lançado nesta comanda para imprimir.', type: 'warning' });
+            return;
+        }
         try {
-            await requestKitchenPrint(selectedComandaOrder.id, selectedComandaOrder.items);
+            const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            const isWaiterRole = currentStaffUser?.role === 'waiter' || currentUser?.role === 'waiter';
+            const storedIsPrintServer = localStorage.getItem('guarafood-is-print-server');
+            const stationId = localStorage.getItem('guarafood-print-station-id') || localStorage.getItem('guarafood-print-server-role') || 'all';
+            const printers = (restaurant?.printers || []).filter(p => p.active !== false);
+            const currentPrinterConfig = (stationId !== 'all' && stationId !== 'off') ? printers.find(p => p.id === stationId) : null;
+            const kitchenCapablePrinters = printers.filter(p => (p.type === 'kitchen' || p.type === 'bar' || p.type === 'other') && p.printKitchenReceipt !== false);
+            const isThisTerminalPrintCapable = stationId !== 'off' && (
+                storedIsPrintServer === 'true' ||
+                (storedIsPrintServer !== 'false' && !isMobileDevice && !isWaiterRole)
+            );
+            const canLocalKitchenPrint = Boolean(
+                onPrint &&
+                isThisTerminalPrintCapable &&
+                stationId !== 'counter' &&
+                (!currentPrinterConfig || currentPrinterConfig.printKitchenReceipt !== false) &&
+                (stationId === 'kitchen' || Boolean(currentPrinterConfig) || kitchenCapablePrinters.length <= 1)
+            );
+
+            if (canLocalKitchenPrint) {
+                onPrint!(selectedComandaOrder, 'kitchen', items);
+                addToast({ message: 'Enviado para a impressora da cozinha!', type: 'success' });
+                return;
+            }
+
+            await requestKitchenPrint(selectedComandaOrder.id, items);
+            window.dispatchEvent(new Event('guarafood:update-orders'));
             addToast({ message: 'Enviado para a cozinha!', type: 'success' });
         } catch (e: any) {
+            console.error(`${logTag} Falha ao imprimir/enviar comanda para a cozinha:`, e, {
+                orderId: selectedComandaOrder.id,
+                comandaNumber: selectedComandaOrder.comandaNumber,
+                itemsCount: items.length,
+                isMobileDevice,
+                userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+            });
             addToast({ message: `Erro ao imprimir: ${e.message}`, type: 'error' });
         }
     };
@@ -325,7 +385,31 @@ const ComandaManagement: React.FC<ComandaManagementProps> = ({ orders, currentSt
     const triggerBillPrint = async () => {
         if (!selectedComandaOrder) return;
         try {
+            const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            const isWaiterRole = currentStaffUser?.role === 'waiter' || currentUser?.role === 'waiter';
+            const storedIsPrintServer = localStorage.getItem('guarafood-is-print-server');
+            const stationId = localStorage.getItem('guarafood-print-station-id') || localStorage.getItem('guarafood-print-server-role') || 'all';
+            const printers = (restaurant?.printers || []).filter(p => p.active !== false);
+            const currentPrinterConfig = (stationId !== 'all' && stationId !== 'off') ? printers.find(p => p.id === stationId) : null;
+            const isThisTerminalPrintCapable = stationId !== 'off' && (
+                storedIsPrintServer === 'true' ||
+                (storedIsPrintServer !== 'false' && !isMobileDevice && !isWaiterRole)
+            );
+            const canLocalBillPrint = Boolean(
+                onPrint &&
+                isThisTerminalPrintCapable &&
+                stationId !== 'kitchen' &&
+                (!currentPrinterConfig || currentPrinterConfig.printFullReceipt !== false)
+            );
+
+            if (canLocalBillPrint) {
+                onPrint!(selectedComandaOrder, 'full');
+                addToast({ message: 'Conta enviada para impressão.', type: 'success' });
+                return;
+            }
+
             await requestBillPrint(selectedComandaOrder.id);
+            window.dispatchEvent(new Event('guarafood:update-orders'));
             addToast({ message: 'Conta enviada para impressão.', type: 'success' });
         } catch (e: any) {
             addToast({ message: `Erro ao imprimir conta: ${e.message}`, type: 'error' });
@@ -616,8 +700,9 @@ const ComandaManagement: React.FC<ComandaManagementProps> = ({ orders, currentSt
                                     </button>
                                 )}
                                 <button
+                                    type="button"
                                     onClick={triggerKitchenPrint}
-                                    className="p-3 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl font-black text-xs uppercase flex flex-col items-center gap-1 hover:bg-amber-100 transition-colors"
+                                    className="p-3 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl font-black text-xs uppercase flex flex-col items-center gap-1 hover:bg-amber-100 transition-colors touch-manipulation"
                                 >
                                     <span>🍳 Imprimir Cozinha</span>
                                 </button>
@@ -893,6 +978,7 @@ const ComandaManagement: React.FC<ComandaManagementProps> = ({ orders, currentSt
                     const comboItem: CartItem = {
                         id: `combo-${combo.id}-${Date.now()}`,
                         restaurantId: combo.restaurantId,
+                        categoryId: combo.categoryId,
                         name: combo.name,
                         price: combo.price,
                         basePrice: combo.price,
@@ -900,7 +986,7 @@ const ComandaManagement: React.FC<ComandaManagementProps> = ({ orders, currentSt
                         quantity: 1,
                         description: combo.description || ''
                     };
-                    handleAddItemFromMenu(comboItem as any);
+                    void appendCartItemToComanda(comboItem);
                 }}
             />
         </div>

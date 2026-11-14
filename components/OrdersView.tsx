@@ -153,10 +153,10 @@ const OrderCard: React.FC<{
     onRequestFiscalPrint?: (order: Order) => void;
 }> = ({ order, onStatusUpdate, onNotify, onViewDetails, onPrint, enableFiscal, onToggleFiscal, updatingState, restaurant, onViewFiscalInvoice, onRequestFiscalPrint }) => {
     const { confirm } = useNotification();
-    const { text, color } = statusConfig[order.status];
+    const { text, color } = statusConfig[order.status] || { text: order.status || 'Pedido', color: 'bg-gray-500' };
     const [isExpanded, setIsExpanded] = useState(false);
 
-    const hasKitchenPrinter = Boolean(restaurant?.printers?.some(p => p.type === 'kitchen' && p.active !== false));
+    const hasKitchenPrinter = Boolean(restaurant?.printers?.some(p => (p.type === 'kitchen' || p.type === 'bar' || p.printKitchenReceipt === true) && p.active !== false));
 
     const displayOrderNum = order.order_number 
         ? `#${String(order.order_number).padStart(3, '0')}`
@@ -169,7 +169,8 @@ const OrderCard: React.FC<{
         return (now.getTime() - orderDate.getTime()) < 300000;
     }, [order.status, order.timestamp]);
 
-    const isPixPaid = order.paymentMethod.toLowerCase().includes('pix') && order.paymentStatus === 'paid';
+    const safeCustomerName = order.customerName || 'Cliente';
+    const isPixPaid = (order.paymentMethod || '').toLowerCase().includes('pix') && order.paymentStatus === 'paid';
     const isPickup = !order.customerAddress || order.customerAddress.street === 'Retirada no Local';
 
     const handleConfirmAndUpdate = async (message: string, newStatus: OrderStatus) => {
@@ -188,6 +189,40 @@ const OrderCard: React.FC<{
     const orderDateObj = new Date(order.timestamp);
     const dateString = orderDateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const timeString = orderDateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+    const handleKitchenPrintClick = (e: React.MouseEvent, origin: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const logTag = isMobileDevice ? '[OrdersView][ImprimirCozinha][MOBILE]' : '[OrdersView][ImprimirCozinha]';
+
+        if (typeof onPrint !== 'function') {
+            console.error(`${logTag} Erro: prop onPrint não está definida ao clicar no botão (${origin}).`, {
+                orderId: order?.id,
+                isMobileDevice,
+            });
+            return;
+        }
+
+        if (!order || !order.id || !(order.items || []).length) {
+            console.error(`${logTag} Erro: payload do pedido inválido ou sem itens (${origin}).`, {
+                orderId: order?.id,
+                orderNumber: order?.order_number,
+                itemsCount: order?.items?.length || 0,
+                isMobileDevice,
+            });
+        }
+
+        try {
+            onPrint(order, 'kitchen');
+        } catch (err) {
+            console.error(`${logTag} Exceção ao acionar onPrint(order, 'kitchen') via ${origin}:`, err, {
+                orderId: order?.id,
+                isMobileDevice,
+            });
+        }
+    };
 
     const ActionButtons: React.FC = () => {
         const btnClass = "flex-1 py-1 px-2 rounded text-xs font-bold text-white shadow-sm hover:opacity-90 transition-opacity whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed";
@@ -258,11 +293,9 @@ const OrderCard: React.FC<{
                         </div>
                         {hasKitchenPrinter && (
                             <button 
-                                onClick={(e) => { 
-                                    e.stopPropagation(); 
-                                    onPrint(order, 'kitchen'); 
-                                }} 
-                                className="w-full py-1.5 px-2 rounded-lg bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-extrabold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all"
+                                type="button"
+                                onClick={(e) => handleKitchenPrintClick(e, 'novo-pedido')} 
+                                className="w-full py-1.5 px-2 rounded-lg bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-extrabold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all touch-manipulation"
                                 title="Enviar comanda de preparo para a Cozinha"
                             >
                                 <span>🍳</span> Imprimir na Cozinha
@@ -286,11 +319,9 @@ const OrderCard: React.FC<{
                         </div>
                         {hasKitchenPrinter && (
                             <button 
-                                onClick={(e) => { 
-                                    e.stopPropagation(); 
-                                    onPrint(order, 'kitchen'); 
-                                }} 
-                                className="w-full py-1 px-2 rounded-md bg-amber-50 hover:bg-amber-100 border border-amber-300 active:scale-95 text-amber-900 font-bold text-[11px] shadow-sm flex items-center justify-center gap-1 transition-all"
+                                type="button"
+                                onClick={(e) => handleKitchenPrintClick(e, 'preparando')} 
+                                className="w-full py-1 px-2 rounded-md bg-amber-50 hover:bg-amber-100 border border-amber-300 active:scale-95 text-amber-900 font-bold text-[11px] shadow-sm flex items-center justify-center gap-1 transition-all touch-manipulation"
                                 title="Reimprimir comanda na Cozinha"
                             >
                                 <span>🍳</span> Reimprimir na Cozinha
@@ -331,8 +362,9 @@ const OrderCard: React.FC<{
                 <div className="flex items-center gap-1 -mt-1 -mr-1">
                     {hasKitchenPrinter && (
                         <button 
-                            onClick={(e) => { e.stopPropagation(); onPrint(order, 'kitchen'); }} 
-                            className="px-1.5 py-0.5 text-[10px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded transition-colors flex items-center gap-0.5" 
+                            type="button"
+                            onClick={(e) => handleKitchenPrintClick(e, 'card-header')} 
+                            className="px-1.5 py-0.5 text-[10px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded transition-colors flex items-center gap-0.5 touch-manipulation" 
                             title="Imprimir comanda para a Cozinha"
                         >
                             <span>🍳</span>
@@ -422,14 +454,14 @@ const OrderCard: React.FC<{
                         PIX PAGO
                     </span>
                 )}
-                <span className="block font-bold text-sm text-gray-900">R$ {order.totalPrice.toFixed(2)}</span>
+                <span className="block font-bold text-sm text-gray-900">R$ {Number(order.totalPrice || 0).toFixed(2)}</span>
             </div>
 
             <div className="space-y-1 mb-1">
-                <div className="flex items-center gap-1 text-xs text-gray-800 truncate" title={order.customerName}>
+                <div className="flex items-center gap-1 text-xs text-gray-800 truncate" title={safeCustomerName}>
                     <UserIcon className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                    <span className="font-semibold truncate">{order.customerName.split(' ')[0]}</span>
-                    <span className="text-gray-400 font-normal truncate">{order.customerName.split(' ').slice(1).join(' ')}</span>
+                    <span className="font-semibold truncate">{safeCustomerName.split(' ')[0]}</span>
+                    <span className="text-gray-400 font-normal truncate">{safeCustomerName.split(' ').slice(1).join(' ')}</span>
                 </div>
                 
                 {isPickup ? (
@@ -795,7 +827,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
     };
 
     const handleNotify = (order: Order) => {
-        const customerFirstName = order.customerName.split(' ')[0];
+        const customerFirstName = (order.customerName || 'Cliente').split(' ')[0];
         let statusMessage = '';
         
         if (order.status === 'Novo Pedido') {
@@ -843,8 +875,8 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
         if (!searchTerm.trim()) return list;
         const lowerSearch = searchTerm.toLowerCase();
         return list.filter(order =>
-            order.customerName.toLowerCase().includes(lowerSearch) ||
-            String(order.order_number).includes(lowerSearch) ||
+            (order.customerName || '').toLowerCase().includes(lowerSearch) ||
+            String(order.order_number || '').includes(lowerSearch) ||
             order.id.toLowerCase().includes(lowerSearch)
         );
     }, [orders, searchTerm, filterFiscalOnly]);

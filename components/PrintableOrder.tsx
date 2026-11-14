@@ -1,5 +1,4 @@
 import React from 'react';
-import { createPortal } from 'react-dom';
 import type { Order, Restaurant } from '../types';
 
 import FiscalDanfeReceipt from './FiscalDanfeReceipt';
@@ -22,6 +21,12 @@ const sanitizePrintText = (str?: string): string => {
 };
 
 const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 80, printMode = 'full', printedItems = [], restaurant }) => {
+    const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    if (!order) {
+        console.error(`[PrintableOrder]${isMobileDevice ? '[MOBILE]' : ''} Pedido nulo/inválido recebido para renderização.`, { printMode, printerWidth });
+        return null;
+    }
+
     const paperSize = `${printerWidth}mm`;
 
     const sidePadding = printerWidth === 58 ? '1mm' : '2mm';
@@ -31,17 +36,19 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
     const smallFontSize = printerWidth === 58 ? '11px' : '12px';
     const lineHeight = printerWidth === 58 ? '1.2' : '1.15';
 
-    const isPixPaid = order.paymentMethod.toLowerCase().includes('pix') && order.paymentStatus === 'paid';
+    const safePaymentMethod = order.paymentMethod || 'A Combinar';
+    const isPixPaid = safePaymentMethod.toLowerCase().includes('pix') && order.paymentStatus === 'paid';
     
     const isPickup = !order.customerAddress || 
                      !order.customerAddress.street ||
                      order.customerAddress.street.includes('Retirada') || 
                      order.customerAddress.street.includes('Consumo Local') ||
-                     order.tableNumber !== undefined;
+                     order.tableNumber !== undefined ||
+                     order.comandaNumber !== undefined;
 
     const displayOrderNum = order.order_number 
         ? `${String(order.order_number).padStart(3, '0')}`
-        : `${order.id.substring(order.id.length - 4).toUpperCase()}`;
+        : `${(order.id || '0000').substring(Math.max(0, (order.id || '0000').length - 4)).toUpperCase()}`;
 
     const displaySubtotal = Number(order.subtotal) > 0 
         ? Number(order.subtotal) 
@@ -52,86 +59,14 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
         : (displaySubtotal + Number(order.deliveryFee || 0) - Number(order.discountAmount || 0));
 
     if (printMode === 'fiscal') {
-        return createPortal(
-            <div id="thermal-receipt-container">
-                <style dangerouslySetInnerHTML={{ __html: `
-                    @media screen {
-                        #thermal-receipt-container { display: none !important; }
-                    }
-                    @media print {
-                        @page {
-                            margin: 0 !important;
-                            size: ${paperSize} auto;
-                        }
-                        html, body {
-                            margin: 0 !important;
-                            padding: 0 !important;
-                            width: ${paperSize} !important;
-                            font-family: 'Courier New', Courier, monospace !important;
-                            color: #000 !important;
-                            background: #fff !important;
-                            -webkit-print-color-adjust: exact !important;
-                            print-color-adjust: exact !important;
-                        }
-                        body * {
-                            display: none !important;
-                        }
-                        #thermal-receipt-container,
-                        #thermal-receipt-container *,
-                        body > #thermal-receipt-container,
-                        body > #thermal-receipt-container * {
-                            visibility: visible !important;
-                        }
-                        #thermal-receipt-container {
-                            display: block !important;
-                            position: absolute !important;
-                            left: 0 !important;
-                            top: 0 !important;
-                            width: ${paperSize} !important;
-                            max-width: ${paperSize} !important;
-                            padding: ${sidePadding} !important;
-                            box-sizing: border-box !important;
-                            margin: 0 !important;
-                            background: #fff !important;
-                            z-index: 9999999 !important;
-                        }
-                        #thermal-receipt-container style {
-                            display: none !important;
-                        }
-                        #thermal-receipt-container table {
-                            display: table !important;
-                            width: 100% !important;
-                            border-collapse: collapse !important;
-                        }
-                        #thermal-receipt-container thead {
-                            display: table-header-group !important;
-                        }
-                        #thermal-receipt-container tbody {
-                            display: table-row-group !important;
-                        }
-                        #thermal-receipt-container tr {
-                            display: table-row !important;
-                        }
-                        #thermal-receipt-container th,
-                        #thermal-receipt-container td {
-                            display: table-cell !important;
-                        }
-                        #thermal-receipt-container img {
-                            display: block !important;
-                            margin-left: auto !important;
-                            margin-right: auto !important;
-                        }
-                    }
-                `}} />
-                <div style={{ width: '100%', boxSizing: 'border-box' }}>
-                    <FiscalDanfeReceipt
-                        order={order}
-                        restaurant={restaurant}
-                        printerWidth={printerWidth}
-                    />
-                </div>
-            </div>,
-            document.body
+        return (
+            <div id="thermal-receipt-container" style={{ width: paperSize, margin: '0 auto', background: '#fff', color: '#000' }}>
+                <FiscalDanfeReceipt
+                    order={order}
+                    restaurant={restaurant}
+                    printerWidth={printerWidth}
+                />
+            </div>
         );
     }
 
@@ -142,6 +77,14 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
 
     // If no items to print, don't render anything to avoid blank prints
     if (itemsToPrint.length === 0) {
+        console.error(`[PrintableOrder]${isMobileDevice ? '[MOBILE]' : ''} Payload sem itens válidos para renderizar o cupom.`, {
+            orderId: order.id,
+            orderNumber: order.order_number,
+            printMode,
+            rawItemsCount: order.items?.length || 0,
+            printedItemsCount: printedItems?.length || 0,
+            isMobileDevice,
+        });
         return null; 
     }
 
@@ -157,7 +100,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                 @media print {
                     @page {
                         margin: 0 !important;
-                        size: ${paperSize} auto;
+                        size: ${paperSize};
                     }
                     
                     /* Aggressive reset for printing */
@@ -167,13 +110,14 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         width: ${paperSize} !important;
                         height: auto !important;
                         min-height: 0 !important;
+                        max-height: none !important;
                         overflow: visible !important;
                         -webkit-print-color-adjust: exact !important;
                         print-color-adjust: exact !important;
                     }
 
-                    /* Hide everything on the page */
-                    body * {
+                    /* Hide everything on the page except #thermal-receipt-container and its ancestors */
+                    body *:not(:has(#thermal-receipt-container)):not(#thermal-receipt-container):not(#thermal-receipt-container *) {
                         display: none !important;
                     }
 
@@ -204,11 +148,12 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                     }
 
                     #thermal-receipt-container {
-                        position: absolute !important;
-                        left: 0 !important;
-                        top: 0 !important;
+                        position: static !important;
+                        left: auto !important;
+                        top: auto !important;
                         width: ${paperSize} !important;
                         max-width: ${paperSize} !important;
+                        height: auto !important;
                         margin: 0 !important;
                         padding: 0 !important;
                         background: white !important;
@@ -344,10 +289,12 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                 {/* MODO DE ENTREGA */}
                 <div className="mode-indicator" style={{ border: '2px solid #000', margin: '4px 0', padding: '4px' }}>
                     {order.tableNumber 
-                        ? `>> MESA ${order.tableNumber} <<` 
-                        : isPickup 
-                            ? ">> RETIRADA NO BALCÃO <<" 
-                            : ">> ENTREGA EM DOMICÍLIO <<"}
+                        ? `>> MESA ${order.tableNumber}${order.comandaNumber ? ` (CMD ${order.comandaNumber})` : ''} <<` 
+                        : order.comandaNumber
+                            ? `>> COMANDA #${order.comandaNumber} <<`
+                            : isPickup 
+                                ? ">> RETIRADA NO BALCÃO <<" 
+                                : ">> ENTREGA EM DOMICÍLIO <<"}
                 </div>
 
                 {/* SACHÊS / CONDIMENTOS */}
@@ -365,13 +312,13 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                         <div style={{ fontWeight: '900', textAlign: 'center', borderBottom: '2px solid #000', paddingBottom: '2px', marginBottom: '3px' }}>
                             {isPickup ? 'DADOS DO CLIENTE' : 'DADOS DE ENTREGA'}
                         </div>
-                        <div style={{ marginBottom: '1px' }}><strong>CLIENTE:</strong> {order.customerName?.toUpperCase()}</div>
-                        <div style={{ marginBottom: '1px' }}><strong>FONE:</strong> {order.customerPhone}</div>
+                        <div style={{ marginBottom: '1px' }}><strong>CLIENTE:</strong> {(order.customerName || 'Cliente').toUpperCase()}</div>
+                        <div style={{ marginBottom: '1px' }}><strong>FONE:</strong> {order.customerPhone || '-'}</div>
                         
                         {!isPickup && order.customerAddress && (
                             <div style={{ marginBottom: '1px' }}>
                                 <strong>END: </strong>
-                                {order.customerAddress.street.toUpperCase()}, {order.customerAddress.number}
+                                {(order.customerAddress.street || '').toUpperCase()}, {order.customerAddress.number || ''}
                                 {order.customerAddress.complement && `, ${order.customerAddress.complement.toUpperCase()}`}
                                 {order.customerAddress.neighborhood && ` - ${order.customerAddress.neighborhood.toUpperCase()}`}
                             </div>
@@ -393,7 +340,9 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
 
                 <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '6px', tableLayout: 'fixed' }}>
                     <tbody>
-                        {itemsToPrint.map((item, index) => (
+                        {itemsToPrint.map((item, index) => {
+                            const qty = Number(item.quantity) || 1;
+                            return (
                             <React.Fragment key={index}>
                                 <tr>
                                     <td style={{ 
@@ -405,7 +354,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                                         paddingRight: '4px', 
                                         fontWeight: '900'
                                     }}>
-                                        {item.quantity}x {item.name} {item.sizeName && `(${item.sizeName})`} {item.weight && item.isKiloItem && `(${Number(item.weight).toFixed(3)}kg)`}
+                                        {qty}x {item.name} {item.sizeName && `(${item.sizeName})`} {item.weight && item.isKiloItem && `(${Number(item.weight).toFixed(3)}kg)`}
                                     </td>
                                     <td style={{ 
                                         textAlign: 'right', 
@@ -416,28 +365,29 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                                         fontWeight: '900',
                                         width: '60px'
                                     }}>
-                                        {(Number(item.price) * item.quantity).toFixed(2)}
+                                        {(Number(item.price || 0) * qty).toFixed(2)}
                                     </td>
                                 </tr>
                                 {(item.selectedOptions?.length || item.selectedAddons?.length || item.notes) ? (
                                     <tr>
                                         <td colSpan={2} style={{ paddingLeft: '2mm', paddingBottom: '5px' }}>
                                             {item.selectedOptions?.map((opt, i) => (
-                                                <div key={i} style={{ fontSize: smallFontSize }}>• {opt.groupTitle.toUpperCase()}: {opt.optionName.toUpperCase()} {opt.price > 0 ? `(+R$ ${Number(opt.price).toFixed(2)})` : ''}</div>
+                                                <div key={i} style={{ fontSize: smallFontSize }}>• {(opt.groupTitle || '').toUpperCase()}: {(opt.optionName || '').toUpperCase()} {Number(opt.price) > 0 ? `(+R$ ${Number(opt.price).toFixed(2)})` : ''}</div>
                                             ))}
                                             {item.selectedAddons?.map((a, i) => (
-                                                <div key={i} style={{ fontSize: smallFontSize }}>+ {a.name.toUpperCase()}</div>
+                                                <div key={i} style={{ fontSize: smallFontSize }}>+ {(a.name || '').toUpperCase()}</div>
                                             ))}
                                             {item.notes && (
                                                 <div style={{ fontSize: baseFontSize, borderLeft: '3px solid #000', paddingLeft: '2mm', marginTop: '2px', fontWeight: '900', whiteSpace: 'normal' }}>
-                                                    OBS: {item.notes.toUpperCase()}
+                                                    OBS: {String(item.notes).toUpperCase()}
                                                 </div>
                                             )}
                                         </td>
                                     </tr>
                                 ) : null}
                             </React.Fragment>
-                        ))}
+                            );
+                        })}
                     </tbody>
                 </table>
 
@@ -475,16 +425,16 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
 
                         {/* PAGAMENTO */}
                         <div className="payment-box">
-                            <div style={{ fontWeight: '900' }}>FORMA PGTO: {order.paymentMethod.split('(')[0].trim().toUpperCase()}</div>
-                            {(order.changeFor || order.paymentMethod.includes('Troco para')) && (
+                            <div style={{ fontWeight: '900' }}>FORMA PGTO: {safePaymentMethod.split('(')[0].trim().toUpperCase()}</div>
+                            {(order.changeFor || safePaymentMethod.includes('Troco para')) && (
                                 <div style={{ fontSize: headerFontSize, marginTop: '3px', borderTop: '1.5px dashed #000', paddingTop: '3px', fontWeight: '900' }}>
                                     {order.changeFor 
-                                        ? `TROCO PARA: R$ ${order.changeFor.toFixed(2)}`
-                                        : (order.paymentMethod.match(/\(([^)]+)\)/)?.[1].toUpperCase() || order.paymentMethod.toUpperCase())
+                                        ? `TROCO PARA: R$ ${Number(order.changeFor).toFixed(2)}`
+                                        : (safePaymentMethod.match(/\(([^)]+)\)/)?.[1].toUpperCase() || safePaymentMethod.toUpperCase())
                                     }
-                                    {order.changeFor && order.changeFor > displayTotal && (
+                                    {order.changeFor && Number(order.changeFor) > displayTotal && (
                                         <div style={{ fontSize: smallFontSize, marginTop: '1px', fontWeight: '900' }}>
-                                            TROCO A DEVOLVER: R$ {(order.changeFor - displayTotal).toFixed(2)}
+                                            TROCO A DEVOLVER: R$ {(Number(order.changeFor) - displayTotal).toFixed(2)}
                                         </div>
                                     )}
                                 </div>
@@ -502,7 +452,7 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
         </div>
     );
 
-    return createPortal(content, document.body);
+    return content;
 };
 
 export default PrintableOrder;

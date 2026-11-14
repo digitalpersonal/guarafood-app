@@ -231,7 +231,9 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
     const handleAddComboToOrder = useCallback((combo: Combo) => {
         const comboCartItem: CartItem = {
             id: `combo-${combo.id}-${Date.now()}`, // Unique ID
-            restaurantId: order.restaurantId, name: combo.name,
+            restaurantId: order.restaurantId,
+            categoryId: combo.categoryId,
+            name: combo.name,
             price: combo.price,
             basePrice: combo.price,
             imageUrl: combo.imageUrl,
@@ -239,7 +241,7 @@ const OrderEditorModal: React.FC<OrderEditorModalProps> = ({ isOpen, onClose, or
             description: combo.description,
         };
         handleAddItemToOrder(comboCartItem);
-    }, [handleAddItemToOrder]);
+    }, [handleAddItemToOrder, order.restaurantId]);
 
     const handleAddKiloItem = async () => {
         if (!hasKiloService || !pricePerKilo) return;

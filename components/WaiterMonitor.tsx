@@ -421,12 +421,17 @@ const WaiterMonitor: React.FC<WaiterMonitorProps> = ({
     // Enviar pedido para a impressora da Cozinha
     const handleSendToKitchen = async (order: Order) => {
         try {
-            const pendingItems = order.items.filter(i => getItemStatus(i) !== 'Entregue');
-            const itemsToSend = pendingItems.length > 0 ? pendingItems : order.items;
+            const allItems = order.items || [];
+            if (allItems.length === 0) {
+                addToast({ message: 'Nenhum item lançado para enviar à cozinha.', type: 'warning' });
+                return;
+            }
+            const pendingItems = allItems.filter(i => getItemStatus(i) !== 'Entregue');
+            const itemsToSend = pendingItems.length > 0 ? pendingItems : allItems;
             await requestKitchenPrint(order.id, itemsToSend);
             
             // Avança os itens enviados de 'Pendente' para 'Em Preparo'
-            const newItems = order.items.map(it => {
+            const newItems = allItems.map(it => {
                 if (getItemStatus(it) === 'Pendente') {
                     return { ...it, itemStatus: 'Em Preparo' as ItemPreparationStatus };
                 }
@@ -438,6 +443,7 @@ const WaiterMonitor: React.FC<WaiterMonitorProps> = ({
                 subtotal: order.subtotal || order.totalPrice,
                 discountAmount: order.discountAmount
             });
+            window.dispatchEvent(new Event('guarafood:update-orders'));
 
             addToast({ message: 'Comanda enviada para a impressora da Cozinha e itens colocados Em Preparo!', type: 'success' });
         } catch (e: any) {
@@ -450,6 +456,7 @@ const WaiterMonitor: React.FC<WaiterMonitorProps> = ({
     const handleRequestBill = async (order: Order) => {
         try {
             await requestBillPrint(order.id);
+            window.dispatchEvent(new Event('guarafood:update-orders'));
             addToast({ message: 'Pré-conta enviada para a impressora do Caixa!', type: 'success' });
         } catch (e: any) {
             console.error(e);
