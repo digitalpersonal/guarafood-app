@@ -7,30 +7,66 @@ import { decodeDaysFromDescription, encodeDaysInDescription, isPromoActiveToday,
 // 🔄 NORMALIZADORES (Banco de Dados -> App)
 // ==============================================================================
 
+const parsePrintersArray = (raw: any): PrinterConfig[] | null => {
+    if (!raw) return null;
+    let parsed = raw;
+    if (typeof raw === 'string') {
+        try {
+            parsed = JSON.parse(raw);
+        } catch {
+            return null;
+        }
+    }
+    const list = Array.isArray(parsed)
+        ? parsed
+        : (parsed && Array.isArray(parsed.printers) ? parsed.printers : null);
+    if (!list) return null;
+    return list.map((p: any) => ({
+        ...p,
+        width: Number(p?.width) === 58 ? 58 : 80,
+        mappedCategoryIds: Array.isArray(p?.mappedCategoryIds)
+            ? p.mappedCategoryIds.map((id: any) => Number(id)).filter((id: number) => !isNaN(id))
+            : []
+    }));
+};
+
 const extractPrinters = (data: any): PrinterConfig[] => {
     if (!data) return [];
-    if (data.printers && Array.isArray(data.printers)) {
-        return data.printers;
+    const fromPrintersCol = parsePrintersArray(data.printers);
+    const fromPrinterNameCol = parsePrintersArray(data.printer_name);
+
+    // Se a coluna 'printers' tem itens, ela tem prioridade.
+    // Se 'printers' está vazia (ex: DEFAULT '[]' no Supabase) mas 'printer_name' contém JSON válido salvo, usa 'printer_name'.
+    if (fromPrintersCol && fromPrintersCol.length > 0) {
+        return fromPrintersCol;
     }
-    if (data.printer_name && typeof data.printer_name === 'string') {
-        try {
-            const parsed = JSON.parse(data.printer_name);
-            if (Array.isArray(parsed)) return parsed;
-            if (parsed && Array.isArray(parsed.printers)) return parsed.printers;
-        } catch {
-            // printer_name was a simple printer name string
-        }
+    if (fromPrinterNameCol !== null) {
+        return fromPrinterNameCol;
+    }
+    if (fromPrintersCol !== null) {
+        return fromPrintersCol;
     }
     if (data.id && typeof window !== 'undefined') {
         try {
             const cached = localStorage.getItem(`guarafood-printers-${data.id}`);
-            if (cached) {
-                const parsed = JSON.parse(cached);
-                if (Array.isArray(parsed)) return parsed;
-            }
+            const fromCache = parsePrintersArray(cached);
+            if (fromCache) return fromCache;
         } catch {}
     }
     return [];
+};
+
+const extractAutoPrintOrders = (data: any): boolean | undefined => {
+    if (data?.auto_print_orders !== undefined && data?.auto_print_orders !== null) {
+        return Boolean(data.auto_print_orders);
+    }
+    if (typeof window !== 'undefined') {
+        try {
+            const cached = localStorage.getItem('guarafood-auto-print-orders');
+            if (cached !== null) return cached === 'true';
+        } catch {}
+    }
+    return undefined;
 };
 
 const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -143,7 +179,8 @@ const normalizeRestaurant = (data: any): Restaurant => {
         fiscalEnv: data.fiscal_env || 'homologacao',
         nuvemClientId: data.nuvem_client_id || undefined,
         nuvemClientSecret: data.nuvem_client_secret || undefined,
-        printers: extractPrinters(data)
+        printers: extractPrinters(data),
+        autoPrintOrders: extractAutoPrintOrders(data)
     };
 };
 
@@ -204,7 +241,8 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         fiscalEnv: data.fiscal_env || 'homologacao',
         nuvemClientId: data.nuvem_client_id || undefined,
         nuvemClientSecret: data.nuvem_client_secret || undefined,
-        printers: extractPrinters(data)
+        printers: extractPrinters(data),
+        autoPrintOrders: extractAutoPrintOrders(data)
     };
 };
 
@@ -436,8 +474,16 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     if (updates.fiscalEnv !== undefined) dbUpdates.fiscal_env = updates.fiscalEnv;
     if (updates.nuvemClientId !== undefined) dbUpdates.nuvem_client_id = updates.nuvemClientId;
     if (updates.nuvemClientSecret !== undefined) dbUpdates.nuvem_client_secret = updates.nuvemClientSecret;
-    if (updates.autoPrintOrders !== undefined) dbUpdates.auto_print_orders = updates.autoPrintOrders;
+    if (updates.autoPrintOrders !== undefined) {
+        dbUpdates.auto_print_orders = updates.autoPrintOrders;
+        if (typeof window !== 'undefined') {
+            try {
+                localStorage.setItem('guarafood-auto-print-orders', String(updates.autoPrintOrders));
+            } catch {}
+        }
+    }
     if (updates.printers !== undefined) {
+        dbUpdates.printers = updates.printers;
         dbUpdates.printer_name = JSON.stringify(updates.printers);
         if (id && typeof window !== 'undefined') {
             try {
@@ -451,18 +497,51 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
         'deliveryTime', 'imageUrl', 'paymentGateways', 'openingHours', 
         'closingHours', 'deliveryFee', 'operatingHours', 'manualPixKey', 
         'hasPixConfigured', 'printerWidth', 'printerName', 'selectedPaymentGateway', 'bannerImageUrl', 'marmitaStartTime', 'marmitaEndTime',
-        'hasMensalistas', 'hasKiloService', 'pricePerKilo', 'loyaltyProgram', 'disableDelivery', 'printers',
+        'hasMensalistas', 'hasKiloService', 'pricePerKilo', 'loyaltyProgram', 'disableDelivery',
         'blingApiKey', 'fiscalProvider', 'fiscalCsc', 'fiscalCscId', 'fiscalEnv', 'nuvemClientId', 'nuvemClientSecret', 'autoPrintOrders'
     ];
     keysToRemove.forEach(key => delete dbUpdates[key]);
 
-    const { data, error } = await supabase.from('restaurants').update(dbUpdates).eq('id', id).select().single();
-    
-    if (error) {
-        handleSupabaseError({ error, customMessage: 'Erro ao atualizar dados do restaurante no banco' });
+    let result = await supabase.from('restaurants').update(dbUpdates).eq('id', id).select().single();
+
+    // Fallback resiliente caso alguma coluna opcional (ex: auto_print_orders ou printers) ainda não exista no schema do Supabase
+    if (result.error) {
+        const msg = String(result.error.message || '').toLowerCase();
+        const details = String(result.error.details || '').toLowerCase();
+        const isMissingColumn = result.error.code === 'PGRST204' || result.error.code === '42703' || msg.includes('column') || details.includes('column');
+        if (isMissingColumn) {
+            const fallbackUpdates = { ...dbUpdates };
+            let retried = false;
+            if ('auto_print_orders' in fallbackUpdates && (msg.includes('auto_print_orders') || details.includes('auto_print_orders'))) {
+                delete fallbackUpdates.auto_print_orders;
+                retried = true;
+            }
+            if ('printers' in fallbackUpdates && (msg.includes('printers') || details.includes('printers'))) {
+                delete fallbackUpdates.printers;
+                retried = true;
+            }
+            if (retried) {
+                if (Object.keys(fallbackUpdates).length === 0) {
+                    result = await supabase.from('restaurants').select().eq('id', id).single();
+                } else {
+                    result = await supabase.from('restaurants').update(fallbackUpdates).eq('id', id).select().single();
+                }
+            }
+        }
+    }
+
+    if (result.error) {
+        handleSupabaseError({ error: result.error, customMessage: 'Erro ao atualizar dados do restaurante no banco' });
     }
     
-    return normalizeRestaurantSecure(data);
+    const normalized = normalizeRestaurantSecure(result.data);
+    if (updates.printers !== undefined) {
+        normalized.printers = updates.printers;
+    }
+    if (updates.autoPrintOrders !== undefined) {
+        normalized.autoPrintOrders = updates.autoPrintOrders;
+    }
+    return normalized;
 };
 
 // ==============================================================================

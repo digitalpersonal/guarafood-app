@@ -617,6 +617,13 @@ export const clearTodayTableOrders = async (restaurantId: number): Promise<void>
     window.dispatchEvent(new Event('guarafood:update-orders'));
 };
 
+const generatePrintJobId = (): string => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    return `print-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
 export const requestKitchenPrint = async (orderId: string, itemsToPrint: CartItem[], targetPrinterId?: string): Promise<void> => {
     return retryWithExponentialBackoff(async () => {
         const { data: currentOrder, error: fetchErr } = await supabase.from('orders').select('payment_details').eq('id', orderId).single();
@@ -628,7 +635,7 @@ export const requestKitchenPrint = async (orderId: string, itemsToPrint: CartIte
         const currentQueue = currentDetails.print_queue || [];
         
         const newRequest: any = {
-            id: crypto.randomUUID(),
+            id: generatePrintJobId(),
             timestamp: new Date().toISOString(),
             items: itemsToPrint,
             status: 'pending',
@@ -663,7 +670,7 @@ export const requestAdminPrint = async (orderId: string, itemsToPrint: CartItem[
         const currentQueue = currentDetails.print_queue || [];
         
         const newRequest = {
-            id: crypto.randomUUID(),
+            id: generatePrintJobId(),
             timestamp: new Date().toISOString(),
             items: itemsToPrint,
             status: 'pending',
@@ -694,7 +701,7 @@ export const requestBillPrint = async (orderId: string): Promise<void> => {
         const currentQueue = currentDetails.print_queue || [];
         
         const newRequest = {
-            id: crypto.randomUUID(),
+            id: generatePrintJobId(),
             timestamp: new Date().toISOString(),
             status: 'pending',
             type: 'full'
