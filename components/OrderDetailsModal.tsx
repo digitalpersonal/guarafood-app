@@ -81,6 +81,22 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
         };
     }, [onClose]);
 
+    const getEffectiveWidth = (mode: 'full' | 'kitchen' | 'admin' | 'fiscal'): number => {
+        const activePrinters = (restaurant?.printers || []).filter((p: any) => p.active !== false);
+        if (mode === 'kitchen') {
+            const kitchenPrinter = activePrinters.find((p: any) => p.type === 'kitchen' || p.printKitchenReceipt === true);
+            if (kitchenPrinter?.width) return Number(kitchenPrinter.width);
+        }
+        const defaultPrinter = activePrinters.find((p: any) => p.isDefault) || activePrinters[0];
+        if (defaultPrinter?.width) return Number(defaultPrinter.width);
+        if (restaurant?.printerWidth) return Number(restaurant.printerWidth);
+        try {
+            const saved = localStorage.getItem('guarafood-printer-width');
+            if (saved) return parseInt(saved, 10);
+        } catch {}
+        return Number(printerWidth || 80);
+    };
+
     const triggerLocalPrint = (mode: 'full' | 'kitchen' | 'admin' | 'fiscal') => {
         const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         const logTag = isMobileDevice ? '[OrderDetailsModal][Print][MOBILE]' : '[OrderDetailsModal][Print]';
@@ -95,10 +111,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
             return;
         }
 
-        const kitchenPrinter = mode === 'kitchen'
-            ? restaurant?.printers?.find((p: any) => (p.type === 'kitchen' || p.printKitchenReceipt === true) && p.active !== false)
-            : null;
-        const effectiveWidth = Number(kitchenPrinter?.width || printerWidth || 80);
+        const effectiveWidth = getEffectiveWidth(mode);
 
         try {
             flushSync(() => {
@@ -451,11 +464,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                 <div ref={printSourceRef} className="hidden print:block" aria-hidden="true">
                     <PrintableOrder
                         order={currentOrder}
-                        printerWidth={
-                            printMode === 'kitchen'
-                                ? Number(restaurant?.printers?.find((p: any) => (p.type === 'kitchen' || p.printKitchenReceipt === true) && p.active !== false)?.width || printerWidth || 80)
-                                : printerWidth
-                        }
+                        printerWidth={getEffectiveWidth(printMode)}
                         printMode={printMode}
                         restaurant={restaurant}
                     />

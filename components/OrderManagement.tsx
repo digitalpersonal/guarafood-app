@@ -195,7 +195,15 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         };
     }, [requestWakeLock, releaseWakeLock]);
 
-    const [printerWidth, setPrinterWidth] = useState<number>(80);
+    const [printerWidth, setPrinterWidth] = useState<number>(() => {
+        try {
+            if (restaurant?.printerWidth) return Number(restaurant.printerWidth);
+            const saved = localStorage.getItem('guarafood-printer-width');
+            return saved ? parseInt(saved, 10) : 80;
+        } catch {
+            return 80;
+        }
+    });
     const [printStationTick, setPrintStationTick] = useState<number>(0);
 
     useEffect(() => {
@@ -231,6 +239,9 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             setPrinterWidth(def.width);
                             localStorage.setItem('guarafood-printer-width', def.width.toString());
                         }
+                    } else {
+                        const saved = localStorage.getItem('guarafood-printer-width');
+                        if (saved) setPrinterWidth(parseInt(saved, 10));
                     }
                     if (rest.staff) {
                         setStaffList(rest.staff);
