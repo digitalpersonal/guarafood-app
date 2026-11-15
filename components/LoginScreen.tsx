@@ -58,15 +58,17 @@ const LoginScreen: React.FC<{ onLoginSuccess: () => void; onBack: () => void; }>
             await login(email, password);
             onLoginSuccess();
         } catch (err: any) {
-            const msg = err.message || '';
+            const msg = err?.message || '';
             if (msg.includes('Invalid login credentials')) {
                 setError('E-mail ou senha incorretos.');
+                console.warn('Tentativa de login rejeitada: credenciais inválidas.');
             } else if (msg.includes('Email not confirmed')) {
                 setError('Este e-mail ainda não foi confirmado.');
+                console.warn('Tentativa de login rejeitada: e-mail não confirmado.');
             } else {
                 setError('Falha no login: ' + msg);
+                console.error("Login attempt failed:", err);
             }
-            console.error("Login attempt failed:", err);
         } finally {
             setIsSubmitting(false);
         }
