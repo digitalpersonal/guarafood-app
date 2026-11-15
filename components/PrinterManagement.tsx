@@ -565,7 +565,7 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
 
     const [isUpdatingDefault, setIsUpdatingDefault] = useState(false);
 
-    // Estado da Impressão Automática (Ativar impressão automática)
+    // Estado da Impressão Automática (sempre ativada por padrão, mesmo após limpar histórico ou F5)
     const [autoPrintOrders, setAutoPrintOrders] = useState<boolean>(() => {
         if (restaurant.autoPrintOrders !== undefined) {
             return restaurant.autoPrintOrders;
@@ -577,9 +577,13 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
     const [showKioskHelp, setShowKioskHelp] = useState(false);
 
     useEffect(() => {
-        if (restaurant.autoPrintOrders !== undefined) {
-            setAutoPrintOrders(restaurant.autoPrintOrders);
-        }
+        const resolved = restaurant.autoPrintOrders !== undefined ? restaurant.autoPrintOrders : true;
+        setAutoPrintOrders(resolved);
+        try {
+            if (localStorage.getItem('guarafood-auto-print-orders') === null) {
+                localStorage.setItem('guarafood-auto-print-orders', String(resolved));
+            }
+        } catch {}
     }, [restaurant.autoPrintOrders]);
 
     // Ação para ligar/desligar a impressão automática
@@ -627,11 +631,12 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                 const width = targetId === 'generic-58' ? 58 : 80;
                 const updatedRestaurant = await updateRestaurant(restaurant.id, { printerWidth: width });
                 localStorage.setItem('guarafood-printer-width', width.toString());
+                localStorage.setItem(`guarafood-printer-width-${restaurant.id}`, width.toString());
                 if (onUpdateRestaurant && updatedRestaurant) {
                     onUpdateRestaurant(updatedRestaurant);
                 }
                 addToast({ 
-                    message: `Largura padrão configurada para ${width}mm.`, 
+                    message: `Largura do cupom deste restaurante configurada para ${width}mm.`, 
                     type: 'success' 
                 });
                 return;
@@ -654,13 +659,14 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
             setPrinters(updatedList);
             localStorage.setItem('guarafood-default-printer-id', targetId);
             localStorage.setItem('guarafood-printer-width', targetWidth.toString());
+            localStorage.setItem(`guarafood-printer-width-${restaurant.id}`, targetWidth.toString());
 
             if (onUpdateRestaurant && updatedRestaurant) {
                 onUpdateRestaurant(updatedRestaurant);
             }
 
             addToast({ 
-                message: `Impressora "${targetPrinter.name}" definida como padrão para novos pedidos!`, 
+                message: `Impressora "${targetPrinter.name}" (${targetWidth}mm) definida para este restaurante!`, 
                 type: 'success' 
             });
         } catch (err: any) {
@@ -748,28 +754,28 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
 
                 {/* PAINEL DE CONTROLE: SELETOR DE IMPRESSORA PADRÃO & ESTAÇÃO LOCAL */}
                 <div className="mt-6 pt-6 border-t border-gray-100 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {/* 1. SELECIONAR IMPRESSORA PADRÃO DO SISTEMA */}
+                    {/* 1. FORMATO E IMPRESSORA DESTE RESTAURANTE (58mm / 80mm) */}
                     <div className="bg-gradient-to-br from-amber-50/90 via-orange-50/40 to-amber-50/90 p-4 sm:p-5 rounded-2xl border-2 border-amber-300 shadow-2xs flex flex-col justify-between">
                         <div>
                             <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
-                                    <span className="text-xl">🌟</span>
+                                    <span className="text-xl">📏</span>
                                     <h4 className="font-black text-sm uppercase text-amber-950 tracking-tight">
-                                        Selecionar Impressora Padrão
+                                        Largura e Impressora do Restaurante
                                     </h4>
                                 </div>
                                 <span className="px-2 py-0.5 text-[9px] font-black uppercase bg-amber-200 text-amber-900 rounded-md">
-                                    Automático
+                                    Individual ({restaurant.printerWidth === 58 ? '58mm' : '80mm'})
                                 </span>
                             </div>
                             <p className="text-xs text-gray-600 mt-1 leading-relaxed">
-                                Define o dispositivo utilizado <strong>automaticamente</strong> para novos pedidos e cupons, sem precisar de seleção manual a cada impressão.
+                                Mantém a impressão no tamanho exato instalado no seu PC (<strong>58mm ou 80mm</strong>). Cada restaurante possui sua própria configuração independente e usa a impressora já instalada no computador.
                             </p>
                         </div>
 
                         <div className="mt-4 pt-3 border-t border-amber-200/70">
                             <label htmlFor="select-default-printer" className="block text-[10px] font-black uppercase tracking-wider text-amber-900 mb-1.5 flex items-center justify-between">
-                                <span>Dispositivo Padrão dos Pedidos:</span>
+                                <span>Bobina / Dispositivo deste Restaurante:</span>
                                 {isUpdatingDefault && <span className="text-[10px] text-amber-700 animate-pulse font-bold">Salvando...</span>}
                             </label>
                             <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
@@ -783,13 +789,13 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                                     {printers.length > 0 ? (
                                         printers.map(p => (
                                             <option key={p.id} value={p.id}>
-                                                {p.type === 'kitchen' ? '🍳' : p.type === 'bar' ? '🍹' : p.type === 'cashier' ? '🛎️' : '🖨️'} {p.name} ({p.width}mm) {p.isDefault ? '★ [Padrão Atual]' : ''}
+                                                {p.type === 'kitchen' ? '🍳' : p.type === 'bar' ? '🍹' : p.type === 'cashier' ? '🛎️' : '🖨️'} {p.name} ({p.width}mm) {p.isDefault ? '★ [Principal]' : ''}
                                             </option>
                                         ))
                                     ) : (
                                         <>
-                                            <option value="generic-80">🖨️ Impressora Térmica do Sistema (80mm - Padrão)</option>
-                                            <option value="generic-58">🖨️ Impressora Térmica Pequena (58mm)</option>
+                                            <option value="generic-80">🖨️ Impressora do PC — Bobina 80mm</option>
+                                            <option value="generic-58">🖨️ Impressora do PC — Bobina 58mm</option>
                                         </>
                                     )}
                                 </select>
@@ -804,17 +810,17 @@ export const PrinterManagement: React.FC<PrinterManagementProps> = ({ restaurant
                                         }
                                     }}
                                     className="px-3.5 py-2.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-xs transition-all flex items-center gap-1.5 shrink-0"
-                                    title="Disparar cupom de teste na impressora padrão"
+                                    title="Disparar cupom de teste com a largura configurada para este restaurante"
                                 >
                                     <span>🖨️</span>
-                                    <span>Testar Padrão</span>
+                                    <span>Testar</span>
                                 </button>
                             </div>
 
                             <div className="mt-2.5 flex items-center gap-2 text-[11px] text-amber-900 font-medium">
                                 <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
                                 <span className="truncate">
-                                    Dispositivo ativo: <strong>{currentDefaultPrinter ? currentDefaultPrinter.name : `Térmica (${restaurant.printerWidth || 80}mm)`}</strong> ({currentDefaultPrinter?.width || restaurant.printerWidth || 80}mm)
+                                    Configuração ativa aqui: <strong>{currentDefaultPrinter ? currentDefaultPrinter.name : `Impressora do PC`}</strong> ({currentDefaultPrinter?.width || restaurant.printerWidth || 80}mm)
                                 </span>
                             </div>
                         </div>

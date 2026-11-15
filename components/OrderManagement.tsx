@@ -212,6 +212,33 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         return () => window.removeEventListener('guarafood:print-station-changed', handleStationChange);
     }, []);
 
+    // Garante que, mesmo após limpar histórico ou pressionar F5, a impressão automática esteja ativada por padrão em terminais POS/Desktop não-garçom
+    useEffect(() => {
+        try {
+            const effectiveRole = currentStaffUser?.role || currentUser?.role;
+            const isWaiterRestricted = isLocked || effectiveRole === 'waiter';
+            const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+            if (!isWaiterRestricted && !isMobileDevice) {
+                let changed = false;
+                if (localStorage.getItem('guarafood-is-print-server') === null) {
+                    localStorage.setItem('guarafood-is-print-server', 'true');
+                    changed = true;
+                }
+                if (!localStorage.getItem('guarafood-print-station-id')) {
+                    localStorage.setItem('guarafood-print-station-id', localStorage.getItem('guarafood-print-server-role') || 'all');
+                    changed = true;
+                }
+                if (localStorage.getItem('guarafood-auto-print-orders') === null && restaurant?.autoPrintOrders !== false) {
+                    localStorage.setItem('guarafood-auto-print-orders', 'true');
+                }
+                if (changed) {
+                    setPrintStationTick(t => t + 1);
+                }
+            }
+        } catch {}
+    }, [currentStaffUser?.role, currentUser?.role, isLocked, restaurant?.autoPrintOrders]);
+
     // Carrega configuração de impressora e STAFF do Banco de Dados
     useEffect(() => {
         if (!currentUser?.restaurantId) return;
@@ -401,7 +428,10 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         if (storedIsPrintServer === 'false' || stationId === 'off') {
                             return;
                         }
-                        const isPrintServer = storedIsPrintServer === 'true';
+                        const effectiveRole = currentStaffUser?.role || currentUser?.role;
+                        const isWaiterRestricted = isLocked || effectiveRole === 'waiter';
+                        const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                        const isPrintServer = storedIsPrintServer === 'true' || (storedIsPrintServer !== 'false' && !isWaiterRestricted && !isMobileDevice);
                         const activePrinters = (restaurant?.printers || []).filter(p => p.active !== false);
                         const defaultPrinter = activePrinters.find(p => p.isDefault) || activePrinters[0];
                         const matchedPrinter = (stationId && stationId !== 'all' ? activePrinters.find(p => p.id === stationId) : null) || defaultPrinter;
@@ -449,7 +479,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         lastSuccessfulSyncRef.current = Date.now();
         setLastSuccessfulSyncTime(Date.now());
         setConnectionStatus('CONNECTED');
-    }, [playNotification, restaurant]);
+    }, [playNotification, restaurant, currentStaffUser?.role, currentUser?.role, isLocked]);
 
     const forceSync = useCallback(async () => {
         if (!currentUser?.restaurantId || isSyncingRef.current) return;
