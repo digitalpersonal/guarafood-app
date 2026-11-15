@@ -56,7 +56,7 @@ const extractPrinters = (data: any): PrinterConfig[] => {
     return [];
 };
 
-const extractAutoPrintOrders = (data: any): boolean | undefined => {
+const extractAutoPrintOrders = (data: any): boolean => {
     if (data?.auto_print_orders !== undefined && data?.auto_print_orders !== null) {
         return Boolean(data.auto_print_orders);
     }
@@ -66,7 +66,7 @@ const extractAutoPrintOrders = (data: any): boolean | undefined => {
             if (cached !== null) return cached === 'true';
         } catch {}
     }
-    return undefined;
+    return true;
 };
 
 const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];

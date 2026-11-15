@@ -53,9 +53,14 @@ export const subscribeToOrders = (
 ): (() => void) => {
     let isMounted = true;
     let isFetching = false;
+    let pendingRefresh = false;
 
     const refreshData = async () => {
-        if (!isMounted || isFetching) return;
+        if (!isMounted) return;
+        if (isFetching) {
+            pendingRefresh = true;
+            return;
+        }
         isFetching = true;
         try {
             // Usamos um limite de 150 para máxima velocidade e leveza em celulares e tablets dos restaurantes e timeout de 10s para evitar travamento
@@ -68,6 +73,10 @@ export const subscribeToOrders = (
             console.warn("[GuaraFood Polling] Erro ou timeout ao atualizar pedidos:", e);
         } finally {
             isFetching = false;
+            if (pendingRefresh && isMounted) {
+                pendingRefresh = false;
+                void refreshData();
+            }
         }
     };
 
@@ -310,20 +319,80 @@ export const createOrder = async (
     });
 };
 
+const ORDER_STATUS_RANK: Record<string, number> = {
+    'Aguardando Pagamento': 0,
+    'Mesa Aberta': 0,
+    'Novo Pedido': 1,
+    'Preparando': 2,
+    'A Caminho': 3,
+    'Entregue': 4,
+    'Cancelado': 4,
+};
+
 export const updateOrderStatus = async (
     orderId: string, 
     status: OrderStatus,
     options?: { onRetry?: (attempt: number, error: any, delayMs: number) => void; retryOptions?: RetryOptions }
 ): Promise<Order> => {
     return retryWithExponentialBackoff(async () => {
+        const { data: currentRow, error: fetchError } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('id', orderId)
+            .single();
+
+        if (fetchError) {
+            handleSupabaseError({ error: fetchError, customMessage: 'Failed to fetch current order status' });
+            throw fetchError;
+        }
+
+        const currentStatus = currentRow?.status as OrderStatus | undefined;
+        const currentRank = currentStatus !== undefined ? (ORDER_STATUS_RANK[currentStatus] ?? 0) : 0;
+        const targetRank = ORDER_STATUS_RANK[status] ?? 1;
+
+        // Nunca permite regredir status nem sair de estados terminais ('Entregue' ou 'Cancelado')
+        if (currentStatus === status || currentStatus === 'Entregue' || currentStatus === 'Cancelado' || targetRank < currentRank) {
+            if (currentStatus !== status) {
+                console.warn(`[orderService] Bloqueada tentativa de regressão de status do pedido ${orderId}: '${currentStatus}' -> '${status}'.`);
+            }
+            window.dispatchEvent(new Event('guarafood:update-orders'));
+            return normalizeOrder(currentRow);
+        }
+
         const updatePayload: any = { status };
         if (['Novo Pedido', 'Preparando', 'A Caminho', 'Entregue'].includes(status)) {
             updatePayload.payment_status = 'paid';
         }
-        const { data, error } = await supabase.from('orders').update(updatePayload).eq('id', orderId).select().single();
+
+        let updateQuery = supabase
+            .from('orders')
+            .update(updatePayload)
+            .eq('id', orderId);
+
+        if (currentStatus) {
+            updateQuery = updateQuery.eq('status', currentStatus);
+        }
+
+        const { data, error } = await updateQuery.select().maybeSingle();
+
         if (error) {
             handleSupabaseError({ error, customMessage: 'Failed to update order status' });
             throw error;
+        }
+
+        if (!data) {
+            // Outro dispositivo/processo alterou o status exatamente no mesmo instante; busca o estado mais recente
+            const { data: latestRow, error: refetchError } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('id', orderId)
+                .single();
+            if (refetchError) {
+                handleSupabaseError({ error: refetchError, customMessage: 'Failed to verify order status' });
+                throw refetchError;
+            }
+            window.dispatchEvent(new Event('guarafood:update-orders'));
+            return normalizeOrder(latestRow);
         }
         
         // Trigger manual sync for all listeners
