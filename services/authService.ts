@@ -360,8 +360,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                       for (const res of staffData) {
                           const staffList = Array.isArray(res.staff) ? (res.staff as any[]) : [];
                           const member = staffList.find(s => 
-                              s?.email?.toLowerCase() === cleanEmail && 
-                              (s?.password === cleanPassword || s?.password === password) && 
+                              s?.email?.trim().toLowerCase() === cleanEmail && 
+                              (s?.password === cleanPassword || s?.password === password || (typeof s?.password === 'string' && s.password.trim() === cleanPassword)) && 
                               s?.active
                           );
                           
@@ -369,7 +369,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                               const isPlatformUser = res.category === 'Sistema' || member.role === 'admin';
                               const profile: User = {
                                   id: member.id,
-                                  email: member.email,
+                                  email: member.email.trim(),
                                   role: isPlatformUser ? 'admin' : (member.role as Role),
                                   name: member.name,
                                   restaurantId: isPlatformUser ? undefined : res.id,
@@ -390,8 +390,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                       if (cachedPlat) {
                           const list = JSON.parse(cachedPlat);
                           const member = list.find((s: any) => 
-                              s?.email?.toLowerCase() === cleanEmail && 
-                              (s?.password === cleanPassword || s?.password === password) && 
+                              s?.email?.trim().toLowerCase() === cleanEmail && 
+                              (s?.password === cleanPassword || s?.password === password || (typeof s?.password === 'string' && s.password.trim() === cleanPassword)) && 
                               s?.active
                           );
                           if (member) {
