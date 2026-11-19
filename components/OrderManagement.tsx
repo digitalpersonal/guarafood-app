@@ -399,9 +399,13 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 const isRecent = (Date.now() - orderTime) < 600000; // 10 minutos
                 const isWithinStartupWindow = orderTime > appStartTimeRef.current - 120000; // 2 minutos antes do app abrir ou depois
                 const hasJustChangedStatus = prevStatus !== undefined && prevStatus !== order.status;
+                const isConfirmedPendingPayment =
+                    prevStatus === 'Aguardando Pagamento' &&
+                    (order.status === 'Novo Pedido' || order.status === 'Preparando') &&
+                    (Date.now() - orderTime) < 86400000;
 
                 const isNewDelivery = (order.status === 'Novo Pedido' || (order.status === 'Preparando' && prevStatus === 'Novo Pedido')) && 
-                                      isRecent && 
+                                      (isRecent || isConfirmedPendingPayment) && 
                                       !alertedOrderIdsRef.current.has(order.id) && 
                                       (isWithinStartupWindow || hasJustChangedStatus);
 
@@ -475,7 +479,14 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         } catch (err) {
             console.error("Erro ao persistir cache local de pedidos:", err);
         }
-        if (isFirstLoadRef.current) { visibleOrders.forEach(o => alertedOrderIdsRef.current.add(o.id)); }; isFirstLoadRef.current = false;
+        if (isFirstLoadRef.current) {
+            visibleOrders.forEach(o => {
+                if (o.status !== 'Aguardando Pagamento') {
+                    alertedOrderIdsRef.current.add(o.id);
+                }
+            });
+        }
+        isFirstLoadRef.current = false;
         lastSuccessfulSyncRef.current = Date.now();
         setLastSuccessfulSyncTime(Date.now());
         setConnectionStatus('CONNECTED');

@@ -73,6 +73,7 @@ export interface Restaurant {
   name: string;
   category: string;
   description?: string; // Added short description
+  informacao_especial?: string; // Banner de aviso exibido abaixo do nome no cardápio (ex: encomendas)
   city?: string; // NEW: City served by the restaurant (default 'Guaranésia')
   deliveryTime: string;
   rating: number;
@@ -115,6 +116,10 @@ export interface Restaurant {
   loyaltyProgram?: LoyaltyProgram; // NEW: Fidelity Program
   printers?: PrinterConfig[]; // NEW: Configuração de Múltiplas Impressoras e Roteamento de Categorias
   autoPrintOrders?: boolean; // Se verdadeiro, envia automaticamente para a impressora padrão ao receber novos pedidos confirmados
+  hasPreorderMode?: boolean; // Se aceita encomendas programadas
+  preorderDeliveryDay?: string; // Ex: "Sexta-feira"
+  preorderDeliveryTime?: string; // Ex: "18:00 às 21:00"
+  preorderCutoffInfo?: string; // Ex: "Pedidos até quinta às 20h"
 }
 
 export type PrinterType = 'cashier' | 'kitchen' | 'bar' | 'other';
@@ -357,6 +362,7 @@ export interface Order {
   fiscalKey?: string;
   fiscalNumber?: string;
   fiscalMessage?: string;
+  preorderInfo?: string;
 }
 
 export type Role = 'admin' | 'merchant' | 'waiter' | 'manager' | 'operator' | 'kitchen';

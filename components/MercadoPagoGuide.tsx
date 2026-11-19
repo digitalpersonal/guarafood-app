@@ -19,9 +19,9 @@ const MercadoPagoGuide: React.FC<{ restaurantId: number }> = ({ restaurantId }) 
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
                         <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
                     </svg>
-                    Guia de Configuração do Pix (Mercado Pago)
+                    Guia de Configuração (Pix e Cartão Online - Mercado Pago)
                 </h4>
-                <p className="text-xs text-gray-500 mb-0 mt-1">Conclua estes 3 passos simples para o seu PIX funcionar de forma automática via Mercado Pago.</p>
+                <p className="text-xs text-gray-500 mb-0 mt-1">Conclua estes 3 passos simples para o PIX automático e o Cartão Online (Checkout Pro) funcionarem via Mercado Pago.</p>
             </div>
             
             <div className="p-5">

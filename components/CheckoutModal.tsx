@@ -63,13 +63,19 @@ interface CheckoutModalProps {
     restaurant: Restaurant;
 }
 
-type CheckoutStep = 'SUMMARY' | 'DETAILS' | 'PIX_PAYMENT' | 'SUCCESS';
+type CheckoutStep = 'SUMMARY' | 'DETAILS' | 'PIX_PAYMENT' | 'CARD_REDIRECT' | 'SUCCESS';
 type DeliveryMethod = 'DELIVERY' | 'PICKUP';
+
+const isCardOnlineMethod = (method?: string) => {
+    const m = (method || '').toLowerCase();
+    return m.includes('mercado pago') && m.includes('cartão');
+};
 
 const steps: { id: CheckoutStep; title: string; icon: React.FC<{ className?: string }> }[] = [
     { id: 'SUMMARY', title: 'Resumo', icon: ShoppingBagIcon },
     { id: 'DETAILS', title: 'Dados e Pagamento', icon: UserIcon },
     { id: 'PIX_PAYMENT', title: 'Pagar com Pix', icon: CreditCardIcon },
+    { id: 'CARD_REDIRECT', title: 'Mercado Pago', icon: CreditCardIcon },
     { id: 'SUCCESS', title: 'Confirmado', icon: CheckCircleIcon },
 ];
 
@@ -165,10 +171,13 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
     const [pixData, setPixData] = useState<{ qrCode: string; qrCodeBase64: string } | null>(null);
     const [pixError, setPixError] = useState<string | null>(null);
     const [isManualPix, setIsManualPix] = useState(false);
+    const [mpCheckoutUrl, setMpCheckoutUrl] = useState<string | null>(null);
+    const [cardProError, setCardProError] = useState<string | null>(null);
     const [countdown, setCountdown] = useState(300);
     const countdownIntervalRef = useRef<number | null>(null);
     const pixChannelRef = useRef<any>(null);
     const pixPollingRef = useRef<number | null>(null);
+    const mpRedirectTimerRef = useRef<number | null>(null);
     const [couponCodeInput, setCouponCodeInput] = useState('');
     const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
     const [formError, setFormError] = useState<string | null>(null);
@@ -266,6 +275,16 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         } else {
             options = options.filter(opt => opt !== "Mensalista");
         }
+
+        // Cartão Online (Mercado Pago) só fica visível se o restaurante usa Mercado Pago e tem Access Token configurado
+        const hasMpConfigured = Boolean(
+            restaurant.hasPixConfigured ||
+            (restaurant.mercado_pago_credentials?.accessToken && restaurant.mercado_pago_credentials.accessToken.trim().length > 0)
+        );
+        if (restaurant.selectedPaymentGateway === 'asaas' || !hasMpConfigured) {
+            options = options.filter(opt => !isCardOnlineMethod(opt));
+        }
+
         return options;
     }, [restaurant]);
 
@@ -280,14 +299,20 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         setPixData(null);
         setPixError(null);
         setIsManualPix(false);
+        setMpCheckoutUrl(null);
+        setCardProError(null);
         setWantsSachets(false); 
         setCountdown(300);
-        setDeliveryMethod('DELIVERY');
+        setDeliveryMethod(restaurant?.disableDelivery ? 'PICKUP' : 'DELIVERY');
         setStepTransitionLock(false);
         setSuccessfulOrder(null);
         setMensalistaId(undefined);
         setCustomerLoyalty(null);
         setLoyaltyRedeemed(false);
+        if (mpRedirectTimerRef.current) {
+            clearTimeout(mpRedirectTimerRef.current);
+            mpRedirectTimerRef.current = null;
+        }
         if (countdownIntervalRef.current) {
             clearInterval(countdownIntervalRef.current);
             countdownIntervalRef.current = null;
@@ -523,6 +548,81 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         }
     };
 
+    const handleCardProPayment = async (orderData: NewOrderData) => {
+        setIsSubmitting(true);
+        setCardProError(null);
+        setMpCheckoutUrl(null);
+        saveCustomerDataLocally(customerName, customerPhone, address);
+
+        try {
+            const cleanReturnUrl = `${window.location.origin}${window.location.pathname}`;
+            const response = await supabase.functions.invoke('create-payment', {
+                body: {
+                    restaurantId: restaurant.id,
+                    orderData,
+                    paymentType: 'card_pro',
+                    returnUrl: cleanReturnUrl,
+                },
+            });
+
+            if (response.error) throw new Error(response.error.message || "Falha na conexão");
+            if (response.data && response.data.error) throw new Error(response.data.error);
+
+            const { orderId, initPoint } = response.data;
+            if (!orderId || !initPoint) {
+                throw new Error("O Mercado Pago não retornou o link de pagamento.");
+            }
+
+            persistOrderIdGlobally(orderId);
+            try {
+                localStorage.setItem('guarafood-pending-mp-checkout', JSON.stringify({
+                    orderId,
+                    restaurantId: restaurant.id,
+                    initPoint,
+                    createdAt: Date.now()
+                }));
+            } catch (storageErr) {
+                console.warn("Erro ao salvar checkout pendente:", storageErr);
+            }
+
+            setMpCheckoutUrl(initPoint);
+            setCurrentStep('CARD_REDIRECT');
+
+            // Escuta caso o pagamento seja confirmado em paralelo
+            const channel = supabase.channel(`order-card-status:${orderId}`);
+            pixChannelRef.current = channel;
+            channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${orderId}` },
+                (payload) => {
+                    const updatedOrder = payload.new;
+                    if (updatedOrder.status === 'Novo Pedido' || updatedOrder.payment_status === 'paid' || (updatedOrder.status !== 'Aguardando Pagamento' && updatedOrder.status !== 'Cancelado')) {
+                        if (mpRedirectTimerRef.current) clearTimeout(mpRedirectTimerRef.current);
+                        if (pixChannelRef.current) {
+                            try { pixChannelRef.current.unsubscribe(); } catch {}
+                            pixChannelRef.current = null;
+                        }
+                        try { localStorage.removeItem('guarafood-pending-mp-checkout'); } catch {}
+                        setSuccessfulOrder(normalizeOrder(updatedOrder));
+                        setCurrentStep('SUCCESS');
+                        clearCart();
+                    }
+                }
+            ).subscribe();
+
+            // Redireciona na mesma aba para o ambiente seguro do Mercado Pago
+            mpRedirectTimerRef.current = window.setTimeout(() => {
+                window.location.assign(initPoint);
+            }, 600);
+
+        } catch (err: any) {
+            console.error("Card Pro Error:", err);
+            setCardProError(err.message || "Erro ao iniciar pagamento com cartão no Mercado Pago.");
+            setCurrentStep('CARD_REDIRECT');
+        } finally {
+            setIsSubmitting(false);
+            isSubmittingRef.current = false;
+        }
+    };
+
     const handlePayOnDelivery = async (orderData: NewOrderData) => {
         setIsSubmitting(true);
         saveCustomerDataLocally(customerName, customerPhone, address);
@@ -590,6 +690,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
             changeFor: (!isNaN(changeValue) && changeValue > 0) ? changeValue : undefined, 
             mensalistaId, pointsRedeemed,
             status: pm === 'Pix' ? 'Aguardando Pagamento' : 'Novo Pedido',
+            preorderInfo: restaurant.hasPreorderMode 
+                ? `ENTREGA PROGRAMADA: ${restaurant.preorderDeliveryDay || 'Data Combinada'} • ${restaurant.preorderDeliveryTime || ''}`
+                : undefined,
         };
     }
 
@@ -644,6 +747,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         const orderData = buildOrderData(undefined, finalPaymentMethod);
 
         if (paymentMethod === 'Pix') await handlePixPayment(orderData);
+        else if (isCardOnlineMethod(paymentMethod)) await handleCardProPayment(orderData);
         else await handlePayOnDelivery(orderData);
     };
 
@@ -674,6 +778,16 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
         if (currentStep === 'SUMMARY') onClose();
         else if (currentStep === 'DETAILS') setCurrentStep('SUMMARY');
         else if (currentStep === 'PIX_PAYMENT') handleBackFromPix();
+        else if (currentStep === 'CARD_REDIRECT') {
+            if (mpRedirectTimerRef.current) clearTimeout(mpRedirectTimerRef.current);
+            if (pixChannelRef.current) {
+                try { pixChannelRef.current.unsubscribe(); } catch {}
+                pixChannelRef.current = null;
+            }
+            setMpCheckoutUrl(null);
+            setCardProError(null);
+            setCurrentStep('DETAILS');
+        }
     };
 
     const handleSuccessAction = () => {
@@ -715,7 +829,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 {currentStep !== 'SUCCESS' && (
                     <div className="flex justify-between items-center px-4 py-3 bg-gray-50 border-b">
                         {steps.map((step, index) => {
-                            if (step.id === 'PIX_PAYMENT' && paymentMethod !== 'Pix' && index > currentStepIndex) return null;
+                            if (step.id === 'PIX_PAYMENT' && paymentMethod !== 'Pix' && currentStep !== 'PIX_PAYMENT') return null;
+                            if (step.id === 'CARD_REDIRECT' && !isCardOnlineMethod(paymentMethod) && currentStep !== 'CARD_REDIRECT') return null;
                             if (step.id === 'SUCCESS' && currentStep !== 'SUCCESS' && index > currentStepIndex) return null;
                             const isCurrent = index === currentStepIndex;
                             const isCompleted = index < currentStepIndex;
@@ -746,6 +861,24 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                 {currentStep === 'SUMMARY' && (
                     <div className="overflow-y-auto p-4 space-y-4">
                         <h3 className="text-xl font-bold text-gray-800">Seu Pedido</h3>
+
+                        {restaurant.hasPreorderMode && (
+                            <div className="bg-purple-50 border-2 border-purple-300 rounded-xl p-3.5 flex items-start gap-3 text-left shadow-sm">
+                                <span className="text-xl flex-shrink-0">📅</span>
+                                <div>
+                                    <div className="text-xs font-black uppercase tracking-wider text-purple-900">Atenção: Encomenda Programada</div>
+                                    <div className="text-xs font-bold text-purple-950 mt-0.5">
+                                        Entrega: {restaurant.preorderDeliveryDay || 'Programada'} {restaurant.preorderDeliveryTime ? `das ${restaurant.preorderDeliveryTime}` : ''}
+                                    </div>
+                                    {restaurant.preorderCutoffInfo && (
+                                        <div className="text-[11px] text-purple-800 mt-0.5 font-medium">
+                                            ⏱️ {restaurant.preorderCutoffInfo}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
                         <div className="space-y-3">
                             {cartItems.map(item => (
                                 <div key={item.id} className="flex items-start space-x-3 border-b pb-3 last:border-b-0">
@@ -904,8 +1037,19 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                                 <label className="flex items-center p-3 cursor-pointer">
                                                     <input type="radio" name="payment" value={gateway} checked={isSelected} onChange={e => { setPaymentMethod(e.target.value); setFormError(null); }} className="h-5 w-5 text-orange-600" />
                                                     <div className="ml-3 flex flex-col">
-                                                        <span className="text-sm font-bold text-gray-700">{gateway}</span>
-                                                        {gateway.toLowerCase().includes('cartão') && <span className="text-[10px] text-blue-600">ⓘ Maquininha na entrega.</span>}
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-sm font-bold text-gray-700">{gateway}</span>
+                                                            {isCardOnlineMethod(gateway) && (
+                                                                <span className="text-[9px] font-black uppercase tracking-wider bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                                                                    Online
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {isCardOnlineMethod(gateway) ? (
+                                                            <span className="text-[10px] text-blue-700 font-medium">ⓘ Você será levado ao ambiente seguro do Mercado Pago (Crédito/Débito).</span>
+                                                        ) : (
+                                                            gateway.toLowerCase().includes('cartão') && <span className="text-[10px] text-blue-600">ⓘ Maquininha na entrega.</span>
+                                                        )}
                                                     </div>
                                                 </label>
                                                 {isSelected && isCash && (
@@ -1064,6 +1208,61 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                     </div>
                 )}
 
+                {currentStep === 'CARD_REDIRECT' && (
+                    <div className="flex-1 overflow-y-auto w-full p-6 flex flex-col items-center justify-center text-center animate-fadeIn bg-white min-h-[340px]">
+                        {cardProError ? (
+                            <div className="p-6 bg-red-50 rounded-3xl border-2 border-red-100 flex flex-col items-center w-full max-w-sm">
+                                <div className="w-14 h-14 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-3">
+                                    <CreditCardIcon className="w-8 h-8" />
+                                </div>
+                                <p className="font-black text-red-900 uppercase tracking-tight mb-2">Não foi possível abrir o Mercado Pago</p>
+                                <p className="text-xs font-medium text-red-700 mb-5">{cardProError}</p>
+                                <button
+                                    type="button"
+                                    onClick={handlePrevStep}
+                                    className="bg-gray-900 text-white font-black text-xs uppercase tracking-wider px-6 py-3 rounded-xl hover:bg-gray-800 active:scale-95 transition-all"
+                                >
+                                    Voltar e escolher outro pagamento
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="w-full max-w-sm flex flex-col items-center">
+                                <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-4 border border-blue-100 shadow-sm">
+                                    <CreditCardIcon className="w-9 h-9" />
+                                </div>
+                                <h3 className="text-xl font-black text-gray-900 uppercase tracking-tight mb-2">
+                                    Ambiente Seguro Mercado Pago
+                                </h3>
+                                <p className="text-xs text-gray-600 leading-relaxed mb-5">
+                                    Estamos abrindo a tela oficial do <strong>Mercado Pago</strong> para você concluir o pagamento com seu cartão. Seus itens continuam salvos até a aprovação!
+                                </p>
+                                <div className="w-full bg-blue-50 border border-blue-100 rounded-2xl p-3 mb-5">
+                                    <p className="text-[11px] font-bold text-blue-900">
+                                        Total a pagar: <span className="text-base font-black">R$ {Number(finalPriceWithFee).toFixed(2).replace('.', ',')}</span>
+                                    </p>
+                                </div>
+                                {mpCheckoutUrl ? (
+                                    <a
+                                        href={mpCheckoutUrl}
+                                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 px-6 rounded-2xl shadow-lg shadow-blue-100 active:scale-95 transition-all text-sm uppercase tracking-wider block"
+                                    >
+                                        Ir para o Mercado Pago agora
+                                    </a>
+                                ) : (
+                                    <Spinner message="Conectando ao Mercado Pago..." />
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={handlePrevStep}
+                                    className="mt-4 text-xs font-bold text-gray-400 hover:text-gray-600 underline"
+                                >
+                                    Cancelar e trocar forma de pagamento
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {currentStep === 'SUCCESS' && (
                     <div className="text-center flex flex-col items-center justify-center p-8 bg-emerald-50 h-full animate-fadeIn min-h-[400px]">
                         <div className="relative mb-6">
@@ -1138,9 +1337,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, restaura
                                     type="submit" 
                                     form="checkout-form"
                                     disabled={isSubmitting || !isOpenNow || stepTransitionLock || !paymentMethod} 
-                                    className={`mt-1 text-white font-bold py-2.5 px-8 rounded-lg shadow-lg text-sm active:scale-95 transition-all ${!paymentMethod ? 'bg-gray-400 cursor-not-allowed' : 'bg-orange-600 hover:bg-orange-700'}`}
+                                    className={`mt-1 text-white font-bold py-2.5 px-8 rounded-lg shadow-lg text-sm active:scale-95 transition-all ${!paymentMethod ? 'bg-gray-400 cursor-not-allowed' : isCardOnlineMethod(paymentMethod) ? 'bg-blue-600 hover:bg-blue-700' : 'bg-orange-600 hover:bg-orange-700'}`}
                                 >
-                                    {isSubmitting ? '...' : (paymentMethod === 'Pix' ? 'Pagar Agora' : 'Confirmar Pedido')}
+                                    {isSubmitting ? '...' : (paymentMethod === 'Pix' ? 'Pagar Agora' : isCardOnlineMethod(paymentMethod) ? 'Pagar no Mercado Pago' : 'Confirmar Pedido')}
                                 </button>
                             )}
 

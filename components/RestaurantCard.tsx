@@ -123,6 +123,13 @@ const RestaurantCard: React.FC<RestaurantCardProps> = ({ restaurant, onClick, is
              <p className="text-xs text-gray-500 line-clamp-1 mb-1.5 font-medium">{restaurant.description}</p>
           )}
 
+          {restaurant.hasPreorderMode && (
+              <div className="mb-1.5 inline-flex items-center gap-1 bg-purple-50 border border-purple-200 text-purple-900 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider">
+                  <span>📅</span>
+                  <span>Encomenda: {restaurant.preorderDeliveryDay || 'Programada'} ({restaurant.preorderDeliveryTime || ''})</span>
+              </div>
+          )}
+
           {/* Exibição do horário dinâmico */}
           <div className="flex items-center gap-1.5 mb-1.5">
             <ClockIcon className={`w-3.5 h-3.5 flex-shrink-0 ${isOpen ? 'text-emerald-600' : 'text-amber-600'}`} />

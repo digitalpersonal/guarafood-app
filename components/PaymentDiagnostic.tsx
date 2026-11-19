@@ -31,6 +31,7 @@ const PaymentDiagnostic: React.FC<PaymentDiagnosticProps> = ({ restaurant }) => 
     if (!restaurant || isDismissed) return null;
 
     const hasPixEnabled = restaurant.paymentGateways?.some(g => g.toLowerCase() === 'pix') || false;
+    const hasCardOnlineEnabled = restaurant.paymentGateways?.some(g => g.toLowerCase().includes('mercado pago') && g.toLowerCase().includes('cartão')) || false;
     const hasManualPix = !!restaurant.manualPixKey && restaurant.manualPixKey.trim().length > 0;
     const hasMpToken = !!restaurant.mercado_pago_credentials?.accessToken && restaurant.mercado_pago_credentials.accessToken.trim().length > 0;
 
@@ -44,6 +45,10 @@ const PaymentDiagnostic: React.FC<PaymentDiagnosticProps> = ({ restaurant }) => 
         } else if (!hasMpToken && !hasManualPix) {
              warnings.push("Falta Chave Pix para o Pix funcionar (seja via Mercado Pago ou Chave Manual).");
         }
+    }
+
+    if (hasCardOnlineEnabled && !hasMpToken) {
+        warnings.push("O método 'Cartão Online (Mercado Pago)' está ativo, mas o Access Token do Mercado Pago ainda não foi configurado.");
     }
 
     if (hasMpToken && mpStatus === 'invalid' && !warnings.some(w => w.includes("Access Token"))) {

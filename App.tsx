@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Restaurant, MenuCategory, MenuItem, Combo, Addon, Promotion } from './types';
 import { fetchRestaurants, fetchMenuForRestaurant, fetchAddonsForRestaurant, fetchRestaurantById } from './services/databaseService';
 import { AuthProvider, useAuth } from './services/authService';
-import { getInitializationError, getErrorMessage } from './services/api';
+import { supabase, getInitializationError, getErrorMessage } from './services/api';
 import { isRestaurantOpen, isAvailableByTime, formatRestaurantWelcomeMessage, getRestaurantMenuUrl } from './utils/restaurantUtils';
 
 import RestaurantCard from './components/RestaurantCard';
@@ -299,7 +299,33 @@ const RestaurantMenu: React.FC<{ restaurant: Restaurant, onBack: () => void }> =
 
             <div className="p-4 bg-white rounded-t-2xl -mt-4 relative z-20 text-center border-b shadow-sm">
                 <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{restaurant.name}</h1>
-                <p className="text-gray-600 mt-1 text-sm font-medium uppercase tracking-wide">{restaurant.category}</p>
+                {restaurant.informacao_especial && restaurant.informacao_especial.trim() !== '' && (
+                    <div className="mt-3 mx-auto max-w-2xl bg-amber-50 border border-amber-300 text-amber-950 px-4 py-3 rounded-xl shadow-sm flex items-start justify-center gap-2.5 text-left">
+                        <span className="text-lg leading-none flex-shrink-0 mt-0.5" aria-hidden="true">📢</span>
+                        <p className="text-xs sm:text-sm font-bold leading-snug whitespace-pre-line">
+                            {restaurant.informacao_especial.trim()}
+                        </p>
+                    </div>
+                )}
+
+                {restaurant.hasPreorderMode && (
+                    <div className="mt-3 mx-auto max-w-2xl bg-gradient-to-r from-purple-50 to-indigo-50 border-2 border-purple-300 text-purple-950 px-5 py-3.5 rounded-2xl shadow-sm flex items-center justify-center gap-3 text-left">
+                        <span className="text-2xl flex-shrink-0" aria-hidden="true">📅</span>
+                        <div>
+                            <div className="text-xs font-black uppercase tracking-wider text-purple-800">Modo Encomenda Programada</div>
+                            <div className="text-sm font-black text-purple-950 mt-0.5">
+                                Entrega: {restaurant.preorderDeliveryDay || 'Programada'} {restaurant.preorderDeliveryTime ? `das ${restaurant.preorderDeliveryTime}` : ''}
+                            </div>
+                            {restaurant.preorderCutoffInfo && (
+                                <div className="text-xs font-bold text-purple-700 mt-0.5">
+                                    ⏱️ {restaurant.preorderCutoffInfo}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                <p className="text-gray-600 mt-2 text-sm font-medium uppercase tracking-wide">{restaurant.category}</p>
                 {!isRestaurantOpen(restaurant) && (
                     <div className="mt-3 inline-flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 px-3.5 py-1.5 rounded-full text-xs font-bold shadow-sm">
                         <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
@@ -663,7 +689,7 @@ const AppContent: React.FC = () => {
     const [view, setView] = useState<'customer' | 'login' | 'history' | 'help'>('customer');
     const { currentUser, loading } = useAuth();
     const { cartItems, clearCart, cartRestaurantId } = useCart();
-    const { confirm } = useNotification();
+    const { confirm, addToast } = useNotification();
     const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
     const [selectedCity, setSelectedCity] = useState<string>(() => getSelectedCity());
     const [isCityModalOpen, setIsCityModalOpen] = useState(false);
@@ -721,10 +747,14 @@ const AppContent: React.FC = () => {
         window.scrollTo(0, 0);
     }, [selectedRestaurant, view]);
 
-    // Deep Link Logic: Check for restaurant ID in URL
+    // Deep Link Logic: Check for restaurant ID and Mercado Pago return params in URL
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const restaurantIdParam = params.get('r');
+        const mpStatus = params.get('mp_status');
+        const mpOrderId = params.get('orderId');
+        const mpPaymentId = params.get('payment_id') || params.get('collection_id');
+
         if (restaurantIdParam) {
             const id = parseInt(restaurantIdParam, 10);
             if (!isNaN(id)) {
@@ -736,7 +766,103 @@ const AppContent: React.FC = () => {
                 }).catch(err => console.error("Deep link fetch error:", err));
             }
         }
-    }, []);
+
+        const persistReturnedOrderId = (orderId: string) => {
+            try {
+                const active = JSON.parse(localStorage.getItem('guarafood-active-orders') || '[]');
+                if (!active.includes(orderId)) {
+                    active.push(orderId);
+                    localStorage.setItem('guarafood-active-orders', JSON.stringify(active));
+                }
+                const historyIds = JSON.parse(localStorage.getItem('guarafood-order-history-ids') || '[]');
+                if (!historyIds.includes(orderId)) {
+                    historyIds.push(orderId);
+                    localStorage.setItem('guarafood-order-history-ids', JSON.stringify(historyIds));
+                }
+            } catch {}
+        };
+
+        if (mpStatus && mpOrderId) {
+            persistReturnedOrderId(mpOrderId);
+
+            if (mpStatus === 'success') {
+                const verifyAndConfirm = async () => {
+                    if (mpPaymentId && restaurantIdParam) {
+                        try {
+                            await supabase.functions.invoke('create-payment', {
+                                body: {
+                                    action: 'verify',
+                                    restaurantId: Number(restaurantIdParam),
+                                    orderId: mpOrderId,
+                                    paymentId: mpPaymentId
+                                }
+                            });
+                        } catch (err) {
+                            console.warn("Erro na verificação imediata do pagamento MP:", err);
+                        }
+                    }
+                    clearCart();
+                    try { localStorage.removeItem('guarafood-pending-mp-checkout'); } catch {}
+                    addToast({ message: 'Pagamento aprovado no Mercado Pago! Seu pedido foi enviado.', type: 'success', duration: 6000 });
+                    window.dispatchEvent(new Event('guarafood:update-orders'));
+                    window.dispatchEvent(new Event('guarafood:open-tracker'));
+                };
+                verifyAndConfirm();
+            } else if (mpStatus === 'pending') {
+                clearCart();
+                try { localStorage.removeItem('guarafood-pending-mp-checkout'); } catch {}
+                addToast({ message: 'Pagamento em análise no Mercado Pago. Acompanhe o status do seu pedido.', type: 'info', duration: 6000 });
+                window.dispatchEvent(new Event('guarafood:update-orders'));
+                window.dispatchEvent(new Event('guarafood:open-tracker'));
+            } else if (mpStatus === 'failure') {
+                try { localStorage.removeItem('guarafood-pending-mp-checkout'); } catch {}
+                addToast({ message: 'O pagamento não foi concluído no Mercado Pago. Seus itens continuam no carrinho.', type: 'warning', duration: 6000 });
+            }
+
+            // Limpa parâmetros de retorno do Mercado Pago mantendo ?r= se existir
+            const nextUrl = restaurantIdParam
+                ? `${window.location.pathname}?r=${encodeURIComponent(restaurantIdParam)}`
+                : window.location.pathname;
+            window.history.replaceState({}, '', nextUrl);
+        }
+    }, [clearCart, addToast]);
+
+    // Fallback caso o cliente volte pelo botão "Voltar" do navegador após aprovar no Mercado Pago
+    useEffect(() => {
+        const checkPendingMpCheckout = async () => {
+            try {
+                const raw = localStorage.getItem('guarafood-pending-mp-checkout');
+                if (!raw) return;
+                const pending = JSON.parse(raw);
+                if (!pending?.orderId) {
+                    localStorage.removeItem('guarafood-pending-mp-checkout');
+                    return;
+                }
+                // Limpa se tiver mais de 1 hora
+                if (pending.createdAt && Date.now() - pending.createdAt > 60 * 60 * 1000) {
+                    localStorage.removeItem('guarafood-pending-mp-checkout');
+                    return;
+                }
+                const { data } = await supabase
+                    .from('orders')
+                    .select('id, status, payment_status')
+                    .eq('id', pending.orderId)
+                    .maybeSingle();
+
+                if (data && (data.payment_status === 'paid' || (data.status !== 'Aguardando Pagamento' && data.status !== 'Cancelado'))) {
+                    clearCart();
+                    localStorage.removeItem('guarafood-pending-mp-checkout');
+                    addToast({ message: 'Pagamento confirmado no Mercado Pago! Acompanhe seu pedido.', type: 'success', duration: 5000 });
+                    window.dispatchEvent(new Event('guarafood:update-orders'));
+                    window.dispatchEvent(new Event('guarafood:open-tracker'));
+                }
+            } catch {}
+        };
+
+        checkPendingMpCheckout();
+        window.addEventListener('focus', checkPendingMpCheckout);
+        return () => window.removeEventListener('focus', checkPendingMpCheckout);
+    }, [clearCart, addToast]);
 
     // Remove Splash Screen on mount
     useEffect(() => {
@@ -868,8 +994,10 @@ const usePersistentVersion = () => {
             // Grava a nova versão atualizada
             localStorage.setItem('guarafood_app_version', APP_VERSION);
 
-            // Recarrega a página forçando bypass de cache
-            window.location.href = window.location.pathname + '?v=' + Date.now() + window.location.hash;
+            // Recarrega a página forçando bypass de cache, preservando query params (ex: retorno Mercado Pago ou ?r=ID)
+            const reloadParams = new URLSearchParams(window.location.search);
+            reloadParams.set('v', String(Date.now()));
+            window.location.href = window.location.pathname + '?' + reloadParams.toString() + window.location.hash;
         };
 
         if (!storedVersion || storedVersion !== APP_VERSION) {
@@ -885,7 +1013,9 @@ const usePersistentVersion = () => {
                     if (data && data.version && data.version !== APP_VERSION) {
                         console.log(`[GuaraFood] Nova versão de deploy detectada no servidor: ${data.version}. Atualizando...`);
                         localStorage.setItem('guarafood_app_version', data.version);
-                        window.location.href = window.location.pathname + '?v=' + Date.now() + window.location.hash;
+                        const reloadParams = new URLSearchParams(window.location.search);
+                        reloadParams.set('v', String(Date.now()));
+                        window.location.href = window.location.pathname + '?' + reloadParams.toString() + window.location.hash;
                     }
                 }
             } catch (error) {

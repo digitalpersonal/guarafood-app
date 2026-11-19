@@ -20,6 +20,7 @@ const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta',
 
 const PREDEFINED_PAYMENT_METHODS = [
     "Pix",
+    "Cartão Online (Mercado Pago)",
     "Cartão de Crédito",
     "Cartão de Débito",
     "Cartão Alelo (Voucher)",
@@ -52,6 +53,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
     const [formData, setFormData] = useState<FormData>({
         name: '',
         category: '',
+        informacao_especial: '',
         city: 'Guaranésia',
         deliveryTime: '',
         rating: 0,
@@ -132,6 +134,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                 paymentGateways: Array.isArray(existingRestaurant.paymentGateways) ? existingRestaurant.paymentGateways : [],
                 category: typeof existingRestaurant.category === 'string' ? existingRestaurant.category : '',
                 name: existingRestaurant.name || '',
+                informacao_especial: existingRestaurant.informacao_especial || '',
                 address: existingRestaurant.address || '',
                 phone: existingRestaurant.phone || '',
                 deliveryFee: existingRestaurant.deliveryFee || 0,
@@ -140,7 +143,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             setChangeCredentials(false);
         } else {
             setFormData({
-                name: '', category: '', city: 'Guaranésia', deliveryTime: '', rating: 0, imageUrl: '', paymentGateways: [],
+                name: '', category: '', informacao_especial: '', city: 'Guaranésia', deliveryTime: '', rating: 0, imageUrl: '', paymentGateways: [],
                 address: '', phone: '', openingHours: '', closingHours: '', deliveryFee: 0,
                 mercado_pago_credentials: { accessToken: '' }, 
                 asaas_credentials: { apiKey: '' },
@@ -194,6 +197,7 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
         const dbPayload: any = {
             name: formData.name, 
             category: formData.category, 
+            informacao_especial: (formData.informacao_especial || '').trim(),
             city: formData.city || 'Guaranésia',
             delivery_time: formData.deliveryTime,
             rating: formData.rating, 
@@ -210,7 +214,11 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
             },
             selected_payment_gateway: formData.selectedPaymentGateway,
             manual_pix_key: (formData.manualPixKey || '').trim(),
-            active: formData.active
+            active: formData.active,
+            has_preorder_mode: Boolean(formData.hasPreorderMode),
+            preorder_delivery_day: (formData.preorderDeliveryDay || '').trim(),
+            preorder_delivery_time: (formData.preorderDeliveryTime || '').trim(),
+            preorder_cutoff_info: (formData.preorderCutoffInfo || '').trim()
         };
 
         // Apenas inclui horários iniciais padrão se for um novo restaurante
@@ -270,6 +278,79 @@ const RestaurantEditorModal: React.FC<RestaurantEditorModalProps> = ({ isOpen, o
                             Nome fantasia exibido aos clientes no aplicativo.
                         </p>
                         <input name="name" value={formData.name} onChange={handleChange} placeholder="Ex: Pastelaria Renovação" className="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-orange-500 font-bold text-gray-800" />
+                    </div>
+
+                    <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5">
+                        <label className="block text-xs font-black text-amber-900 uppercase mb-1">
+                            📢 Informação Especial / Banner de Aviso (Opcional)
+                        </label>
+                        <p className="text-[11px] text-amber-800 mb-2 font-medium leading-tight">
+                            Aparece como um banner de destaque logo abaixo do nome do restaurante no cardápio (ideal para avisar sobre encomendas agendadas, dias e horários de entrega). Deixe vazio para não exibir.
+                        </p>
+                        <textarea
+                            name="informacao_especial"
+                            rows={2}
+                            value={formData.informacao_especial || ''}
+                            onChange={handleChange}
+                            placeholder="Ex: Somente por encomenda! Entregas toda Sexta-feira das 18h às 21h."
+                            className="w-full p-2.5 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 bg-white text-sm font-medium text-gray-800"
+                        />
+                    </div>
+
+                    <div className="bg-purple-50/70 border-2 border-purple-200 rounded-2xl p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <span className="text-xl">📅</span>
+                                <div>
+                                    <h4 className="font-black text-sm text-purple-950 uppercase">Modo Encomenda Programada</h4>
+                                    <p className="text-xs text-purple-800">Aceite pedidos na semana para entrega em dia e horário específicos (ex: comida japonesa).</p>
+                                </div>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    checked={Boolean(formData.hasPreorderMode)} 
+                                    onChange={e => setFormData(prev => ({ ...prev, hasPreorderMode: e.target.checked }))}
+                                    className="sr-only peer"
+                                />
+                                <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                            </label>
+                        </div>
+
+                        {formData.hasPreorderMode && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-purple-200">
+                                <div>
+                                    <label className="block text-[11px] font-black text-purple-950 uppercase mb-1">Dia da Entrega</label>
+                                    <input 
+                                        name="preorderDeliveryDay" 
+                                        value={formData.preorderDeliveryDay || ''} 
+                                        onChange={handleChange} 
+                                        placeholder="Ex: Sexta-feira" 
+                                        className="w-full p-2.5 bg-white border border-purple-300 rounded-xl font-bold text-xs" 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] font-black text-purple-950 uppercase mb-1">Horário de Entrega</label>
+                                    <input 
+                                        name="preorderDeliveryTime" 
+                                        value={formData.preorderDeliveryTime || ''} 
+                                        onChange={handleChange} 
+                                        placeholder="Ex: 18:00 às 21:00" 
+                                        className="w-full p-2.5 bg-white border border-purple-300 rounded-xl font-bold text-xs" 
+                                    />
+                                </div>
+                                <div className="sm:col-span-2">
+                                    <label className="block text-[11px] font-black text-purple-950 uppercase mb-1">Informações de Corte (Opcional)</label>
+                                    <input 
+                                        name="preorderCutoffInfo" 
+                                        value={formData.preorderCutoffInfo || ''} 
+                                        onChange={handleChange} 
+                                        placeholder="Ex: Pedidos até quinta às 20h" 
+                                        className="w-full p-2.5 bg-white border border-purple-300 rounded-xl font-bold text-xs" 
+                                    />
+                                </div>
+                            </div>
+                        )}
                     </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

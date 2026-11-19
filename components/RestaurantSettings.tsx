@@ -331,9 +331,11 @@ const RestaurantSettings: React.FC<{
     const { addToast, confirm } = useNotification();
     const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
     const [city, setCity] = useState('Guaranésia');
+    const [informacaoEspecial, setInformacaoEspecial] = useState('');
     const [mercadoPagoToken, setMercadoPagoToken] = useState('');
     const [asaasApiKey, setAsaasApiKey] = useState('');
     const [selectedPaymentGateway, setSelectedPaymentGateway] = useState<'mercadopago' | 'asaas'>('mercadopago');
+    const [paymentGateways, setPaymentGateways] = useState<string[]>([]);
     const [manualPixKey, setManualPixKey] = useState('');
     const [bannerImageUrl, setBannerImageUrl] = useState('');
     const [hasMensalistas, setHasMensalistas] = useState(false);
@@ -389,6 +391,10 @@ const RestaurantSettings: React.FC<{
     const [certFileName, setCertFileName] = useState('');
     const [isTestingFiscal, setIsTestingFiscal] = useState(false);
     const [showXmlValidatorModal, setShowXmlValidatorModal] = useState(false);
+    const [hasPreorderMode, setHasPreorderMode] = useState(false);
+    const [preorderDeliveryDay, setPreorderDeliveryDay] = useState('');
+    const [preorderDeliveryTime, setPreorderDeliveryTime] = useState('');
+    const [preorderCutoffInfo, setPreorderCutoffInfo] = useState('');
     const [printerWidth, setPrinterWidth] = useState(80);
     const [operatingHours, setOperatingHours] = useState<OperatingHours[]>(getDefaultOperatingHours());
     const [isLoading, setIsLoading] = useState(true);
@@ -421,9 +427,17 @@ const RestaurantSettings: React.FC<{
                 setRestaurant(data);
                 localStorage.setItem('guarafood-cached-restaurant', JSON.stringify(data));
                 setCity(data.city || 'Guaranésia');
+                setInformacaoEspecial(data.informacao_especial || '');
+                setHasPreorderMode(data.hasPreorderMode || false);
+                setPreorderDeliveryDay(data.preorderDeliveryDay || '');
+                setPreorderDeliveryTime(data.preorderDeliveryTime || '');
+                setPreorderCutoffInfo(data.preorderCutoffInfo || '');
                 setMercadoPagoToken(data.mercado_pago_credentials?.accessToken || '');
                 setAsaasApiKey(data.asaas_credentials?.apiKey || '');
                 setSelectedPaymentGateway(data.selectedPaymentGateway || 'mercadopago');
+                setPaymentGateways(Array.isArray(data.paymentGateways) && data.paymentGateways.length > 0
+                    ? data.paymentGateways
+                    : ['Pix', 'Cartão de Crédito', 'Cartão de Débito', 'Cartão Alelo (Voucher)', 'Dinheiro']);
                 setManualPixKey(data.manualPixKey || '');
                 setBannerImageUrl(data.bannerImageUrl || '');
                 setHasMensalistas(data.hasMensalistas || false);
@@ -488,9 +502,15 @@ const RestaurantSettings: React.FC<{
         try {
             await updateRestaurant(restaurantId, {
                 city: city,
+                informacao_especial: informacaoEspecial.trim(),
+                hasPreorderMode: hasPreorderMode,
+                preorderDeliveryDay: preorderDeliveryDay.trim(),
+                preorderDeliveryTime: preorderDeliveryTime.trim(),
+                preorderCutoffInfo: preorderCutoffInfo.trim(),
                 mercado_pago_credentials: { accessToken: cleanMpToken },
                 asaas_credentials: { apiKey: (asaasApiKey || '').trim() },
                 selectedPaymentGateway: selectedPaymentGateway,
+                paymentGateways: paymentGateways,
                 operatingHours: operatingHours,
                 marmitaStartTime: restaurant.marmitaStartTime,
                 marmitaEndTime: restaurant.marmitaEndTime,
@@ -709,7 +729,7 @@ const RestaurantSettings: React.FC<{
                 </div>
 
                 <div className="mb-10 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-                    <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Configuração de Pagamento (Pix)</h3>
+                    <h3 className="text-md font-black text-gray-800 mb-4 uppercase tracking-widest">Configuração de Pagamento (Pix e Cartão Online)</h3>
                     
                     <div className="mb-6">
                         <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">Gateway Ativo</label>
@@ -726,9 +746,48 @@ const RestaurantSettings: React.FC<{
                     </div>
 
                     {selectedPaymentGateway === 'mercadopago' ? (
-                        <div>
-                            <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1 ml-1">Token de Acesso (Mercado Pago)</label>
-                            <input type="password" value={mercadoPagoToken} onChange={e => setMercadoPagoToken(e.target.value)} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50" />
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1 ml-1">Token de Acesso (Mercado Pago)</label>
+                                <input type="password" value={mercadoPagoToken} onChange={e => setMercadoPagoToken(e.target.value)} className="w-full p-3 border rounded-xl font-mono text-sm bg-gray-50" placeholder="APP_USR-..." />
+                            </div>
+
+                            <label className="flex items-center justify-between cursor-pointer p-4 bg-blue-50/70 rounded-xl border border-blue-200 hover:bg-blue-50 transition-colors gap-4">
+                                <div>
+                                    <span className="font-bold text-blue-950 block text-sm">💳 Aceitar Cartão Online (Mercado Pago Checkout Pro)</span>
+                                    <span className="text-[11px] text-blue-800 block mt-0.5 leading-snug">
+                                        O cliente é direcionado ao ambiente seguro do Mercado Pago para pagar com Crédito ou Débito e volta ao GuaraFood. O webhook confirma automaticamente igual ao Pix.
+                                    </span>
+                                </div>
+                                <div className="relative flex-shrink-0">
+                                    <input
+                                        type="checkbox"
+                                        className="sr-only peer"
+                                        checked={paymentGateways.includes('Cartão Online (Mercado Pago)')}
+                                        onChange={e => {
+                                            const checked = e.target.checked;
+                                            setPaymentGateways(prev => {
+                                                const withoutCardOnline = prev.filter(m => m !== 'Cartão Online (Mercado Pago)');
+                                                if (!checked) return withoutCardOnline;
+                                                const pixIdx = withoutCardOnline.findIndex(m => m.toLowerCase() === 'pix');
+                                                if (pixIdx >= 0) {
+                                                    const copy = [...withoutCardOnline];
+                                                    copy.splice(pixIdx + 1, 0, 'Cartão Online (Mercado Pago)');
+                                                    return copy;
+                                                }
+                                                return ['Cartão Online (Mercado Pago)', ...withoutCardOnline];
+                                            });
+                                        }}
+                                    />
+                                    <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                </div>
+                            </label>
+
+                            {paymentGateways.includes('Cartão Online (Mercado Pago)') && !mercadoPagoToken.trim() && (
+                                <p className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 p-3 rounded-xl">
+                                    ⚠️ Preencha o Access Token do Mercado Pago acima e clique em "Sincronizar Lojas" no fim da página para o cartão online funcionar.
+                                </p>
+                            )}
                         </div>
                     ) : (
                         <div>
@@ -747,6 +806,83 @@ const RestaurantSettings: React.FC<{
                         onUpdate={setBannerImageUrl} 
                     />
                 )}
+
+                {/* --- INFORMAÇÃO ESPECIAL / AVISO NO CARDÁPIO --- */}
+                <div className="mb-10 bg-amber-50 p-6 rounded-2xl border-2 border-amber-200 shadow-sm">
+                    <div className="flex items-center gap-3 mb-2">
+                        <span className="text-2xl">📢</span>
+                        <div>
+                            <h3 className="text-md font-black text-amber-950 uppercase tracking-tight">Informação Especial (Banner no Cardápio)</h3>
+                            <p className="text-xs text-amber-800 font-medium">Exibida logo abaixo do nome da loja para avisar sobre encomendas agendadas ou regras especiais. Deixe vazio para ocultar.</p>
+                        </div>
+                    </div>
+                    <div className="mt-3">
+                        <textarea
+                            rows={2}
+                            value={informacaoEspecial}
+                            onChange={e => setInformacaoEspecial(e.target.value)}
+                            placeholder="Ex: Somente encomendas! Entregas toda Sexta-feira das 18h às 21h."
+                            className="w-full p-3.5 border-2 border-amber-300 rounded-xl font-medium text-gray-900 bg-white focus:ring-2 focus:ring-amber-500 outline-none shadow-inner text-sm"
+                        />
+                    </div>
+                </div>
+
+                {/* --- MODO ENCOMENDA PROGRAMADA --- */}
+                <div className="mb-10 bg-purple-50 p-6 rounded-2xl border-2 border-purple-200 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                            <span className="text-2xl">📅</span>
+                            <div>
+                                <h3 className="text-md font-black text-purple-950 uppercase tracking-tight">Modo Encomenda Programada</h3>
+                                <p className="text-xs text-purple-800 font-medium">Aceite encomendas na semana para entrega em dia e horário específicos (ex: comida japonesa).</p>
+                            </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                checked={hasPreorderMode} 
+                                onChange={e => setHasPreorderMode(e.target.checked)}
+                                className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                        </label>
+                    </div>
+
+                    {hasPreorderMode && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-purple-200 mt-3">
+                            <div>
+                                <label className="block text-xs font-black text-purple-950 uppercase mb-1">Dia da Entrega</label>
+                                <input 
+                                    type="text" 
+                                    value={preorderDeliveryDay} 
+                                    onChange={e => setPreorderDeliveryDay(e.target.value)} 
+                                    placeholder="Ex: Sexta-feira" 
+                                    className="w-full p-3 bg-white border-2 border-purple-300 rounded-xl font-bold text-sm" 
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-black text-purple-950 uppercase mb-1">Horário de Entrega</label>
+                                <input 
+                                    type="text" 
+                                    value={preorderDeliveryTime} 
+                                    onChange={e => setPreorderDeliveryTime(e.target.value)} 
+                                    placeholder="Ex: 18:00 às 21:00" 
+                                    className="w-full p-3 bg-white border-2 border-purple-300 rounded-xl font-bold text-sm" 
+                                />
+                            </div>
+                            <div className="sm:col-span-2">
+                                <label className="block text-xs font-black text-purple-950 uppercase mb-1">Informações de Corte (Opcional)</label>
+                                <input 
+                                    type="text" 
+                                    value={preorderCutoffInfo} 
+                                    onChange={e => setPreorderCutoffInfo(e.target.value)} 
+                                    placeholder="Ex: Pedidos até quinta às 20h" 
+                                    className="w-full p-3 bg-white border-2 border-purple-300 rounded-xl font-bold text-sm" 
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
 
                 {/* --- CIDADE ATENDIDA (MULTI-CIDADES) --- */}
                 <div className="mb-10 bg-gradient-to-r from-orange-50 to-amber-50 p-6 rounded-2xl border-2 border-orange-200 shadow-sm">

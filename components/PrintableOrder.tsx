@@ -284,6 +284,22 @@ const PrintableOrder: React.FC<PrintableOrderProps> = ({ order, printerWidth = 8
                     </div>
                 </div>
 
+                {order.preorderInfo && (
+                    <div style={{
+                        border: '3px solid #000',
+                        backgroundColor: '#000',
+                        color: '#fff',
+                        textAlign: 'center',
+                        padding: '6px',
+                        margin: '4px 0',
+                        fontSize: headerFontSize,
+                        fontWeight: '900',
+                        textTransform: 'uppercase'
+                    }}>
+                        *** {order.preorderInfo.toUpperCase()} ***
+                    </div>
+                )}
+
                 <div className="section-divider"></div>
 
                 {/* MODO DE ENTREGA */}

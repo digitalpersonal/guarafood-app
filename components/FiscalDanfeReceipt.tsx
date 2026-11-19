@@ -96,13 +96,13 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
         }
     }, [qrPayload]);
 
-    // Tipografia de alto contraste (#000 puro) otimizada para bobina térmica (80mm / 58mm) e pré-visualização
-    const baseFontSize = is58mm ? '11px' : '12px';
-    const headerFontSize = is58mm ? '13.5px' : '15px';
-    const smallFontSize = is58mm ? '10px' : '11px';
-    const microFontSize = is58mm ? '9px' : '9.5px';
-    const totalFontSize = is58mm ? '14px' : '16px';
-    const qrDisplaySize = is58mm ? 116 : 142;
+    // Tipografia de alto contraste (#000 puro) e maior legibilidade em bobinas térmicas (especialmente 58mm e 80mm)
+    const baseFontSize = is58mm ? '13.5px' : '14px';
+    const headerFontSize = is58mm ? '16px' : '17px';
+    const smallFontSize = is58mm ? '12.5px' : '13px';
+    const microFontSize = is58mm ? '11.5px' : '12px';
+    const totalFontSize = is58mm ? '17px' : '18px';
+    const qrDisplaySize = is58mm ? 124 : 148;
 
     const cleanDoc = order.customerDocument ? order.customerDocument.replace(/\D/g, '') : '';
     const docLabel = cleanDoc.length === 14 ? 'CNPJ' : 'CPF';
@@ -114,8 +114,8 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
                 width: '100%',
                 fontFamily: "Arial, Helvetica, -apple-system, sans-serif",
                 fontSize: baseFontSize,
-                fontWeight: 600,
-                lineHeight: 1.25,
+                fontWeight: 700,
+                lineHeight: 1.3,
                 color: '#000',
                 backgroundColor: '#fff',
                 boxSizing: 'border-box',
@@ -172,13 +172,13 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
             <div style={{ borderTop: '1.5px dashed #000', margin: '5px 0', width: '100%' }}></div>
 
             {/* TABELA DE ITENS */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: smallFontSize, tableLayout: 'fixed' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: is58mm ? '12px' : '13px', tableLayout: 'fixed' }}>
                 <thead>
-                    <tr style={{ borderBottom: '1.5px solid #000', textAlign: 'left' }}>
-                        <th style={{ paddingBottom: '3px', fontWeight: 900, width: '46%', textAlign: 'left' }}>CÓD | DESCRIÇÃO</th>
-                        <th style={{ paddingBottom: '3px', fontWeight: 900, textAlign: 'center', width: '16%' }}>QTD</th>
-                        <th style={{ paddingBottom: '3px', fontWeight: 900, textAlign: 'right', width: '18%' }}>VL.UN</th>
-                        <th style={{ paddingBottom: '3px', fontWeight: 900, textAlign: 'right', width: '20%' }}>TOTAL</th>
+                    <tr style={{ borderBottom: '1.5px solid #000', textAlign: 'left', fontSize: is58mm ? '11.5px' : '12.5px' }}>
+                        <th style={{ paddingBottom: '3px', fontWeight: 900, width: '44%', textAlign: 'left' }}>CÓD | DESC</th>
+                        <th style={{ paddingBottom: '3px', fontWeight: 900, textAlign: 'center', width: '14%' }}>QTD</th>
+                        <th style={{ paddingBottom: '3px', fontWeight: 900, textAlign: 'right', width: '20%' }}>VL.UN</th>
+                        <th style={{ paddingBottom: '3px', fontWeight: 900, textAlign: 'right', width: '22%' }}>TOTAL</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -195,13 +195,13 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
                                         {item.weight && item.isKiloItem ? ` (${Number(item.weight).toFixed(3)}kg)` : ''}
                                     </div>
                                     {item.notes && (
-                                        <div style={{ fontSize: microFontSize, fontWeight: 600, marginTop: '1px' }}>
+                                        <div style={{ fontSize: microFontSize, fontWeight: 700, marginTop: '1px' }}>
                                             Obs: {sanitizeFiscalText(item.notes)}
                                         </div>
                                     )}
                                 </td>
                                 <td style={{ padding: '3px 0', textAlign: 'center', whiteSpace: 'nowrap', fontWeight: 700 }}>
-                                    {qty} UN
+                                    {qty}x
                                 </td>
                                 <td style={{ padding: '3px 0', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700 }}>
                                     {unitPrice.toFixed(2)}
@@ -299,10 +299,11 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
                 <div style={{
                     fontFamily: "'Courier New', Courier, monospace",
                     fontWeight: 900,
-                    fontSize: is58mm ? '9px' : '10px',
-                    letterSpacing: '0.3px',
-                    marginTop: '3px',
-                    marginBottom: '4px'
+                    fontSize: is58mm ? '11.5px' : '12px',
+                    letterSpacing: '0.2px',
+                    marginTop: '4px',
+                    marginBottom: '4px',
+                    wordBreak: 'break-word'
                 }}>
                     {formattedKey}
                 </div>
