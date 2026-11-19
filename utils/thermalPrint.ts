@@ -245,7 +245,8 @@ export const printThermalElement = (
     .fiscal-danfe-ticket {
       display: block !important;
       width: 100% !important;
-      font-family: 'Courier New', Courier, monospace !important;
+      font-family: Arial, Helvetica, sans-serif !important;
+      font-weight: 700 !important;
       padding: 1mm ${sidePadding} 4mm ${sidePadding} !important;
     }
     table {

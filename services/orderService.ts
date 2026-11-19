@@ -42,7 +42,8 @@ const normalizeOrder = (data: any): Order => {
         fiscalXmlUrl: data.fiscal_xml_url || data.payment_details?.fiscal?.xml_url,
         fiscalKey: data.fiscal_key || data.payment_details?.fiscal?.chave,
         fiscalNumber: data.fiscal_number || data.payment_details?.fiscal?.numero,
-        fiscalMessage: data.fiscal_message || data.payment_details?.fiscal?.mensagem
+        fiscalMessage: data.fiscal_message || data.payment_details?.fiscal?.mensagem,
+        preorderInfo: data.preorder_info || data.payment_details?.preorderInfo || null
     };
 };
 
@@ -179,10 +180,10 @@ export const fetchOrders = async (restaurantId?: number, options?: { limit?: num
     const finalLimit = options?.limit || 150;
     query = query.limit(finalLimit);
 
-    // Filtra apenas pedidos das últimas 48 horas para evitar poluição visual com pedidos antigos esquecidos
-    const fortyEightHoursAgo = new Date();
-    fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48);
-    query = query.gte('timestamp', fortyEightHoursAgo.toISOString());
+    // Pedidos ativos (Novo Pedido, Preparando, A Caminho, Aguardando Pagamento) nunca somem. Histórico usa 14 dias.
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+    query = query.or(`timestamp.gte.${fourteenDaysAgo.toISOString()},status.in.(Novo Pedido,Preparando,A Caminho,Aguardando Pagamento)`);
 
     const { data, error } = await query.order('timestamp', { ascending: false });
     if (error) {
@@ -236,6 +237,7 @@ export interface NewOrderData {
     status?: OrderStatus;
     mensalistaId?: string; // NEW: Para pedidos de mensalistas
     pointsRedeemed?: number; // NEW: Pontos de fidelidade resgatados
+    preorderInfo?: string;
 }
 
 export const createOrder = async (
@@ -274,6 +276,7 @@ export const createOrder = async (
             payment_status: isTable ? 'pending' : 'paid',
             timestamp: new Date().toISOString(),
             mensalista_id: orderData.mensalistaId, // NEW
+            preorder_info: orderData.preorderInfo || '',
         };
 
         const { data, error } = await supabase.from('orders').insert(newOrderPayload).select().single();

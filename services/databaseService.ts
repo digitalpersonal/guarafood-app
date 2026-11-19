@@ -141,6 +141,7 @@ const normalizeRestaurant = (data: any): Restaurant => {
         name: data.name,
         category: data.category,
         description: data.description,
+        informacao_especial: data.informacao_especial || '',
         city: data.city || 'Guaranésia',
         deliveryTime: data.delivery_time,
         rating: data.rating,
@@ -153,6 +154,7 @@ const normalizeRestaurant = (data: any): Restaurant => {
         deliveryFee: data.delivery_fee,
         operatingHours: ensureOperatingHours(data.operating_hours),
         mercado_pago_credentials: { accessToken: hasMpToken ? "PROTECTED" : "" },
+        selectedPaymentGateway: data.selected_payment_gateway || 'mercadopago',
         manualPixKey: data.manual_pix_key,
         hasPixConfigured: hasMpToken,
         active: data.active !== false,
@@ -180,7 +182,11 @@ const normalizeRestaurant = (data: any): Restaurant => {
         nuvemClientId: data.nuvem_client_id || undefined,
         nuvemClientSecret: data.nuvem_client_secret || undefined,
         printers: extractPrinters(data),
-        autoPrintOrders: extractAutoPrintOrders(data)
+        autoPrintOrders: extractAutoPrintOrders(data),
+        hasPreorderMode: data.has_preorder_mode || data.hasPreorderMode || false,
+        preorderDeliveryDay: data.preorder_delivery_day || data.preorderDeliveryDay || '',
+        preorderDeliveryTime: data.preorder_delivery_time || data.preorderDeliveryTime || '',
+        preorderCutoffInfo: data.preorder_cutoff_info || data.preorderCutoffInfo || ''
     };
 };
 
@@ -203,6 +209,7 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         name: data.name,
         category: data.category,
         description: data.description,
+        informacao_especial: data.informacao_especial || '',
         city: data.city || 'Guaranésia',
         deliveryTime: data.delivery_time,
         rating: data.rating,
@@ -215,6 +222,7 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         deliveryFee: data.delivery_fee,
         operatingHours: ensureOperatingHours(data.operating_hours),
         mercado_pago_credentials: mpCreds,
+        selectedPaymentGateway: data.selected_payment_gateway || 'mercadopago',
         manualPixKey: data.manual_pix_key,
         hasPixConfigured: hasMpToken,
         active: data.active !== false,
@@ -242,7 +250,11 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         nuvemClientId: data.nuvem_client_id || undefined,
         nuvemClientSecret: data.nuvem_client_secret || undefined,
         printers: extractPrinters(data),
-        autoPrintOrders: extractAutoPrintOrders(data)
+        autoPrintOrders: extractAutoPrintOrders(data),
+        hasPreorderMode: data.has_preorder_mode || data.hasPreorderMode || false,
+        preorderDeliveryDay: data.preorder_delivery_day || data.preorderDeliveryDay || '',
+        preorderDeliveryTime: data.preorder_delivery_time || data.preorderDeliveryTime || '',
+        preorderCutoffInfo: data.preorder_cutoff_info || data.preorderCutoffInfo || ''
     };
 };
 
@@ -492,13 +504,19 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
         }
     }
 
+    if (updates.hasPreorderMode !== undefined) dbUpdates.has_preorder_mode = updates.hasPreorderMode;
+    if (updates.preorderDeliveryDay !== undefined) dbUpdates.preorder_delivery_day = updates.preorderDeliveryDay;
+    if (updates.preorderDeliveryTime !== undefined) dbUpdates.preorder_delivery_time = updates.preorderDeliveryTime;
+    if (updates.preorderCutoffInfo !== undefined) dbUpdates.preorder_cutoff_info = updates.preorderCutoffInfo;
+
     // Clean up all camelCase keys to prevent Supabase "column does not exist" errors
     const keysToRemove = [
         'deliveryTime', 'imageUrl', 'paymentGateways', 'openingHours', 
         'closingHours', 'deliveryFee', 'operatingHours', 'manualPixKey', 
         'hasPixConfigured', 'printerWidth', 'printerName', 'selectedPaymentGateway', 'bannerImageUrl', 'marmitaStartTime', 'marmitaEndTime',
         'hasMensalistas', 'hasKiloService', 'pricePerKilo', 'loyaltyProgram', 'disableDelivery',
-        'blingApiKey', 'fiscalProvider', 'fiscalCsc', 'fiscalCscId', 'fiscalEnv', 'nuvemClientId', 'nuvemClientSecret', 'autoPrintOrders'
+        'blingApiKey', 'fiscalProvider', 'fiscalCsc', 'fiscalCscId', 'fiscalEnv', 'nuvemClientId', 'nuvemClientSecret', 'autoPrintOrders',
+        'hasPreorderMode', 'preorderDeliveryDay', 'preorderDeliveryTime', 'preorderCutoffInfo'
     ];
     keysToRemove.forEach(key => delete dbUpdates[key]);
 
@@ -518,6 +536,10 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
             }
             if ('printers' in fallbackUpdates && (msg.includes('printers') || details.includes('printers'))) {
                 delete fallbackUpdates.printers;
+                retried = true;
+            }
+            if ('informacao_especial' in fallbackUpdates && (msg.includes('informacao_especial') || details.includes('informacao_especial'))) {
+                delete fallbackUpdates.informacao_especial;
                 retried = true;
             }
             if (retried) {
