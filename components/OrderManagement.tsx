@@ -131,16 +131,52 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const lastSuccessfulSyncRef = useRef<number>(Date.now());
     const [lastSuccessfulSyncTime, setLastSuccessfulSyncTime] = useState<number>(Date.now());
     const isSyncingRef = useRef<boolean>(false);
-    const previousOrdersStatusRef = useRef<Map<string, string>>(new Map());
+    const previousOrdersStatusRef = useRef<Map<string, string>>(
+        new Map(orders.filter(o => !currentUser?.restaurantId || o.restaurantId === currentUser.restaurantId).map(o => [o.id, o.status]))
+    );
+    const previousOrdersPaymentStatusRef = useRef<Map<string, string>>(
+        new Map(orders.filter(o => !currentUser?.restaurantId || o.restaurantId === currentUser.restaurantId).map(o => [o.id, o.paymentStatus || 'paid']))
+    );
     const isFirstLoadRef = useRef(true);
-    const printedOrderIdsRef = useRef<Set<string>>(new Set());
+    const autoPrintStorageKey = `guarafood-auto-printed-orders-${currentUser?.restaurantId || 'default'}`;
+    const printedOrderIdsRef = useRef<Set<string>>((() => {
+        try {
+            const raw = localStorage.getItem(autoPrintStorageKey);
+            const parsed = raw ? JSON.parse(raw) : [];
+            return new Set<string>(Array.isArray(parsed) ? parsed : []);
+        } catch {
+            return new Set<string>();
+        }
+    })());
     const processedJobIdsRef = useRef<Set<string>>(new Set());
     const alertedOrderIdsRef = useRef<Set<string>>(new Set());
     const heartbeatIntervalRef = useRef<number | null>(null);
     const reconnectGraceTimeoutRef = useRef<number | null>(null);
     const appStartTimeRef = useRef<number>(Date.now());
     const printSourceRef = useRef<HTMLDivElement | null>(null);
+    const hasShownKioskTipRef = useRef<boolean>(false);
     const [isBrowserOffline, setIsBrowserOffline] = useState(!navigator.onLine);
+
+    const markOrderAsAutoPrinted = useCallback((orderId: string) => {
+        printedOrderIdsRef.current.add(orderId);
+        try {
+            const recent = Array.from(printedOrderIdsRef.current).slice(-300);
+            localStorage.setItem(autoPrintStorageKey, JSON.stringify(recent));
+        } catch {}
+    }, [autoPrintStorageKey]);
+
+    useEffect(() => {
+        const handlePrintDialogOpened = () => {
+            if (hasShownKioskTipRef.current) return;
+            hasShownKioskTipRef.current = true;
+            addToast({
+                message: '💡 Pedido enviado à tela de impressão do navegador. Para sair direto no papel sem clicar em "Imprimir", abra o Chrome com --kiosk-printing (veja em 🖨️ Impressoras).',
+                type: 'info',
+            });
+        };
+        window.addEventListener('guarafood:print-dialog-opened', handlePrintDialogOpened);
+        return () => window.removeEventListener('guarafood:print-dialog-opened', handlePrintDialogOpened);
+    }, [addToast]);
 
     // Screen Wake Lock API
     const [isWakeLocked, setIsWakeLocked] = useState<boolean>(false);
@@ -384,102 +420,168 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     const processOrdersUpdate = useCallback((allOrders: Order[]) => {
         const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
-        
+        const isFirstLoad = isFirstLoadRef.current;
+
         const currentStatusMap = new Map<string, string>();
-        allOrders.forEach(o => currentStatusMap.set(o.id, o.status));
+        const currentPaymentStatusMap = new Map<string, string>();
+        allOrders.forEach(o => {
+            currentStatusMap.set(o.id, o.status);
+            currentPaymentStatusMap.set(o.id, o.paymentStatus || 'paid');
+        });
 
         // We keep 'Aguardando Pagamento' in the main orders state because TableManagement needs them.
         // OrdersView and other components will filter them out internally if needed.
         const visibleOrders = allOrders;
 
-        if (!isFirstLoadRef.current) {
-            const ordersToAlert = visibleOrders.filter(order => {
-                const prevStatus = previousOrdersStatusRef.current.get(order.id);
-                const orderTime = order.timestamp ? new Date(order.timestamp).getTime() : Date.now();
-                const isRecent = (Date.now() - orderTime) < 600000; // 10 minutos
-                const isWithinStartupWindow = orderTime > appStartTimeRef.current - 120000; // 2 minutos antes do app abrir ou depois
-                const hasJustChangedStatus = prevStatus !== undefined && prevStatus !== order.status;
-                const isConfirmedPendingPayment =
-                    prevStatus === 'Aguardando Pagamento' &&
+        const ordersToAlert = visibleOrders.filter(order => {
+            if (alertedOrderIdsRef.current.has(order.id)) return false;
+
+            const prevStatus = previousOrdersStatusRef.current.get(order.id);
+            const prevPaymentStatus = previousOrdersPaymentStatusRef.current.get(order.id);
+            const orderTime = order.timestamp ? new Date(order.timestamp).getTime() : Date.now();
+            const pmLower = (order.paymentMethod || '').toLowerCase();
+            const isOnlineWebhookOrder =
+                order.paymentStatus === 'paid' &&
+                (pmLower.includes('pix') || pmLower.includes('mercado pago') || pmLower.includes('cartão online'));
+
+            const isRecent = (Date.now() - orderTime) < (isOnlineWebhookOrder ? 3600000 : 600000);
+            const isWithinStartupWindow = orderTime > appStartTimeRef.current - 120000;
+            const hasJustChangedStatus = prevStatus !== undefined && prevStatus !== order.status;
+
+            const isConfirmedPendingPayment =
+                prevStatus === 'Aguardando Pagamento' &&
+                (order.status === 'Novo Pedido' || order.status === 'Preparando') &&
+                (Date.now() - orderTime) < 86400000;
+
+            const isPaidTransition =
+                prevPaymentStatus !== undefined &&
+                prevPaymentStatus !== 'paid' &&
+                order.paymentStatus === 'paid' &&
+                !['Entregue', 'Cancelado'].includes(order.status);
+
+            if (isFirstLoad) {
+                // Na primeira carga após abrir/recarregar o painel, captura confirmações de webhook que ocorreram durante o reload
+                const wasCachedPendingAndConfirmed =
+                    (isConfirmedPendingPayment || isPaidTransition) &&
+                    !printedOrderIdsRef.current.has(order.id);
+                const isBrandNewConfirmedWebhook =
+                    !order.tableNumber &&
+                    isOnlineWebhookOrder &&
                     (order.status === 'Novo Pedido' || order.status === 'Preparando') &&
-                    (Date.now() - orderTime) < 86400000;
+                    (Date.now() - orderTime) < 120000 &&
+                    !printedOrderIdsRef.current.has(order.id) &&
+                    prevStatus === undefined;
 
-                const isNewDelivery = (order.status === 'Novo Pedido' || (order.status === 'Preparando' && prevStatus === 'Novo Pedido')) && 
-                                      (isRecent || isConfirmedPendingPayment) && 
-                                      !alertedOrderIdsRef.current.has(order.id) && 
-                                      (isWithinStartupWindow || hasJustChangedStatus);
+                return wasCachedPendingAndConfirmed || isBrandNewConfirmedWebhook;
+            }
 
-                const isNewTable = order.tableNumber && 
-                                   !previousOrdersStatusRef.current.has(order.id) && 
-                                   !alertedOrderIdsRef.current.has(order.id) && 
-                                   isRecent && 
-                                   (isWithinStartupWindow || prevStatus !== undefined);
+            const isNewDelivery =
+                !order.tableNumber &&
+                (order.status === 'Novo Pedido' || (order.status === 'Preparando' && prevStatus === 'Novo Pedido') || isPaidTransition) &&
+                (isConfirmedPendingPayment || isPaidTransition || (isRecent && (isWithinStartupWindow || hasJustChangedStatus || isOnlineWebhookOrder)));
 
-                return isNewDelivery || isNewTable;
+            const isNewTable =
+                Boolean(order.tableNumber) &&
+                !previousOrdersStatusRef.current.has(order.id) &&
+                isRecent &&
+                (isWithinStartupWindow || prevStatus !== undefined);
+
+            return isNewDelivery || isNewTable;
+        });
+
+        if (ordersToAlert.length > 0) {
+            const isAutoPrintActive = restaurant?.autoPrintOrders ?? (localStorage.getItem('guarafood-auto-print-orders') !== 'false');
+            const storedIsPrintServer = localStorage.getItem('guarafood-is-print-server');
+            const stationId = localStorage.getItem('guarafood-print-station-id') || localStorage.getItem('guarafood-print-server-role') || 'all';
+            const effectiveRole = currentStaffUser?.role || currentUser?.role;
+            const isWaiterRestricted = isLocked || effectiveRole === 'waiter';
+            const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            const isPrintServer = !isWaiterRestricted && storedIsPrintServer !== 'false' && stationId !== 'off' && (storedIsPrintServer === 'true' || !isMobileDevice);
+
+            const activePrinters = (restaurant?.printers || []).filter(p => p.active !== false);
+            const matchedPrinter = (stationId && stationId !== 'all' && stationId !== 'kitchen' && stationId !== 'counter')
+                ? activePrinters.find(p => p.id === stationId)
+                : null;
+
+            let autoPrintMode: 'full' | 'kitchen' | null = null;
+            if (isAutoPrintActive && isPrintServer) {
+                if (stationId === 'all' || stationId === 'counter') {
+                    autoPrintMode = 'full';
+                } else if (stationId === 'kitchen') {
+                    autoPrintMode = 'kitchen';
+                } else if (matchedPrinter) {
+                    if (matchedPrinter.printFullReceipt !== false) {
+                        autoPrintMode = 'full';
+                    } else if (matchedPrinter.printKitchenReceipt !== false) {
+                        autoPrintMode = 'kitchen';
+                    }
+                } else {
+                    autoPrintMode = 'full';
+                }
+            }
+
+            const newPrintJobs: Array<{ order: Order; mode: 'full' | 'kitchen' }> = [];
+
+            ordersToAlert.forEach(o => {
+                alertedOrderIdsRef.current.add(o.id);
+                if (!o.tableNumber && o.items && o.items.length > 0 && autoPrintMode) {
+                    if (autoPrintMode === 'full' && printedOrderIdsRef.current.has(o.id)) {
+                        return;
+                    }
+                    if (printJobRef.current?.order?.id === o.id && printJobRef.current?.mode === autoPrintMode) {
+                        return;
+                    }
+                    newPrintJobs.push({ order: o, mode: autoPrintMode });
+                }
             });
 
-            if (ordersToAlert.length > 0) {
-                ordersToAlert.forEach(o => {
-                    alertedOrderIdsRef.current.add(o.id);
-                    // Only auto-print delivery/balcão orders if autoPrintOrders is enabled and this terminal is NOT exclusively a kitchen terminal
-                    if (!o.tableNumber && o.items && o.items.length > 0) {
-                        const isAutoPrintActive = restaurant?.autoPrintOrders ?? (localStorage.getItem('guarafood-auto-print-orders') !== 'false');
-                        if (!isAutoPrintActive) {
-                            return;
-                        }
-                        const storedIsPrintServer = localStorage.getItem('guarafood-is-print-server');
-                        const stationId = localStorage.getItem('guarafood-print-station-id') || localStorage.getItem('guarafood-print-server-role') || 'all';
-                        if (storedIsPrintServer === 'false' || stationId === 'off') {
-                            return;
-                        }
-                        const effectiveRole = currentStaffUser?.role || currentUser?.role;
-                        const isWaiterRestricted = isLocked || effectiveRole === 'waiter';
-                        const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                        const isPrintServer = storedIsPrintServer === 'true' || (storedIsPrintServer !== 'false' && !isWaiterRestricted && !isMobileDevice);
-                        const activePrinters = (restaurant?.printers || []).filter(p => p.active !== false);
-                        const defaultPrinter = activePrinters.find(p => p.isDefault) || activePrinters[0];
-                        const matchedPrinter = (stationId && stationId !== 'all' ? activePrinters.find(p => p.id === stationId) : null) || defaultPrinter;
-
-                        let shouldAutoPrint = true;
-                        if (isPrintServer) {
-                            if (matchedPrinter) {
-                                shouldAutoPrint = !!matchedPrinter.printFullReceipt;
-                            } else if (stationId === 'kitchen') {
-                                shouldAutoPrint = false;
-                            }
-                        }
-                        if (shouldAutoPrint) {
-                            setPrintQueue(prev => [...prev, { order: o, mode: 'full' }]);
-                        }
-                    }
+            if (newPrintJobs.length > 0) {
+                setPrintQueue(prev => {
+                    const deduped = newPrintJobs.filter(job =>
+                        !prev.some(existing => existing.order.id === job.order.id && existing.mode === job.mode && !existing.jobId)
+                    );
+                    return deduped.length > 0 ? [...prev, ...deduped] : prev;
                 });
 
-                const newestOrder = ordersToAlert[0];
-                if (areNotificationsEnabled) {
-                    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-                         try {
-                             new Notification(newestOrder.tableNumber ? 'Nova Mesa Aberta!' : 'Novo Pedido!', {
-                                body: newestOrder.tableNumber 
-                                    ? `Mesa ${newestOrder.tableNumber} foi aberta.`
-                                    : `Pedido ${newestOrder.order_number || ''} - R$ ${newestOrder.totalPrice.toFixed(2)}`,
-                                icon: '/vite.svg',
-                                tag: newestOrder.id
-                            });
-                         } catch (e) { console.error("Notification API error", e); }
-                    }
-                    playNotification(); 
+                const firstPrinted = newPrintJobs[0].order;
+                const displayNum = firstPrinted.order_number
+                    ? `#${String(firstPrinted.order_number).padStart(3, '0')}`
+                    : `#${firstPrinted.id.substring(Math.max(0, firstPrinted.id.length - 4)).toUpperCase()}`;
+                const isPixOrOnline = (firstPrinted.paymentMethod || '').toLowerCase().includes('pix') || firstPrinted.paymentStatus === 'paid';
+                addToast({
+                    message: newPrintJobs.length === 1
+                        ? `🖨️ Pedido ${displayNum}${isPixOrOnline ? ' (Pgto Confirmado)' : ''} enviado para impressão automática!`
+                        : `🖨️ ${newPrintJobs.length} novos pedidos enviados para impressão automática!`,
+                    type: 'success',
+                });
+            }
+
+            const newestOrder = ordersToAlert[0];
+            if (areNotificationsEnabled) {
+                if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                    try {
+                        new Notification(newestOrder.tableNumber ? 'Nova Mesa Aberta!' : 'Novo Pedido!', {
+                            body: newestOrder.tableNumber
+                                ? `Mesa ${newestOrder.tableNumber} foi aberta.`
+                                : `Pedido ${newestOrder.order_number || ''} - R$ ${newestOrder.totalPrice.toFixed(2)}`,
+                            icon: '/vite.svg',
+                            tag: newestOrder.id
+                        });
+                    } catch (e) { console.error("Notification API error", e); }
                 }
+                playNotification();
             }
         }
 
         previousOrdersStatusRef.current = currentStatusMap;
+        previousOrdersPaymentStatusRef.current = currentPaymentStatusMap;
         setOrders(visibleOrders);
         try {
             localStorage.setItem('guarafood-cached-orders', JSON.stringify(visibleOrders));
         } catch (err) {
             console.error("Erro ao persistir cache local de pedidos:", err);
         }
-        if (isFirstLoadRef.current) {
+        if (isFirstLoad) {
             visibleOrders.forEach(o => {
                 if (o.status !== 'Aguardando Pagamento') {
                     alertedOrderIdsRef.current.add(o.id);
@@ -490,7 +592,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         lastSuccessfulSyncRef.current = Date.now();
         setLastSuccessfulSyncTime(Date.now());
         setConnectionStatus('CONNECTED');
-    }, [playNotification, restaurant, currentStaffUser?.role, currentUser?.role, isLocked]);
+    }, [playNotification, restaurant, currentStaffUser?.role, currentUser?.role, isLocked, addToast]);
 
     const forceSync = useCallback(async () => {
         if (!currentUser?.restaurantId || isSyncingRef.current) return;
@@ -612,95 +714,120 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         return Number(defaultPrinter?.width || restaurant?.printerWidth || printerWidth || 80);
     }, [restaurant, printerWidth]);
 
+    const resolveActivePrinterWidthRef = useRef(resolveActivePrinterWidth);
+    resolveActivePrinterWidthRef.current = resolveActivePrinterWidth;
+    const markOrderAsAutoPrintedRef = useRef(markOrderAsAutoPrinted);
+    markOrderAsAutoPrintedRef.current = markOrderAsAutoPrinted;
+
     useEffect(() => {
-        if (printJob) {
-            if (printJob.handledSynchronously) {
-                return;
+        if (!printJob || printJob.handledSynchronously) {
+            return;
+        }
+
+        const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const logTag = isMobileDevice ? '[OrderManagement][PrintQueue][MOBILE]' : '[OrderManagement][PrintQueue]';
+
+        // Se o pedido não tiver itens, cancelamos o printJob para evitar impressão em branco
+        const itemsToPrint = printJob.items || printJob.order.items || [];
+        if (itemsToPrint.length === 0) {
+            console.error(`${logTag} Cancelando job de impressão: nenhum item no payload.`, {
+                orderId: printJob.order?.id,
+                orderNumber: printJob.order?.order_number,
+                mode: printJob.mode,
+                jobId: printJob.jobId,
+                isMobileDevice,
+            });
+            if (printJob.jobId) {
+                markPrintJobAsDone(printJob.order.id, printJob.jobId)
+                    .catch(err => console.error("Erro ao finalizar job em branco:", err));
             }
+            setPrintJob(null);
+            return;
+        }
 
-            const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            const logTag = isMobileDevice ? '[OrderManagement][PrintQueue][MOBILE]' : '[OrderManagement][PrintQueue]';
+        // Se for um pedido de delivery novo, evitamos duplicidade pelo ID
+        if (printJob.mode === 'full' && !printJob.jobId && printedOrderIdsRef.current.has(printJob.order.id)) {
+            setPrintJob(null);
+            return;
+        }
 
-            // Se o pedido não tiver itens, cancelamos o printJob para evitar impressão em branco
-            const itemsToPrint = printJob.items || printJob.order.items || [];
-            if (itemsToPrint.length === 0) {
-                console.error(`${logTag} Cancelando job de impressão: nenhum item no payload.`, {
-                    orderId: printJob.order?.id,
+        let cancelled = false;
+        let activeTimer: number | null = null;
+        let attempt = 0;
+
+        const executePrint = async () => {
+            if (cancelled) return;
+
+            const container = printSourceRef.current;
+            const htmlContent = container?.innerHTML?.trim() || '';
+            if (!container || !htmlContent) {
+                if (attempt < 8) {
+                    attempt++;
+                    activeTimer = window.setTimeout(executePrint, 45);
+                    return;
+                }
+                console.error(`${logTag} Erro: container printSourceRef vazio antes de imprimir fila após ${attempt} tentativas.`, {
+                    orderId: printJob.order.id,
                     orderNumber: printJob.order?.order_number,
                     mode: printJob.mode,
-                    jobId: printJob.jobId,
+                    itemCount: itemsToPrint.length,
+                    hasContainer: Boolean(container),
                     isMobileDevice,
                 });
-                if (printJob.jobId) {
-                    markPrintJobAsDone(printJob.order.id, printJob.jobId)
-                        .catch(err => console.error("Erro ao finalizar job em branco:", err));
-                }
+                setIsPrintingCooldown(true);
                 setPrintJob(null);
+                setTimeout(() => setIsPrintingCooldown(false), 800);
                 return;
             }
 
-            // Se for um pedido de delivery novo, evitamos duplicidade pelo ID
-            if (printJob.mode === 'full' && !printJob.jobId && printedOrderIdsRef.current.has(printJob.order.id)) {
-                setPrintJob(null); 
-                return;
-            }
-
-            const printTimer = setTimeout(async () => {
-                const printJobId = printJob.jobId;
-                const orderId = printJob.order.id;
-                try {
-                    if (printJob.mode === 'full' && !printJob.jobId) {
-                        printedOrderIdsRef.current.add(printJob.order.id);
-                    }
-
-                    const container = printSourceRef.current;
-                    const htmlContent = container?.innerHTML?.trim() || '';
-                    if (!container || !htmlContent) {
-                        console.error(`${logTag} Erro: container printSourceRef vazio antes de imprimir fila.`, {
-                            orderId,
-                            orderNumber: printJob.order?.order_number,
-                            mode: printJob.mode,
-                            itemCount: itemsToPrint.length,
-                            hasContainer: Boolean(container),
-                            isMobileDevice,
-                        });
-                    }
-
-                    const activeWidth = resolveActivePrinterWidth(printJob.mode);
-                    await printThermalElement(container, activeWidth, {
-                        mode: printJob.mode,
-                        orderId,
-                        orderNumber: printJob.order?.order_number,
-                        itemCount: itemsToPrint.length,
-                        source: printJobId ? 'OrderManagement.remotePrintQueue' : 'OrderManagement.localPrintQueue',
-                    });
-
-                    // Se era um trabalho da fila remota (jobId), marcamos como feito no banco
-                    if (printJobId) {
-                        try {
-                            await markPrintJobAsDone(orderId, printJobId);
-                        } catch (e) {
-                            console.error("Erro ao marcar impressão como concluída:", e);
-                        }
-                    }
-                } catch (err) {
-                    console.error(`${logTag} Erro ao processar impressão:`, err, {
-                        orderId,
-                        mode: printJob.mode,
-                        isMobileDevice,
-                    });
-                } finally {
-                    // Ativa o cooldown e limpa o job ativo de forma limpa para recuperar thread
-                    setIsPrintingCooldown(true);
-                    setPrintJob(null);
-                    setTimeout(() => {
-                        setIsPrintingCooldown(false);
-                    }, 1200);
+            const printJobId = printJob.jobId;
+            const orderId = printJob.order.id;
+            try {
+                if (printJob.mode === 'full' && !printJobId) {
+                    markOrderAsAutoPrintedRef.current(orderId);
                 }
-            }, 40); 
-            return () => clearTimeout(printTimer);
-        }
-    }, [printJob, resolveActivePrinterWidth]);
+
+                const activeWidth = resolveActivePrinterWidthRef.current(printJob.mode);
+                await printThermalElement(container, activeWidth, {
+                    mode: printJob.mode,
+                    orderId,
+                    orderNumber: printJob.order?.order_number,
+                    itemCount: itemsToPrint.length,
+                    source: printJobId ? 'OrderManagement.remotePrintQueue' : 'OrderManagement.localPrintQueue',
+                });
+
+                // Se era um trabalho da fila remota (jobId), marcamos como feito no banco
+                if (printJobId) {
+                    try {
+                        await markPrintJobAsDone(orderId, printJobId);
+                    } catch (e) {
+                        console.error("Erro ao marcar impressão como concluída:", e);
+                    }
+                }
+            } catch (err) {
+                console.error(`${logTag} Erro ao processar impressão:`, err, {
+                    orderId,
+                    mode: printJob.mode,
+                    isMobileDevice,
+                });
+            } finally {
+                // Ativa o cooldown e limpa o job ativo de forma limpa para recuperar thread
+                setIsPrintingCooldown(true);
+                setPrintJob(null);
+                setTimeout(() => {
+                    setIsPrintingCooldown(false);
+                }, 1200);
+            }
+        };
+
+        activeTimer = window.setTimeout(executePrint, 50);
+        return () => {
+            cancelled = true;
+            if (activeTimer !== null) {
+                clearTimeout(activeTimer);
+            }
+        };
+    }, [printJob]);
 
     // GESTOR DE FILA DE IMPRESSÃO LOCAL
     useEffect(() => {
@@ -974,6 +1101,9 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }
     };
 
+    const processOrdersUpdateRef = useRef(processOrdersUpdate);
+    processOrdersUpdateRef.current = processOrdersUpdate;
+
     useEffect(() => {
         if (!currentUser?.restaurantId) return;
 
@@ -993,13 +1123,13 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         };
 
         const unsubscribe = subscribeToOrders((allOrders) => {
-            processOrdersUpdate(allOrders);
+            processOrdersUpdateRef.current(allOrders);
         }, currentUser.restaurantId, handleRealtimeStatus); 
 
         return () => {
             unsubscribe();
         };
-    }, [currentUser?.restaurantId, processOrdersUpdate]);
+    }, [currentUser?.restaurantId]);
 
     const renderContent = () => {
         switch (activeTab) {
