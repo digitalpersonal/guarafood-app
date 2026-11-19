@@ -134,10 +134,10 @@ export const subscribeToOrders = (
 
     refreshData();
 
-    // GARANTIA COMPLETA E HEARTBEAT: Polling em segundo plano a cada 12 segundos para máxima reatividade
+    // GARANTIA COMPLETA E HEARTBEAT: Polling em segundo plano a cada 8 segundos para máxima reatividade (ex: webhooks Pix)
     const fallbackInterval = setInterval(() => {
         refreshData();
-    }, 12000);
+    }, 8000);
 
     // Sincronização inteligente ao ganhar foco, reconectar ou ficar visível (evita perda de sincronia após telefone/tablet dormir)
     const handleActivity = () => {

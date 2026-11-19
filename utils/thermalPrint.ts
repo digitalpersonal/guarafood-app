@@ -88,7 +88,7 @@ export const printThermalElement = (
         iframe.style.top = '0';
         iframe.style.left = '-10000px';
         iframe.style.width = paperWidth;
-        iframe.style.height = diag.isMobile ? 'auto' : '1px';
+        iframe.style.height = diag.isMobile ? 'auto' : '600px';
         iframe.style.opacity = '0';
         iframe.style.border = '0';
         iframe.style.margin = '0';
@@ -97,12 +97,14 @@ export const printThermalElement = (
 
         document.body.appendChild(iframe);
 
-        const cleanup = () => {
+        let isCleanedUp = false;
+        const cleanup = (delayMs = 25000) => {
             setTimeout(() => {
-                if (iframe.parentNode) {
+                if (!isCleanedUp && iframe.parentNode) {
+                    isCleanedUp = true;
                     iframe.parentNode.removeChild(iframe);
                 }
-            }, 25000);
+            }, delayMs);
         };
 
         try {
@@ -291,9 +293,17 @@ export const printThermalElement = (
                 }
 
                 try {
+                    win.onafterprint = () => {
+                        cleanup(1000);
+                    };
+                    const startedAt = Date.now();
                     win.focus();
                     if (typeof win.print === 'function') {
                         win.print();
+                        const elapsed = Date.now() - startedAt;
+                        if (!invokeDiag.isMobile && invokeDiag.hasActiveGesture !== true && elapsed > 1200) {
+                            window.dispatchEvent(new CustomEvent('guarafood:print-dialog-opened', { detail: { context, elapsed } }));
+                        }
                     } else if (typeof window.print === 'function') {
                         console.error(`${tag} iframe.contentWindow.print indisponível — usando fallback window.print().`, {
                             ...invokeDiag,
@@ -332,7 +342,11 @@ export const printThermalElement = (
             };
 
             const triggerPrintAsync = () => {
-                setTimeout(invokePrintNow, 80);
+                if (typeof requestAnimationFrame === 'function') {
+                    requestAnimationFrame(() => setTimeout(invokePrintNow, 60));
+                } else {
+                    setTimeout(invokePrintNow, 80);
+                }
             };
 
             // Garante que imagens (ex: QR Code SEFAZ base64) estejam decodificadas antes da impressão
@@ -354,12 +368,19 @@ export const printThermalElement = (
                     }
                 });
                 if (loaded >= images.length) {
-                    // Imagens já decodificadas: dispara imediatamente para preservar gesto do usuário em mobile
-                    invokePrintNow();
+                    if (diag.isMobile || diag.hasActiveGesture === true) {
+                        invokePrintNow();
+                    } else {
+                        triggerPrintAsync();
+                    }
                 }
             } else {
-                // Dispara imediatamente para preservar o gesto do usuário (user activation) em celulares
-                invokePrintNow();
+                // Preserva gesto imediato em cliques manuais/mobile; em auto-print via webhook aguarda layout do iframe
+                if (diag.isMobile || diag.hasActiveGesture === true) {
+                    invokePrintNow();
+                } else {
+                    triggerPrintAsync();
+                }
             }
         } catch (err) {
             console.error(`${tag} Falha crítica ao preparar iframe de impressão:`, err, {
