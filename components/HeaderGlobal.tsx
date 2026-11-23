@@ -29,7 +29,7 @@ const HeaderGlobal: React.FC<HeaderGlobalProps> = ({
   backLabel = "Voltar" 
 }) => {
   return (
-    <header className="bg-orange-600 shadow-md fixed top-0 left-0 right-0 z-50 h-[64px] flex items-center">
+    <header className="bg-black shadow-md fixed top-0 left-0 right-0 z-50 h-[68px] flex items-center">
       <div className="w-full max-w-7xl mx-auto px-3 sm:px-4 flex items-center justify-between">
         
         {/* Lado Esquerdo: Botão Voltar discreto quando aplicável */}
@@ -37,7 +37,7 @@ const HeaderGlobal: React.FC<HeaderGlobalProps> = ({
           {canGoBack && onBack ? (
             <button 
               onClick={onBack}
-              className="w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-orange-700 active:bg-orange-800 active:scale-90 transition-all border border-orange-500/30 shadow-sm"
+              className="w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-zinc-800 active:bg-zinc-700 active:scale-90 transition-all border border-zinc-700 shadow-sm"
               title={backLabel}
               aria-label={backLabel}
             >
@@ -54,7 +54,7 @@ const HeaderGlobal: React.FC<HeaderGlobalProps> = ({
             disabled={!onHomeClick}
             title="GuaraFood - Início"
           >
-            <Logo />
+            <Logo size="lg" />
           </button>
         </div>
         
@@ -63,7 +63,7 @@ const HeaderGlobal: React.FC<HeaderGlobalProps> = ({
           {onOrdersClick ? (
             <button 
               onClick={onOrdersClick}
-              className="w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-orange-700 active:bg-orange-800 active:scale-90 transition-all border border-orange-500/30 shadow-sm"
+              className="w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-zinc-800 active:bg-zinc-700 active:scale-90 transition-all border border-zinc-700 shadow-sm"
               title="Meus Pedidos"
               aria-label="Meus Pedidos"
             >

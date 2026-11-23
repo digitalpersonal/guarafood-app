@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { APP_VERSION } from './VersionChecker';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { useNotification } from '../hooks/useNotification';
+import { Logo } from './Logo';
 
 // Icons
 const DevicePhoneMobileIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -164,10 +165,8 @@ const Footer: React.FC<FooterProps> = ({ onLoginClick, onHelpClick }) => {
             </a>
           </div>
 
-          <div className="space-y-2">
-            <p className="text-lg font-black tracking-tight">
-              GUARA<span className="text-orange-500">FOOD</span>
-            </p>
+          <div className="flex flex-col items-center space-y-2">
+            <Logo size="lg" />
             <p className="text-xs text-white/50 max-w-xs mx-auto">
               A sua praça de alimentação digital. Qualidade e rapidez em cada entrega.
             </p>
