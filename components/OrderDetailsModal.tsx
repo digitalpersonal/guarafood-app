@@ -6,7 +6,7 @@ import PrintableOrder from './PrintableOrder';
 import OrderEditorModal from './OrderEditorModal'; // Import the new modal
 import FiscalInvoiceViewModal from './FiscalInvoiceViewModal';
 import FiscalDocumentModal from './FiscalDocumentModal';
-import { recordOrderPayment, updateOrderCustomerDocument } from '../services/orderService';
+import { recordOrderPayment, updateOrderCustomerDocument, emitOrderFiscalToSefaz } from '../services/orderService';
 import { useNotification } from '../hooks/useNotification';
 import { printThermalElement } from '../utils/thermalPrint';
 
@@ -202,16 +202,47 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
         };
         setCurrentOrder(updatedOrder);
 
-        // Atualiza no banco de dados
-        updateOrderCustomerDocument(currentOrder.id, document, customerName).catch(err => {
-            console.warn('Erro ao atualizar CPF/CNPJ no banco:', err);
-        });
-
         if (onPrint) {
             onPrint(updatedOrder, 'fiscal');
         } else {
             triggerLocalPrint('fiscal');
         }
+
+        (async () => {
+            try {
+                await updateOrderCustomerDocument(currentOrder.id, document, customerName);
+            } catch (err) {
+                console.warn('Erro ao atualizar CPF/CNPJ no banco:', err);
+            }
+            if (updatedOrder.fiscalStatus !== 'autorizado') {
+                try {
+                    const res = await emitOrderFiscalToSefaz(updatedOrder, restaurant);
+                    setCurrentOrder(prev => ({
+                        ...prev,
+                        fiscalStatus: res.fiscalStatus,
+                        fiscalKey: res.fiscalKey || prev.fiscalKey,
+                        fiscalNumber: res.fiscalNumber || prev.fiscalNumber,
+                        fiscalProtocol: res.fiscalProtocol || prev.fiscalProtocol,
+                        fiscalDanfeUrl: res.fiscalDanfeUrl || prev.fiscalDanfeUrl,
+                        fiscalXmlUrl: res.fiscalXmlUrl || prev.fiscalXmlUrl,
+                        fiscalMessage: res.fiscalMessage || prev.fiscalMessage,
+                    }));
+                    if (!res.success) {
+                        addToast({
+                            message: res.fiscalMessage || 'Nota registrada com falha de transmissão na SEFAZ.',
+                            type: 'warning'
+                        });
+                    } else {
+                        addToast({
+                            message: 'Nota fiscal registrada no histórico de emissões!',
+                            type: 'success'
+                        });
+                    }
+                } catch (err) {
+                    console.warn('Erro ao registrar emissão fiscal:', err);
+                }
+            }
+        })();
     };
 
     const handleOrderUpdated = (updatedOrder: Order) => {

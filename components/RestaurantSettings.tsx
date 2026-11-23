@@ -353,6 +353,7 @@ const RestaurantSettings: React.FC<{
     const [fiscalCsc, setFiscalCsc] = useState('');
     const [fiscalCscId, setFiscalCscId] = useState('1');
     const [fiscalEnv, setFiscalEnv] = useState<'homologacao' | 'producao'>('homologacao');
+    const [fiscalTaxRate, setFiscalTaxRate] = useState<string>('');
     const [nuvemClientId, setNuvemClientId] = useState('');
     const [nuvemClientSecret, setNuvemClientSecret] = useState('');
     const [isTestingNuvem, setIsTestingNuvem] = useState(false);
@@ -454,6 +455,7 @@ const RestaurantSettings: React.FC<{
                 setFiscalCsc(data.fiscalCsc || '');
                 setFiscalCscId(data.fiscalCscId || '1');
                 setFiscalEnv(data.fiscalEnv || 'homologacao');
+                setFiscalTaxRate(data.fiscalTaxRate !== undefined && data.fiscalTaxRate !== null ? String(data.fiscalTaxRate) : '');
                 setNuvemClientId(data.nuvemClientId || '');
                 setNuvemClientSecret(data.nuvemClientSecret || '');
                 setOperatingHours(data.operatingHours || getDefaultOperatingHours());
@@ -531,6 +533,7 @@ const RestaurantSettings: React.FC<{
                 fiscalCsc: fiscalCsc,
                 fiscalCscId: fiscalCscId,
                 fiscalEnv: fiscalEnv,
+                fiscalTaxRate: fiscalTaxRate.trim() !== '' ? Math.max(0, Math.min(100, parseFloat(fiscalTaxRate.replace(',', '.')) || 0)) : undefined,
                 nuvemClientId: nuvemClientId,
                 nuvemClientSecret: nuvemClientSecret
             });
@@ -1271,6 +1274,30 @@ const RestaurantSettings: React.FC<{
                                         <p className="text-[11px] text-purple-700 font-medium">
                                             💡 O <strong>CSC</strong> e o <strong>ID do Token</strong> são utilizados pela SEFAZ para assinar o <strong>QR Code oficial</strong> impresso no cupom térmico, permitindo que os clientes consultem a nota no portal estadual da SEF-MG.
                                         </p>
+
+                                        <div className="bg-white p-3.5 rounded-xl border border-purple-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                                            <div>
+                                                <label className="block font-black text-purple-900 text-xs">
+                                                    💰 Alíquota de Imposto Predefinida (%) — Painel do Contador
+                                                </label>
+                                                <span className="text-[11px] text-gray-500">
+                                                    Percentual usado na aba do Contador para calcular automaticamente o imposto a pagar sobre as notas emitidas (ex: Simples Nacional / DAS).
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-2 flex-shrink-0">
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    max="100"
+                                                    value={fiscalTaxRate}
+                                                    onChange={e => setFiscalTaxRate(e.target.value)}
+                                                    placeholder="Ex: 6.00"
+                                                    className="w-28 p-2.5 border border-purple-200 rounded-xl font-mono font-black text-sm text-right bg-gray-50 text-gray-900 focus:ring-2 focus:ring-purple-500 outline-none"
+                                                />
+                                                <span className="font-black text-purple-800 text-sm">%</span>
+                                            </div>
+                                        </div>
 
                                         <div className="bg-white p-3.5 rounded-xl border border-purple-200 space-y-3 shadow-2xs">
                                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">

@@ -12,7 +12,7 @@ import type { Mensalista } from '../types';
 import PaymentDiagnostic from './PaymentDiagnostic';
 import FiscalInvoiceViewModal from './FiscalInvoiceViewModal';
 import FiscalDocumentModal from './FiscalDocumentModal';
-import { updateOrderCustomerDocument } from '../services/orderService';
+import { updateOrderCustomerDocument, emitOrderFiscalToSefaz } from '../services/orderService';
 
 
 const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -1308,10 +1308,48 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                             customerName: name || targetOrder.customerName
                         };
                         setOrderForFiscalDoc(null);
-                        updateOrderCustomerDocument(targetOrder.id, doc, name).catch(err => {
-                            console.warn('Erro ao atualizar CPF/CNPJ no banco:', err);
-                        });
                         onPrint(updated, 'fiscal');
+                        (async () => {
+                            try {
+                                await updateOrderCustomerDocument(targetOrder.id, doc, name);
+                            } catch (err) {
+                                console.warn('Erro ao atualizar CPF/CNPJ no banco:', err);
+                            }
+                            if (updated.fiscalStatus !== 'autorizado') {
+                                try {
+                                    const res = await emitOrderFiscalToSefaz(updated, restaurant);
+                                    setSelectedOrder(prev =>
+                                        prev && prev.id === updated.id
+                                            ? {
+                                                  ...prev,
+                                                  customerDocument: updated.customerDocument,
+                                                  customerName: updated.customerName,
+                                                  fiscalStatus: res.fiscalStatus,
+                                                  fiscalKey: res.fiscalKey || prev.fiscalKey,
+                                                  fiscalNumber: res.fiscalNumber || prev.fiscalNumber,
+                                                  fiscalProtocol: res.fiscalProtocol || prev.fiscalProtocol,
+                                                  fiscalDanfeUrl: res.fiscalDanfeUrl || prev.fiscalDanfeUrl,
+                                                  fiscalXmlUrl: res.fiscalXmlUrl || prev.fiscalXmlUrl,
+                                                  fiscalMessage: res.fiscalMessage || prev.fiscalMessage,
+                                              }
+                                            : prev
+                                    );
+                                    if (!res.success) {
+                                        addToast({
+                                            message: res.fiscalMessage || 'Nota registrada com erro de transmissão na SEFAZ.',
+                                            type: 'warning'
+                                        });
+                                    } else {
+                                        addToast({
+                                            message: 'Nota fiscal registrada no histórico de emissões!',
+                                            type: 'success'
+                                        });
+                                    }
+                                } catch (err) {
+                                    console.warn('Erro ao registrar emissão fiscal:', err);
+                                }
+                            }
+                        })();
                     }}
                     actionLabel="Imprimir Cupom Fiscal"
                 />

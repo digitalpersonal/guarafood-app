@@ -21,7 +21,9 @@ import StaffManagement from './StaffManagement';
 import MensalistasManager from './MensalistasManager';
 import PinPadModal from './PinPadModal';
 import HelpCenter from './HelpCenter';
+import GuaraFoodMasterGuide from './GuaraFoodMasterGuide';
 import { RestaurantShareModal } from './RestaurantShareModal';
+import AccountantFiscalView from './AccountantFiscalView';
 import { useSound } from '../hooks/useSound';
 import { useNotification } from '../hooks/useNotification';
 
@@ -48,7 +50,9 @@ const CustomerList = React.lazy(() => import('./CustomerList'));
 
 const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { currentUser, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'comandas' | 'waiter_monitor' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'help' | 'mensalistas' | 'printers'>('orders');
+    const [activeTab, setActiveTab] = useState<'orders' | 'tables' | 'comandas' | 'waiter_monitor' | 'menu' | 'settings' | 'financial' | 'customers' | 'staff' | 'help' | 'mensalistas' | 'printers' | 'accountant'>(
+        () => (currentUser?.role === 'accountant' ? 'accountant' : 'orders')
+    );
     const [orders, setOrders] = useState<Order[]>(() => {
         try {
             const cached = localStorage.getItem('guarafood-cached-orders');
@@ -252,7 +256,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     useEffect(() => {
         try {
             const effectiveRole = currentStaffUser?.role || currentUser?.role;
-            const isWaiterRestricted = isLocked || effectiveRole === 'waiter';
+            const isWaiterRestricted = isLocked || effectiveRole === 'waiter' || effectiveRole === 'accountant';
             const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
             if (!isWaiterRestricted && !isMobileDevice) {
@@ -326,10 +330,14 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setCurrentStaffUser(member);
         setIsPinPadOpen(false);
         
-        if (member.role === 'manager' || member.role === 'operator') {
+        if (member.role === 'accountant') {
             setIsLocked(false);
             localStorage.setItem('guarafood-panel-locked', 'false');
-            if (activeTab === 'waiter_monitor') {
+            setActiveTab('accountant');
+        } else if (member.role === 'manager' || member.role === 'operator') {
+            setIsLocked(false);
+            localStorage.setItem('guarafood-panel-locked', 'false');
+            if (activeTab === 'waiter_monitor' || activeTab === 'accountant') {
                 setActiveTab('orders');
             }
         } else {
@@ -373,9 +381,14 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     // Determine visible tabs based on role, financial permissions and lock state
     const visibleTabs = useMemo(() => {
-        const allTabs = ['orders', 'waiter_monitor', 'tables', 'comandas', 'menu', 'financial', 'customers', 'staff', 'printers', 'settings', 'help', 'mensalistas'] as const;
+        const allTabs = ['orders', 'waiter_monitor', 'tables', 'comandas', 'menu', 'financial', 'customers', 'staff', 'printers', 'settings', 'help', 'mensalistas', 'master_guide'] as const;
         
         const effectiveRole = currentStaffUser?.role || currentUser?.role;
+
+        // Acesso exclusivo do Contador: vê apenas a aba de emissão mensal SEFAZ
+        if (effectiveRole === 'accountant') {
+            return ['accountant'];
+        }
 
         // Se o painel estiver travado (Modo Garçom compartilhado via PIN)
         if (isLocked) {
@@ -494,7 +507,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             const storedIsPrintServer = localStorage.getItem('guarafood-is-print-server');
             const stationId = localStorage.getItem('guarafood-print-station-id') || localStorage.getItem('guarafood-print-server-role') || 'all';
             const effectiveRole = currentStaffUser?.role || currentUser?.role;
-            const isWaiterRestricted = isLocked || effectiveRole === 'waiter';
+            const isWaiterRestricted = isLocked || effectiveRole === 'waiter' || effectiveRole === 'accountant';
             const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
             const isPrintServer = !isWaiterRestricted && storedIsPrintServer !== 'false' && stationId !== 'off' && (storedIsPrintServer === 'true' || !isMobileDevice);
 
@@ -557,7 +570,8 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             }
 
             const newestOrder = ordersToAlert[0];
-            if (areNotificationsEnabled) {
+            const effectiveRoleForAlert = currentStaffUser?.role || currentUser?.role;
+            if (areNotificationsEnabled && effectiveRoleForAlert !== 'accountant') {
                 if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
                     try {
                         new Notification(newestOrder.tableNumber ? 'Nova Mesa Aberta!' : 'Novo Pedido!', {
@@ -843,7 +857,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         const storedIsPrintServer = localStorage.getItem('guarafood-is-print-server');
         const stationId = localStorage.getItem('guarafood-print-station-id') || localStorage.getItem('guarafood-print-server-role') || 'all';
         const effectiveRole = currentStaffUser?.role || currentUser?.role;
-        const isWaiterRestricted = isLocked || effectiveRole === 'waiter';
+        const isWaiterRestricted = isLocked || effectiveRole === 'waiter' || effectiveRole === 'accountant';
         const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
         // Ativo se explicitamente ativado OU se estiver em terminal POS desktop não-garçom sem desativação explícita
@@ -980,7 +994,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         if (pendingJobsToQueue.length > 0) {
             if (shouldPlayNotification) {
                 const areNotificationsEnabled = localStorage.getItem('guarafood-notifications-enabled') === 'true';
-                if (areNotificationsEnabled) {
+                if (areNotificationsEnabled && effectiveRole !== 'accountant') {
                     playNotification();
                 }
             }
@@ -1193,6 +1207,8 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         />
                     </div>
                 ) : null;
+            case 'accountant': return <AccountantFiscalView restaurant={restaurant} onUpdateRestaurant={(updated) => setRestaurant(updated)} />;
+            case 'master_guide': return <GuaraFoodMasterGuide onBack={() => setActiveTab('orders')} />;
             case 'help': return <HelpCenter onBack={() => setActiveTab('orders')} />;
             default: return null;
         }
@@ -1244,15 +1260,17 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                                     currentStaffUser.role === 'waiter' ? 'Garçom' :
                                     currentStaffUser.role === 'kitchen' ? 'Cozinha' :
                                     currentStaffUser.role === 'operator' ? 'Atendente' :
+                                    currentStaffUser.role === 'accountant' ? 'Contador (Fiscal)' :
                                     currentStaffUser.role === 'manager' ? 'Gerente' : 'Equipe'
                                 ) : (
                                     currentUser?.role === 'waiter' ? 'Garçom' :
                                     currentUser?.role === 'kitchen' ? 'Cozinha' :
                                     currentUser?.role === 'operator' ? 'Atendente' :
+                                    currentUser?.role === 'accountant' ? 'Contador (Fiscal)' :
                                     currentUser?.role === 'manager' ? 'Gerente' : 'Administrador'
                                 )}
                             </span>
-                            {!hasFinancialAccess && (
+                            {!hasFinancialAccess && (currentStaffUser?.role || currentUser?.role) !== 'accountant' && (
                                 <span className="text-[9px] bg-red-50 text-red-700 border border-red-200 px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-1 shadow-xs" title="Usuário com restrição: Acesso financeiro bloqueado">
                                     <span>🔒</span> Sem Financeiro
                                 </span>
@@ -1276,7 +1294,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             {(() => {
                                 const stationId = localStorage.getItem('guarafood-print-station-id') || localStorage.getItem('guarafood-print-server-role') || 'all';
                                 const isExplicitlyOn = localStorage.getItem('guarafood-is-print-server') === 'true' && stationId !== 'off';
-                                if (!isExplicitlyOn) return null;
+                                if (!isExplicitlyOn || (currentStaffUser?.role || currentUser?.role) === 'accountant') return null;
                                 const customPrinter = restaurant?.printers?.find(p => p.id === stationId);
                                 const stationLabel = customPrinter
                                     ? `Estação ${customPrinter.name}`
@@ -1299,7 +1317,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    {currentUser?.role !== 'waiter' && (
+                    {currentUser?.role !== 'waiter' && currentUser?.role !== 'accountant' && currentStaffUser?.role !== 'accountant' && (
                         isLocked ? (
                             <button 
                                 onClick={handleUnlockClick}
@@ -1323,7 +1341,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             )
                         )
                     )}
-                    {restaurant && (
+                    {restaurant && (currentStaffUser?.role || currentUser?.role) !== 'accountant' && (
                         <>
                             <button 
                                 onClick={handleOpenDeliveryFeeModal}
@@ -1368,7 +1386,8 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             const labels: Record<string, string> = { 
                                 orders: 'Pedidos', waiter_monitor: '👀 Monitor Garçom (Salão)', tables: 'Mesas', comandas: 'Comandas', menu: 'Cardápio', 
                                 financial: 'Financeiro', customers: 'Clientes', staff: 'Equipe', 
-                                printers: '🖨️ Impressoras', settings: 'Config', help: 'Ajuda', mensalistas: 'Mensalistas'
+                                printers: '🖨️ Impressoras', settings: 'Config', help: 'Ajuda', mensalistas: 'Mensalistas',
+                                accountant: '📑 Contador (SEFAZ)', master_guide: '📘 Guia Mestre'
                             };
                             return (
                                 <button 

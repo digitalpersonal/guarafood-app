@@ -17,7 +17,7 @@ const StaffManagement: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [pin, setPin] = useState('');
-    const [role, setRole] = useState<'waiter' | 'manager' | 'operator' | 'kitchen'>('operator');
+    const [role, setRole] = useState<'waiter' | 'manager' | 'operator' | 'kitchen' | 'accountant'>('operator');
     const [canAccessFinancial, setCanAccessFinancial] = useState(false);
 
     useEffect(() => {
@@ -182,6 +182,8 @@ const StaffManagement: React.FC = () => {
                 return { label: 'Atendente / Caixa', bg: 'bg-blue-600', badge: 'bg-blue-50 text-blue-700 border-blue-200' };
             case 'kitchen':
                 return { label: 'Cozinha', bg: 'bg-amber-600', badge: 'bg-amber-50 text-amber-700 border-amber-200' };
+            case 'accountant':
+                return { label: 'Contador (Fiscal)', bg: 'bg-indigo-600', badge: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
             case 'waiter':
             default:
                 return { label: 'Garçom', bg: 'bg-orange-500', badge: 'bg-orange-50 text-orange-700 border-orange-200' };
@@ -450,6 +452,26 @@ const StaffManagement: React.FC = () => {
                                             <span>👔</span> Gerente Geral
                                         </div>
                                         <p className="text-[10px] text-gray-500 mt-0.5">Supervisão geral da loja</p>
+                                    </button>
+
+                                    <button 
+                                        type="button"
+                                        onClick={() => {
+                                            setRole('accountant');
+                                            setCanAccessFinancial(false);
+                                        }}
+                                        className={`col-span-2 p-3 rounded-xl text-left border-2 transition-all ${
+                                            role === 'accountant' 
+                                                ? 'border-indigo-500 bg-indigo-50/60 text-indigo-950 shadow-sm' 
+                                                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                                        }`}
+                                    >
+                                        <div className="font-bold text-xs flex items-center gap-1.5">
+                                            <span>📑</span> Contador (Fiscal / SEFAZ)
+                                        </div>
+                                        <p className="text-[10px] text-gray-500 mt-0.5">
+                                            Acesso exclusivo à aba do Contador: pedidos do mês, status das notas fiscais e envio em lote à SEFAZ (sem alterar nem imprimir no caixa).
+                                        </p>
                                     </button>
                                 </div>
                             </div>

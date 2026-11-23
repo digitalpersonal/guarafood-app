@@ -3,6 +3,8 @@ import { fetchAllOrdersAdmin } from '../services/databaseService';
 import { fetchRestaurantsSecure } from '../services/databaseService';
 import type { Order, Restaurant } from '../types';
 import Spinner from './Spinner';
+import { getOrderFiscalVerification, formatFiscalTimestamp } from '../utils/fiscalStatus';
+import FiscalStatusIcon from './FiscalStatusIcon';
 
 interface RestaurantSalesSummary {
     restaurantId: number;
@@ -11,6 +13,8 @@ interface RestaurantSalesSummary {
     totalOrders: number;
     cancelledOrders: number;
     completedOrders: number;
+    nfEmittedCount: number;
+    nfErrorCount: number;
     totalRevenue: number;
     deliveryCount: number;
     tableCount: number;
@@ -19,6 +23,58 @@ interface RestaurantSalesSummary {
     paymentBreakdown: Record<string, number>;
     ordersList: Order[];
 }
+
+const getOrderStatusBadgeClass = (status: string) => {
+    if (status === 'Cancelado') return 'bg-red-100 text-red-700 border-red-200';
+    if (status === 'Entregue') return 'bg-green-100 text-green-700 border-green-200';
+    if (status === 'A Caminho') return 'bg-orange-100 text-orange-700 border-orange-200';
+    if (status === 'Preparando') return 'bg-amber-100 text-amber-800 border-amber-200';
+    if (status === 'Novo Pedido') return 'bg-blue-100 text-blue-700 border-blue-200';
+    if (status === 'Aguardando Pagamento') return 'bg-gray-100 text-gray-600 border-gray-200';
+    return 'bg-purple-100 text-purple-700 border-purple-200';
+};
+
+const renderFiscalBadge = (order: Order) => {
+    const info = getOrderFiscalVerification(order);
+    if (info.state === 'authorized') {
+        return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 whitespace-nowrap">
+                <span>✅</span>
+                <span>{info.label}</span>
+            </span>
+        );
+    }
+    if (info.state === 'processing') {
+        return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-200 whitespace-nowrap">
+                <span>⏳</span>
+                <span>{info.label}</span>
+            </span>
+        );
+    }
+    if (info.state === 'error') {
+        return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-200 whitespace-nowrap" title={info.logText}>
+                <span>⚠️</span>
+                <span>{info.label}</span>
+            </span>
+        );
+    }
+    if (info.state === 'marked_only') {
+        return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 whitespace-nowrap" title={info.logText}>
+                <span>🏷️</span>
+                <span>{info.label}</span>
+            </span>
+        );
+    }
+    return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-500 border border-gray-200 whitespace-nowrap">
+            <span>—</span>
+            <span>{info.label}</span>
+        </span>
+    );
+};
 
 const AdminSalesReport: React.FC = () => {
     const [orders, setOrders] = useState<Order[]>([]);
@@ -37,6 +93,9 @@ const AdminSalesReport: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     // Modal to view detailed orders of a restaurant
     const [detailRestaurant, setDetailRestaurant] = useState<RestaurantSalesSummary | null>(null);
+    // Fiscal verification filter for global order history table
+    const [historyFiscalFilter, setHistoryFiscalFilter] = useState<'all' | 'emitted' | 'not_emitted' | 'error'>('all');
+    const [historyLimit, setHistoryLimit] = useState<number>(50);
 
     // Initial load
     useEffect(() => {
@@ -136,6 +195,8 @@ const AdminSalesReport: React.FC = () => {
                     totalOrders: 0,
                     cancelledOrders: 0,
                     completedOrders: 0,
+                    nfEmittedCount: 0,
+                    nfErrorCount: 0,
                     totalRevenue: 0,
                     deliveryCount: 0,
                     tableCount: 0,
@@ -149,6 +210,10 @@ const AdminSalesReport: React.FC = () => {
             const item = map.get(rId)!;
             item.totalOrders += 1;
             item.ordersList.push(order);
+
+            const fiscalCheck = getOrderFiscalVerification(order);
+            if (fiscalCheck.isEmitted) item.nfEmittedCount += 1;
+            else if (fiscalCheck.state === 'error') item.nfErrorCount += 1;
 
             if (order.status === 'Cancelado') {
                 item.cancelledOrders += 1;
@@ -216,6 +281,44 @@ const AdminSalesReport: React.FC = () => {
             { revenue: 0, orders: 0, cancelled: 0, deliveryFees: 0, restaurantsCount: 0 }
         );
     }, [summariesByRestaurant]);
+
+    const restaurantNameMap = useMemo(() => {
+        const map = new Map<number, string>();
+        restaurants.forEach(r => map.set(r.id, r.name));
+        return map;
+    }, [restaurants]);
+
+    const historyOrdersFiltered = useMemo(() => {
+        const q = searchQuery.toLowerCase().trim();
+        return filteredOrders.filter(order => {
+            if (q) {
+                const restName = (order.restaurantName || restaurantNameMap.get(order.restaurantId) || '').toLowerCase();
+                const custName = (order.customerName || '').toLowerCase();
+                const orderNum = String(order.order_number || order.id).toLowerCase();
+                if (!restName.includes(q) && !custName.includes(q) && !orderNum.includes(q)) {
+                    return false;
+                }
+            }
+            const fiscal = getOrderFiscalVerification(order);
+            if (historyFiscalFilter === 'emitted') return fiscal.isEmitted;
+            if (historyFiscalFilter === 'not_emitted') return !fiscal.isEmitted && fiscal.state !== 'error' && fiscal.state !== 'processing';
+            if (historyFiscalFilter === 'error') return fiscal.state === 'error' || fiscal.state === 'processing';
+            return true;
+        });
+    }, [filteredOrders, searchQuery, historyFiscalFilter, restaurantNameMap]);
+
+    const fiscalSummaryCounts = useMemo(() => {
+        let emitted = 0;
+        let notEmitted = 0;
+        let errorOrProcessing = 0;
+        filteredOrders.forEach(o => {
+            const f = getOrderFiscalVerification(o);
+            if (f.isEmitted) emitted += 1;
+            else if (f.state === 'error' || f.state === 'processing') errorOrProcessing += 1;
+            else notEmitted += 1;
+        });
+        return { emitted, notEmitted, errorOrProcessing, total: filteredOrders.length };
+    }, [filteredOrders]);
 
     // Export CSV
     const handleExportCSV = () => {
@@ -425,6 +528,7 @@ const AdminSalesReport: React.FC = () => {
                                     <th className="py-3.5 px-4">Restaurante</th>
                                     <th className="py-3.5 px-3">Cidade</th>
                                     <th className="py-3.5 px-3 text-center">Pedidos</th>
+                                    <th className="py-3.5 px-3 text-center">Notas Fiscais</th>
                                     <th className="py-3.5 px-3 text-right">Faturamento</th>
                                     <th className="py-3.5 px-3 text-center">Tipo de Atendimento</th>
                                     <th className="py-3.5 px-3 text-center">Pagamentos Mais Usados</th>
@@ -448,6 +552,20 @@ const AdminSalesReport: React.FC = () => {
                                             {item.cancelledOrders > 0 && (
                                                 <div className="text-[10px] text-rose-500 font-semibold">
                                                     ({item.cancelledOrders} canc.)
+                                                </div>
+                                            )}
+                                        </td>
+                                        <td className="py-4 px-3 text-center">
+                                            {item.nfEmittedCount > 0 ? (
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                    ✅ {item.nfEmittedCount} emitida{item.nfEmittedCount > 1 ? 's' : ''}
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] font-bold text-gray-400">0 emitidas</span>
+                                            )}
+                                            {item.nfErrorCount > 0 && (
+                                                <div className="text-[10px] text-rose-600 font-bold mt-0.5">
+                                                    ⚠️ {item.nfErrorCount} erro{item.nfErrorCount > 1 ? 's' : ''}
                                                 </div>
                                             )}
                                         </td>
@@ -506,17 +624,164 @@ const AdminSalesReport: React.FC = () => {
                 )}
             </div>
 
+            {/* Tabela de Histórico de Pedidos com Verificação Fiscal Separada */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="p-4 sm:p-6 border-b bg-gray-50/50 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div>
+                        <h3 className="text-base font-black text-gray-800 uppercase tracking-wide flex items-center gap-2">
+                            <span>🧾</span>
+                            <span>Histórico de Pedidos &amp; Log de Verificação Fiscal ({historyOrdersFiltered.length})</span>
+                        </h3>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                            Diferencia claramente o <strong>Status do Pedido</strong> (entrega/preparo) do <strong>Status da Nota Fiscal (SEFAZ)</strong>.
+                        </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setHistoryFiscalFilter('all')}
+                            className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${historyFiscalFilter === 'all' ? 'bg-gray-900 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                        >
+                            Todos ({fiscalSummaryCounts.total})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setHistoryFiscalFilter('emitted')}
+                            className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${historyFiscalFilter === 'emitted' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
+                        >
+                            ✅ NF Emitida ({fiscalSummaryCounts.emitted})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setHistoryFiscalFilter('not_emitted')}
+                            className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${historyFiscalFilter === 'not_emitted' ? 'bg-slate-700 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                        >
+                            — Não Emitida ({fiscalSummaryCounts.notEmitted})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setHistoryFiscalFilter('error')}
+                            className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${historyFiscalFilter === 'error' ? 'bg-rose-600 text-white shadow-sm' : 'bg-rose-50 text-rose-700 hover:bg-rose-100'}`}
+                        >
+                            ⚠️ Erro / Pendente ({fiscalSummaryCounts.errorOrProcessing})
+                        </button>
+                    </div>
+                </div>
+
+                {historyOrdersFiltered.length === 0 ? (
+                    <div className="p-10 text-center text-gray-400 font-bold text-xs">
+                        Nenhum pedido encontrado para os filtros selecionados neste período.
+                    </div>
+                ) : (
+                    <>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs">
+                                <thead className="bg-gray-100/70 border-b text-gray-500 uppercase font-black tracking-wider text-[10px]">
+                                    <tr>
+                                        <th className="py-3 px-4">Pedido #</th>
+                                        <th className="py-3 px-3">Restaurante / Cliente</th>
+                                        <th className="py-3 px-3 text-right">Valor</th>
+                                        <th className="py-3 px-3 text-center">Status do Pedido</th>
+                                        <th className="py-3 px-3 text-center">Status da Nota Fiscal</th>
+                                        <th className="py-3 px-4">Log de Verificação Fiscal</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {historyOrdersFiltered.slice(0, historyLimit).map(ord => {
+                                        const fiscalInfo = getOrderFiscalVerification(ord);
+                                        const restLabel = ord.restaurantName || restaurantNameMap.get(ord.restaurantId) || `Restaurante #${ord.restaurantId}`;
+                                        const verifiedAt = formatFiscalTimestamp(fiscalInfo.updatedAt);
+
+                                        return (
+                                            <tr key={ord.id} className="hover:bg-gray-50/80 transition-colors">
+                                                <td className="py-3 px-4 whitespace-nowrap">
+                                                    <div className="flex items-center gap-2">
+                                                        <FiscalStatusIcon order={ord} />
+                                                        <div>
+                                                            <div className="font-mono font-black text-gray-900">
+                                                                #{String(ord.order_number || ord.id.slice(0, 6)).padStart(3, '0')}
+                                                            </div>
+                                                            <div className="text-[10px] text-gray-400">
+                                                                {new Date(ord.timestamp).toLocaleString('pt-BR')}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="py-3 px-3">
+                                                    <div className="font-bold text-gray-900">{restLabel}</div>
+                                                    <div className="text-[11px] text-gray-500">
+                                                        {ord.customerName || 'Cliente Balcão'} • {ord.paymentMethod || 'Dinheiro'}
+                                                    </div>
+                                                </td>
+                                                <td className="py-3 px-3 text-right font-black text-gray-900 whitespace-nowrap">
+                                                    R$ {Number(ord.totalPrice || 0).toFixed(2).replace('.', ',')}
+                                                </td>
+                                                <td className="py-3 px-3 text-center whitespace-nowrap">
+                                                    <span className={`inline-block border text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${getOrderStatusBadgeClass(ord.status)}`}>
+                                                        {ord.status}
+                                                    </span>
+                                                </td>
+                                                <td className="py-3 px-3 text-center whitespace-nowrap">
+                                                    {renderFiscalBadge(ord)}
+                                                </td>
+                                                <td className="py-3 px-4 max-w-xs">
+                                                    <div
+                                                        className={`text-[11px] font-medium leading-snug ${
+                                                            fiscalInfo.state === 'error'
+                                                                ? 'text-rose-700'
+                                                                : fiscalInfo.isEmitted
+                                                                    ? 'text-emerald-800'
+                                                                    : fiscalInfo.state === 'marked_only'
+                                                                        ? 'text-purple-700'
+                                                                        : 'text-gray-400'
+                                                        }`}
+                                                        title={fiscalInfo.key ? `Chave completa: ${fiscalInfo.key}` : fiscalInfo.logText}
+                                                    >
+                                                        {fiscalInfo.logText}
+                                                    </div>
+                                                    {verifiedAt && (
+                                                        <div className="text-[10px] text-gray-400 font-mono mt-0.5">
+                                                            Verificado em {verifiedAt}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {historyOrdersFiltered.length > historyLimit && (
+                            <div className="p-3 border-t bg-gray-50 flex items-center justify-between text-xs">
+                                <span className="text-gray-500 font-semibold">
+                                    Exibindo {historyLimit} de {historyOrdersFiltered.length} pedidos do período.
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setHistoryLimit(prev => prev + 100)}
+                                    className="px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-100 rounded-lg font-bold text-gray-700 transition-colors"
+                                >
+                                    Carregar mais 100
+                                </button>
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
+
             {/* Modal de Detalhamento dos Pedidos de um Restaurante Específico */}
             {detailRestaurant && (
                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
-                    <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden">
+                    <div className="bg-white w-full max-w-5xl rounded-3xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden">
                         <div className="p-6 border-b flex justify-between items-center bg-gray-50">
                             <div>
                                 <h3 className="text-xl font-black text-gray-900 uppercase">
                                     {detailRestaurant.restaurantName}
                                 </h3>
                                 <p className="text-xs text-gray-500 font-bold mt-0.5">
-                                    Extrato de pedidos no período ({detailRestaurant.ordersList.length} pedidos encontrados)
+                                    Extrato de pedidos no período ({detailRestaurant.ordersList.length} pedidos • {detailRestaurant.nfEmittedCount} NF emitida{detailRestaurant.nfEmittedCount !== 1 ? 's' : ''})
                                 </p>
                             </div>
                             <button
@@ -528,7 +793,7 @@ const AdminSalesReport: React.FC = () => {
                         </div>
 
                         <div className="p-6 overflow-y-auto flex-1 space-y-4">
-                            <div className="grid grid-cols-3 gap-3 bg-orange-50/50 p-4 rounded-2xl border border-orange-100 text-center">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-orange-50/50 p-4 rounded-2xl border border-orange-100 text-center">
                                 <div>
                                     <p className="text-[10px] font-black uppercase text-orange-600">Total Faturado</p>
                                     <p className="text-lg font-black text-gray-900">
@@ -542,6 +807,12 @@ const AdminSalesReport: React.FC = () => {
                                     </p>
                                 </div>
                                 <div>
+                                    <p className="text-[10px] font-black uppercase text-emerald-700">NF Emitidas (SEFAZ)</p>
+                                    <p className="text-lg font-black text-emerald-700">
+                                        {detailRestaurant.nfEmittedCount}
+                                    </p>
+                                </div>
+                                <div>
                                     <p className="text-[10px] font-black uppercase text-orange-600">Cancelados</p>
                                     <p className="text-lg font-black text-rose-600">
                                         {detailRestaurant.cancelledOrders}
@@ -550,48 +821,93 @@ const AdminSalesReport: React.FC = () => {
                             </div>
 
                             <div className="space-y-2">
-                                <h4 className="text-xs font-black uppercase text-gray-600">Lista de Pedidos</h4>
-                                <div className="divide-y divide-gray-100 border rounded-xl overflow-hidden">
-                                    {detailRestaurant.ordersList.map(ord => (
-                                        <div key={ord.id} className="p-3 bg-white hover:bg-gray-50 flex flex-wrap items-center justify-between gap-3 text-xs">
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-black text-gray-900">
-                                                        #{String(ord.order_number || ord.id.slice(0, 6)).padStart(3, '0')}
-                                                    </span>
-                                                    <span className="text-gray-600 font-bold">{ord.customerName}</span>
-                                                    {ord.tableNumber && (
-                                                        <span className="bg-orange-100 text-orange-800 text-[10px] font-black px-2 py-0.5 rounded">
-                                                            Mesa {ord.tableNumber}
-                                                        </span>
-                                                    )}
-                                                    {ord.comandaNumber && (
-                                                        <span className="bg-blue-100 text-blue-800 text-[10px] font-black px-2 py-0.5 rounded">
-                                                            Comanda #{ord.comandaNumber}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <p className="text-[11px] text-gray-400 mt-0.5">
-                                                    {new Date(ord.timestamp).toLocaleString('pt-BR')} • {ord.paymentMethod || 'Dinheiro'}
-                                                </p>
-                                            </div>
-
-                                            <div className="text-right">
-                                                <p className="font-black text-sm text-gray-900">
-                                                    R$ {Number(ord.totalPrice).toFixed(2).replace('.', ',')}
-                                                </p>
-                                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                                                    ord.status === 'Cancelado' 
-                                                        ? 'bg-red-100 text-red-700' 
-                                                        : ord.status === 'Entregue' 
-                                                        ? 'bg-green-100 text-green-700'
-                                                        : 'bg-yellow-100 text-yellow-800'
-                                                }`}>
-                                                    {ord.status}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    ))}
+                                <h4 className="text-xs font-black uppercase text-gray-600">Histórico de Pedidos &amp; Verificação Fiscal</h4>
+                                <div className="overflow-x-auto border rounded-xl">
+                                    <table className="w-full text-left text-xs">
+                                        <thead className="bg-gray-100/80 border-b text-[10px] font-black uppercase text-gray-500">
+                                            <tr>
+                                                <th className="py-2.5 px-3">Pedido #</th>
+                                                <th className="py-2.5 px-3">Cliente / Pagamento</th>
+                                                <th className="py-2.5 px-3 text-right">Valor</th>
+                                                <th className="py-2.5 px-3 text-center">Status do Pedido</th>
+                                                <th className="py-2.5 px-3 text-center">Nota Fiscal (SEFAZ)</th>
+                                                <th className="py-2.5 px-3">Log de Verificação</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 bg-white">
+                                            {detailRestaurant.ordersList.map(ord => {
+                                                const fiscalInfo = getOrderFiscalVerification(ord);
+                                                const verifiedAt = formatFiscalTimestamp(fiscalInfo.updatedAt);
+                                                return (
+                                                    <tr key={ord.id} className="hover:bg-gray-50 transition-colors">
+                                                        <td className="py-2.5 px-3 whitespace-nowrap">
+                                                            <div className="flex items-center gap-2">
+                                                                <FiscalStatusIcon order={ord} size="sm" />
+                                                                <div>
+                                                                    <div className="font-mono font-black text-gray-900">
+                                                                        #{String(ord.order_number || ord.id.slice(0, 6)).padStart(3, '0')}
+                                                                    </div>
+                                                                    <div className="text-[10px] text-gray-400">
+                                                                        {new Date(ord.timestamp).toLocaleString('pt-BR')}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="py-2.5 px-3">
+                                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                                <span className="font-bold text-gray-800">{ord.customerName}</span>
+                                                                {ord.tableNumber && (
+                                                                    <span className="bg-orange-100 text-orange-800 text-[10px] font-black px-1.5 py-0.5 rounded">
+                                                                        Mesa {ord.tableNumber}
+                                                                    </span>
+                                                                )}
+                                                                {ord.comandaNumber && (
+                                                                    <span className="bg-blue-100 text-blue-800 text-[10px] font-black px-1.5 py-0.5 rounded">
+                                                                        Comanda #{ord.comandaNumber}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className="text-[10px] text-gray-400 mt-0.5">
+                                                                {ord.paymentMethod || 'Dinheiro'}
+                                                            </div>
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-right font-black text-gray-900 whitespace-nowrap">
+                                                            R$ {Number(ord.totalPrice).toFixed(2).replace('.', ',')}
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                                            <span className={`inline-block border text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${getOrderStatusBadgeClass(ord.status)}`}>
+                                                                {ord.status}
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                                            {renderFiscalBadge(ord)}
+                                                        </td>
+                                                        <td className="py-2.5 px-3 max-w-[240px]">
+                                                            <div
+                                                                className={`text-[10px] font-medium leading-snug ${
+                                                                    fiscalInfo.state === 'error'
+                                                                        ? 'text-rose-700'
+                                                                        : fiscalInfo.isEmitted
+                                                                            ? 'text-emerald-800'
+                                                                            : fiscalInfo.state === 'marked_only'
+                                                                                ? 'text-purple-700'
+                                                                                : 'text-gray-400'
+                                                                }`}
+                                                                title={fiscalInfo.key ? `Chave: ${fiscalInfo.key}` : fiscalInfo.logText}
+                                                            >
+                                                                {fiscalInfo.logText}
+                                                            </div>
+                                                            {verifiedAt && (
+                                                                <div className="text-[9px] text-gray-400 font-mono mt-0.5">
+                                                                    {verifiedAt}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         </div>

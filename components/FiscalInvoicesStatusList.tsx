@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { fetchAllOrdersAdmin, fetchRestaurantsSecure } from '../services/databaseService';
+import { fetchFiscalOrdersAdmin, fetchRestaurantsSecure } from '../services/databaseService';
 import type { Order, Restaurant } from '../types';
 import { useNotification } from '../hooks/useNotification';
 import Spinner from './Spinner';
+import FiscalStatusIcon from './FiscalStatusIcon';
 
 interface FiscalInvoiceItem {
     id: string;
@@ -27,51 +28,78 @@ export const FiscalInvoicesStatusList: React.FC = () => {
     const [selectedRestaurantId, setSelectedRestaurantId] = useState<string>('all');
     const [checkingNoteId, setCheckingNoteId] = useState<string | null>(null);
 
+    const loadData = async () => {
+        setIsLoading(true);
+        try {
+            const [ordersData, restData] = await Promise.all([
+                fetchFiscalOrdersAdmin(),
+                fetchRestaurantsSecure()
+            ]);
+            setOrders(ordersData);
+            setRestaurants(restData);
+        } catch (err) {
+            console.error("Erro ao carregar pedidos para notas fiscais:", err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     useEffect(() => {
-        const load = async () => {
-            setIsLoading(true);
-            try {
-                const [ordersData, restData] = await Promise.all([
-                    fetchAllOrdersAdmin(),
-                    fetchRestaurantsSecure()
-                ]);
-                setOrders(ordersData);
-                setRestaurants(restData);
-            } catch (err) {
-                console.error("Erro ao carregar pedidos para notas fiscais:", err);
-            } finally {
-                setIsLoading(false);
-            }
+        loadData();
+        const handleRefresh = () => {
+            loadData();
         };
-        load();
+        window.addEventListener('guarafood:update-orders', handleRefresh);
+        return () => window.removeEventListener('guarafood:update-orders', handleRefresh);
     }, []);
 
     // Map orders to Fiscal Invoices based strictly on real database fiscal status
     const invoices: FiscalInvoiceItem[] = useMemo(() => {
         const restMap = new Map(restaurants.map(r => [String(r.id), r.name]));
 
-        // Filtra apenas pedidos que possuem status fiscal registrado ou exportação fiscal ativa
-        const fiscalOrders = orders.filter(o => o.fiscal_status || o.fiscalExport || o.fiscal_key);
+        // Filtra apenas pedidos que possuem transmissão fiscal real (status SEFAZ ou chave NFC-e gerada)
+        const fiscalOrders = orders.filter(o => {
+            const fiscalMeta = o.payment_details?.fiscal;
+            const raw = o as any;
+            return Boolean(
+                o.fiscalStatus ||
+                raw.fiscal_status ||
+                o.fiscalKey ||
+                raw.fiscal_key ||
+                fiscalMeta?.status ||
+                fiscalMeta?.chave
+            );
+        });
 
-        return fiscalOrders.map((o, idx) => {
-            const restName = restMap.get(String(o.restaurantId)) || 'Restaurante';
-            
+        return fiscalOrders.map((o) => {
+            const fiscalMeta = o.payment_details?.fiscal;
+            const raw = o as any;
+            const rawStatus = String(o.fiscalStatus || raw.fiscal_status || fiscalMeta?.status || '').toLowerCase();
+            const key = o.fiscalKey || raw.fiscal_key || fiscalMeta?.chave || '';
+            const protocol = o.fiscalProtocol || fiscalMeta?.protocolo || (key ? key.substring(0, 15) : 'PENDENTE');
+            const nfNumber = o.fiscalNumber || fiscalMeta?.numero || o.order_number || o.id.slice(-6).toUpperCase();
+            const restName = restMap.get(String(o.restaurantId)) || o.restaurantName || 'Restaurante';
+
             let status: 'Autorizada' | 'Pendente' | 'Rejeitada' = 'Pendente';
-            if (o.fiscal_status === 'autorizado') status = 'Autorizada';
-            else if (o.fiscal_status === 'rejeitado') status = 'Rejeitada';
-            else if (o.fiscalExport) status = 'Autorizada';
+            if (rawStatus === 'rejeitado' || rawStatus === 'erro_autorizacao' || rawStatus === 'cancelado') {
+                status = 'Rejeitada';
+            } else if (rawStatus === 'processando') {
+                status = 'Pendente';
+            } else if (rawStatus === 'autorizado' || Boolean(key)) {
+                status = 'Autorizada';
+            }
 
             return {
-                id: `NFCe-${1000 + idx}`,
+                id: `NFCe-${nfNumber}`,
                 orderId: o.id,
                 restaurantName: restName,
                 customerName: o.customerName || 'Cliente GuaraFood',
-                amount: o.total || o.totalPrice || 0,
+                amount: Number(o.totalPrice || raw.total || 0),
                 status,
-                protocol: o.fiscal_key ? o.fiscal_key.substring(0, 15) : 'PENDENTE',
-                key: o.fiscal_key || '',
+                protocol,
+                key,
                 issuedAt: o.timestamp || new Date().toISOString(),
-                errorMessage: o.fiscal_error || undefined
+                errorMessage: o.fiscalMessage || raw.fiscal_error || fiscalMeta?.mensagem || undefined
             };
         });
     }, [orders, restaurants]);
@@ -80,7 +108,7 @@ export const FiscalInvoicesStatusList: React.FC = () => {
     const filteredInvoices = useMemo(() => {
         return invoices.filter(inv => {
             if (statusFilter !== 'all' && inv.status !== statusFilter) return false;
-            if (selectedRestaurantId !== 'all' && !inv.restaurantName.toLowerCase().includes(selectedRestaurantId.toLowerCase())) return false;
+            if (selectedRestaurantId !== 'all' && inv.restaurantName.toLowerCase() !== selectedRestaurantId.toLowerCase()) return false;
             if (searchQuery.trim() !== '') {
                 const q = searchQuery.toLowerCase();
                 return (
@@ -158,6 +186,18 @@ export const FiscalInvoicesStatusList: React.FC = () => {
                         </button>
                     </div>
 
+                    {/* Restaurant Filter */}
+                    <select
+                        value={selectedRestaurantId}
+                        onChange={(e) => setSelectedRestaurantId(e.target.value)}
+                        className="bg-gray-50 border border-gray-200 text-gray-800 text-xs font-semibold rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                        <option value="all">Todos os Restaurantes</option>
+                        {restaurants.map(r => (
+                            <option key={r.id} value={r.name}>{r.name}</option>
+                        ))}
+                    </select>
+
                     {/* Search Input */}
                     <input
                         type="text"
@@ -166,6 +206,15 @@ export const FiscalInvoicesStatusList: React.FC = () => {
                         placeholder="Buscar por ID, cliente, chave..."
                         className="bg-gray-50 border border-gray-200 text-gray-900 text-xs font-semibold rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full md:w-60"
                     />
+
+                    <button
+                        type="button"
+                        onClick={loadData}
+                        className="px-3 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-black transition-all cursor-pointer"
+                        title="Atualizar lista de notas fiscais"
+                    >
+                        🔄 Atualizar
+                    </button>
                 </div>
             </div>
 
@@ -194,8 +243,17 @@ export const FiscalInvoicesStatusList: React.FC = () => {
                             filteredInvoices.map((inv) => (
                                 <tr key={inv.id} className="hover:bg-gray-50/80 transition-colors">
                                     <td className="py-3.5 px-4">
-                                        <div className="font-black text-gray-900">{inv.id}</div>
-                                        <div className="text-[10px] text-gray-400">Pedido #{inv.orderId.slice(-6)}</div>
+                                        <div className="flex items-center gap-2">
+                                            <FiscalStatusIcon
+                                                isEmitted={inv.status === 'Autorizada'}
+                                                tooltip={`${inv.status}${inv.errorMessage ? ` — ${inv.errorMessage}` : ''}`}
+                                                size="sm"
+                                            />
+                                            <div>
+                                                <div className="font-black text-gray-900">{inv.id}</div>
+                                                <div className="text-[10px] text-gray-400">Pedido #{inv.orderId.slice(-6)}</div>
+                                            </div>
+                                        </div>
                                     </td>
                                     <td className="py-3.5 px-4">
                                         <span className="font-bold text-gray-800">{inv.restaurantName}</span>

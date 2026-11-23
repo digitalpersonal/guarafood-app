@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
-import { fetchAllOrdersAdmin, fetchRestaurantsSecure } from '../services/databaseService';
+import { fetchFiscalOrdersAdmin, fetchRestaurantsSecure } from '../services/databaseService';
 import type { Order, Restaurant } from '../types';
 import Spinner from './Spinner';
+import { getOrderFiscalVerification, formatFiscalTimestamp } from '../utils/fiscalStatus';
+import FiscalStatusIcon from './FiscalStatusIcon';
 
 interface DailyFiscalData {
     date: string;
@@ -14,6 +16,27 @@ interface DailyFiscalData {
     totalAmount: number;
 }
 
+const toLocalDateKey = (dateInput: string | Date): string => {
+    const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    if (isNaN(d.getTime())) return '';
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const getOrderFiscalClassification = (o: Order): 'authorized' | 'error' | 'pending' | null => {
+    const fiscalMeta = o.payment_details?.fiscal;
+    const raw = o as any;
+    const status = String(o.fiscalStatus || raw.fiscal_status || fiscalMeta?.status || '').toLowerCase();
+    const key = o.fiscalKey || raw.fiscal_key || fiscalMeta?.chave;
+
+    // Apenas pedidos que possuem transmissão/status fiscal real ou chave NFC-e entram no histórico de notas fiscais.
+    // Pedidos apenas marcados com fiscalExport ("NF: Sim") ainda NÃO são notas emitidas.
+    if (!status && !key) return null;
+    if (status === 'rejeitado' || status === 'erro_autorizacao' || status === 'cancelado') return 'error';
+    if (status === 'processando') return 'pending';
+    if (status === 'autorizado' || Boolean(key)) return 'authorized';
+    return null;
+};
+
 export const FiscalEmissionChart: React.FC = () => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
@@ -21,51 +44,68 @@ export const FiscalEmissionChart: React.FC = () => {
     const [selectedRestaurantId, setSelectedRestaurantId] = useState<string>('all');
     const [timeframe, setTimeframe] = useState<number>(30); // 30 days default
 
+    const loadData = async () => {
+        setIsLoading(true);
+        try {
+            const [ordersData, restData] = await Promise.all([
+                fetchFiscalOrdersAdmin(),
+                fetchRestaurantsSecure()
+            ]);
+            setOrders(ordersData);
+            setRestaurants(restData);
+        } catch (err) {
+            console.error("Erro ao carregar dados fiscais:", err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     useEffect(() => {
-        const loadData = async () => {
-            setIsLoading(true);
-            try {
-                const [ordersData, restData] = await Promise.all([
-                    fetchAllOrdersAdmin(),
-                    fetchRestaurantsSecure()
-                ]);
-                setOrders(ordersData);
-                setRestaurants(restData);
-            } catch (err) {
-                console.error("Erro ao carregar dados fiscais:", err);
-            } finally {
-                setIsLoading(false);
-            }
-        };
         loadData();
+        const handleRefresh = () => {
+            loadData();
+        };
+        window.addEventListener('guarafood:update-orders', handleRefresh);
+        return () => window.removeEventListener('guarafood:update-orders', handleRefresh);
     }, []);
+
+    const restaurantNameMap = useMemo(
+        () => new Map(restaurants.map(r => [String(r.id), r.name])),
+        [restaurants]
+    );
+
+    const filteredOrders = useMemo(() => {
+        return orders.filter(o => {
+            if (selectedRestaurantId !== 'all' && String(o.restaurantId) !== selectedRestaurantId) {
+                return false;
+            }
+            return true;
+        });
+    }, [orders, selectedRestaurantId]);
+
+    const recentFiscalOrders = useMemo(() => {
+        return filteredOrders
+            .filter(o => getOrderFiscalClassification(o) !== null)
+            .slice(0, 12);
+    }, [filteredOrders]);
 
     // Process data for the last N days
     const chartData = useMemo(() => {
         const result: DailyFiscalData[] = [];
         const now = new Date();
 
-        // Filter orders by restaurant if specified
-        const filtered = orders.filter(o => {
-            if (selectedRestaurantId !== 'all' && String(o.restaurantId) !== selectedRestaurantId) {
-                return false;
-            }
-            return true;
-        });
-
-        // Generate map for the last 'timeframe' days based strictly on real orders
+        // Generate map for the last 'timeframe' days based strictly on real orders (local timezone)
         for (let i = timeframe - 1; i >= 0; i--) {
-            const d = new Date();
+            const d = new Date(now);
             d.setDate(now.getDate() - i);
-            const dateStr = d.toISOString().split('T')[0]; // YYYY-MM-DD
+            const dateStr = toLocalDateKey(d);
             const displayDate = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 
             // Encontra pedidos reais neste dia que possuem emissão fiscal registrada
-            const dayOrders = filtered.filter(o => {
+            const dayOrders = filteredOrders.filter(o => {
                 if (!o.timestamp) return false;
-                const oDate = new Date(o.timestamp).toISOString().split('T')[0];
-                const hasFiscal = o.fiscal_status || o.fiscalExport || o.fiscal_key;
-                return oDate === dateStr && hasFiscal;
+                const oDate = toLocalDateKey(o.timestamp);
+                return oDate === dateStr && getOrderFiscalClassification(o) !== null;
             });
 
             let authorized = 0;
@@ -74,10 +114,11 @@ export const FiscalEmissionChart: React.FC = () => {
             let totalAmount = 0;
 
             dayOrders.forEach(o => {
-                totalAmount += o.total || o.totalPrice || 0;
-                if (o.fiscal_status === 'autorizado' || o.fiscalExport) {
+                const cls = getOrderFiscalClassification(o);
+                if (cls === 'authorized') {
                     authorized += 1;
-                } else if (o.fiscal_status === 'rejeitado') {
+                    totalAmount += Number(o.totalPrice || (o as any).total || 0);
+                } else if (cls === 'error') {
                     error += 1;
                 } else {
                     pending += 1;
@@ -96,7 +137,7 @@ export const FiscalEmissionChart: React.FC = () => {
         }
 
         return result;
-    }, [orders, selectedRestaurantId, timeframe]);
+    }, [filteredOrders, timeframe]);
 
     // Summary statistics
     const stats = useMemo(() => {
@@ -168,6 +209,15 @@ export const FiscalEmissionChart: React.FC = () => {
                             30 Dias
                         </button>
                     </div>
+
+                    <button
+                        type="button"
+                        onClick={loadData}
+                        className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-black transition-all cursor-pointer"
+                        title="Recarregar emissões recentes"
+                    >
+                        🔄 Atualizar
+                    </button>
                 </div>
             </div>
 
@@ -208,11 +258,11 @@ export const FiscalEmissionChart: React.FC = () => {
 
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-bold uppercase text-gray-400">Volume Fiscal (R$)</p>
+                        <p className="text-xs font-bold uppercase text-gray-400">Volume Fiscal Autorizado (R$)</p>
                         <h3 className="text-2xl font-black text-gray-900 mt-1">
                             R$ {stats.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </h3>
-                        <span className="text-[11px] text-emerald-600 font-bold mt-1 inline-block">Valor total escriturado</span>
+                        <span className="text-[11px] text-emerald-600 font-bold mt-1 inline-block">Soma das notas emitidas/autorizadas</span>
                     </div>
                     <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center text-xl font-bold">
                         💰
@@ -288,37 +338,66 @@ export const FiscalEmissionChart: React.FC = () => {
                                 <th className="pb-3 px-3">Restaurante</th>
                                 <th className="pb-3 px-3">Cliente</th>
                                 <th className="pb-3 px-3">Valor (R$)</th>
-                                <th className="pb-3 px-3">Status SEFAZ</th>
+                                <th className="pb-3 px-3">Status do Pedido</th>
+                                <th className="pb-3 px-3">Status Nota Fiscal</th>
+                                <th className="pb-3 px-3">Log de Verificação</th>
                                 <th className="pb-3 px-3 text-right">Data/Hora</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {orders.filter(o => o.fiscal_status || o.fiscalExport || o.fiscal_key).slice(0, 8).map((order, idx) => (
-                                <tr key={order.id || idx} className="hover:bg-gray-50/50 transition-colors">
-                                    <td className="py-3 px-3 font-bold text-gray-900">#{order.order_number || order.id.substring(0, 6)}</td>
-                                    <td className="py-3 px-3 text-gray-700 font-medium">{order.restaurantName || `Restaurante #${order.restaurantId}`}</td>
-                                    <td className="py-3 px-3 text-gray-600">{order.customerName || 'Cliente Balcão'}</td>
-                                    <td className="py-3 px-3 font-bold text-gray-900">R$ {(order.total || order.totalPrice || 0).toFixed(2)}</td>
-                                    <td className="py-3 px-3">
-                                        <span className={`border px-2 py-0.5 rounded-full font-bold text-[10px] inline-flex items-center gap-1 ${
-                                            order.fiscal_status === 'rejeitado' 
-                                                ? 'bg-red-50 text-red-700 border-red-200' 
-                                                : order.fiscal_status === 'autorizado' || order.fiscalExport
-                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                                    : 'bg-amber-50 text-amber-700 border-amber-200'
-                                        }`}>
-                                            <span>{order.fiscal_status === 'rejeitado' ? '❌' : order.fiscal_status === 'autorizado' || order.fiscalExport ? '✅' : '⏳'}</span> 
-                                            {order.fiscal_status === 'rejeitado' ? 'Rejeitada' : order.fiscal_status === 'autorizado' || order.fiscalExport ? 'Autorizada (NFC-e)' : 'Pendente'}
-                                        </span>
-                                    </td>
-                                    <td className="py-3 px-3 text-right text-gray-400">
-                                        {order.timestamp ? new Date(order.timestamp).toLocaleString('pt-BR') : '-'}
-                                    </td>
-                                </tr>
-                            ))}
-                            {orders.filter(o => o.fiscal_status || o.fiscalExport || o.fiscal_key).length === 0 && (
+                            {recentFiscalOrders.map((order, idx) => {
+                                const cls = getOrderFiscalClassification(order);
+                                const fiscalInfo = getOrderFiscalVerification(order);
+                                const verifiedAt = formatFiscalTimestamp(fiscalInfo.updatedAt);
+                                const restLabel = restaurantNameMap.get(String(order.restaurantId)) || order.restaurantName || `Restaurante #${order.restaurantId}`;
+                                const orderAmount = Number(order.totalPrice || (order as any).total || 0);
+                                return (
+                                    <tr key={order.id || idx} className="hover:bg-gray-50/50 transition-colors">
+                                        <td className="py-3 px-3 font-bold text-gray-900">
+                                            <div className="flex items-center gap-2">
+                                                <FiscalStatusIcon order={order} size="sm" />
+                                                <span>#{order.order_number || order.id.substring(0, 6)}</span>
+                                            </div>
+                                        </td>
+                                        <td className="py-3 px-3 text-gray-700 font-medium">{restLabel}</td>
+                                        <td className="py-3 px-3 text-gray-600">{order.customerName || 'Cliente Balcão'}</td>
+                                        <td className="py-3 px-3 font-bold text-gray-900">R$ {orderAmount.toFixed(2)}</td>
+                                        <td className="py-3 px-3">
+                                            <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] border inline-block ${
+                                                order.status === 'Cancelado'
+                                                    ? 'bg-red-50 text-red-700 border-red-200'
+                                                    : order.status === 'Entregue'
+                                                        ? 'bg-green-50 text-green-700 border-green-200'
+                                                        : 'bg-gray-100 text-gray-700 border-gray-200'
+                                            }`}>
+                                                {order.status || '—'}
+                                            </span>
+                                        </td>
+                                        <td className="py-3 px-3">
+                                            <span className={`border px-2 py-0.5 rounded-full font-bold text-[10px] inline-flex items-center gap-1 ${
+                                                cls === 'error'
+                                                    ? 'bg-red-50 text-red-700 border-red-200' 
+                                                    : cls === 'authorized'
+                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                                            }`}>
+                                                <span>{cls === 'error' ? '❌' : cls === 'authorized' ? '✅' : '⏳'}</span> 
+                                                {cls === 'error' ? 'Rejeitada' : cls === 'authorized' ? 'Autorizada (NFC-e)' : 'Pendente'}
+                                            </span>
+                                        </td>
+                                        <td className="py-3 px-3 text-[10px] text-gray-600 max-w-[220px]" title={fiscalInfo.key || fiscalInfo.logText}>
+                                            <div className="truncate font-medium">{fiscalInfo.logText}</div>
+                                            {verifiedAt && <div className="text-[9px] text-gray-400 font-mono">Log: {verifiedAt}</div>}
+                                        </td>
+                                        <td className="py-3 px-3 text-right text-gray-400 whitespace-nowrap">
+                                            {order.timestamp ? new Date(order.timestamp).toLocaleString('pt-BR') : '-'}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            {recentFiscalOrders.length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="text-center py-6 text-gray-400">
+                                    <td colSpan={8} className="text-center py-6 text-gray-400">
                                         Nenhuma transmissão fiscal registrada no período.
                                     </td>
                                 </tr>

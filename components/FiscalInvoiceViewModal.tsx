@@ -58,10 +58,11 @@ export const FiscalInvoiceViewModal: React.FC<FiscalInvoiceViewModalProps> = ({
     const yy = String(dateObj.getFullYear()).slice(-2);
     const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
     // Chave de acesso oficial com 44 dígitos
-    const accessKey = `31${yy}${mm}${cleanCnpj.padStart(14, '0')}65001${numNfFormatted}198273641`;
+    const accessKey = order.fiscalKey || `31${yy}${mm}${cleanCnpj.padStart(14, '0')}65001${numNfFormatted}198273641`;
     const formattedKey = accessKey.match(/.{1,4}/g)?.join(' ') || accessKey;
 
-    const protocolNumber = `1312${yy}${String(Math.floor(Math.random() * 89999999 + 10000000))}`;
+    const deterministicSeed = Math.abs(orderNum * 987654321) % 89999999;
+    const protocolNumber = order.fiscalProtocol || `1312${yy}${String(deterministicSeed + 10000000)}`;
     const isProd = restaurant?.fiscalEnv === 'producao';
 
     const displaySubtotal = Number(order.subtotal) > 0 
