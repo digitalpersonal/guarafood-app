@@ -63,7 +63,7 @@ export interface StaffMember {
     email: string; // NEW: Para login individual
     password?: string; // NEW: Para acesso imediato sem convite
     pin?: string; // Mantido para compatibilidade ou acesso rápido
-    role: 'waiter' | 'manager' | 'operator' | 'kitchen';
+    role: 'waiter' | 'manager' | 'operator' | 'kitchen' | 'accountant';
     active: boolean;
     canAccessFinancial?: boolean; // Permissão explícita para visualizar área financeira (relatórios, faturamento, caixa)
 }
@@ -110,6 +110,7 @@ export interface Restaurant {
   fiscalCsc?: string;
   fiscalCscId?: string;
   fiscalEnv?: 'homologacao' | 'producao';
+  fiscalTaxRate?: number; // Alíquota de imposto predefinida (%) sobre notas emitidas
   nuvemClientId?: string;
   nuvemClientSecret?: string;
   staff?: StaffMember[]; // NEW: List of staff members
@@ -361,11 +362,12 @@ export interface Order {
   fiscalXmlUrl?: string;
   fiscalKey?: string;
   fiscalNumber?: string;
+  fiscalProtocol?: string;
   fiscalMessage?: string;
   preorderInfo?: string;
 }
 
-export type Role = 'admin' | 'merchant' | 'waiter' | 'manager' | 'operator' | 'kitchen';
+export type Role = 'admin' | 'merchant' | 'waiter' | 'manager' | 'operator' | 'kitchen' | 'accountant';
 
 export interface User {
   id: string;

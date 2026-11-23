@@ -69,6 +69,23 @@ const extractAutoPrintOrders = (data: any): boolean => {
     return true;
 };
 
+const extractFiscalTaxRate = (data: any): number | undefined => {
+    if (data?.fiscal_tax_rate !== undefined && data?.fiscal_tax_rate !== null && data?.fiscal_tax_rate !== '') {
+        const parsed = Number(data.fiscal_tax_rate);
+        if (!isNaN(parsed)) return parsed;
+    }
+    if (data?.id && typeof window !== 'undefined') {
+        try {
+            const cached = localStorage.getItem(`guarafood-fiscal-tax-rate-${data.id}`);
+            if (cached !== null && cached !== '') {
+                const parsed = Number(cached);
+                if (!isNaN(parsed)) return parsed;
+            }
+        } catch {}
+    }
+    return undefined;
+};
+
 const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
 const getDefaultOperatingHours = (): OperatingHours[] =>
@@ -96,6 +113,18 @@ const ensureOperatingHours = (hours: any): OperatingHours[] => {
 
 // Normalizer for orders (Maps DB snake_case to App camelCase)
 const normalizeOrder = (data: any): Order => {
+    const fiscalMeta = data.payment_details?.fiscal;
+    const fiscalStatus = data.fiscal_status || data.fiscalStatus || fiscalMeta?.status;
+    const fiscalKey = data.fiscal_key || data.fiscalKey || fiscalMeta?.chave;
+    const fiscalExport = Boolean(
+        data.fiscalExport ||
+        data.fiscal_export ||
+        fiscalMeta?.export ||
+        fiscalStatus === 'autorizado' ||
+        Boolean(fiscalKey)
+    );
+    const fiscalError = data.fiscal_error || data.fiscal_message || data.fiscalMessage || fiscalMeta?.mensagem;
+
     return {
         id: data.id,
         order_number: data.order_number, 
@@ -103,6 +132,7 @@ const normalizeOrder = (data: any): Order => {
         status: data.status,
         customerName: data.customer_name,
         customerPhone: data.customer_phone,
+        customerDocument: data.customer_cpf || data.customer_document || data.customerDocument || data.payment_details?.customer_cpf || data.payment_details?.customer_document || null,
         customerAddress: data.customer_address,
         items: data.items,
         totalPrice: data.total_price,
@@ -118,7 +148,15 @@ const normalizeOrder = (data: any): Order => {
         payment_id: data.payment_id,
         payment_details: data.payment_details,
         paymentStatus: data.payment_status,
-        wantsSachets: data.customer_address?.wantsSachets === true
+        wantsSachets: data.customer_address?.wantsSachets === true,
+        fiscalExport,
+        fiscalStatus,
+        fiscalKey,
+        fiscalNumber: data.fiscal_number || fiscalMeta?.numero,
+        fiscalProtocol: data.fiscal_protocol || fiscalMeta?.protocolo,
+        fiscalDanfeUrl: data.fiscal_danfe_url || fiscalMeta?.danfe_url,
+        fiscalXmlUrl: data.fiscal_xml_url || fiscalMeta?.xml_url,
+        fiscalMessage: fiscalError,
     };
 };
 
@@ -179,6 +217,7 @@ const normalizeRestaurant = (data: any): Restaurant => {
         fiscalCsc: data.fiscal_csc || undefined,
         fiscalCscId: data.fiscal_csc_id || undefined,
         fiscalEnv: data.fiscal_env || 'homologacao',
+        fiscalTaxRate: extractFiscalTaxRate(data),
         nuvemClientId: data.nuvem_client_id || undefined,
         nuvemClientSecret: data.nuvem_client_secret || undefined,
         printers: extractPrinters(data),
@@ -247,6 +286,7 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         fiscalCsc: data.fiscal_csc || undefined,
         fiscalCscId: data.fiscal_csc_id || undefined,
         fiscalEnv: data.fiscal_env || 'homologacao',
+        fiscalTaxRate: extractFiscalTaxRate(data),
         nuvemClientId: data.nuvem_client_id || undefined,
         nuvemClientSecret: data.nuvem_client_secret || undefined,
         printers: extractPrinters(data),
@@ -484,6 +524,15 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     if (updates.fiscalCsc !== undefined) dbUpdates.fiscal_csc = updates.fiscalCsc;
     if (updates.fiscalCscId !== undefined) dbUpdates.fiscal_csc_id = updates.fiscalCscId;
     if (updates.fiscalEnv !== undefined) dbUpdates.fiscal_env = updates.fiscalEnv;
+    if (updates.fiscalTaxRate !== undefined) {
+        const numericTax = Math.max(0, Math.min(100, Number(updates.fiscalTaxRate) || 0));
+        dbUpdates.fiscal_tax_rate = numericTax;
+        if (id && typeof window !== 'undefined') {
+            try {
+                localStorage.setItem(`guarafood-fiscal-tax-rate-${id}`, String(numericTax));
+            } catch {}
+        }
+    }
     if (updates.nuvemClientId !== undefined) dbUpdates.nuvem_client_id = updates.nuvemClientId;
     if (updates.nuvemClientSecret !== undefined) dbUpdates.nuvem_client_secret = updates.nuvemClientSecret;
     if (updates.autoPrintOrders !== undefined) {
@@ -515,7 +564,7 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
         'closingHours', 'deliveryFee', 'operatingHours', 'manualPixKey', 
         'hasPixConfigured', 'printerWidth', 'printerName', 'selectedPaymentGateway', 'bannerImageUrl', 'marmitaStartTime', 'marmitaEndTime',
         'hasMensalistas', 'hasKiloService', 'pricePerKilo', 'loyaltyProgram', 'disableDelivery',
-        'blingApiKey', 'fiscalProvider', 'fiscalCsc', 'fiscalCscId', 'fiscalEnv', 'nuvemClientId', 'nuvemClientSecret', 'autoPrintOrders',
+        'blingApiKey', 'fiscalProvider', 'fiscalCsc', 'fiscalCscId', 'fiscalEnv', 'fiscalTaxRate', 'nuvemClientId', 'nuvemClientSecret', 'autoPrintOrders',
         'hasPreorderMode', 'preorderDeliveryDay', 'preorderDeliveryTime', 'preorderCutoffInfo'
     ];
     keysToRemove.forEach(key => delete dbUpdates[key]);
@@ -542,6 +591,10 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
                 delete fallbackUpdates.informacao_especial;
                 retried = true;
             }
+            if ('fiscal_tax_rate' in fallbackUpdates && (msg.includes('fiscal_tax_rate') || details.includes('fiscal_tax_rate'))) {
+                delete fallbackUpdates.fiscal_tax_rate;
+                retried = true;
+            }
             if (retried) {
                 if (Object.keys(fallbackUpdates).length === 0) {
                     result = await supabase.from('restaurants').select().eq('id', id).single();
@@ -562,6 +615,9 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     }
     if (updates.autoPrintOrders !== undefined) {
         normalized.autoPrintOrders = updates.autoPrintOrders;
+    }
+    if (updates.fiscalTaxRate !== undefined) {
+        normalized.fiscalTaxRate = Math.max(0, Math.min(100, Number(updates.fiscalTaxRate) || 0));
     }
     return normalized;
 };
@@ -697,10 +753,22 @@ export const fetchAllOrdersAdmin = async (): Promise<Order[]> => {
         .from('orders')
         .select('*, restaurants!inner(active)')
         .eq('restaurants.active', true)
-        .order('timestamp', { ascending: false })
+        .order('timestamp', { ascending: false, nullsFirst: false })
         .limit(5000); // Increased limit for global admin stats
     
     handleSupabaseError({ error, customMessage: 'Failed to fetch all orders for admin' });
+    return (data || []).map(normalizeOrder);
+};
+
+export const fetchFiscalOrdersAdmin = async (): Promise<Order[]> => {
+    // Busca direta na tabela orders sem filtrar por join de active, garantindo que nenhuma nota fiscal emitida fique oculta
+    const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .order('timestamp', { ascending: false, nullsFirst: false })
+        .limit(5000);
+
+    handleSupabaseError({ error, customMessage: 'Falha ao buscar histórico de notas fiscais' });
     return (data || []).map(normalizeOrder);
 };
 

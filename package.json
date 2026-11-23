@@ -16,6 +16,8 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.9",
     "motion": "^12.38.0",
     "multer": "^2.3.0",
     "qrcode": "^1.5.4",
