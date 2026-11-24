@@ -1116,6 +1116,20 @@ const MenuItemEditorModal: React.FC<MenuItemEditorModalProps> = ({ isOpen, onClo
                                         </div>
                                     </div>
 
+                                    <div className="pt-1">
+                                        <label className="flex items-center gap-2 cursor-pointer select-none bg-white p-2.5 rounded-xl border border-gray-200 hover:border-orange-300 transition-colors">
+                                            <input
+                                                type="checkbox"
+                                                checked={group.allowQuantityPerOption || false}
+                                                onChange={(e) => updateOptionGroup(group.id, 'allowQuantityPerOption', e.target.checked)}
+                                                className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                                            />
+                                            <span className="text-xs font-bold text-gray-700">
+                                                Permitir aumentar quantidade de cada item (Ex: 2x Cream Cheese, 3x Doritos, até o limite de {group.maxSelections})
+                                            </span>
+                                        </label>
+                                    </div>
+
                                     {/* Barra de Ações Rápidas do Grupo */}
                                     <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-200">
                                         <div className="flex items-center gap-1.5">
