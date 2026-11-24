@@ -22,7 +22,7 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
 }) => {
     const [selectedSize, setSelectedSize] = useState<SizeOption | null>(null);
     const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
-    const [selectedOptions, setSelectedOptions] = useState<{ [groupId: string]: string[] }>({});
+    const [selectedOptions, setSelectedOptions] = useState<{ [groupId: string]: any }>({});
     const [notes, setNotes] = useState('');
     const [upsellSelected, setUpsellSelected] = useState(false);
     const [selectedUpsellOptions, setSelectedUpsellOptions] = useState<string[]>([]);
@@ -38,10 +38,17 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
         setSelectedAddonIds(new Set());
         
         // Initialize options with defaults if any
-        const initialOptions: { [groupId: string]: string[] } = {};
+        const initialOptions: { [groupId: string]: any } = {};
         initialItem.optionGroups?.forEach(group => {
-            const defaults = group.options.filter(o => o.default).map(o => o.name);
-            initialOptions[group.id] = defaults;
+            const isQty = group.allowQuantityPerOption || group.maxSelections > 1;
+            if (isQty) {
+                const counts: { [name: string]: number } = {};
+                group.options.forEach(o => { counts[o.name] = o.default ? 1 : 0; });
+                initialOptions[group.id] = counts;
+            } else {
+                const defaults = group.options.filter(o => o.default).map(o => o.name);
+                initialOptions[group.id] = defaults;
+            }
         });
         setSelectedOptions(initialOptions);
         
@@ -81,11 +88,22 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
         // Add options price
         let optionsPrice = 0;
         initialItem.optionGroups?.forEach(group => {
-            const selectedInGroup = selectedOptions[group.id] || [];
-            selectedInGroup.forEach(optName => {
-                const opt = group.options.find(o => o.name === optName);
-                if (opt) optionsPrice += Number(opt.price || 0);
-            });
+            const isQty = group.allowQuantityPerOption || group.maxSelections > 1;
+            if (isQty) {
+                const groupCounts = (selectedOptions[group.id] || {}) as { [name: string]: number };
+                Object.entries(groupCounts).forEach(([optName, count]) => {
+                    if (count > 0) {
+                        const opt = group.options.find(o => o.name === optName);
+                        if (opt) optionsPrice += Number(opt.price || 0) * count;
+                    }
+                });
+            } else {
+                const selectedInGroup = (selectedOptions[group.id] || []) as string[];
+                selectedInGroup.forEach(optName => {
+                    const opt = group.options.find(o => o.name === optName);
+                    if (opt) optionsPrice += Number(opt.price || 0);
+                });
+            }
         });
 
         const upsellAdd = (upsellSelected && initialItem.activePromotion?.discountType === 'UPSELL') 
@@ -108,7 +126,7 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
 
     const handleOptionToggle = (groupId: string, optionName: string, max: number) => {
         setSelectedOptions(prev => {
-            const current = prev[groupId] || [];
+            const current = (prev[groupId] || []) as string[];
             const isSelected = current.includes(optionName);
             
             if (isSelected) {
@@ -120,16 +138,35 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
                 if (current.length < max) {
                     return { ...prev, [groupId]: [...current, optionName] };
                 }
-                // Se atingiu o limite, remove a primeira opção escolhida e adiciona a nova (FIFO)
-                // permitindo escolher e mudar de ideia com facilidade
                 return { ...prev, [groupId]: [...current.slice(1), optionName] };
             }
         });
     };
 
+    const handleOptionQuantityChange = (groupId: string, optionName: string, delta: number, maxSelections: number) => {
+        setSelectedOptions(prev => {
+            const groupCounts = (prev[groupId] || {}) as { [name: string]: number };
+            const currentCount = groupCounts[optionName] || 0;
+            const currentTotal = Object.values(groupCounts).reduce((a, b) => a + b, 0);
+
+            if (delta > 0 && currentTotal >= maxSelections) {
+                return prev;
+            }
+            const newCount = Math.max(0, currentCount + delta);
+            return { ...prev, [groupId]: { ...groupCounts, [optionName]: newCount } };
+        });
+    };
+
     const isGroupValid = (group: OptionGroup) => {
-        const selectedCount = (selectedOptions[group.id] || []).length;
-        return selectedCount >= group.minSelections && selectedCount <= group.maxSelections;
+        const isQty = group.allowQuantityPerOption || group.maxSelections > 1;
+        if (isQty) {
+            const groupCounts = (selectedOptions[group.id] || {}) as { [name: string]: number };
+            const totalCount = Object.values(groupCounts).reduce((a, b) => a + b, 0);
+            return totalCount >= group.minSelections && totalCount <= group.maxSelections;
+        } else {
+            const selectedCount = ((selectedOptions[group.id] || []) as string[]).length;
+            return selectedCount >= group.minSelections && selectedCount <= group.maxSelections;
+        }
     };
 
     const isAllValid = () => {
@@ -146,17 +183,34 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
         
         const cartSelectedOptions: { groupTitle: string; optionName: string; price: number }[] = [];
         initialItem.optionGroups?.forEach(group => {
-            const selectedInGroup = selectedOptions[group.id] || [];
-            selectedInGroup.forEach(optName => {
-                const opt = group.options.find(o => o.name === optName);
-                if (opt) {
-                    cartSelectedOptions.push({
-                        groupTitle: group.title,
-                        optionName: optName,
-                        price: opt.price
-                    });
-                }
-            });
+            const isQty = group.allowQuantityPerOption || group.maxSelections > 1;
+            if (isQty) {
+                const groupCounts = (selectedOptions[group.id] || {}) as { [name: string]: number };
+                Object.entries(groupCounts).forEach(([optName, count]) => {
+                    if (count > 0) {
+                        const opt = group.options.find(o => o.name === optName);
+                        if (opt) {
+                            cartSelectedOptions.push({
+                                groupTitle: group.title,
+                                optionName: count > 1 ? `${count}x ${optName}` : optName,
+                                price: Number(opt.price || 0) * count
+                            });
+                        }
+                    }
+                });
+            } else {
+                const selectedInGroup = (selectedOptions[group.id] || []) as string[];
+                selectedInGroup.forEach(optName => {
+                    const opt = group.options.find(o => o.name === optName);
+                    if (opt) {
+                        cartSelectedOptions.push({
+                            groupTitle: group.title,
+                            optionName: optName,
+                            price: opt.price
+                        });
+                    }
+                });
+            }
         });
 
         if (upsellSelected && initialItem.activePromotion?.discountType === 'UPSELL') {
@@ -249,7 +303,10 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
 
                     {initialItem.optionGroups?.map((group, gIdx) => {
                         const isValid = isGroupValid(group);
-                        const selectedCount = (selectedOptions[group.id] || []).length;
+                        const isQty = group.allowQuantityPerOption || group.maxSelections > 1;
+                        const selectedCount = isQty
+                            ? Object.values((selectedOptions[group.id] || {}) as { [name: string]: number }).reduce((a, b) => a + b, 0)
+                            : ((selectedOptions[group.id] || []) as string[]).length;
                         
                         return (
                             <div key={group.id} className="p-4 bg-white rounded-xl shadow-sm border border-gray-100">
@@ -267,24 +324,63 @@ const GenericCustomizationModal: React.FC<GenericCustomizationModalProps> = ({
 
                                 <div className="space-y-2">
                                     {group.options.map(option => {
-                                        const isSelected = (selectedOptions[group.id] || []).includes(option.name);
-                                        
-                                        return (
-                                            <label key={option.name} className={`flex items-center justify-between p-3 border rounded-lg transition-all cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-orange-50 border-orange-400 ring-1 ring-orange-400' : 'border-gray-200'}`}>
-                                                <div className="flex items-center gap-3">
-                                                    <input 
-                                                        type={group.maxSelections === 1 ? "radio" : "checkbox"}
-                                                        checked={isSelected}
-                                                        onChange={() => handleOptionToggle(group.id, option.name, group.maxSelections)}
-                                                        className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
-                                                    />
-                                                    <span className={`font-semibold ${isSelected ? 'text-orange-900' : 'text-gray-700'}`}>{option.name}</span>
+                                        if (isQty) {
+                                            const groupCounts = (selectedOptions[group.id] || {}) as { [name: string]: number };
+                                            const count = groupCounts[option.name] || 0;
+                                            const currentTotal = Object.values(groupCounts).reduce((a, b) => a + b, 0);
+                                            const canIncrease = currentTotal < group.maxSelections;
+
+                                            return (
+                                                <div key={option.name} className={`flex items-center justify-between p-3 border rounded-lg transition-all ${count > 0 ? 'bg-orange-50 border-orange-400 ring-1 ring-orange-400' : 'border-gray-200'}`}>
+                                                    <div className="flex items-center gap-3">
+                                                        <span className={`font-semibold ${count > 0 ? 'text-orange-900' : 'text-gray-700'}`}>{option.name}</span>
+                                                        {option.price > 0 && (
+                                                            <span className="text-sm font-bold text-gray-500">+ R$ {option.price.toFixed(2)}</span>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleOptionQuantityChange(group.id, option.name, -1, group.maxSelections)}
+                                                            disabled={count === 0}
+                                                            className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-lg transition-colors ${count === 0 ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-white border border-orange-300 text-orange-600 hover:bg-orange-100'}`}
+                                                            aria-label="Diminuir"
+                                                        >
+                                                            -
+                                                        </button>
+                                                        <span className="w-6 text-center font-bold text-gray-800">{count}</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleOptionQuantityChange(group.id, option.name, 1, group.maxSelections)}
+                                                            disabled={!canIncrease}
+                                                            className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-lg transition-colors ${!canIncrease ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-orange-600 text-white hover:bg-orange-700 shadow-sm'}`}
+                                                            aria-label="Aumentar"
+                                                        >
+                                                            +
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                {option.price > 0 && (
-                                                    <span className="text-sm font-bold text-gray-500">+ R$ {option.price.toFixed(2)}</span>
-                                                )}
-                                            </label>
-                                        );
+                                            );
+                                        } else {
+                                            const isSelected = ((selectedOptions[group.id] || []) as string[]).includes(option.name);
+                                            
+                                            return (
+                                                <label key={option.name} className={`flex items-center justify-between p-3 border rounded-lg transition-all cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-orange-50 border-orange-400 ring-1 ring-orange-400' : 'border-gray-200'}`}>
+                                                    <div className="flex items-center gap-3">
+                                                        <input 
+                                                            type={group.maxSelections === 1 ? "radio" : "checkbox"}
+                                                            checked={isSelected}
+                                                            onChange={() => handleOptionToggle(group.id, option.name, group.maxSelections)}
+                                                            className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                                                        />
+                                                        <span className={`font-semibold ${isSelected ? 'text-orange-900' : 'text-gray-700'}`}>{option.name}</span>
+                                                    </div>
+                                                    {option.price > 0 && (
+                                                        <span className="text-sm font-bold text-gray-500">+ R$ {option.price.toFixed(2)}</span>
+                                                    )}
+                                                </label>
+                                            );
+                                        }
                                     })}
                                 </div>
                             </div>
