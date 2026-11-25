@@ -5,8 +5,8 @@ interface FiscalDocumentModalProps {
     isOpen: boolean;
     onClose: () => void;
     order: Order | null;
-    onConfirm: (document: string | null, customerName?: string) => void;
-    actionLabel?: string; // ex: "Imprimir Cupom Fiscal" or "Visualizar Nota Fiscal"
+    onConfirm: (document: string | null, customerName?: string, customDescription?: string, customPrice?: number) => void;
+    actionLabel?: string;
 }
 
 export const formatCpfCnpj = (value: string): string => {
@@ -56,6 +56,8 @@ export const FiscalDocumentModal: React.FC<FiscalDocumentModalProps> = ({
     const [choice, setChoice] = useState<'yes' | 'no'>('yes');
     const [documentValue, setDocumentValue] = useState<string>('');
     const [nameValue, setNameValue] = useState<string>('');
+    const [descriptionValue, setDescriptionValue] = useState<string>('');
+    const [priceValue, setPriceValue] = useState<string>('');
     const [errorMsg, setErrorMsg] = useState<string>('');
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -64,6 +66,11 @@ export const FiscalDocumentModal: React.FC<FiscalDocumentModalProps> = ({
             const initialDoc = order.customerDocument || '';
             setDocumentValue(formatCpfCnpj(initialDoc));
             setNameValue(order.customerName || '');
+            
+            const firstItemName = order.items?.[0]?.name || 'Refeição';
+            setDescriptionValue(firstItemName);
+            setPriceValue(order.totalPrice ? order.totalPrice.toFixed(2) : '0.00');
+
             setChoice(initialDoc ? 'yes' : 'no');
             setErrorMsg('');
             setTimeout(() => {
@@ -97,39 +104,38 @@ export const FiscalDocumentModal: React.FC<FiscalDocumentModalProps> = ({
 
     const handleProceedWithDoc = () => {
         const clean = documentValue.replace(/\D/g, '');
-        if (choice === 'no' || clean.length === 0) {
-            onConfirm(null, nameValue.trim() || order.customerName);
-            return;
+        if (clean.length > 0) {
+            if (clean.length !== 11 && clean.length !== 14) {
+                setErrorMsg('O documento deve ter 11 dígitos (CPF) ou 14 dígitos (CNPJ).');
+                return;
+            }
+            if (clean.length === 11 && !isValidCpfCnpj(clean)) {
+                setErrorMsg('CPF inválido. Verifique os números digitados.');
+                return;
+            }
         }
 
-        if (clean.length !== 11 && clean.length !== 14) {
-            setErrorMsg('O documento deve ter 11 dígitos (CPF) ou 14 dígitos (CNPJ).');
-            return;
-        }
-
-        if (clean.length === 11 && !isValidCpfCnpj(clean)) {
-            setErrorMsg('CPF inválido. Verifique os números digitados.');
-            return;
-        }
-
-        onConfirm(documentValue, nameValue.trim() || order.customerName);
+        const parsedPrice = parseFloat(priceValue.replace(',', '.')) || order.totalPrice;
+        const docToPass = choice === 'yes' && clean.length > 0 ? documentValue : null;
+        onConfirm(docToPass, nameValue.trim() || order.customerName, descriptionValue.trim() || order.items?.[0]?.name || 'Refeição', parsedPrice);
     };
 
     const handleProceedWithoutDoc = () => {
-        onConfirm(null, nameValue.trim() || order.customerName);
+        const parsedPrice = parseFloat(priceValue.replace(',', '.')) || order.totalPrice;
+        onConfirm(null, nameValue.trim() || order.customerName, descriptionValue.trim() || order.items?.[0]?.name || 'Refeição', parsedPrice);
     };
 
     const cleanDigits = documentValue.replace(/\D/g, '');
-    const isDocValid = (cleanDigits.length === 11 && isValidCpfCnpj(cleanDigits)) || cleanDigits.length === 14;
+    const isDocValid = cleanDigits.length === 0 || (cleanDigits.length === 11 && isValidCpfCnpj(cleanDigits)) || cleanDigits.length === 14;
 
     return (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
             <div 
-                className="bg-white rounded-3xl shadow-2xl border border-gray-100 w-full max-w-md overflow-hidden animate-scaleUp transform transition-all"
+                className="bg-white rounded-3xl shadow-2xl border border-gray-100 w-full max-w-lg overflow-hidden animate-scaleUp transform transition-all max-h-[95vh] flex flex-col"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="bg-gradient-to-r from-purple-800 via-indigo-800 to-blue-900 text-white p-5 sm:p-6 relative">
+                <div className="bg-gradient-to-r from-purple-800 via-indigo-800 to-blue-900 text-white p-5 sm:p-6 relative flex-shrink-0">
                     <button
                         type="button"
                         onClick={onClose}
@@ -140,7 +146,7 @@ export const FiscalDocumentModal: React.FC<FiscalDocumentModalProps> = ({
                     </button>
                     <div className="flex items-center gap-2 mb-1">
                         <span className="bg-purple-500/30 border border-purple-400/40 text-purple-200 text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full">
-                            NFC-e • SEFAZ
+                            NFC-e • SEFAZ • Personalização
                         </span>
                         <span className="text-xs text-blue-200 font-mono font-bold">
                             Pedido {orderNum}
@@ -148,16 +154,51 @@ export const FiscalDocumentModal: React.FC<FiscalDocumentModalProps> = ({
                     </div>
                     <h3 className="text-xl sm:text-2xl font-black tracking-tight flex items-center gap-2">
                         <span>🧾</span>
-                        <span>CPF na Nota Fiscal?</span>
+                        <span>Emitir Nota Fiscal</span>
                     </h3>
                     <p className="text-xs text-blue-100 mt-1">
-                        Deseja identificar o consumidor nesta emissão de cupom fiscal?
+                        Confirme o CPF/CNPJ, edite a descrição do item e o valor antes da impressão.
                     </p>
                 </div>
 
                 {/* Body */}
-                <div className="p-5 sm:p-6 space-y-5 bg-gray-50/50">
-                    {/* Botões de Decisão Sim / Não */}
+                <div className="p-5 sm:p-6 space-y-4 bg-gray-50/50 overflow-y-auto flex-grow">
+                    {/* Edição de Item e Valor */}
+                    <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-2xs space-y-3">
+                        <h4 className="text-xs font-black text-gray-800 uppercase tracking-wide flex items-center gap-1.5">
+                            <span>✏️</span>
+                            <span>Editar Item e Valor a Ser Impreso:</span>
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                            <div className="sm:col-span-8">
+                                <label className="text-[10px] font-black text-gray-500 uppercase tracking-wide block mb-1">
+                                    Descrição do Item:
+                                </label>
+                                <input
+                                    type="text"
+                                    value={descriptionValue}
+                                    onChange={(e) => setDescriptionValue(e.target.value)}
+                                    placeholder="Ex: Refeição, Lanche, etc."
+                                    className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-600"
+                                />
+                            </div>
+                            <div className="sm:col-span-4">
+                                <label className="text-[10px] font-black text-gray-500 uppercase tracking-wide block mb-1">
+                                    Valor Total (R$):
+                                </label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    value={priceValue}
+                                    onChange={(e) => setPriceValue(e.target.value)}
+                                    placeholder="0.00"
+                                    className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-600 font-mono"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Botões de Decisão Sim / Não para CPF */}
                     <div className="grid grid-cols-2 gap-3">
                         <button
                             type="button"
@@ -166,16 +207,16 @@ export const FiscalDocumentModal: React.FC<FiscalDocumentModalProps> = ({
                                 setDocumentValue('');
                                 setErrorMsg('');
                             }}
-                            className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                            className={`p-3 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
                                 choice === 'no'
                                     ? 'bg-purple-50 border-purple-600 shadow-sm'
                                     : 'bg-white border-gray-200 hover:border-gray-300'
                             }`}
                         >
-                            <span className="text-lg mb-1">🚫</span>
+                            <span className="text-base mb-1">🚫</span>
                             <div>
-                                <span className="text-xs font-black text-gray-900 block">NÃO</span>
-                                <span className="text-[11px] text-gray-500 block leading-tight">
+                                <span className="text-xs font-black text-gray-900 block">SEM CPF</span>
+                                <span className="text-[10px] text-gray-500 block leading-tight">
                                     Consumidor não identificado
                                 </span>
                             </div>
@@ -187,17 +228,17 @@ export const FiscalDocumentModal: React.FC<FiscalDocumentModalProps> = ({
                                 setChoice('yes');
                                 setTimeout(() => inputRef.current?.focus(), 50);
                             }}
-                            className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                            className={`p-3 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
                                 choice === 'yes'
                                     ? 'bg-purple-50 border-purple-600 shadow-sm'
                                     : 'bg-white border-gray-200 hover:border-gray-300'
                             }`}
                         >
-                            <span className="text-lg mb-1">👤</span>
+                            <span className="text-base mb-1">👤</span>
                             <div>
-                                <span className="text-xs font-black text-purple-900 block">SIM</span>
-                                <span className="text-[11px] text-gray-500 block leading-tight">
-                                    Informar CPF ou CNPJ
+                                <span className="text-xs font-black text-purple-900 block">COM CPF/CNPJ</span>
+                                <span className="text-[10px] text-gray-500 block leading-tight">
+                                    Informar documento
                                 </span>
                             </div>
                         </button>
@@ -258,7 +299,7 @@ export const FiscalDocumentModal: React.FC<FiscalDocumentModalProps> = ({
                                     value={nameValue}
                                     onChange={(e) => setNameValue(e.target.value)}
                                     placeholder="Ex: João da Silva"
-                                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium text-gray-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-transparent transition-all"
+                                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium text-gray-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-600"
                                 />
                             </div>
                         </div>
@@ -268,15 +309,13 @@ export const FiscalDocumentModal: React.FC<FiscalDocumentModalProps> = ({
                     <div className="bg-purple-50/60 p-3 rounded-xl border border-purple-100 text-xs text-purple-900 flex items-center gap-2">
                         <span>💡</span>
                         <span>
-                            {choice === 'yes' && cleanDigits.length >= 11
-                                ? `A nota será emitida para: ${documentValue}`
-                                : 'A nota será impressa como: CONSUMIDOR NÃO IDENTIFICADO'}
+                            Resumo: Item <strong className="font-bold">"{descriptionValue || 'Refeição'}"</strong> no valor de <strong className="font-bold">R$ {parseFloat(priceValue || '0').toFixed(2)}</strong> {choice === 'yes' && cleanDigits.length >= 11 ? `para ${documentValue}` : '(Sem CPF)'}
                         </span>
                     </div>
                 </div>
 
                 {/* Footer Buttons */}
-                <div className="p-4 sm:p-5 bg-white border-t border-gray-200 flex flex-col-reverse sm:flex-row items-center justify-between gap-2.5">
+                <div className="p-4 sm:p-5 bg-white border-t border-gray-200 flex flex-col-reverse sm:flex-row items-center justify-between gap-2.5 flex-shrink-0">
                     <button
                         type="button"
                         onClick={handleProceedWithoutDoc}

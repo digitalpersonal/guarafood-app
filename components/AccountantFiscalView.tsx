@@ -1436,9 +1436,13 @@ const AccountantFiscalView: React.FC<AccountantFiscalViewProps> = ({ restaurant,
                     isOpen={Boolean(orderForCpfEdit)}
                     onClose={() => setOrderForCpfEdit(null)}
                     order={orderForCpfEdit}
-                    onConfirm={(doc, name) => {
+                    onConfirm={(doc, name, customDesc, customPrice) => {
                         const target = orderForCpfEdit;
                         setOrderForCpfEdit(null);
+                        if (!target) return;
+                        const finalPrice = customPrice !== undefined && !isNaN(customPrice) ? customPrice : target.totalPrice;
+                        const finalItems = customDesc ? [{ name: customDesc, price: finalPrice, quantity: 1 }] : target.items;
+
                         setMonthlyOrders(prev =>
                             prev.map(o =>
                                 o.id === target.id
@@ -1446,6 +1450,9 @@ const AccountantFiscalView: React.FC<AccountantFiscalViewProps> = ({ restaurant,
                                           ...o,
                                           customerDocument: doc || undefined,
                                           customerName: name || o.customerName,
+                                          totalPrice: finalPrice,
+                                          subtotal: finalPrice,
+                                          items: finalItems
                                       }
                                     : o
                             )

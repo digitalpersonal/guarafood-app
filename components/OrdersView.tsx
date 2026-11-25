@@ -352,14 +352,14 @@ const OrderCard: React.FC<{
             onClick={() => onViewDetails(order)}
             role="article"
         >
-            <div className="flex justify-between items-start mb-1">
-                <div className="flex items-center gap-1">
-                    <span className="font-mono font-black text-orange-600 text-sm">{displayOrderNum}</span>
-                    <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded font-mono" title={`${dateString} ${timeString}`}>
+            <div className="flex justify-between items-start gap-2 mb-1">
+                <div className="flex items-center gap-1 min-w-0">
+                    <span className="font-mono font-black text-orange-600 text-sm truncate">{displayOrderNum}</span>
+                    <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded font-mono flex-shrink-0" title={`${dateString} ${timeString}`}>
                         {dateString} {timeString}
                     </span>
                 </div>
-                <div className="flex items-center gap-1 -mt-1 -mr-1">
+                <div className="flex flex-wrap items-center justify-end gap-1">
                     {hasKitchenPrinter && (
                         <button 
                             type="button"
@@ -1300,14 +1300,21 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                     isOpen={Boolean(orderForFiscalDoc)}
                     onClose={() => setOrderForFiscalDoc(null)}
                     order={orderForFiscalDoc}
-                    onConfirm={(doc, name) => {
+                    onConfirm={(doc, name, customDesc, customPrice) => {
                         const targetOrder = orderForFiscalDoc;
+                        setOrderForFiscalDoc(null);
+                        if (!targetOrder) return;
+                        const finalPrice = customPrice !== undefined && !isNaN(customPrice) ? customPrice : targetOrder.totalPrice;
+                        const finalItems = customDesc ? [{ name: customDesc, price: finalPrice, quantity: 1 }] : targetOrder.items;
+
                         const updated: Order = {
                             ...targetOrder,
                             customerDocument: doc || undefined,
-                            customerName: name || targetOrder.customerName
+                            customerName: name || targetOrder.customerName,
+                            totalPrice: finalPrice,
+                            subtotal: finalPrice,
+                            items: finalItems
                         };
-                        setOrderForFiscalDoc(null);
                         onPrint(updated, 'fiscal');
                         (async () => {
                             try {

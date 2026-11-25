@@ -381,7 +381,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     // Determine visible tabs based on role, financial permissions and lock state
     const visibleTabs = useMemo(() => {
-        const allTabs = ['orders', 'waiter_monitor', 'tables', 'comandas', 'menu', 'financial', 'customers', 'staff', 'printers', 'settings', 'help', 'mensalistas', 'master_guide'] as const;
+        const allTabs = ['orders', 'waiter_monitor', 'tables', 'comandas', 'menu', 'financial', 'accountant', 'customers', 'staff', 'printers', 'settings', 'help', 'mensalistas', 'master_guide'] as const;
         
         const effectiveRole = currentStaffUser?.role || currentUser?.role;
 
@@ -407,15 +407,15 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         
         let tabs = restaurant?.hasMensalistas ? [...allTabs] : allTabs.filter(t => t !== 'mensalistas');
 
-        // SEGURANÇA MÁXIMA: Se não tem permissão financeira, bloqueia e oculta 'financial'
+        // SEGURANÇA MÁXIMA: Se não tem permissão financeira, bloqueia e oculta 'financial' e 'accountant'
         if (!hasFinancialAccess) {
-            tabs = tabs.filter(t => t !== 'financial');
+            tabs = tabs.filter(t => t !== 'financial' && t !== 'accountant');
         }
 
         // Se for atendente / operador de balcão (não é gerente nem dono)
         if (effectiveRole === 'operator') {
-            // Atendente não configura o restaurante nem gerencia equipe
-            tabs = tabs.filter(t => t !== 'staff' && t !== 'settings');
+            // Atendente não configura o restaurante nem gerencia equipe nem vê notas fiscais
+            tabs = tabs.filter(t => t !== 'staff' && t !== 'settings' && t !== 'accountant');
         }
 
         return tabs;
@@ -1387,7 +1387,7 @@ const OrderManagement: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                                 orders: 'Pedidos', waiter_monitor: '👀 Monitor Garçom (Salão)', tables: 'Mesas', comandas: 'Comandas', menu: 'Cardápio', 
                                 financial: 'Financeiro', customers: 'Clientes', staff: 'Equipe', 
                                 printers: '🖨️ Impressoras', settings: 'Config', help: 'Ajuda', mensalistas: 'Mensalistas',
-                                accountant: '📑 Contador (SEFAZ)', master_guide: '📘 Guia Mestre'
+                                accountant: '📑 Notas Fiscais (SEFAZ)', master_guide: '📘 Guia Mestre'
                             };
                             return (
                                 <button 

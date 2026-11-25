@@ -193,12 +193,18 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
         setIsFiscalDocModalOpen(true);
     };
 
-    const handleConfirmFiscalDoc = (document: string | null, customerName?: string) => {
+    const handleConfirmFiscalDoc = (document: string | null, customerName?: string, customDesc?: string, customPrice?: number) => {
         setIsFiscalDocModalOpen(false);
+        const finalPrice = customPrice !== undefined && !isNaN(customPrice) ? customPrice : currentOrder.totalPrice;
+        const finalItems = customDesc ? [{ name: customDesc, price: finalPrice, quantity: 1 }] : currentOrder.items;
+
         const updatedOrder: Order = {
             ...currentOrder,
             customerDocument: document || undefined,
-            customerName: customerName || currentOrder.customerName
+            customerName: customerName || currentOrder.customerName,
+            totalPrice: finalPrice,
+            subtotal: finalPrice,
+            items: finalItems
         };
         setCurrentOrder(updatedOrder);
 
