@@ -347,19 +347,19 @@ const OrderCard: React.FC<{
 
     return (
         <div
-            className={`bg-white rounded-lg shadow-sm p-2 flex flex-col cursor-pointer hover:shadow-md transition-all duration-200 border-l-4 
+            className={`bg-white rounded-lg shadow-sm p-2.5 flex flex-col cursor-pointer hover:shadow-md transition-all duration-200 border-l-4 overflow-hidden min-w-0
             ${isNew ? 'border-l-blue-500 animate-pulse ring-1 ring-blue-300' : 'border-l-gray-300 border-gray-200 border'}`}
             onClick={() => onViewDetails(order)}
             role="article"
         >
-            <div className="flex justify-between items-start gap-2 mb-1">
-                <div className="flex items-center gap-1 min-w-0">
-                    <span className="font-mono font-black text-orange-600 text-sm truncate">{displayOrderNum}</span>
-                    <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded font-mono flex-shrink-0" title={`${dateString} ${timeString}`}>
+            <div className="flex flex-wrap justify-between items-center gap-1.5 mb-1.5">
+                <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="font-mono font-black text-orange-600 text-sm">{displayOrderNum}</span>
+                    <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded font-mono whitespace-nowrap" title={`${dateString} ${timeString}`}>
                         {dateString} {timeString}
                     </span>
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-1">
+                <div className="flex flex-wrap items-center justify-end gap-1 max-w-full">
                     {hasKitchenPrinter && (
                         <button 
                             type="button"
@@ -430,11 +430,13 @@ const OrderCard: React.FC<{
                         </>
                     )}
                     <button 
+                        type="button"
                         onClick={(e) => { e.stopPropagation(); onPrint(order, 'full'); }} 
-                        className="p-1 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors" 
+                        className="px-1.5 py-0.5 text-[10px] font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded transition-colors flex items-center gap-1 touch-manipulation" 
                         title={hasKitchenPrinter ? "Imprimir Via Caixa / Completa" : "Imprimir Via / Reimprimir"}
                     >
-                        <PrinterIcon className="w-4 h-4" />
+                        <PrinterIcon className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Imprimir</span>
                     </button>
                 </div>
             </div>
@@ -535,8 +537,31 @@ const OrderCard: React.FC<{
                 )}
             </div>
 
-            {order.status !== 'Entregue' && order.status !== 'Cancelado' && (
+            {order.status !== 'Entregue' && order.status !== 'Cancelado' ? (
                 <ActionButtons />
+            ) : (
+                <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-gray-100">
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onPrint(order, 'full'); }}
+                        className="flex-1 py-1.5 px-2.5 rounded-md bg-gray-800 hover:bg-gray-900 active:scale-95 text-white font-bold text-xs shadow-xs flex items-center justify-center gap-1.5 transition-all touch-manipulation"
+                        title="Reimprimir pedido completo"
+                    >
+                        <PrinterIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>Reimprimir Pedido</span>
+                    </button>
+                    {hasKitchenPrinter && (
+                        <button
+                            type="button"
+                            onClick={(e) => handleKitchenPrintClick(e, 'history-footer')}
+                            className="py-1.5 px-2.5 rounded-md bg-amber-50 hover:bg-amber-100 border border-amber-300 active:scale-95 text-amber-900 font-bold text-xs shadow-xs flex items-center justify-center gap-1 transition-all touch-manipulation"
+                            title="Reimprimir comanda na Cozinha"
+                        >
+                            <span>🍳</span>
+                            <span>Cozinha</span>
+                        </button>
+                    )}
+                </div>
             )}
         </div>
     );
