@@ -28,6 +28,12 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
     const [clientSecret, setClientSecret] = useState<string>(() => localStorage.getItem('guara_nuvem_client_secret') || '');
     const [environment, setEnvironment] = useState<string>(() => localStorage.getItem('guara_nuvem_env') || 'production');
 
+    // Focus NFe Tokens (Produção e Homologação)
+    const [focusTokenProducao, setFocusTokenProducao] = useState<string>('');
+    const [focusTokenHomologacao, setFocusTokenHomologacao] = useState<string>('');
+    const [showFocusProdKey, setShowFocusProdKey] = useState<boolean>(false);
+    const [showFocusHomolKey, setShowFocusHomolKey] = useState<boolean>(false);
+
     // Contador Credentials (CSC & Token)
     const [fiscalCsc, setFiscalCsc] = useState<string>(() => localStorage.getItem('guara_fiscal_csc') || '');
     const [fiscalCscId, setFiscalCscId] = useState<string>(() => localStorage.getItem('guara_fiscal_csc_id') || '000001');
@@ -86,6 +92,11 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
         if (r.fiscalEnv) {
             setEnvironment(r.fiscalEnv === 'producao' ? 'production' : 'homologation');
         }
+        setFocusTokenProducao(r.focusNfeTokenProducao || '');
+        setFocusTokenHomologacao(
+            r.focusNfeTokenHomologacao ||
+            (r.fiscalEnv !== 'producao' ? r.blingApiKey || '' : '')
+        );
         if (r.nuvemClientId) {
             setClientId(r.nuvemClientId);
         }
@@ -136,6 +147,10 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                     cnpj: cnpj.trim(),
                     ie: ie.trim(),
                     fiscalEnv: environment === 'production' ? 'producao' : 'homologacao',
+                    fiscalProvider: 'focus',
+                    focusNfeTokenProducao: focusTokenProducao.trim(),
+                    focusNfeTokenHomologacao: focusTokenHomologacao.trim(),
+                    blingApiKey: (environment === 'production' ? focusTokenProducao.trim() : focusTokenHomologacao.trim()) || undefined,
                     nuvemClientId: clientId.trim(),
                     nuvemClientSecret: clientSecret.trim(),
                     enableFiscal: enableFiscal
@@ -163,8 +178,9 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
     };
 
     const handleTestAuth = async () => {
-        if (!clientId && !clientSecret && !fiscalCsc) {
-            addToast({ message: 'Preencha as credenciais da API ou o CSC e Token antes de testar.', type: 'warning' });
+        const activeFocusToken = environment === 'production' ? focusTokenProducao.trim() : focusTokenHomologacao.trim();
+        if (!activeFocusToken && !clientId && !clientSecret && !fiscalCsc) {
+            addToast({ message: `Preencha o Token Focus NFe de ${environment === 'production' ? 'Produção' : 'Homologação'} ou o CSC antes de testar.`, type: 'warning' });
             return;
         }
 
@@ -172,8 +188,31 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
         setTestResult(null);
 
         try {
-            // Se tiver Client ID e Client Secret da Nuvem Fiscal, testa autenticação OAuth2
-            if (clientId && clientSecret) {
+            if (activeFocusToken) {
+                const response = await fetch('/api/fiscal/test-focus-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        apiKey: activeFocusToken,
+                        ambiente: environment === 'production' ? 'producao' : 'homologacao'
+                    })
+                });
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    setTestResult({
+                        success: true,
+                        message: data.message
+                    });
+                    addToast({ message: 'Token Focus NFe válido!', type: 'success' });
+                } else {
+                    setTestResult({
+                        success: false,
+                        message: data.error || 'Token da Focus NFe inválido para o ambiente selecionado.',
+                        details: data.details
+                    });
+                    addToast({ message: 'Token Focus NFe inválido neste ambiente.', type: 'error' });
+                }
+            } else if (clientId && clientSecret) {
                 const response = await fetch('/api/fiscal/test-nuvem-auth', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -501,20 +540,54 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                             </span>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
-                            <div>
-                                <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1.5">
-                                    API Key da Focus NFe
-                                </label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className={`p-4 rounded-2xl border ${environment === 'production' ? 'bg-white border-emerald-400 ring-2 ring-emerald-200' : 'bg-white/80 border-blue-200'}`}>
+                                <div className="flex justify-between items-center mb-1.5">
+                                    <label className="block text-xs font-black text-emerald-900 uppercase tracking-wider">
+                                        Token Produção (Notas Reais)
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowFocusProdKey(!showFocusProdKey)}
+                                        className="text-[11px] text-blue-700 font-bold hover:underline cursor-pointer"
+                                    >
+                                        {showFocusProdKey ? 'Ocultar' : 'Exibir'}
+                                    </button>
+                                </div>
                                 <input
-                                    type="text"
-                                    value={clientId}
-                                    onChange={(e) => setClientId(e.target.value)}
-                                    placeholder="Insira a API Key fornecida pela Focus NFe"
-                                    className="w-full p-3.5 bg-white border border-blue-200 rounded-2xl text-xs font-mono font-bold text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none shadow-2xs"
+                                    type={showFocusProdKey ? 'text' : 'password'}
+                                    value={focusTokenProducao}
+                                    onChange={(e) => setFocusTokenProducao(e.target.value)}
+                                    placeholder="Cole aqui o Token de PRODUÇÃO da Focus NFe"
+                                    className="w-full p-3 bg-white border border-blue-200 rounded-xl text-xs font-mono font-bold text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none shadow-2xs"
                                 />
                                 <p className="text-[10px] text-gray-500 mt-1.5">
-                                    Chave de acesso fornecida no painel da Focus NFe para autenticação e transmissão das notas fiscais.
+                                    Usado quando Ambiente SEFAZ = <strong>Produção</strong>.
+                                </p>
+                            </div>
+
+                            <div className={`p-4 rounded-2xl border ${environment === 'homologation' ? 'bg-white border-amber-400 ring-2 ring-amber-200' : 'bg-white/80 border-blue-200'}`}>
+                                <div className="flex justify-between items-center mb-1.5">
+                                    <label className="block text-xs font-black text-amber-900 uppercase tracking-wider">
+                                        Token Homologação (Testes)
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowFocusHomolKey(!showFocusHomolKey)}
+                                        className="text-[11px] text-blue-700 font-bold hover:underline cursor-pointer"
+                                    >
+                                        {showFocusHomolKey ? 'Ocultar' : 'Exibir'}
+                                    </button>
+                                </div>
+                                <input
+                                    type={showFocusHomolKey ? 'text' : 'password'}
+                                    value={focusTokenHomologacao}
+                                    onChange={(e) => setFocusTokenHomologacao(e.target.value)}
+                                    placeholder="Cole aqui o Token de HOMOLOGAÇÃO da Focus NFe"
+                                    className="w-full p-3 bg-white border border-blue-200 rounded-xl text-xs font-mono font-bold text-gray-900 focus:ring-2 focus:ring-amber-500 outline-none shadow-2xs"
+                                />
+                                <p className="text-[10px] text-gray-500 mt-1.5">
+                                    Usado quando Ambiente SEFAZ = <strong>Homologação</strong>.
                                 </p>
                             </div>
                         </div>

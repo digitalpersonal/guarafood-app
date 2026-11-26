@@ -349,6 +349,11 @@ const RestaurantSettings: React.FC<{
     const [ie, setIe] = useState('');
     const [im, setIm] = useState('');
     const [blingApiKey, setBlingApiKey] = useState('');
+    const [focusNfeTokenProducao, setFocusNfeTokenProducao] = useState('');
+    const [focusNfeTokenHomologacao, setFocusNfeTokenHomologacao] = useState('');
+    const [showFocusProdToken, setShowFocusProdToken] = useState(false);
+    const [showFocusHomolToken, setShowFocusHomolToken] = useState(false);
+    const [showFiscalToken, setShowFiscalToken] = useState(false);
     const [fiscalProvider, setFiscalProvider] = useState('focus');
     const [fiscalCsc, setFiscalCsc] = useState('');
     const [fiscalCscId, setFiscalCscId] = useState('1');
@@ -451,7 +456,17 @@ const RestaurantSettings: React.FC<{
                 setIe(data.ie || '');
                 setIm(data.im || '');
                 setBlingApiKey(data.blingApiKey || '');
-                setFiscalProvider(data.fiscalProvider || 'focus');
+                setFocusNfeTokenProducao(data.focusNfeTokenProducao || '');
+                setFocusNfeTokenHomologacao(
+                    data.focusNfeTokenHomologacao ||
+                    (data.fiscalEnv !== 'producao' ? data.blingApiKey || '' : '')
+                );
+                const validFiscalProviders = ['focus', 'nuvem', 'bling', 'betha', 'custom'];
+                setFiscalProvider(
+                    data.fiscalProvider && validFiscalProviders.includes(data.fiscalProvider)
+                        ? data.fiscalProvider
+                        : 'focus'
+                );
                 setFiscalCsc(data.fiscalCsc || '');
                 setFiscalCscId(data.fiscalCscId || '1');
                 setFiscalEnv(data.fiscalEnv || 'homologacao');
@@ -528,7 +543,11 @@ const RestaurantSettings: React.FC<{
                 cnpj: cnpj,
                 ie: ie,
                 im: im,
-                blingApiKey: blingApiKey,
+                blingApiKey: fiscalProvider === 'focus'
+                    ? (fiscalEnv === 'producao' ? focusNfeTokenProducao.trim() : focusNfeTokenHomologacao.trim()) || blingApiKey.trim()
+                    : blingApiKey.trim(),
+                focusNfeTokenProducao: focusNfeTokenProducao.trim(),
+                focusNfeTokenHomologacao: focusNfeTokenHomologacao.trim(),
                 fiscalProvider: fiscalProvider,
                 fiscalCsc: fiscalCsc,
                 fiscalCscId: fiscalCscId,
@@ -1218,19 +1237,90 @@ const RestaurantSettings: React.FC<{
                                         </div>
                                     )}
 
-                                    <div>
-                                        <label className="block text-[10px] font-black text-purple-700 uppercase tracking-widest mb-1 ml-1">Token / API Key do Provedor Fiscal</label>
-                                        <input 
-                                            type="password" 
-                                            value={blingApiKey} 
-                                            onChange={e => setBlingApiKey(e.target.value)} 
-                                            placeholder="Cole aqui o Token da API ou Chave de Acesso" 
-                                            className="w-full p-3 border border-purple-200 rounded-xl font-mono text-sm bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 outline-none" 
-                                        />
-                                        <p className="text-[10px] text-purple-600 mt-1 font-bold">
-                                            * Credencial protegida e vinculada unicamente ao CNPJ {cnpj || 'informado'} para emissão de notas.
-                                        </p>
-                                    </div>
+                                    {fiscalProvider === 'focus' ? (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className={`p-3.5 rounded-xl border ${fiscalEnv === 'producao' ? 'bg-white border-emerald-400 ring-2 ring-emerald-200' : 'bg-white/80 border-purple-200'}`}>
+                                                <div className="flex items-center justify-between mb-1.5">
+                                                    <label className="text-[10px] font-black text-emerald-800 uppercase tracking-widest flex items-center gap-1.5">
+                                                        <span>Token Focus NFe — Produção</span>
+                                                        {fiscalEnv === 'producao' && (
+                                                            <span className="bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded text-[9px]">ATIVO</span>
+                                                        )}
+                                                    </label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowFocusProdToken(prev => !prev)}
+                                                        className="text-[11px] font-bold text-purple-700 hover:underline cursor-pointer"
+                                                    >
+                                                        {showFocusProdToken ? 'Ocultar' : 'Exibir'}
+                                                    </button>
+                                                </div>
+                                                <input
+                                                    type={showFocusProdToken ? 'text' : 'password'}
+                                                    value={focusNfeTokenProducao}
+                                                    onChange={e => setFocusNfeTokenProducao(e.target.value)}
+                                                    placeholder="Cole aqui o Token de PRODUÇÃO da Focus NFe"
+                                                    className="w-full p-2.5 border border-purple-200 rounded-lg font-mono text-xs bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+                                                />
+                                                <p className="text-[10px] text-gray-500 mt-1">
+                                                    Usado quando Ambiente SEFAZ = <strong>Produção</strong> (notas reais).
+                                                </p>
+                                            </div>
+
+                                            <div className={`p-3.5 rounded-xl border ${fiscalEnv === 'homologacao' ? 'bg-white border-amber-400 ring-2 ring-amber-200' : 'bg-white/80 border-purple-200'}`}>
+                                                <div className="flex items-center justify-between mb-1.5">
+                                                    <label className="text-[10px] font-black text-amber-800 uppercase tracking-widest flex items-center gap-1.5">
+                                                        <span>Token Focus NFe — Homologação</span>
+                                                        {fiscalEnv === 'homologacao' && (
+                                                            <span className="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[9px]">ATIVO</span>
+                                                        )}
+                                                    </label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowFocusHomolToken(prev => !prev)}
+                                                        className="text-[11px] font-bold text-purple-700 hover:underline cursor-pointer"
+                                                    >
+                                                        {showFocusHomolToken ? 'Ocultar' : 'Exibir'}
+                                                    </button>
+                                                </div>
+                                                <input
+                                                    type={showFocusHomolToken ? 'text' : 'password'}
+                                                    value={focusNfeTokenHomologacao}
+                                                    onChange={e => setFocusNfeTokenHomologacao(e.target.value)}
+                                                    placeholder="Cole aqui o Token de HOMOLOGAÇÃO da Focus NFe"
+                                                    className="w-full p-2.5 border border-purple-200 rounded-lg font-mono text-xs bg-white text-gray-900 focus:ring-2 focus:ring-amber-500 outline-none"
+                                                />
+                                                <p className="text-[10px] text-gray-500 mt-1">
+                                                    Usado quando Ambiente SEFAZ = <strong>Homologação</strong> (testes).
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <div className="flex items-center justify-between mb-1 ml-1">
+                                                <label className="block text-[10px] font-black text-purple-700 uppercase tracking-widest">
+                                                    Token / API Key do Provedor Fiscal
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowFiscalToken(prev => !prev)}
+                                                    className="text-[11px] font-bold text-purple-700 hover:underline cursor-pointer"
+                                                >
+                                                    {showFiscalToken ? 'Ocultar Token' : 'Exibir Token'}
+                                                </button>
+                                            </div>
+                                            <input 
+                                                type={showFiscalToken ? 'text' : 'password'} 
+                                                value={blingApiKey} 
+                                                onChange={e => setBlingApiKey(e.target.value)} 
+                                                placeholder="Cole aqui o Token da API ou Chave de Acesso"
+                                                className="w-full p-3 border border-purple-200 rounded-xl font-mono text-sm bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 outline-none" 
+                                            />
+                                            <p className="text-[10px] text-purple-600 mt-1 font-bold">
+                                                * Credencial protegida e vinculada unicamente ao CNPJ {cnpj || 'informado'} para emissão de notas.
+                                            </p>
+                                        </div>
+                                    )}
 
                                     {/* MÓDULO AVANÇADO DE CERTIFICADO DIGITAL E CSC / SEFAZ */}
                                     <div className="border-t border-purple-200/60 pt-4 mt-4 space-y-4">
@@ -1356,10 +1446,25 @@ const RestaurantSettings: React.FC<{
                                                 onClick={async () => {
                                                     setIsTestingFiscal(true);
                                                     try {
-                                                        await new Promise(r => setTimeout(r, 1500));
-                                                        addToast({ message: `Conexão com a SEFAZ (${fiscalEnv.toUpperCase()}) estabelecida com sucesso! Certificado e CSC válidos.`, type: 'success' });
-                                                    } catch (err) {
-                                                        addToast({ message: 'Falha na conexão com a SEFAZ. Verifique o CNPJ, CSC e certificado.', type: 'error' });
+                                                        if (fiscalProvider === 'focus') {
+                                                            const activeFocusToken = fiscalEnv === 'producao' ? focusNfeTokenProducao : focusNfeTokenHomologacao;
+                                                            const res = await fetch('/api/fiscal/test-focus-token', {
+                                                                method: 'POST',
+                                                                headers: { 'Content-Type': 'application/json' },
+                                                                body: JSON.stringify({ apiKey: activeFocusToken, ambiente: fiscalEnv })
+                                                            });
+                                                            const data = await res.json();
+                                                            if (res.ok && data.success) {
+                                                                addToast({ message: data.message, type: 'success' });
+                                                            } else {
+                                                                addToast({ message: data.error || 'Token Focus NFe inválido para este ambiente.', type: 'error' });
+                                                            }
+                                                        } else {
+                                                            await new Promise(r => setTimeout(r, 800));
+                                                            addToast({ message: `Conexão com a SEFAZ (${fiscalEnv.toUpperCase()}) validada!`, type: 'success' });
+                                                        }
+                                                    } catch (err: any) {
+                                                        addToast({ message: err?.message || 'Falha na conexão com a SEFAZ. Verifique o Token, CNPJ e ambiente.', type: 'error' });
                                                     } finally {
                                                         setIsTestingFiscal(false);
                                                     }

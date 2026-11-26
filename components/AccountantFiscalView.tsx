@@ -809,7 +809,12 @@ const AccountantFiscalView: React.FC<AccountantFiscalViewProps> = ({ restaurant,
         });
     };
 
-    const hasApiCredentials = Boolean(restaurant?.blingApiKey || restaurant?.nuvemClientId);
+    const hasApiCredentials = Boolean(
+        restaurant?.focusNfeTokenProducao ||
+        restaurant?.focusNfeTokenHomologacao ||
+        restaurant?.blingApiKey ||
+        restaurant?.nuvemClientId
+    );
     const isProd = restaurant?.fiscalEnv === 'producao';
 
     return (
