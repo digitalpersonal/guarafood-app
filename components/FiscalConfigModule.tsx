@@ -178,7 +178,10 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
     };
 
     const handleTestAuth = async () => {
-        const activeFocusToken = environment === 'production' ? focusTokenProducao.trim() : focusTokenHomologacao.trim();
+        const activeFocusToken = (
+            (environment === 'production' ? focusTokenProducao : focusTokenHomologacao) ||
+            ''
+        ).trim();
         if (!activeFocusToken && !clientId && !clientSecret && !fiscalCsc) {
             addToast({ message: `Preencha o Token Focus NFe de ${environment === 'production' ? 'Produção' : 'Homologação'} ou o CSC antes de testar.`, type: 'warning' });
             return;
@@ -225,7 +228,13 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                     body: JSON.stringify({ clientId, clientSecret })
                 });
 
-                const data = await response.json();
+                const textResp = await response.text();
+                let data: any = {};
+                try {
+                    data = textResp ? JSON.parse(textResp) : {};
+                } catch {
+                    data = { error: textResp };
+                }
 
                 if (response.ok && data.success) {
                     setTestResult({
