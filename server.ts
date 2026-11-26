@@ -159,7 +159,13 @@ async function startServer() {
         signal: AbortSignal.timeout(10000)
       });
 
-      const data = await checkRes.json().catch(() => ({}));
+      const rawText = await checkRes.text();
+      let data: any = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        data = { mensagem: rawText };
+      }
 
       // 404 nao_encontrado = autenticacao aceita na Focus NFe (a nota teste apenas nao existe)
       if (checkRes.status === 404 || checkRes.ok) {
