@@ -197,7 +197,13 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                         ambiente: environment === 'production' ? 'producao' : 'homologacao'
                     })
                 });
-                const data = await response.json();
+                const textResp = await response.text();
+                let data: any = {};
+                try {
+                    data = textResp ? JSON.parse(textResp) : {};
+                } catch {
+                    data = { error: textResp };
+                }
                 if (response.ok && data.success) {
                     setTestResult({
                         success: true,
@@ -207,7 +213,7 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                 } else {
                     setTestResult({
                         success: false,
-                        message: data.error || 'Token da Focus NFe inválido para o ambiente selecionado.',
+                        message: data.error || data.mensagem || 'Token da Focus NFe inválido para o ambiente selecionado.',
                         details: data.details
                     });
                     addToast({ message: 'Token Focus NFe inválido neste ambiente.', type: 'error' });
