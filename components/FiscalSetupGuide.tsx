@@ -11,13 +11,12 @@ export const FiscalSetupGuide: React.FC<FiscalSetupGuideProps> = ({ onGoToConfig
     const [activeTab, setActiveTab] = useState<'passo1' | 'passo2' | 'passo3' | 'passo4' | 'faq'>('passo1');
     const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-    // Checklist interativo
     const [checkedItems, setCheckedItems] = useState<{ [key: string]: boolean }>({
         step1_cert: false,
         step1_csc: false,
         step1_token: false,
         step2_upload: false,
-        step2_nuvem_keys: false,
+        step2_focus_keys: false,
         step3_guara_save: false,
         step4_test_print: false
     });
@@ -58,7 +57,7 @@ Muito obrigado!`;
                             </span>
                             <span className="bg-emerald-500/30 border border-emerald-400/40 text-emerald-200 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full flex items-center gap-1">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                                SEFAZ & Nuvem Fiscal
+                                SEFAZ & Focus NFe
                             </span>
                         </div>
                         <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
@@ -129,7 +128,7 @@ Muito obrigado!`;
                     }`}
                 >
                     <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[10px]">2</span>
-                    <span>2. Na Nuvem Fiscal</span>
+                    <span>2. Na Focus NFe</span>
                 </button>
 
                 <button
@@ -298,7 +297,7 @@ Muito obrigado!`;
                                 onClick={() => setActiveTab('passo2')}
                                 className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl text-xs font-black shadow-md transition-all flex items-center gap-2 cursor-pointer"
                             >
-                                <span>Avançar para Passo 2: Na Nuvem Fiscal</span>
+                                <span>Avançar para Passo 2: Na Focus NFe</span>
                                 <span>&rarr;</span>
                             </button>
                         </div>
@@ -306,20 +305,20 @@ Muito obrigado!`;
                 </div>
             )}
 
-            {/* TAB 2: NA NUVEM FISCAL */}
+            {/* TAB 2: NA FOCUS NFE */}
             {activeTab === 'passo2' && (
                 <div className="space-y-6 animate-fadeIn">
                     <div className="bg-white p-6 sm:p-8 rounded-3xl border border-gray-100 shadow-sm space-y-6">
                         <div className="flex items-start gap-4">
                             <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center text-2xl flex-shrink-0">
-                                ☁️
+                                ⚡
                             </div>
                             <div>
                                 <h3 className="text-lg font-black text-gray-900">
-                                    Passo 2: Configuração no Painel da Nuvem Fiscal
+                                    Passo 2: Configuração no Painel da Focus NFe
                                 </h3>
                                 <p className="text-xs text-gray-500 mt-1">
-                                    A Nuvem Fiscal é a plataforma que assina digitalmente as notas e se comunica com o servidor da SEFAZ 24 horas por dia.
+                                    A Focus NFe é o emissor oficial do GuaraFood que assina digitalmente as NFC-e com o certificado A1 e transmite em tempo real para a SEFAZ.
                                 </p>
                             </div>
                         </div>
@@ -340,10 +339,10 @@ Muito obrigado!`;
                                     />
                                 </div>
                                 <ol className="list-decimal pl-5 space-y-1 text-gray-600 leading-relaxed">
-                                    <li>Acesse <a href="https://app.nuvemfiscal.com.br" target="_blank" rel="noreferrer" className="text-blue-600 font-bold underline">app.nuvemfiscal.com.br</a> com a sua conta.</li>
-                                    <li>No menu esquerdo, clique em <strong>Empresas</strong> e depois em <strong>Nova Empresa</strong>.</li>
-                                    <li>Informe o <strong>CNPJ</strong>, <strong>Razão Social</strong> e <strong>Inscrição Estadual</strong> do restaurante.</li>
-                                    <li>Na aba <strong>Certificado Digital</strong>, clique em <em>Fazer Upload</em>, selecione o arquivo <strong>.pfx</strong> e digite a senha.</li>
+                                    <li>Acesse <a href="https://app.focusnfe.com.br" target="_blank" rel="noreferrer" className="text-blue-600 font-bold underline">app.focusnfe.com.br</a> (Painel da Focus NFe).</li>
+                                    <li>Cadastre a empresa informando <strong>CNPJ</strong>, <strong>Razão Social</strong>, <strong>Regime Tributário (Simples Nacional)</strong> e <strong>Inscrição Estadual</strong>.</li>
+                                    <li>Habilite a opção <strong>Emite NFC-e</strong> nas configurações fiscais da empresa.</li>
+                                    <li>Faça o upload do <strong>Certificado Digital A1 (.pfx ou .p12)</strong> e informe a senha.</li>
                                 </ol>
                             </div>
 
@@ -351,14 +350,13 @@ Muito obrigado!`;
                             <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 space-y-2">
                                 <span className="font-black text-gray-900 text-sm flex items-center gap-2">
                                     <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center">2.2</span>
-                                    <span>Cadastrar o CSC e o Token ID em 'NFC-e'</span>
+                                    <span>Cadastrar o CSC, IdCSC e Série em 'NFC-e'</span>
                                 </span>
                                 <ol className="list-decimal pl-5 space-y-1 text-gray-600 leading-relaxed">
-                                    <li>Ainda dentro do cadastro da empresa, clique na aba <strong>NFC-e</strong>.</li>
-                                    <li>No campo <strong>Ambiente</strong>, selecione <strong>Produção</strong> (ou Homologação se for para testes).</li>
-                                    <li>No campo <strong>Identificador do CSC (IdCSC)</strong>, insira o número do token (ex: <code className="bg-purple-100 px-1 py-0.5 rounded font-mono font-bold text-purple-900">000001</code>).</li>
-                                    <li>No campo <strong>Código de Segurança do Contribuinte (CSC)</strong>, cole a chave alfanumérica (ex: <code className="bg-purple-100 px-1 py-0.5 rounded font-mono font-bold text-purple-900">3506d724cc86cb31674657778b14aa47</code>).</li>
-                                    <li>Defina a série padrão (normalmente <strong>1</strong>) e clique em <strong>Salvar</strong>.</li>
+                                    <li>Dentro da seção de <strong>NFC-e</strong> da empresa na Focus NFe:</li>
+                                    <li>Informe o <strong>CSC de Produção</strong> e o <strong>ID do CSC (IdToken)</strong> gerados na SEFAZ (ex: <code className="bg-purple-100 px-1 py-0.5 rounded font-mono font-bold text-purple-900">000001</code>).</li>
+                                    <li>Informe também o CSC e IdCSC de <strong>Homologação</strong> se for testar antes de entrar em produção.</li>
+                                    <li>Defina a série inicial (normalmente <strong>1</strong>) e próximo número de NFC-e e clique em <strong>Salvar</strong>.</li>
                                 </ol>
                             </div>
 
@@ -367,21 +365,22 @@ Muito obrigado!`;
                                 <div className="flex items-center justify-between">
                                     <span className="font-black text-gray-900 text-sm flex items-center gap-2">
                                         <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center">2.3</span>
-                                        <span>Obter o Client ID e Client Secret da API</span>
+                                        <span>Copiar os Tokens da API (Produção e Homologação)</span>
                                     </span>
                                     <input 
                                         type="checkbox" 
-                                        checked={checkedItems.step2_nuvem_keys} 
-                                        onChange={() => toggleCheck('step2_nuvem_keys')} 
+                                        checked={checkedItems.step2_focus_keys} 
+                                        onChange={() => toggleCheck('step2_focus_keys')} 
                                         className="w-4 h-4 text-blue-600 rounded cursor-pointer"
                                     />
                                 </div>
                                 <p className="text-gray-600 leading-relaxed">
-                                    Para conectar o GuaraFood à sua conta da Nuvem Fiscal:
+                                    Para conectar o GuaraFood à Focus NFe:
                                 </p>
                                 <ol className="list-decimal pl-5 space-y-1 text-gray-600 leading-relaxed">
-                                    <li>No menu superior ou lateral, vá em <strong>Minha Conta</strong> ou <strong>Aplicações / API</strong>.</li>
-                                    <li>Crie uma nova aplicação OAuth2 ou copie o <strong>Client ID</strong> e o <strong>Client Secret</strong> já criados.</li>
+                                    <li>No painel da Focus NFe, acesse a aba <strong>Tokens / API</strong> da empresa.</li>
+                                    <li>Copie o <strong>Token de Produção</strong> e o <strong>Token de Homologação</strong> (eles são diferentes entre si).</li>
+                                    <li>Opcional: configure o webhook da Focus NFe apontando para <code className="bg-white px-1 py-0.5 rounded border font-mono">/api/fiscal/webhook</code>.</li>
                                 </ol>
                             </div>
                         </div>
@@ -453,7 +452,7 @@ Muito obrigado!`;
                                     </li>
                                     <li className="flex items-start gap-2">
                                         <span className="text-purple-600 font-bold">6.</span>
-                                        <span><strong>Client ID e Client Secret:</strong> Cole as chaves da sua conta Nuvem Fiscal.</span>
+                                        <span><strong>Tokens Focus NFe (Produção e Homologação):</strong> Cole o token correspondente de cada ambiente nos campos da Seção 2 e ative a emissão fiscal no topo.</span>
                                     </li>
                                 </ul>
                             </div>
@@ -670,7 +669,7 @@ Muito obrigado!`;
                                     <span>Por que meu Certificado Digital precisa ser Modelo A1 e não A3?</span>
                                 </h4>
                                 <p className="text-xs text-gray-600 leading-relaxed pl-6">
-                                    O modelo A1 é um arquivo digital que fica instalado no servidor seguro na nuvem (Nuvem Fiscal), permitindo emissão instantânea sem depender de computadores físicos ligados com pendrives ou leitores de cartão USB (A3). O modelo A3 não é compatível com sistemas modernos em nuvem.
+                                    O modelo A1 é um arquivo digital instalado nos servidores em nuvem da Focus NFe, permitindo emissão instantânea 24h sem depender de computadores físicos ligados com pendrives ou leitores USB (A3). O modelo A3 não é compatível com sistemas em nuvem.
                                 </p>
                             </div>
 

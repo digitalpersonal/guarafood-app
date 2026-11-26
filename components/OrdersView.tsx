@@ -1325,14 +1325,14 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                     isOpen={Boolean(orderForFiscalDoc)}
                     onClose={() => setOrderForFiscalDoc(null)}
                     order={orderForFiscalDoc}
-                    onConfirm={(doc, name, customDesc, customPrice) => {
+                    onConfirm={async (doc, name, customDesc, customPrice) => {
                         const targetOrder = orderForFiscalDoc;
                         setOrderForFiscalDoc(null);
                         if (!targetOrder) return;
                         const finalPrice = customPrice !== undefined && !isNaN(customPrice) ? customPrice : targetOrder.totalPrice;
-                        const finalItems = customDesc ? [{ name: customDesc, price: finalPrice, quantity: 1 }] : targetOrder.items;
+                        const finalItems = customDesc ? [{ ...targetOrder.items?.[0], name: customDesc, price: finalPrice, quantity: 1 }] : targetOrder.items;
 
-                        const updated: Order = {
+                        let updated: Order = {
                             ...targetOrder,
                             customerDocument: doc || undefined,
                             customerName: name || targetOrder.customerName,
@@ -1340,50 +1340,56 @@ const OrdersView: React.FC<OrdersViewProps> = ({ orders, printerWidth = 80, onPr
                             subtotal: finalPrice,
                             items: finalItems
                         };
+
+                        try {
+                            await updateOrderCustomerDocument(targetOrder.id, doc, name);
+                        } catch (err) {
+                            console.warn('Erro ao atualizar CPF/CNPJ no banco:', err);
+                        }
+
+                        if (updated.fiscalStatus !== 'autorizado') {
+                            addToast({ message: 'Transmitindo NFC-e para a SEFAZ via Focus NFe...', type: 'info' });
+                            const res = await emitOrderFiscalToSefaz(updated, restaurant);
+                            updated = {
+                                ...updated,
+                                fiscalStatus: res.fiscalStatus,
+                                fiscalKey: res.fiscalKey || updated.fiscalKey,
+                                fiscalNumber: res.fiscalNumber || updated.fiscalNumber,
+                                fiscalProtocol: res.fiscalProtocol || updated.fiscalProtocol,
+                                fiscalDanfeUrl: res.fiscalDanfeUrl || updated.fiscalDanfeUrl,
+                                fiscalXmlUrl: res.fiscalXmlUrl || updated.fiscalXmlUrl,
+                                fiscalQrCodeUrl: res.fiscalQrCodeUrl || updated.fiscalQrCodeUrl,
+                                fiscalConsultUrl: res.fiscalConsultUrl || updated.fiscalConsultUrl,
+                                fiscalMessage: res.fiscalMessage || updated.fiscalMessage,
+                            };
+
+                            setSelectedOrder(prev => prev && prev.id === updated.id ? updated : prev);
+
+                            if (!res.success) {
+                                addToast({
+                                    message: res.fiscalMessage || 'Rejeição na SEFAZ ao transmitir NFC-e pela Focus NFe.',
+                                    type: 'error'
+                                });
+                                return;
+                            }
+
+                            if (res.fiscalStatus === 'processando') {
+                                addToast({
+                                    message: 'NFC-e em processamento na SEFAZ. Aguarde alguns segundos e consulte novamente antes de imprimir.',
+                                    type: 'warning'
+                                });
+                                return;
+                            }
+
+                            addToast({
+                                message: 'NFC-e autorizada pela SEFAZ! Imprimindo DANFE...',
+                                type: 'success'
+                            });
+                        }
+
                         onPrint(updated, 'fiscal');
-                        (async () => {
-                            try {
-                                await updateOrderCustomerDocument(targetOrder.id, doc, name);
-                            } catch (err) {
-                                console.warn('Erro ao atualizar CPF/CNPJ no banco:', err);
-                            }
-                            if (updated.fiscalStatus !== 'autorizado') {
-                                try {
-                                    const res = await emitOrderFiscalToSefaz(updated, restaurant);
-                                    setSelectedOrder(prev =>
-                                        prev && prev.id === updated.id
-                                            ? {
-                                                  ...prev,
-                                                  customerDocument: updated.customerDocument,
-                                                  customerName: updated.customerName,
-                                                  fiscalStatus: res.fiscalStatus,
-                                                  fiscalKey: res.fiscalKey || prev.fiscalKey,
-                                                  fiscalNumber: res.fiscalNumber || prev.fiscalNumber,
-                                                  fiscalProtocol: res.fiscalProtocol || prev.fiscalProtocol,
-                                                  fiscalDanfeUrl: res.fiscalDanfeUrl || prev.fiscalDanfeUrl,
-                                                  fiscalXmlUrl: res.fiscalXmlUrl || prev.fiscalXmlUrl,
-                                                  fiscalMessage: res.fiscalMessage || prev.fiscalMessage,
-                                              }
-                                            : prev
-                                    );
-                                    if (!res.success) {
-                                        addToast({
-                                            message: res.fiscalMessage || 'Nota registrada com erro de transmissão na SEFAZ.',
-                                            type: 'warning'
-                                        });
-                                    } else {
-                                        addToast({
-                                            message: 'Nota fiscal registrada no histórico de emissões!',
-                                            type: 'success'
-                                        });
-                                    }
-                                } catch (err) {
-                                    console.warn('Erro ao registrar emissão fiscal:', err);
-                                }
-                            }
-                        })();
                     }}
-                    actionLabel="Imprimir Cupom Fiscal"
+                    actionLabel="Emitir e Imprimir Cupom Fiscal"
                 />
             )}
             {orderToEdit && currentUser && (

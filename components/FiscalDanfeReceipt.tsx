@@ -28,34 +28,30 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
 }) => {
     const is58mm = printerWidth === 58;
 
-    // Dados fiscais calculados e determinísticos
     const dateObj = order.createdAt
         ? new Date(order.createdAt)
         : (order.timestamp ? new Date(order.timestamp) : new Date());
     const dateString = dateObj.toLocaleDateString('pt-BR');
     const timeString = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-    const emitCnpj = restaurant?.cnpj || '00.000.000/0001-00';
-    const cleanCnpj = emitCnpj.replace(/\D/g, '').padEnd(14, '0');
+    const emitCnpj = restaurant?.cnpj || 'CNPJ não configurado';
     const emitIe = restaurant?.ie || 'ISENTO';
     const emitName = sanitizeFiscalText(restaurant?.name || order.restaurantName || 'ESTABELECIMENTO COMERCIAL').toUpperCase();
     const emitAddress = sanitizeFiscalText(restaurant?.address || order.restaurantAddress || 'Endereço Comercial');
     const emitPhone = sanitizeFiscalText(restaurant?.phone || order.restaurantPhone || '');
 
-    const orderNum = order.order_number || parseInt(order.id.replace(/\D/g, '').slice(-6) || '1042', 10);
-    const numNfFormatted = String(orderNum).padStart(9, '0');
+    const fiscalMeta = order.payment_details?.fiscal;
+    const orderNum = order.order_number || parseInt(order.id.replace(/\D/g, '').slice(-6) || '1', 10);
+    const nfNumberRaw = order.fiscalNumber || fiscalMeta?.numero || String(orderNum);
+    const numNfFormatted = String(nfNumberRaw).padStart(9, '0');
     const serie = '001';
 
-    const yy = String(dateObj.getFullYear()).slice(-2);
-    const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-
-    // Chave de acesso oficial com 44 dígitos
-    const accessKey = order.fiscalKey || `31${yy}${mm}${cleanCnpj.padStart(14, '0')}65001${numNfFormatted}198273641`;
-    const formattedKey = accessKey.match(/.{1,4}/g)?.join(' ') || accessKey;
-
-    // Protocolo determinístico por número de pedido
-    const deterministicSeed = Math.abs(orderNum * 987654321) % 89999999;
-    const protocolNumber = order.fiscalProtocol || `1312${yy}${String(deterministicSeed + 10000000)}`;
+    const accessKey = String(order.fiscalKey || fiscalMeta?.chave || '').trim();
+    const formattedKey = accessKey ? (accessKey.match(/.{1,4}/g)?.join(' ') || accessKey) : '';
+    const protocolNumber = String(order.fiscalProtocol || fiscalMeta?.protocolo || '').trim();
+    const rawFiscalStatus = String(order.fiscalStatus || fiscalMeta?.status || '').toLowerCase();
+    const isAuthorized = rawFiscalStatus === 'autorizado' || Boolean(accessKey);
+    const isCanceled = rawFiscalStatus === 'cancelado';
     const isProd = restaurant?.fiscalEnv === 'producao';
 
     const displaySubtotal = Number(order.subtotal) > 0
@@ -67,17 +63,18 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
         : (displaySubtotal + Number(order.deliveryFee || 0) - Number(order.discountAmount || 0));
 
     const totalItemCount = (order.items || []).reduce((acc, it) => acc + (it.quantity || 1), 0);
-    const approxTaxes = displayTotal * 0.1345; // ~13.45% IBPT aproximado (Lei 12.741/2012)
+    const taxPercent = restaurant?.fiscalTaxRate != null ? Number(restaurant.fiscalTaxRate) : 13.45;
+    const approxTaxes = displayTotal * (taxPercent / 100);
 
-    const csc = restaurant?.fiscalCsc || '3506d724cc86cb31674657778b14aa47';
-    const cIdToken = restaurant?.fiscalCscId || '000001';
-    const tpAmb = isProd ? '1' : '2';
-
-    // Gerar QR Code SEFAZ V2 de forma síncrona e vetorial (nunca falha nem imprime em branco)
-    const sefazBaseUrl = 'http://nfce.fazenda.mg.gov.br/portalnfce/sistema/qrcode.xhtml';
-    const qrPayload = `${sefazBaseUrl}?p=${accessKey}|2|${tpAmb}|${cIdToken}|${csc.substring(0, 10)}`;
+    const qrPayload = String(order.fiscalQrCodeUrl || fiscalMeta?.qrcode_url || '').trim();
+    const consultUrl = String(
+        order.fiscalConsultUrl ||
+        fiscalMeta?.url_consulta_nf ||
+        'Consulte no portal da SEFAZ do seu estado'
+    ).trim();
 
     const qrSvgData = useMemo(() => {
+        if (!qrPayload) return null;
         try {
             const qr = QRCode.create(qrPayload, { errorCorrectionLevel: 'M' });
             const size = qr.modules.size;
@@ -96,7 +93,6 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
         }
     }, [qrPayload]);
 
-    // Tipografia de alto contraste (#000 puro) e maior legibilidade em bobinas térmicas (especialmente 58mm e 80mm)
     const baseFontSize = is58mm ? '13.5px' : '14px';
     const headerFontSize = is58mm ? '16px' : '17px';
     const smallFontSize = is58mm ? '12.5px' : '13px';
@@ -133,7 +129,6 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
                 {emitPhone && <div style={{ fontSize: microFontSize, fontWeight: 600 }}>Fone: {emitPhone}</div>}
             </div>
 
-            {/* DIVISOR */}
             <div style={{ borderTop: '1.5px dashed #000', margin: '5px 0', width: '100%' }}></div>
 
             {/* TÍTULO OFICIAL DO DOCUMENTO */}
@@ -168,7 +163,20 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
                 </div>
             )}
 
-            {/* DIVISOR */}
+            {isCanceled && (
+                <div style={{
+                    textAlign: 'center',
+                    fontWeight: 900,
+                    fontSize: smallFontSize,
+                    border: '2px solid #000',
+                    padding: '3px 4px',
+                    marginBottom: '4px',
+                    textTransform: 'uppercase'
+                }}>
+                    NFC-e CANCELADA NA SEFAZ
+                </div>
+            )}
+
             <div style={{ borderTop: '1.5px dashed #000', margin: '5px 0', width: '100%' }}></div>
 
             {/* TABELA DE ITENS */}
@@ -215,7 +223,6 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
                 </tbody>
             </table>
 
-            {/* DIVISOR */}
             <div style={{ borderTop: '1.5px dashed #000', margin: '5px 0', width: '100%' }}></div>
 
             {/* TOTAIS DO DOCUMENTO FISCAL */}
@@ -272,7 +279,6 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
                 </table>
             </div>
 
-            {/* DIVISOR */}
             <div style={{ borderTop: '1.5px dashed #000', margin: '5px 0', width: '100%' }}></div>
 
             {/* DADOS DO CONSUMIDOR */}
@@ -287,14 +293,13 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
                 )}
             </div>
 
-            {/* DIVISOR */}
             <div style={{ borderTop: '1.5px dashed #000', margin: '5px 0', width: '100%' }}></div>
 
-            {/* CONSULTA CHAVE DE ACESSO E QR CODE */}
+            {/* CONSULTA CHAVE DE ACESSO E QR CODE OFICIAL */}
             <div style={{ textAlign: 'center', fontSize: microFontSize, lineHeight: 1.3 }}>
                 <div style={{ fontWeight: 900 }}>Consulte pela Chave de Acesso em:</div>
                 <div style={{ fontWeight: 700, wordBreak: 'break-all' }}>
-                    http://nfce.fazenda.mg.gov.br/portalnfce
+                    {consultUrl}
                 </div>
                 <div style={{
                     fontFamily: "'Courier New', Courier, monospace",
@@ -305,13 +310,13 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
                     marginBottom: '4px',
                     wordBreak: 'break-word'
                 }}>
-                    {formattedKey}
+                    {formattedKey || 'AGUARDANDO AUTORIZAÇÃO SEFAZ'}
                 </div>
             </div>
 
             {/* QR CODE SEFAZ VETORIAL */}
             <div style={{ textAlign: 'center', padding: '3px 0' }}>
-                {qrSvgData && (
+                {qrSvgData ? (
                     <svg
                         viewBox={`-2 -2 ${qrSvgData.size + 4} ${qrSvgData.size + 4}`}
                         width={qrDisplaySize}
@@ -327,6 +332,18 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
                         <rect x="-2" y="-2" width={qrSvgData.size + 4} height={qrSvgData.size + 4} fill="#ffffff" />
                         <path d={qrSvgData.pathD} fill="#000000" />
                     </svg>
+                ) : (
+                    <div style={{
+                        border: '1px dashed #000',
+                        padding: '8px 6px',
+                        margin: '4px auto',
+                        fontSize: microFontSize,
+                        fontWeight: 800
+                    }}>
+                        {isAuthorized
+                            ? 'QR Code disponível no DANFE oficial da Focus NFe'
+                            : 'QR Code será gerado após autorização da SEFAZ'}
+                    </div>
                 )}
             </div>
 
@@ -336,27 +353,25 @@ export const FiscalDanfeReceipt: React.FC<FiscalDanfeReceiptProps> = ({
                     NFC-e nº {numNfFormatted} Série {serie} • {dateString} {timeString}
                 </div>
                 <div style={{ fontWeight: 700, fontSize: microFontSize, marginTop: '2px' }}>
-                    Protocolo de Autorização: <span style={{ fontWeight: 900 }}>{protocolNumber}</span>
+                    Protocolo de Autorização:{' '}
+                    <span style={{ fontWeight: 900 }}>{protocolNumber || 'Aguardando SEFAZ'}</span>
                 </div>
                 <div style={{ fontWeight: 700, fontSize: microFontSize }}>
                     Data de Autorização: {dateString} {timeString}
                 </div>
             </div>
 
-            {/* DIVISOR */}
             <div style={{ borderTop: '1.5px dashed #000', margin: '5px 0', width: '100%' }}></div>
 
             {/* TRIBUTOS LEI 12.741/2012 */}
             <div style={{ textAlign: 'center', fontSize: microFontSize, fontWeight: 700, lineHeight: 1.3 }}>
-                Tributos Totais Incidentes (Lei Federal 12.741/2012): R$ {approxTaxes.toFixed(2)} (13,45% aprox. IBPT)
+                Tributos Totais Incidentes (Lei Federal 12.741/2012): R$ {approxTaxes.toFixed(2)} ({taxPercent.toFixed(2).replace('.', ',')}% aprox.)
             </div>
 
-            {/* DIVISOR */}
             <div style={{ borderTop: '1.5px dashed #000', margin: '5px 0', width: '100%' }}></div>
 
-            {/* RODAPÉ FISCAL */}
             <div style={{ textAlign: 'center', fontSize: microFontSize, fontWeight: 900 }}>
-                PEDIDO #{String(orderNum).padStart(3, '0')} • GUARA-FOOD PDV FISCAL
+                PEDIDO #{String(orderNum).padStart(3, '0')} • GUARA-FOOD FOCUS NFE
             </div>
         </div>
     );

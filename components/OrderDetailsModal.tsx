@@ -97,13 +97,14 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
         return Number(printerWidth || 80);
     };
 
-    const triggerLocalPrint = (mode: 'full' | 'kitchen' | 'admin' | 'fiscal') => {
+    const triggerLocalPrint = (mode: 'full' | 'kitchen' | 'admin' | 'fiscal', orderOverride?: Order) => {
+        const orderToPrint = orderOverride || currentOrder;
         const isMobileDevice = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         const logTag = isMobileDevice ? '[OrderDetailsModal][Print][MOBILE]' : '[OrderDetailsModal][Print]';
 
-        if (!currentOrder || !(currentOrder.items || []).length) {
+        if (!orderToPrint || !(orderToPrint.items || []).length) {
             console.error(`${logTag} Erro: pedido sem itens para impressão local.`, {
-                orderId: currentOrder?.id,
+                orderId: orderToPrint?.id,
                 mode,
                 isMobileDevice,
             });
@@ -115,6 +116,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
 
         try {
             flushSync(() => {
+                if (orderOverride) setCurrentOrder(orderOverride);
                 setPrintMode(mode);
                 setIsLocalPrinting(true);
             });
@@ -123,9 +125,9 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
             const renderedHtml = container?.innerHTML?.trim() || '';
             if (!container || !renderedHtml) {
                 console.error(`${logTag} Erro: payload não renderizado em PrintableOrder após flushSync.`, {
-                    orderId: currentOrder.id,
+                    orderId: orderToPrint.id,
                     mode,
-                    itemCount: currentOrder.items?.length || 0,
+                    itemCount: orderToPrint.items?.length || 0,
                     hasContainer: Boolean(container),
                     htmlLength: renderedHtml.length,
                     isMobileDevice,
@@ -136,16 +138,16 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
 
             printThermalElement(container, effectiveWidth, {
                 mode,
-                orderId: currentOrder.id,
-                orderNumber: currentOrder.order_number,
-                itemCount: currentOrder.items?.length || 0,
+                orderId: orderToPrint.id,
+                orderNumber: orderToPrint.order_number,
+                itemCount: orderToPrint.items?.length || 0,
                 source: 'OrderDetailsModal.triggerLocalPrint',
             }).finally(() => {
                 setIsLocalPrinting(false);
             });
         } catch (err) {
             console.error(`${logTag} Falha ao disparar impressão local:`, err, {
-                orderId: currentOrder.id,
+                orderId: orderToPrint.id,
                 mode,
                 isMobileDevice,
             });
@@ -193,12 +195,12 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
         setIsFiscalDocModalOpen(true);
     };
 
-    const handleConfirmFiscalDoc = (document: string | null, customerName?: string, customDesc?: string, customPrice?: number) => {
+    const handleConfirmFiscalDoc = async (document: string | null, customerName?: string, customDesc?: string, customPrice?: number) => {
         setIsFiscalDocModalOpen(false);
         const finalPrice = customPrice !== undefined && !isNaN(customPrice) ? customPrice : currentOrder.totalPrice;
-        const finalItems = customDesc ? [{ name: customDesc, price: finalPrice, quantity: 1 }] : currentOrder.items;
+        const finalItems = customDesc ? [{ ...currentOrder.items?.[0], name: customDesc, price: finalPrice, quantity: 1 }] : currentOrder.items;
 
-        const updatedOrder: Order = {
+        let orderForFiscal: Order = {
             ...currentOrder,
             customerDocument: document || undefined,
             customerName: customerName || currentOrder.customerName,
@@ -206,49 +208,58 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
             subtotal: finalPrice,
             items: finalItems
         };
-        setCurrentOrder(updatedOrder);
+        setCurrentOrder(orderForFiscal);
 
-        if (onPrint) {
-            onPrint(updatedOrder, 'fiscal');
-        } else {
-            triggerLocalPrint('fiscal');
+        try {
+            await updateOrderCustomerDocument(currentOrder.id, document, customerName);
+        } catch (err) {
+            console.warn('Erro ao atualizar CPF/CNPJ no banco:', err);
         }
 
-        (async () => {
-            try {
-                await updateOrderCustomerDocument(currentOrder.id, document, customerName);
-            } catch (err) {
-                console.warn('Erro ao atualizar CPF/CNPJ no banco:', err);
+        if (orderForFiscal.fiscalStatus !== 'autorizado') {
+            addToast({ message: 'Transmitindo NFC-e para a SEFAZ via Focus NFe...', type: 'info' });
+            const res = await emitOrderFiscalToSefaz(orderForFiscal, restaurant);
+            orderForFiscal = {
+                ...orderForFiscal,
+                fiscalStatus: res.fiscalStatus,
+                fiscalKey: res.fiscalKey || orderForFiscal.fiscalKey,
+                fiscalNumber: res.fiscalNumber || orderForFiscal.fiscalNumber,
+                fiscalProtocol: res.fiscalProtocol || orderForFiscal.fiscalProtocol,
+                fiscalDanfeUrl: res.fiscalDanfeUrl || orderForFiscal.fiscalDanfeUrl,
+                fiscalXmlUrl: res.fiscalXmlUrl || orderForFiscal.fiscalXmlUrl,
+                fiscalQrCodeUrl: res.fiscalQrCodeUrl || orderForFiscal.fiscalQrCodeUrl,
+                fiscalConsultUrl: res.fiscalConsultUrl || orderForFiscal.fiscalConsultUrl,
+                fiscalMessage: res.fiscalMessage || orderForFiscal.fiscalMessage,
+            };
+            setCurrentOrder(orderForFiscal);
+
+            if (!res.success) {
+                addToast({
+                    message: res.fiscalMessage || 'Rejeição na SEFAZ ao emitir NFC-e pela Focus NFe.',
+                    type: 'error'
+                });
+                return;
             }
-            if (updatedOrder.fiscalStatus !== 'autorizado') {
-                try {
-                    const res = await emitOrderFiscalToSefaz(updatedOrder, restaurant);
-                    setCurrentOrder(prev => ({
-                        ...prev,
-                        fiscalStatus: res.fiscalStatus,
-                        fiscalKey: res.fiscalKey || prev.fiscalKey,
-                        fiscalNumber: res.fiscalNumber || prev.fiscalNumber,
-                        fiscalProtocol: res.fiscalProtocol || prev.fiscalProtocol,
-                        fiscalDanfeUrl: res.fiscalDanfeUrl || prev.fiscalDanfeUrl,
-                        fiscalXmlUrl: res.fiscalXmlUrl || prev.fiscalXmlUrl,
-                        fiscalMessage: res.fiscalMessage || prev.fiscalMessage,
-                    }));
-                    if (!res.success) {
-                        addToast({
-                            message: res.fiscalMessage || 'Nota registrada com falha de transmissão na SEFAZ.',
-                            type: 'warning'
-                        });
-                    } else {
-                        addToast({
-                            message: 'Nota fiscal registrada no histórico de emissões!',
-                            type: 'success'
-                        });
-                    }
-                } catch (err) {
-                    console.warn('Erro ao registrar emissão fiscal:', err);
-                }
+
+            if (res.fiscalStatus === 'processando') {
+                addToast({
+                    message: 'NFC-e em processamento na SEFAZ. Aguarde alguns segundos e clique em Ver Nota (XML/DANFE) para consultar.',
+                    type: 'warning'
+                });
+                return;
             }
-        })();
+
+            addToast({
+                message: 'NFC-e autorizada pela SEFAZ! Imprimindo DANFE...',
+                type: 'success'
+            });
+        }
+
+        if (onPrint) {
+            onPrint(orderForFiscal, 'fiscal');
+        } else {
+            triggerLocalPrint('fiscal', orderForFiscal);
+        }
     };
 
     const handleOrderUpdated = (updatedOrder: Order) => {
@@ -468,7 +479,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, p
                                         type="button"
                                         onClick={() => setShowFiscalInvoiceModal(true)}
                                         className="flex items-center space-x-1.5 px-3 sm:px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-black transition-all active:scale-95 shadow-md text-xs sm:text-sm"
-                                        title="Visualizar XML da Nuvem Fiscal e DANFE Simplificado"
+                                        title="Visualizar XML da Focus NFe e DANFE Simplificado"
                                     >
                                         <span>🔍</span>
                                         <span>Ver Nota (XML/DANFE)</span>

@@ -17,7 +17,6 @@ import { FeaturedPromoManager } from './FeaturedPromoManager';
 import { getErrorMessage } from '../services/api';
 import ChromeMemorySaverGuide from './ChromeMemorySaverGuide';
 import { KNOWN_CITIES } from '../utils/locationService';
-import { FiscalXmlValidatorModal } from './FiscalXmlValidatorModal';
 
 const NotificationSettings: React.FC = () => {
     const { addToast } = useNotification();
@@ -344,65 +343,6 @@ const RestaurantSettings: React.FC<{
     const [pricePerKilo, setPricePerKilo] = useState(0);
     const [deliveryFee, setDeliveryFee] = useState(0);
     const [disableDelivery, setDisableDelivery] = useState(false);
-    const [enableFiscal, setEnableFiscal] = useState(false);
-    const [cnpj, setCnpj] = useState('');
-    const [ie, setIe] = useState('');
-    const [im, setIm] = useState('');
-    const [blingApiKey, setBlingApiKey] = useState('');
-    const [focusNfeTokenProducao, setFocusNfeTokenProducao] = useState('');
-    const [focusNfeTokenHomologacao, setFocusNfeTokenHomologacao] = useState('');
-    const [showFocusProdToken, setShowFocusProdToken] = useState(false);
-    const [showFocusHomolToken, setShowFocusHomolToken] = useState(false);
-    const [showFiscalToken, setShowFiscalToken] = useState(false);
-    const [fiscalProvider, setFiscalProvider] = useState('focus');
-    const [fiscalCsc, setFiscalCsc] = useState('');
-    const [fiscalCscId, setFiscalCscId] = useState('1');
-    const [fiscalEnv, setFiscalEnv] = useState<'homologacao' | 'producao'>('homologacao');
-    const [fiscalTaxRate, setFiscalTaxRate] = useState<string>('');
-    const [nuvemClientId, setNuvemClientId] = useState('');
-    const [nuvemClientSecret, setNuvemClientSecret] = useState('');
-    const [isTestingNuvem, setIsTestingNuvem] = useState(false);
-    const [nuvemTestResult, setNuvemTestResult] = useState<{ success: boolean; message: string } | null>(null);
-
-    const handleTestNuvemAuth = async () => {
-        if (!nuvemClientId || !nuvemClientSecret) {
-            addToast({ message: 'Preencha o Client ID e Client Secret da Nuvem Fiscal antes de testar.', type: 'error' });
-            return;
-        }
-        setIsTestingNuvem(true);
-        setNuvemTestResult(null);
-        try {
-            const res = await fetch('/api/fiscal/test-nuvem-auth', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ clientId: nuvemClientId, clientSecret: nuvemClientSecret })
-            });
-            const textResp = await res.text();
-            let data: any = {};
-            try {
-                data = textResp ? JSON.parse(textResp) : {};
-            } catch {
-                data = { error: textResp };
-            }
-            if (res.ok && data.success) {
-                setNuvemTestResult({ success: true, message: data.message || 'Credenciais autenticadas com sucesso!' });
-                addToast({ message: 'Conexão com a Nuvem Fiscal autorizada com sucesso!', type: 'success' });
-            } else {
-                setNuvemTestResult({ success: false, message: data.error || 'Falha na autenticação das chaves.' });
-                addToast({ message: data.error || 'Falha ao autenticar com Nuvem Fiscal.', type: 'error' });
-            }
-        } catch (err: any) {
-            console.error(err);
-            setNuvemTestResult({ success: false, message: err.message || 'Erro de conexão com o servidor.' });
-            addToast({ message: 'Erro ao testar conexão com Nuvem Fiscal.', type: 'error' });
-        } finally {
-            setIsTestingNuvem(false);
-        }
-    };
-    const [certPassword, setCertPassword] = useState('');
-    const [certFileName, setCertFileName] = useState('');
-    const [isTestingFiscal, setIsTestingFiscal] = useState(false);
-    const [showXmlValidatorModal, setShowXmlValidatorModal] = useState(false);
     const [hasPreorderMode, setHasPreorderMode] = useState(false);
     const [preorderDeliveryDay, setPreorderDeliveryDay] = useState('');
     const [preorderDeliveryTime, setPreorderDeliveryTime] = useState('');
@@ -457,28 +397,6 @@ const RestaurantSettings: React.FC<{
                 setPricePerKilo(data.pricePerKilo || 0);
                 setDeliveryFee(data.deliveryFee != null ? Number(data.deliveryFee) : 0);
                 setDisableDelivery(data.disableDelivery || false);
-                setEnableFiscal(data.enableFiscal || false);
-                setCnpj(data.cnpj || '');
-                setIe(data.ie || '');
-                setIm(data.im || '');
-                setBlingApiKey(data.blingApiKey || '');
-                setFocusNfeTokenProducao(data.focusNfeTokenProducao || '');
-                setFocusNfeTokenHomologacao(
-                    data.focusNfeTokenHomologacao ||
-                    (data.fiscalEnv !== 'producao' ? data.blingApiKey || '' : '')
-                );
-                const validFiscalProviders = ['focus', 'nuvem', 'bling', 'betha', 'custom'];
-                setFiscalProvider(
-                    data.fiscalProvider && validFiscalProviders.includes(data.fiscalProvider)
-                        ? data.fiscalProvider
-                        : 'focus'
-                );
-                setFiscalCsc(data.fiscalCsc || '');
-                setFiscalCscId(data.fiscalCscId || '1');
-                setFiscalEnv(data.fiscalEnv || 'homologacao');
-                setFiscalTaxRate(data.fiscalTaxRate !== undefined && data.fiscalTaxRate !== null ? String(data.fiscalTaxRate) : '');
-                setNuvemClientId(data.nuvemClientId || '');
-                setNuvemClientSecret(data.nuvemClientSecret || '');
                 setOperatingHours(data.operatingHours || getDefaultOperatingHours());
                 
                 // Força o estado da impressora a partir do banco e sincroniza LocalStorage
@@ -506,19 +424,6 @@ const RestaurantSettings: React.FC<{
 
     const handleSaveChanges = async () => {
         if (!restaurantId || !restaurant) return;
-        
-        // Validação Fiscal se estiver ativado
-        if (enableFiscal) {
-            const cleanCnpj = cnpj.replace(/\D/g, '');
-            if (!cleanCnpj || cleanCnpj.length !== 14) {
-                addToast({ message: 'Erro: O CNPJ deve conter exatamente 14 dígitos válidos.', type: 'error' });
-                return;
-            }
-            if (!ie.trim()) {
-                addToast({ message: 'Erro: A Inscrição Estadual (I.E.) é obrigatória para emissão fiscal.', type: 'error' });
-                return;
-            }
-        }
 
         setIsSaving(true);
         const cleanMpToken = (mercadoPagoToken || '').trim().replace(/^(pp_usr|p_usr|app_usr)-/i, 'APP_USR-');
@@ -544,23 +449,7 @@ const RestaurantSettings: React.FC<{
                 hasKiloService: hasKiloService,
                 pricePerKilo: pricePerKilo,
                 deliveryFee: Number(deliveryFee) || 0,
-                disableDelivery: disableDelivery,
-                enableFiscal: enableFiscal,
-                cnpj: cnpj,
-                ie: ie,
-                im: im,
-                blingApiKey: fiscalProvider === 'focus'
-                    ? (fiscalEnv === 'producao' ? focusNfeTokenProducao.trim() : focusNfeTokenHomologacao.trim()) || blingApiKey.trim()
-                    : blingApiKey.trim(),
-                focusNfeTokenProducao: focusNfeTokenProducao.trim(),
-                focusNfeTokenHomologacao: focusNfeTokenHomologacao.trim(),
-                fiscalProvider: fiscalProvider,
-                fiscalCsc: fiscalCsc,
-                fiscalCscId: fiscalCscId,
-                fiscalEnv: fiscalEnv,
-                fiscalTaxRate: fiscalTaxRate.trim() !== '' ? Math.max(0, Math.min(100, parseFloat(fiscalTaxRate.replace(',', '.')) || 0)) : undefined,
-                nuvemClientId: nuvemClientId,
-                nuvemClientSecret: nuvemClientSecret
+                disableDelivery: disableDelivery
             });
             localStorage.setItem('guarafood-printer-width', printerWidth.toString());
             window.dispatchEvent(new CustomEvent('guarafood:print-station-changed'));
@@ -1163,12 +1052,6 @@ const RestaurantSettings: React.FC<{
                     {testOrder && <PrintableOrder order={testOrder} printerWidth={printerWidth} restaurant={restaurant} />}
                 </div>
             </div>
-
-            <FiscalXmlValidatorModal
-                isOpen={showXmlValidatorModal}
-                onClose={() => setShowXmlValidatorModal(false)}
-                restaurant={restaurant}
-            />
         </main>
     );
 };

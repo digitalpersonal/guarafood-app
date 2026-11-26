@@ -388,6 +388,8 @@ const AccountantFiscalView: React.FC<AccountantFiscalViewProps> = ({ restaurant,
                           fiscalProtocol: res.fiscalProtocol || o.fiscalProtocol,
                           fiscalDanfeUrl: res.fiscalDanfeUrl || o.fiscalDanfeUrl,
                           fiscalXmlUrl: res.fiscalXmlUrl || o.fiscalXmlUrl,
+                          fiscalQrCodeUrl: res.fiscalQrCodeUrl || o.fiscalQrCodeUrl,
+                          fiscalConsultUrl: res.fiscalConsultUrl || o.fiscalConsultUrl,
                           fiscalMessage: res.fiscalMessage || o.fiscalMessage,
                           fiscalExport: res.success ? true : o.fiscalExport,
                       }
@@ -809,13 +811,10 @@ const AccountantFiscalView: React.FC<AccountantFiscalViewProps> = ({ restaurant,
         });
     };
 
-    const hasApiCredentials = Boolean(
-        restaurant?.focusNfeTokenProducao ||
-        restaurant?.focusNfeTokenHomologacao ||
-        restaurant?.blingApiKey ||
-        restaurant?.nuvemClientId
-    );
     const isProd = restaurant?.fiscalEnv === 'producao';
+    const hasApiCredentials = Boolean(
+        isProd ? restaurant?.focusNfeTokenProducao : restaurant?.focusNfeTokenHomologacao
+    );
 
     return (
         <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-5">
@@ -894,11 +893,11 @@ const AccountantFiscalView: React.FC<AccountantFiscalViewProps> = ({ restaurant,
                     <div>
                         <span className="font-black">Aviso de Configuração Fiscal: </span>
                         {!restaurant?.enableFiscal
-                            ? 'O módulo fiscal ainda está desativado nas Configurações do restaurante. '
+                            ? 'O módulo fiscal ainda está desativado na Configuração Fiscal do Super Admin GuaraFood. '
                             : ''}
                         {!restaurant?.cnpj ? 'CNPJ do restaurante não preenchido. ' : ''}
                         {!hasApiCredentials
-                            ? 'Nenhuma API Key de provedor fiscal (Focus NFe / Nuvem Fiscal) cadastrada — os envios serão registrados em modo simulado/homologação até que a chave seja inserida em Configurações.'
+                            ? `Token Focus NFe de ${isProd ? 'Produção' : 'Homologação'} não cadastrado — solicite ao administrador GuaraFood a configuração na aba Configuração Fiscal antes de transmitir.`
                             : ''}
                     </div>
                 </div>

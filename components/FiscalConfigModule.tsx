@@ -16,17 +16,15 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
     const { addToast } = useNotification();
     const [showInlineGuide, setShowInlineGuide] = useState<boolean>(false);
 
-    // Restaurants state
     const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
     const [selectedRestaurantId, setSelectedRestaurantId] = useState<number | null>(null);
     const [isLoadingRestaurants, setIsLoadingRestaurants] = useState<boolean>(true);
     const [isSaving, setIsSaving] = useState<boolean>(false);
     const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
 
-    // Form fields
-    const [clientId, setClientId] = useState<string>(() => localStorage.getItem('guara_nuvem_client_id') || '');
-    const [clientSecret, setClientSecret] = useState<string>(() => localStorage.getItem('guara_nuvem_client_secret') || '');
-    const [environment, setEnvironment] = useState<string>(() => localStorage.getItem('guara_nuvem_env') || 'production');
+    const [environment, setEnvironment] = useState<'production' | 'homologation'>(() =>
+        localStorage.getItem('guara_focus_env') === 'homologation' ? 'homologation' : 'production'
+    );
 
     // Focus NFe Tokens (Produção e Homologação)
     const [focusTokenProducao, setFocusTokenProducao] = useState<string>('');
@@ -34,22 +32,38 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
     const [showFocusProdKey, setShowFocusProdKey] = useState<boolean>(false);
     const [showFocusHomolKey, setShowFocusHomolKey] = useState<boolean>(false);
 
-    // Contador Credentials (CSC & Token)
+    // Contador Credentials (CSC & IdCSC)
     const [fiscalCsc, setFiscalCsc] = useState<string>(() => localStorage.getItem('guara_fiscal_csc') || '');
     const [fiscalCscId, setFiscalCscId] = useState<string>(() => localStorage.getItem('guara_fiscal_csc_id') || '000001');
     const [showCscPassword, setShowCscPassword] = useState<boolean>(false);
-    const [showClientSecret, setShowClientSecret] = useState<boolean>(false);
 
     // Lojista Fiscal Registration
     const [cnpj, setCnpj] = useState<string>('');
     const [ie, setIe] = useState<string>('');
+    const [im, setIm] = useState<string>('');
+    const [fiscalTaxRate, setFiscalTaxRate] = useState<string>('');
     const [enableFiscal, setEnableFiscal] = useState<boolean>(true);
 
     // Testing state
     const [isTesting, setIsTesting] = useState<boolean>(false);
     const [testResult, setTestResult] = useState<{ success: boolean; message: string; details?: any } | null>(null);
 
-    // Load restaurants on mount
+    const webhookUrl =
+        typeof window !== 'undefined' ? `${window.location.origin}/api/fiscal/webhook` : '/api/fiscal/webhook';
+
+    const applyRestaurantData = (r: Restaurant) => {
+        setFiscalCsc(r.fiscalCsc || localStorage.getItem('guara_fiscal_csc') || '');
+        setFiscalCscId(r.fiscalCscId || localStorage.getItem('guara_fiscal_csc_id') || '000001');
+        setCnpj(r.cnpj || '');
+        setIe(r.ie || '');
+        setIm(r.im || '');
+        setFiscalTaxRate(r.fiscalTaxRate !== undefined && r.fiscalTaxRate !== null ? String(r.fiscalTaxRate) : '');
+        setEnableFiscal(Boolean(r.enableFiscal));
+        setEnvironment(r.fiscalEnv === 'producao' ? 'production' : 'homologation');
+        setFocusTokenProducao(r.focusNfeTokenProducao || '');
+        setFocusTokenHomologacao(r.focusNfeTokenHomologacao || '');
+    };
+
     useEffect(() => {
         let isMounted = true;
         const load = async () => {
@@ -59,9 +73,8 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                 if (!isMounted) return;
                 setRestaurants(list);
 
-                // Auto-select based on currentUser.restaurantId or default to the first one
-                const defaultId = currentUser?.restaurantId 
-                    ? Number(currentUser.restaurantId) 
+                const defaultId = currentUser?.restaurantId
+                    ? Number(currentUser.restaurantId)
                     : (list.length > 0 ? list[0].id : null);
 
                 if (defaultId) {
@@ -83,28 +96,6 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
         return () => { isMounted = false; };
     }, [currentUser]);
 
-    const applyRestaurantData = (r: Restaurant) => {
-        setFiscalCsc(r.fiscalCsc || localStorage.getItem('guara_fiscal_csc') || '');
-        setFiscalCscId(r.fiscalCscId || localStorage.getItem('guara_fiscal_csc_id') || '000001');
-        setCnpj(r.cnpj || '');
-        setIe(r.ie || '');
-        setEnableFiscal(r.enableFiscal !== false);
-        if (r.fiscalEnv) {
-            setEnvironment(r.fiscalEnv === 'producao' ? 'production' : 'homologation');
-        }
-        setFocusTokenProducao(r.focusNfeTokenProducao || '');
-        setFocusTokenHomologacao(
-            r.focusNfeTokenHomologacao ||
-            (r.fiscalEnv !== 'producao' ? r.blingApiKey || '' : '')
-        );
-        if (r.nuvemClientId) {
-            setClientId(r.nuvemClientId);
-        }
-        if (r.nuvemClientSecret) {
-            setClientSecret(r.nuvemClientSecret);
-        }
-    };
-
     const handleSelectRestaurant = (id: number) => {
         setSelectedRestaurantId(id);
         const r = restaurants.find(item => item.id === id);
@@ -117,6 +108,17 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        const cleanCnpj = cnpj.replace(/\D/g, '');
+        if (enableFiscal && cleanCnpj.length !== 14) {
+            addToast({ message: 'Informe um CNPJ válido com 14 dígitos para habilitar a emissão fiscal.', type: 'warning' });
+            return;
+        }
+
+        if (enableFiscal && !ie.trim()) {
+            addToast({ message: 'Informe a Inscrição Estadual (I.E.) do estabelecimento.', type: 'warning' });
+            return;
+        }
 
         if (!fiscalCsc.trim()) {
             addToast({ message: 'Por favor, informe o Código CSC fornecido pelo contador.', type: 'warning' });
@@ -131,43 +133,39 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
         setIsSaving(true);
 
         try {
-            // 1. Salvar no cache local imediato
-            localStorage.setItem('guara_nuvem_client_id', clientId.trim());
-            localStorage.setItem('guara_nuvem_client_secret', clientSecret.trim());
-            localStorage.setItem('guara_nuvem_env', environment);
+            localStorage.setItem('guara_focus_env', environment);
             localStorage.setItem('guara_fiscal_csc', fiscalCsc.trim());
             localStorage.setItem('guara_fiscal_csc_id', fiscalCscId.trim());
 
-            // 2. Salvar de forma permanente e segura no banco de dados Supabase vinculado ao restaurante
             if (selectedRestaurantId) {
                 const targetRest = restaurants.find(r => r.id === selectedRestaurantId);
+                const parsedTaxRate =
+                    fiscalTaxRate.trim() !== ''
+                        ? Math.max(0, Math.min(100, parseFloat(fiscalTaxRate.replace(',', '.')) || 0))
+                        : undefined;
+
                 const updated = await updateRestaurant(selectedRestaurantId, {
                     fiscalCsc: fiscalCsc.trim(),
                     fiscalCscId: fiscalCscId.trim(),
                     cnpj: cnpj.trim(),
                     ie: ie.trim(),
+                    im: im.trim(),
                     fiscalEnv: environment === 'production' ? 'producao' : 'homologacao',
-                    fiscalProvider: 'focus',
                     focusNfeTokenProducao: focusTokenProducao.trim(),
                     focusNfeTokenHomologacao: focusTokenHomologacao.trim(),
-                    blingApiKey: (environment === 'production' ? focusTokenProducao.trim() : focusTokenHomologacao.trim()) || undefined,
-                    nuvemClientId: clientId.trim(),
-                    nuvemClientSecret: clientSecret.trim(),
-                    enableFiscal: enableFiscal
+                    fiscalTaxRate: parsedTaxRate,
+                    enableFiscal,
                 });
 
-                // Atualizar estado local dos restaurantes
                 setRestaurants(prev => prev.map(r => r.id === selectedRestaurantId ? { ...r, ...updated } : r));
-                
+
                 const nowTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                 setLastSavedTime(nowTime);
 
-                addToast({ 
-                    message: `Credenciais do contador (CSC e Token) salvas com sucesso no banco de dados para ${targetRest?.name || 'o lojista'}!`, 
-                    type: 'success' 
+                addToast({
+                    message: `Configuração Focus NFe salva no banco de dados para ${targetRest?.name || 'o restaurante'}!`,
+                    type: 'success',
                 });
-            } else {
-                addToast({ message: 'Configurações salvas localmente!', type: 'success' });
             }
         } catch (err: any) {
             console.error('Error saving fiscal credentials to DB:', err);
@@ -179,11 +177,14 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
 
     const handleTestAuth = async () => {
         const activeFocusToken = (
-            (environment === 'production' ? focusTokenProducao : focusTokenHomologacao) ||
-            ''
+            environment === 'production' ? focusTokenProducao : focusTokenHomologacao
         ).trim();
-        if (!activeFocusToken && !clientId && !clientSecret && !fiscalCsc) {
-            addToast({ message: `Preencha o Token Focus NFe de ${environment === 'production' ? 'Produção' : 'Homologação'} ou o CSC antes de testar.`, type: 'warning' });
+
+        if (!activeFocusToken) {
+            addToast({
+                message: `Preencha o Token Focus NFe de ${environment === 'production' ? 'Produção' : 'Homologação'} antes de testar.`,
+                type: 'warning',
+            });
             return;
         }
 
@@ -191,92 +192,54 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
         setTestResult(null);
 
         try {
-            if (activeFocusToken) {
-                const response = await fetch('/api/fiscal/test-focus-token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        apiKey: activeFocusToken,
-                        ambiente: environment === 'production' ? 'producao' : 'homologacao'
-                    })
-                });
-                const textResp = await response.text();
-                let data: any = {};
-                try {
-                    data = textResp ? JSON.parse(textResp) : {};
-                } catch {
-                    data = { error: textResp };
-                }
-                if (response.ok && data.success) {
-                    setTestResult({
-                        success: true,
-                        message: data.message
-                    });
-                    addToast({ message: 'Token Focus NFe válido!', type: 'success' });
-                } else {
-                    setTestResult({
-                        success: false,
-                        message: data.error || data.mensagem || 'Token da Focus NFe inválido para o ambiente selecionado.',
-                        details: data.details
-                    });
-                    addToast({ message: 'Token Focus NFe inválido neste ambiente.', type: 'error' });
-                }
-            } else if (clientId && clientSecret) {
-                const response = await fetch('/api/fiscal/test-nuvem-auth', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ clientId, clientSecret })
-                });
+            const response = await fetch('/api/fiscal/test-focus-token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    apiKey: activeFocusToken,
+                    ambiente: environment === 'production' ? 'producao' : 'homologacao',
+                    cnpj: cnpj.replace(/\D/g, '') || undefined,
+                }),
+            });
 
-                const textResp = await response.text();
-                let data: any = {};
-                try {
-                    data = textResp ? JSON.parse(textResp) : {};
-                } catch {
-                    data = { error: textResp };
-                }
+            const textResp = await response.text();
+            let data: any = {};
+            try {
+                data = textResp ? JSON.parse(textResp) : {};
+            } catch {
+                data = { error: textResp };
+            }
 
-                if (response.ok && data.success) {
-                    setTestResult({
-                        success: true,
-                        message: `Conexão Nuvem Fiscal & SEFAZ aprovada! Credenciais CSC (${fiscalCscId || '000001'}) e OAuth2 válidas para transmissão em tempo real.`
-                    });
-                    addToast({ message: 'Conexão testada e aprovada com sucesso!', type: 'success' });
-                } else {
-                    setTestResult({
-                        success: false,
-                        message: data.error || 'Falha na autenticação da Nuvem Fiscal. Verifique se o Client ID e Secret estão corretos.',
-                        details: data.details
-                    });
-                    addToast({ message: 'Falha na autenticação.', type: 'error' });
-                }
-            } else if (fiscalCsc && fiscalCscId) {
-                // Validação de formato do CSC e Token
-                await new Promise(r => setTimeout(r, 800));
-                if (fiscalCsc.length < 16) {
-                    setTestResult({
-                        success: false,
-                        message: 'O Código CSC parece muito curto. Verifique o valor fornecido pelo contador (geralmente possui 32 caracteres).'
-                    });
-                    addToast({ message: 'Verifique o formato do CSC.', type: 'warning' });
-                } else {
-                    setTestResult({
-                        success: true,
-                        message: `Credenciais do contador validadas com sucesso! CSC e Token ID (${fiscalCscId}) estão no formato oficial exigido pela SEFAZ para o cálculo do QR Code NFC-e.`
-                    });
-                    addToast({ message: 'CSC e Token validados!', type: 'success' });
-                }
+            if (response.ok && data.success) {
+                setTestResult({
+                    success: true,
+                    message: data.message,
+                    details: data.empresa || undefined,
+                });
+                addToast({ message: 'Conexão Focus NFe & SEFAZ validada com sucesso!', type: 'success' });
+            } else {
+                setTestResult({
+                    success: false,
+                    message: data.error || data.mensagem || 'Token da Focus NFe inválido para o ambiente selecionado.',
+                    details: data.details,
+                });
+                addToast({ message: data.error || 'Token Focus NFe inválido neste ambiente.', type: 'error' });
             }
         } catch (err: any) {
-            console.error('Error testing fiscal connection:', err);
+            console.error('Error testing Focus NFe connection:', err);
             setTestResult({
                 success: false,
-                message: err.message || 'Erro de rede ao validar credenciais com o servidor.'
+                message: err.message || 'Erro de rede ao validar credenciais com o servidor.',
             });
-            addToast({ message: 'Erro ao validar conexão fiscal.', type: 'error' });
+            addToast({ message: 'Erro ao testar conexão com a Focus NFe.', type: 'error' });
         } finally {
             setIsTesting(false);
         }
+    };
+
+    const handleCopyWebhook = () => {
+        navigator.clipboard.writeText(webhookUrl);
+        addToast({ message: 'URL do Webhook Focus NFe copiada!', type: 'success' });
     };
 
     const currentRestName = restaurants.find(r => r.id === selectedRestaurantId)?.name || 'Selecione um restaurante';
@@ -288,23 +251,23 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                 <div className="space-y-2 max-w-2xl">
                     <div className="flex flex-wrap items-center gap-2">
                         <span className="bg-blue-500/30 border border-blue-400/40 text-blue-200 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
-                            Módulo Oficial SEFAZ & Nuvem Fiscal
+                            Módulo Oficial Focus NFe & SEFAZ
                         </span>
                         <span className="bg-emerald-500/30 border border-emerald-400/40 text-emerald-200 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                             NFC-e Modelo 65
                         </span>
                     </div>
-                    <h2 className="text-2xl sm:text-3xl font-black tracking-tight">Configuração Fiscal do Lojista</h2>
+                    <h2 className="text-2xl sm:text-3xl font-black tracking-tight">Configuração Fiscal Centralizada (Focus NFe)</h2>
                     <p className="text-xs text-blue-100 leading-relaxed">
-                        Armazene com segurança o <strong>CSC (Código de Segurança do Contribuinte)</strong>, o <strong>Token</strong> do contador e as credenciais da <strong>Nuvem Fiscal</strong>, associando diretamente ao perfil do lojista no banco de dados para emissão e impressão de cupons fiscais.
+                        Gerencie exclusivamente por aqui a emissão de NFC-e dos estabelecimentos via <strong>Focus NFe</strong>: ative o módulo fiscal, defina CNPJ, Inscrição Estadual, <strong>CSC / IdCSC</strong> e os <strong>Tokens da API Focus NFe</strong> (Produção e Homologação).
                     </p>
                 </div>
                 <div className="flex flex-col sm:flex-row md:flex-col items-center md:items-end gap-3 flex-shrink-0">
                     <div className="bg-white/10 border border-white/20 backdrop-blur-md p-4 rounded-2xl text-center w-full">
-                        <span className="text-2xl block mb-1">🏛️🧾</span>
-                        <span className="text-xs font-black uppercase text-blue-200">Banco de Dados Supabase</span>
-                        <span className="text-[10px] block text-purple-200 font-semibold">Tabela Segura: restaurants</span>
+                        <span className="text-2xl block mb-1">⚡🧾</span>
+                        <span className="text-xs font-black uppercase text-blue-200">Emissor Único Focus NFe</span>
+                        <span className="text-[10px] block text-purple-200 font-semibold">Gestão exclusiva Super Admin</span>
                     </div>
 
                     <button
@@ -319,12 +282,11 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                         className="w-full px-4 py-2.5 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg active:scale-95 cursor-pointer border border-purple-300/40"
                     >
                         <span>📘</span>
-                        <span>{showInlineGuide ? 'Ocultar Guia Passo a Passo' : 'Ver Guia Passo a Passo Completo'}</span>
+                        <span>{showInlineGuide ? 'Ocultar Guia Passo a Passo' : 'Ver Guia Passo a Passo Focus NFe'}</span>
                     </button>
                 </div>
             </div>
 
-            {/* Inline Fiscal Setup Guide if toggled */}
             {showInlineGuide && (
                 <div className="border-2 border-purple-300 rounded-3xl p-4 bg-purple-50/20 shadow-md">
                     <div className="flex justify-end mb-2">
@@ -340,7 +302,7 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                 </div>
             )}
 
-            {/* Quick Action Guide for Accountant Credentials (CSC, Token & e-CNPJ) */}
+            {/* Quick Action Guide */}
             <div className="bg-gradient-to-br from-purple-50 via-indigo-50 to-blue-50 border border-purple-200 rounded-3xl p-6 shadow-sm space-y-4">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
@@ -349,59 +311,55 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                         </div>
                         <div>
                             <h3 className="text-base font-black text-purple-950">
-                                Dados Fornecidos pelo Contador para Ativação Fiscal
+                                Requisitos no Painel da Focus NFe + Contador
                             </h3>
                             <p className="text-xs text-purple-700">
-                                Preencha abaixo o Token e o CSC para gravar permanentemente no cadastro do restaurante
+                                Certifique-se de que o Certificado A1 (.pfx) e o CSC estejam cadastrados tanto na Focus NFe quanto abaixo
                             </p>
                         </div>
                     </div>
                     <span className="bg-purple-200/80 text-purple-900 border border-purple-300 text-[11px] font-black uppercase px-3 py-1 rounded-full">
-                        Emissão Direta no Caixa
+                        SEFAZ NFC-e v4.00
                     </span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                    {/* Card 1: Token */}
                     <div className="bg-white/90 backdrop-blur-sm p-4 rounded-2xl border border-purple-100 shadow-2xs space-y-2">
                         <div className="flex items-center gap-2">
                             <span className="w-6 h-6 rounded-full bg-purple-600 text-white text-xs font-black flex items-center justify-center">1</span>
-                            <span className="text-xs font-black text-gray-900 uppercase tracking-wider">Identificador do Token</span>
+                            <span className="text-xs font-black text-gray-900 uppercase tracking-wider">IdCSC e Código CSC</span>
                         </div>
                         <p className="text-xs text-gray-600 leading-relaxed">
-                            O <strong>IdToken</strong> (ex: <code className="bg-purple-100 px-1 py-0.5 rounded font-mono text-purple-900 font-bold">000001</code>) identifica o número do CSC ativo cadastrado na SEFAZ.
+                            O <strong>IdCSC</strong> (ex: <code className="bg-purple-100 px-1 py-0.5 rounded font-mono text-purple-900 font-bold">000001</code>) e o <strong>CSC</strong> vêm do portal da SEFAZ via contador e devem estar idênticos no cadastro da empresa na Focus NFe.
                         </p>
-                        <div className="bg-purple-50 p-2.5 rounded-xl text-[11px] font-mono text-purple-900 border border-purple-200 font-bold">
-                            Token: {fiscalCscId || '000001'}
-                        </div>
                     </div>
 
-                    {/* Card 2: CSC */}
                     <div className="bg-white/90 backdrop-blur-sm p-4 rounded-2xl border border-purple-100 shadow-2xs space-y-2">
                         <div className="flex items-center gap-2">
                             <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-black flex items-center justify-center">2</span>
-                            <span className="text-xs font-black text-gray-900 uppercase tracking-wider">Código de Segurança (CSC)</span>
+                            <span className="text-xs font-black text-gray-900 uppercase tracking-wider">Token Produção vs Homologação</span>
                         </div>
                         <p className="text-xs text-gray-600 leading-relaxed">
-                            O <strong>CSC</strong> é a chave de 32 caracteres usada para calcular o Hash SHA-1 criptográfico do QR Code no cupom.
+                            Na Focus NFe cada ambiente possui seu próprio token. Cole cada um no respectivo campo abaixo para alternar com segurança.
                         </p>
-                        <div className="bg-blue-50 p-2.5 rounded-xl text-[11px] font-mono text-blue-900 border border-blue-200 truncate font-bold">
-                            CSC: {fiscalCsc ? `${fiscalCsc.substring(0, 12)}...` : '3506d724cc86...'}
-                        </div>
                     </div>
 
-                    {/* Card 3: Impressão Térmica */}
                     <div className="bg-white/90 backdrop-blur-sm p-4 rounded-2xl border border-purple-100 shadow-2xs space-y-2">
                         <div className="flex items-center gap-2">
                             <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-black flex items-center justify-center">3</span>
-                            <span className="text-xs font-black text-gray-900 uppercase tracking-wider">Impressão DANFE NFC-e</span>
+                            <span className="text-xs font-black text-gray-900 uppercase tracking-wider">Webhook Automático</span>
                         </div>
                         <p className="text-xs text-gray-600 leading-relaxed">
-                            No detalhe do pedido, o botão <strong>🧾 Cupom Fiscal</strong> gera o cupom oficial com QR Code legível em bobinas de 80mm ou 58mm.
+                            Configure este callback na Focus NFe para receber autorizações, cancelamentos e XMLs automaticamente:
                         </p>
-                        <div className="bg-emerald-50 p-2.5 rounded-xl text-[11px] text-emerald-900 border border-emerald-200 font-bold">
-                            ✓ QR Code Oficial SEFAZ Habilitado
-                        </div>
+                        <button
+                            type="button"
+                            onClick={handleCopyWebhook}
+                            className="w-full text-left bg-emerald-50 hover:bg-emerald-100 p-2 rounded-xl text-[10px] font-mono text-emerald-900 border border-emerald-200 truncate font-bold cursor-pointer"
+                            title={webhookUrl}
+                        >
+                            📋 {webhookUrl}
+                        </button>
                     </div>
                 </div>
             </div>
@@ -413,9 +371,9 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                     <div>
                         <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
                             <span>🏪</span>
-                            <span>Perfil do Estabelecimento / Restaurante</span>
+                            <span>Estabelecimento / Restaurante</span>
                         </h3>
-                        <p className="text-xs text-gray-500">Selecione a loja cujas credenciais fiscais serão vinculadas no banco de dados.</p>
+                        <p className="text-xs text-gray-500">Selecione a loja cujas credenciais Focus NFe serão configuradas.</p>
                     </div>
 
                     <div className="w-full sm:w-auto min-w-[260px]">
@@ -440,20 +398,40 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                 </div>
 
                 <form onSubmit={handleSave} className="space-y-6">
-                    {/* SECTION 1: DADOS DO CONTADOR (CSC & TOKEN) */}
+                    {/* Toggle Ativação */}
+                    <label className="flex items-center justify-between cursor-pointer p-4 bg-emerald-50/70 rounded-2xl border border-emerald-200">
+                        <div>
+                            <span className="text-xs font-black uppercase tracking-wider text-emerald-950 block">
+                                Ativar Emissão de NFC-e (Focus NFe) para {currentRestName}
+                            </span>
+                            <span className="text-[11px] text-emerald-800 block mt-0.5">
+                                Exibe os botões de Cupom Fiscal / Ver Nota (XML & DANFE) no PDV e habilita o Painel do Contador deste restaurante.
+                            </span>
+                        </div>
+                        <div className="relative flex-shrink-0 ml-4">
+                            <input
+                                type="checkbox"
+                                checked={enableFiscal}
+                                onChange={(e) => setEnableFiscal(e.target.checked)}
+                                className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                        </div>
+                    </label>
+
+                    {/* SECTION 1: DADOS DO CONTADOR & ESTABELECIMENTO */}
                     <div className="space-y-4 bg-purple-50/50 p-5 rounded-2xl border border-purple-100">
                         <div className="flex items-center justify-between">
                             <h4 className="text-xs font-black uppercase tracking-wider text-purple-900 flex items-center gap-2">
                                 <span>🔑</span>
-                                <span>1. Credenciais SEFAZ Fornecidas pelo Contador (CSC & Token)</span>
+                                <span>1. Dados Fiscais da Empresa & Credenciais SEFAZ (CSC)</span>
                             </h4>
                             <span className="text-[10px] bg-purple-100 text-purple-800 font-bold px-2.5 py-1 rounded-full uppercase">
-                                Obrigatório para QR Code
+                                Obrigatório para NFC-e
                             </span>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* Token ID */}
                             <div>
                                 <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1.5">
                                     ID do Token (IdCSC)
@@ -466,12 +444,8 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                                     className="w-full p-3.5 bg-white border border-purple-200 rounded-2xl text-xs font-mono font-bold text-gray-900 focus:ring-2 focus:ring-purple-500 outline-none shadow-2xs"
                                     required
                                 />
-                                <p className="text-[10px] text-gray-500 mt-1.5">
-                                    Número sequencial do token gerado no portal SEFAZ (ex: <strong>000001</strong> ou <strong>1</strong>).
-                                </p>
                             </div>
 
-                            {/* CSC */}
                             <div>
                                 <div className="flex justify-between items-center mb-1.5">
                                     <label className="block text-xs font-black text-gray-700 uppercase tracking-wider">
@@ -485,24 +459,18 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                                         {showCscPassword ? 'Ocultar' : 'Exibir'}
                                     </button>
                                 </div>
-                                <div className="relative">
-                                    <input
-                                        type={showCscPassword ? 'text' : 'password'}
-                                        value={fiscalCsc}
-                                        onChange={(e) => setFiscalCsc(e.target.value)}
-                                        placeholder="Ex: 3506d724cc86cb31674657778b14aa47"
-                                        className="w-full p-3.5 bg-white border border-purple-200 rounded-2xl text-xs font-mono font-bold text-gray-900 focus:ring-2 focus:ring-purple-500 outline-none shadow-2xs"
-                                        required
-                                    />
-                                </div>
-                                <p className="text-[10px] text-gray-500 mt-1.5">
-                                    Chave alfanumérica secreta (ex: <strong>3506d724cc86cb31674657778b14aa47</strong>) para assinar o QR Code.
-                                </p>
+                                <input
+                                    type={showCscPassword ? 'text' : 'password'}
+                                    value={fiscalCsc}
+                                    onChange={(e) => setFiscalCsc(e.target.value)}
+                                    placeholder="Ex: 3506d724cc86cb31674657778b14aa47"
+                                    className="w-full p-3.5 bg-white border border-purple-200 rounded-2xl text-xs font-mono font-bold text-gray-900 focus:ring-2 focus:ring-purple-500 outline-none shadow-2xs"
+                                    required
+                                />
                             </div>
                         </div>
 
-                        {/* CNPJ e Inscrição Estadual */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-2">
                             <div>
                                 <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1.5">
                                     CNPJ do Restaurante
@@ -529,11 +497,23 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                             </div>
                             <div>
                                 <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1.5">
-                                    Ambiente SEFAZ
+                                    Alíquota Imposto (%)
+                                </label>
+                                <input
+                                    type="text"
+                                    value={fiscalTaxRate}
+                                    onChange={(e) => setFiscalTaxRate(e.target.value)}
+                                    placeholder="Ex: 6.0"
+                                    className="w-full p-3 bg-white border border-gray-200 rounded-2xl text-xs font-mono font-bold text-gray-900 focus:ring-2 focus:ring-purple-500 outline-none"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1.5">
+                                    Ambiente Focus NFe / SEFAZ
                                 </label>
                                 <select
                                     value={environment}
-                                    onChange={(e) => setEnvironment(e.target.value)}
+                                    onChange={(e) => setEnvironment(e.target.value as 'production' | 'homologation')}
                                     className="w-full p-3 bg-white border border-gray-200 rounded-2xl text-xs font-bold text-gray-900 focus:ring-2 focus:ring-purple-500 outline-none"
                                 >
                                     <option value="production">Produção (Notas Fiscais Válidas)</option>
@@ -548,10 +528,10 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                         <div className="flex items-center justify-between">
                             <h4 className="text-xs font-black uppercase tracking-wider text-blue-900 flex items-center gap-2">
                                 <span>⚡</span>
-                               <span>2. Credenciais API Focus NFe (Emissão de NFC-e)</span>
+                                <span>2. Credenciais API Focus NFe (Emissão Exclusiva NFC-e)</span>
                             </h4>
                             <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2.5 py-1 rounded-full uppercase">
-                                Multi-Empresas
+                                Focus NFe v2
                             </span>
                         </div>
 
@@ -577,7 +557,7 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                                     className="w-full p-3 bg-white border border-blue-200 rounded-xl text-xs font-mono font-bold text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none shadow-2xs"
                                 />
                                 <p className="text-[10px] text-gray-500 mt-1.5">
-                                    Usado quando Ambiente SEFAZ = <strong>Produção</strong>.
+                                    Usado quando Ambiente = <strong>Produção</strong> (<code className="font-mono">api.focusnfe.com.br</code>).
                                 </p>
                             </div>
 
@@ -602,17 +582,16 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                                     className="w-full p-3 bg-white border border-blue-200 rounded-xl text-xs font-mono font-bold text-gray-900 focus:ring-2 focus:ring-amber-500 outline-none shadow-2xs"
                                 />
                                 <p className="text-[10px] text-gray-500 mt-1.5">
-                                    Usado quando Ambiente SEFAZ = <strong>Homologação</strong>.
+                                    Usado quando Ambiente = <strong>Homologação</strong> (<code className="font-mono">homologacao.focusnfe.com.br</code>).
                                 </p>
                             </div>
                         </div>
                     </div>
 
-                    {/* Test Result Feedback Box */}
                     {testResult && (
                         <div className={`p-4 rounded-2xl border flex items-start gap-3 animate-fadeIn ${testResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-900'}`}>
                             <span className="text-xl">{testResult.success ? '✅' : '❌'}</span>
-                            <div className="space-y-1 text-xs">
+                            <div className="space-y-1 text-xs min-w-0 flex-1">
                                 <p className="font-bold">{testResult.message}</p>
                                 {testResult.details && (
                                     <pre className="text-[10px] bg-white/80 p-2 rounded-lg font-mono overflow-x-auto">
@@ -623,7 +602,6 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                         </div>
                     )}
 
-                    {/* Status & Last Saved Badge */}
                     {lastSavedTime && (
                         <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-800 font-bold">
                             <span>✅</span>
@@ -631,7 +609,6 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                         </div>
                     )}
 
-                    {/* Actions */}
                     <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-gray-100">
                         <button
                             type="button"
@@ -640,7 +617,7 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                             className="px-5 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black shadow-md hover:shadow-lg transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50 cursor-pointer"
                         >
                             <span>{isTesting ? '⏳' : '⚡'}</span>
-                            <span>{isTesting ? 'Validando Conexão...' : 'Testar Conexão Fiscal & Validar CSC'}</span>
+                            <span>{isTesting ? 'Validando na Focus NFe...' : 'Testar Token Focus NFe & SEFAZ'}</span>
                         </button>
 
                         <button
@@ -660,7 +637,7 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                 <div className="flex items-center justify-between">
                     <div>
                         <h3 className="text-lg font-black text-gray-900">Histórico de Emissões Recentes</h3>
-                        <p className="text-xs text-gray-500">Volume de notas fiscais transmitidas e autorizadas pela SEFAZ através da Nuvem Fiscal.</p>
+                        <p className="text-xs text-gray-500">Volume de notas fiscais transmitidas e autorizadas pela SEFAZ através da Focus NFe.</p>
                     </div>
                 </div>
 

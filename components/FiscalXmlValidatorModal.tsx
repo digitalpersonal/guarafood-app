@@ -132,7 +132,7 @@ export const FiscalXmlValidatorModal: React.FC<FiscalXmlValidatorModalProps> = (
                 <vBC>${subtotalValue}</vBC>
                 <vICMS>${(Number(subtotalValue) * 0.18).toFixed(2)}</vICMS>
                 <vICMSDeson>0.00</vICMSDeson>
-                <vFCP>0.00</vICMSDeson>
+                <vFCP>0.00</vFCP>
                 <vBCST>0.00</vBCST>
                 <vST>0.00</vST>
                 <vFCPST>0.00</vFCPST>
@@ -337,7 +337,7 @@ export const FiscalXmlValidatorModal: React.FC<FiscalXmlValidatorModalProps> = (
                 {/* Footer */}
                 <div className="bg-gray-50 border-t border-gray-200 p-4 px-6 flex justify-between items-center">
                     <span className="text-xs text-gray-500 font-bold">
-                        Provedor Ativo: <strong className="text-purple-700 uppercase">{restaurant?.fiscalProvider || 'Focus NFe'}</strong> ({restaurant?.fiscalEnv === 'producao' ? 'Produção' : 'Homologação'})
+                        Emissor Ativo: <strong className="text-purple-700 uppercase">Focus NFe</strong> ({restaurant?.fiscalEnv === 'producao' ? 'Produção' : 'Homologação'})
                     </span>
                     <button
                         onClick={onClose}

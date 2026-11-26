@@ -168,7 +168,7 @@ export const FiscalEmissionChart: React.FC = () => {
                 <div>
                     <h2 className="text-xl font-black text-gray-900 flex items-center gap-2">
                         <span>📊</span>
-                        <span>Performance de Emissão Fiscal (SEFAZ / Nuvem Fiscal)</span>
+                        <span>Performance de Emissão Fiscal (SEFAZ / Focus NFe)</span>
                     </h2>
                     <p className="text-xs text-gray-500 mt-0.5">
                         Acompanhamento diário de notas fiscais de consumidor eletrônicas (NFC-e / NF-e) emitidas nos caixas e delivery.

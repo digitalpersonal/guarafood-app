@@ -211,7 +211,7 @@ export const GuaraFoodMasterGuide: React.FC<{ onBack?: () => void }> = ({ onBack
                             <span>Módulo Fiscal Robusto e Simplificado</span>
                         </h4>
                         <p className="text-xs text-blue-800 leading-relaxed">
-                            O GuaraFood integra emissão de NFC-e (Modelo 65) com gerador de QR Code oficial SEFAZ e suporte a provedores fiscais (como Focus NFe ou Nuvem Fiscal).
+                            O GuaraFood integra emissão de NFC-e (Modelo 65) com QR Code oficial SEFAZ exclusivamente através da Focus NFe.
                         </p>
                     </div>
 

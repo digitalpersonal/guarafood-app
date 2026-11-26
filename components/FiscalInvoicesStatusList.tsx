@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { fetchFiscalOrdersAdmin, fetchRestaurantsSecure } from '../services/databaseService';
+import { consultOrderFiscalSefaz } from '../services/orderService';
 import type { Order, Restaurant } from '../types';
 import { useNotification } from '../hooks/useNotification';
 import Spinner from './Spinner';
@@ -8,6 +9,7 @@ import FiscalStatusIcon from './FiscalStatusIcon';
 interface FiscalInvoiceItem {
     id: string;
     orderId: string;
+    restaurantId: number;
     restaurantName: string;
     customerName: string;
     amount: number;
@@ -16,6 +18,7 @@ interface FiscalInvoiceItem {
     key: string;
     issuedAt: string;
     errorMessage?: string;
+    hasXmlUrl: boolean;
 }
 
 export const FiscalInvoicesStatusList: React.FC = () => {
@@ -27,6 +30,7 @@ export const FiscalInvoicesStatusList: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [selectedRestaurantId, setSelectedRestaurantId] = useState<string>('all');
     const [checkingNoteId, setCheckingNoteId] = useState<string | null>(null);
+    const [downloadingXmlId, setDownloadingXmlId] = useState<string | null>(null);
 
     const loadData = async () => {
         setIsLoading(true);
@@ -38,7 +42,7 @@ export const FiscalInvoicesStatusList: React.FC = () => {
             setOrders(ordersData);
             setRestaurants(restData);
         } catch (err) {
-            console.error("Erro ao carregar pedidos para notas fiscais:", err);
+            console.error('Erro ao carregar pedidos para notas fiscais:', err);
         } finally {
             setIsLoading(false);
         }
@@ -53,11 +57,9 @@ export const FiscalInvoicesStatusList: React.FC = () => {
         return () => window.removeEventListener('guarafood:update-orders', handleRefresh);
     }, []);
 
-    // Map orders to Fiscal Invoices based strictly on real database fiscal status
     const invoices: FiscalInvoiceItem[] = useMemo(() => {
         const restMap = new Map(restaurants.map(r => [String(r.id), r.name]));
 
-        // Filtra apenas pedidos que possuem transmissão fiscal real (status SEFAZ ou chave NFC-e gerada)
         const fiscalOrders = orders.filter(o => {
             const fiscalMeta = o.payment_details?.fiscal;
             const raw = o as any;
@@ -92,6 +94,7 @@ export const FiscalInvoicesStatusList: React.FC = () => {
             return {
                 id: `NFCe-${nfNumber}`,
                 orderId: o.id,
+                restaurantId: Number(o.restaurantId),
                 restaurantName: restName,
                 customerName: o.customerName || 'Cliente GuaraFood',
                 amount: Number(o.totalPrice || raw.total || 0),
@@ -99,12 +102,12 @@ export const FiscalInvoicesStatusList: React.FC = () => {
                 protocol,
                 key,
                 issuedAt: o.timestamp || new Date().toISOString(),
-                errorMessage: o.fiscalMessage || raw.fiscal_error || fiscalMeta?.mensagem || undefined
+                errorMessage: o.fiscalMessage || raw.fiscal_error || fiscalMeta?.mensagem || undefined,
+                hasXmlUrl: Boolean(o.fiscalXmlUrl || raw.fiscal_xml_url || fiscalMeta?.xml_url),
             };
         });
     }, [orders, restaurants]);
 
-    // Filtered invoices
     const filteredInvoices = useMemo(() => {
         return invoices.filter(inv => {
             if (statusFilter !== 'all' && inv.status !== statusFilter) return false;
@@ -123,15 +126,52 @@ export const FiscalInvoicesStatusList: React.FC = () => {
         });
     }, [invoices, statusFilter, selectedRestaurantId, searchQuery]);
 
-    const handleQuerySefazStatus = async (invoiceId: string) => {
-        setCheckingNoteId(invoiceId);
+    const handleQuerySefazStatus = async (inv: FiscalInvoiceItem) => {
+        setCheckingNoteId(inv.id);
         try {
-            await new Promise(r => setTimeout(r, 1200));
-            addToast({ message: `Nota ${invoiceId} consultada na Nuvem Fiscal: Status atualizado com sucesso!`, type: 'success' });
-        } catch (err) {
-            addToast({ message: 'Erro ao consultar status na API da Nuvem Fiscal.', type: 'error' });
+            const res = await consultOrderFiscalSefaz(inv.orderId, inv.restaurantId);
+            if (res.success) {
+                addToast({
+                    message: `${inv.id} consultada na Focus NFe: ${res.fiscalMessage || res.fiscalStatus}`,
+                    type: 'success',
+                });
+                await loadData();
+            } else {
+                addToast({
+                    message: res.fiscalMessage || `Erro ao consultar ${inv.id} na Focus NFe.`,
+                    type: 'warning',
+                });
+            }
+        } catch (err: any) {
+            addToast({ message: err?.message || 'Erro ao consultar status na API da Focus NFe.', type: 'error' });
         } finally {
             setCheckingNoteId(null);
+        }
+    };
+
+    const handleDownloadOfficialXml = async (inv: FiscalInvoiceItem) => {
+        setDownloadingXmlId(inv.id);
+        try {
+            const resp = await fetch(`/api/fiscal/download-xml?orderId=${encodeURIComponent(inv.orderId)}`);
+            if (!resp.ok) {
+                const errJson = await resp.json().catch(() => ({}));
+                throw new Error(errJson?.error || `XML oficial indisponível (HTTP ${resp.status}).`);
+            }
+            const xmlText = await resp.text();
+            const blob = new Blob([xmlText], { type: 'application/xml;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `NFe${inv.key || inv.orderId}.xml`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            addToast({ message: `Download do XML oficial da ${inv.id} concluído!`, type: 'success' });
+        } catch (err: any) {
+            addToast({ message: err?.message || 'Erro ao baixar XML oficial da Focus NFe.', type: 'warning' });
+        } finally {
+            setDownloadingXmlId(null);
         }
     };
 
@@ -150,15 +190,14 @@ export const FiscalInvoicesStatusList: React.FC = () => {
                 <div>
                     <h3 className="text-xl font-black text-gray-900 flex items-center gap-2">
                         <span>📋</span>
-                        <span>Monitoramento de Notas Fiscais (Nuvem Fiscal / SEFAZ)</span>
+                        <span>Monitoramento de Notas Fiscais (Focus NFe / SEFAZ)</span>
                     </h3>
                     <p className="text-xs text-gray-500 mt-0.5">
-                        Acompanhe em tempo real o status de processamento de todas as NFC-e emitidas.
+                        Acompanhe em tempo real o status de processamento de todas as NFC-e emitidas pela Focus NFe.
                     </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                    {/* Status Filter */}
                     <div className="flex rounded-xl bg-gray-100 p-1">
                         <button
                             onClick={() => setStatusFilter('all')}
@@ -186,7 +225,6 @@ export const FiscalInvoicesStatusList: React.FC = () => {
                         </button>
                     </div>
 
-                    {/* Restaurant Filter */}
                     <select
                         value={selectedRestaurantId}
                         onChange={(e) => setSelectedRestaurantId(e.target.value)}
@@ -198,7 +236,6 @@ export const FiscalInvoicesStatusList: React.FC = () => {
                         ))}
                     </select>
 
-                    {/* Search Input */}
                     <input
                         type="text"
                         value={searchQuery}
@@ -286,11 +323,11 @@ export const FiscalInvoicesStatusList: React.FC = () => {
                                     </td>
                                     <td className="py-3.5 px-4">
                                         <div className="font-mono text-[10px] text-gray-600 truncate max-w-[200px]" title={inv.key}>
-                                            {inv.key}
+                                            {inv.key || 'Sem chave'}
                                         </div>
                                         <div className="text-[10px] text-gray-400 font-mono">Prot: {inv.protocol}</div>
                                         {inv.errorMessage && (
-                                            <div className="text-[10px] text-red-600 font-semibold mt-0.5">
+                                            <div className="text-[10px] text-red-600 font-semibold mt-0.5 max-w-[240px] truncate" title={inv.errorMessage}>
                                                 ⚠️ {inv.errorMessage}
                                             </div>
                                         )}
@@ -298,22 +335,21 @@ export const FiscalInvoicesStatusList: React.FC = () => {
                                     <td className="py-3.5 px-4 text-right">
                                         <div className="flex items-center justify-end gap-2">
                                             <button
-                                                onClick={() => handleQuerySefazStatus(inv.id)}
+                                                onClick={() => handleQuerySefazStatus(inv)}
                                                 disabled={checkingNoteId === inv.id}
-                                                className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-[10px] transition-all flex items-center gap-1"
-                                                title="Consultar status atualizado na Nuvem Fiscal"
+                                                className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-[10px] transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                                title="Consultar status atualizado na Focus NFe"
                                             >
                                                 <span>{checkingNoteId === inv.id ? '⏳' : '🔄'}</span>
                                                 <span>{checkingNoteId === inv.id ? 'Consultando...' : 'Consultar'}</span>
                                             </button>
                                             <button
-                                                onClick={() => {
-                                                    addToast({ message: `Download do XML / DANFE da nota ${inv.id} iniciado.`, type: 'success' });
-                                                }}
-                                                className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-bold text-[10px] transition-all"
-                                                title="Baixar XML"
+                                                onClick={() => handleDownloadOfficialXml(inv)}
+                                                disabled={downloadingXmlId === inv.id}
+                                                className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-bold text-[10px] transition-all cursor-pointer disabled:opacity-50"
+                                                title={inv.hasXmlUrl ? 'Baixar XML oficial da Focus NFe' : 'Consultar XML oficial'}
                                             >
-                                                📥 XML
+                                                {downloadingXmlId === inv.id ? '⏳...' : '📥 XML'}
                                             </button>
                                         </div>
                                     </td>
