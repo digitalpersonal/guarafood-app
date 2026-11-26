@@ -853,12 +853,14 @@ export const fetchOrdersByMonth = async (
 export interface EmitFiscalSefazResult {
     orderId: string;
     success: boolean;
-    fiscalStatus: 'autorizado' | 'processando' | 'erro_autorizacao';
+    fiscalStatus: 'autorizado' | 'processando' | 'erro_autorizacao' | 'cancelado';
     fiscalKey?: string;
     fiscalNumber?: string;
     fiscalProtocol?: string;
     fiscalDanfeUrl?: string;
     fiscalXmlUrl?: string;
+    fiscalQrCodeUrl?: string;
+    fiscalConsultUrl?: string;
     fiscalMessage?: string;
     simulated?: boolean;
 }
@@ -873,15 +875,19 @@ const persistOrderFiscalMetadata = async (
         protocolo?: string;
         danfe_url?: string;
         xml_url?: string;
+        qrcode_url?: string;
+        url_consulta_nf?: string;
         mensagem?: string;
-        simulated?: boolean;
     }
 ): Promise<void> => {
+    const cleanMeta = Object.fromEntries(
+        Object.entries(fiscalMeta).filter(([, v]) => v !== undefined && v !== null && v !== '')
+    );
     const mergedDetails = {
         ...(existingPaymentDetails && typeof existingPaymentDetails === 'object' ? existingPaymentDetails : {}),
         fiscal: {
             ...(existingPaymentDetails?.fiscal || {}),
-            ...fiscalMeta,
+            ...cleanMeta,
             updated_at: new Date().toISOString(),
         },
     };
@@ -905,7 +911,6 @@ const persistOrderFiscalMetadata = async (
         return;
     }
 
-    // Fallback seguro caso o banco ainda não possua todas as colunas fiscais dedicadas em `orders`
     const fallbackWithExport: Record<string, any> = { payment_details: mergedDetails };
     if (fiscalMeta.status === 'autorizado' || fiscalMeta.status === 'processando') {
         fallbackWithExport.fiscalExport = true;
@@ -928,16 +933,6 @@ export const emitOrderFiscalToSefaz = async (
     order: Order,
     restaurant: any
 ): Promise<EmitFiscalSefazResult> => {
-    const dateObj = order.timestamp ? new Date(order.timestamp) : new Date();
-    const orderNum = order.order_number || parseInt(order.id.replace(/\D/g, '').slice(-6) || '1042', 10);
-    const numNfFormatted = String(orderNum).padStart(9, '0');
-    const cleanCnpj = String(restaurant?.cnpj || '00000000000100').replace(/\D/g, '').padEnd(14, '0').slice(0, 14);
-    const yy = String(dateObj.getFullYear()).slice(-2);
-    const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const fallbackKey = order.fiscalKey || `31${yy}${mm}${cleanCnpj}65001${numNfFormatted}198273641`;
-    const deterministicSeed = Math.abs(orderNum * 987654321) % 89999999;
-    const fallbackProtocol = order.fiscalProtocol || `1312${yy}${String(deterministicSeed + 10000000)}`;
-
     try {
         const response = await fetch('/api/fiscal/emit-nfe', {
             method: 'POST',
@@ -953,10 +948,20 @@ export const emitOrderFiscalToSefaz = async (
             }),
         });
 
-        const resData = await response.json().catch(() => ({}));
+        const rawText = await response.text();
+        let resData: any = {};
+        try {
+            resData = rawText ? JSON.parse(rawText) : {};
+        } catch {
+            resData = { error: rawText || `Resposta inválida (${response.status}) do servidor fiscal.` };
+        }
 
-        if (!response.ok || resData?.error) {
-            const errMsg = resData?.error || resData?.mensagem || `Erro HTTP ${response.status} ao enviar à SEFAZ`;
+        if (!response.ok || resData?.success === false || resData?.error) {
+            const errMsg =
+                resData?.error ||
+                resData?.mensagem_sefaz ||
+                resData?.mensagem ||
+                `Erro HTTP ${response.status} ao enviar NFC-e para Focus NFe / SEFAZ.`;
             await persistOrderFiscalMetadata(order.id, order.payment_details, {
                 status: 'erro_autorizacao',
                 mensagem: errMsg,
@@ -976,17 +981,21 @@ export const emitOrderFiscalToSefaz = async (
                 ? 'processando'
                 : 'autorizado';
 
-        const fiscalKey = apiData?.chave_nfe || resData?.chave_nfe || fallbackKey;
-        const fiscalNumber = apiData?.numero ? String(apiData.numero) : String(orderNum);
-        const fiscalProtocol = apiData?.protocolo || resData?.protocolo || fallbackProtocol;
-        const fiscalDanfeUrl = apiData?.caminho_danfe || undefined;
-        const fiscalXmlUrl = apiData?.caminho_xml_nota_fiscal || apiData?.caminho_xml || undefined;
+        const fiscalKey = apiData?.chave_nfe ? String(apiData.chave_nfe) : undefined;
+        const fiscalNumber = apiData?.numero ? String(apiData.numero) : (order.order_number ? String(order.order_number) : undefined);
+        const fiscalProtocol = apiData?.protocolo ? String(apiData.protocolo) : undefined;
+        const fiscalDanfeUrl = apiData?.caminho_danfe ? String(apiData.caminho_danfe) : undefined;
+        const fiscalXmlUrl = (apiData?.caminho_xml_nota_fiscal || apiData?.caminho_xml)
+            ? String(apiData.caminho_xml_nota_fiscal || apiData.caminho_xml)
+            : undefined;
+        const fiscalQrCodeUrl = apiData?.qrcode_url ? String(apiData.qrcode_url) : undefined;
+        const fiscalConsultUrl = apiData?.url_consulta_nf ? String(apiData.url_consulta_nf) : undefined;
         const fiscalMessage =
             apiData?.mensagem_sefaz ||
             resData?.message ||
             (nextStatus === 'processando'
-                ? 'Enviada para a SEFAZ — aguardando retorno de autorização.'
-                : 'NFC-e enviada e registrada com sucesso.');
+                ? 'NFC-e enviada para a SEFAZ via Focus NFe — aguardando retorno de autorização.'
+                : 'NFC-e autorizada pela SEFAZ com sucesso via Focus NFe.');
 
         await persistOrderFiscalMetadata(order.id, order.payment_details, {
             status: nextStatus,
@@ -995,8 +1004,9 @@ export const emitOrderFiscalToSefaz = async (
             protocolo: fiscalProtocol,
             danfe_url: fiscalDanfeUrl,
             xml_url: fiscalXmlUrl,
+            qrcode_url: fiscalQrCodeUrl,
+            url_consulta_nf: fiscalConsultUrl,
             mensagem: fiscalMessage,
-            simulated: Boolean(resData?.simulated),
         });
 
         return {
@@ -1008,11 +1018,13 @@ export const emitOrderFiscalToSefaz = async (
             fiscalProtocol,
             fiscalDanfeUrl,
             fiscalXmlUrl,
+            fiscalQrCodeUrl,
+            fiscalConsultUrl,
             fiscalMessage,
-            simulated: Boolean(resData?.simulated),
+            simulated: false,
         };
     } catch (err: any) {
-        const errMsg = err?.message || 'Falha de rede ao enviar nota fiscal para a SEFAZ.';
+        const errMsg = err?.message || 'Falha de rede ao enviar nota fiscal para a Focus NFe / SEFAZ.';
         await persistOrderFiscalMetadata(order.id, order.payment_details, {
             status: 'erro_autorizacao',
             mensagem: errMsg,
@@ -1025,3 +1037,103 @@ export const emitOrderFiscalToSefaz = async (
         };
     }
 };
+
+export const consultOrderFiscalSefaz = async (
+    orderId: string,
+    restaurantId: number | string
+): Promise<EmitFiscalSefazResult> => {
+    try {
+        const response = await fetch('/api/fiscal/consult-nfe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId, restaurantId: Number(restaurantId) }),
+        });
+
+        const rawText = await response.text();
+        let resData: any = {};
+        try {
+            resData = rawText ? JSON.parse(rawText) : {};
+        } catch {
+            resData = { error: rawText };
+        }
+
+        if (!response.ok || resData?.success === false || resData?.error) {
+            return {
+                orderId,
+                success: false,
+                fiscalStatus: 'erro_autorizacao',
+                fiscalMessage: resData?.error || `Erro HTTP ${response.status} ao consultar NFC-e na Focus NFe.`,
+            };
+        }
+
+        const apiData = resData?.data || {};
+        const rawStatus = String(apiData?.status || '').toLowerCase();
+        let fiscalStatus: EmitFiscalSefazResult['fiscalStatus'] = 'processando';
+        if (rawStatus === 'autorizado') fiscalStatus = 'autorizado';
+        else if (rawStatus === 'cancelado') fiscalStatus = 'cancelado';
+        else if (rawStatus === 'erro_autorizacao' || rawStatus === 'rejeitado' || rawStatus === 'denegado') {
+            fiscalStatus = 'erro_autorizacao';
+        }
+
+        if (typeof window !== 'undefined') window.dispatchEvent(new Event('guarafood:update-orders'));
+
+        return {
+            orderId,
+            success: fiscalStatus !== 'erro_autorizacao',
+            fiscalStatus,
+            fiscalKey: apiData?.chave_nfe || undefined,
+            fiscalNumber: apiData?.numero ? String(apiData.numero) : undefined,
+            fiscalProtocol: apiData?.protocolo ? String(apiData.protocolo) : undefined,
+            fiscalDanfeUrl: apiData?.caminho_danfe || undefined,
+            fiscalXmlUrl: apiData?.caminho_xml_nota_fiscal || apiData?.caminho_xml || undefined,
+            fiscalQrCodeUrl: apiData?.qrcode_url || undefined,
+            fiscalConsultUrl: apiData?.url_consulta_nf || undefined,
+            fiscalMessage: apiData?.mensagem_sefaz || 'Status consultado na Focus NFe.',
+        };
+    } catch (err: any) {
+        return {
+            orderId,
+            success: false,
+            fiscalStatus: 'erro_autorizacao',
+            fiscalMessage: err?.message || 'Erro ao consultar NFC-e na Focus NFe.',
+        };
+    }
+};
+
+export const cancelOrderFiscalSefaz = async (
+    orderId: string,
+    restaurantId: number | string,
+    justificativa: string
+): Promise<{ success: boolean; message: string }> => {
+    try {
+        const response = await fetch('/api/fiscal/cancel-nfe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId, restaurantId: Number(restaurantId), justificativa }),
+        });
+        const rawText = await response.text();
+        let resData: any = {};
+        try {
+            resData = rawText ? JSON.parse(rawText) : {};
+        } catch {
+            resData = { error: rawText };
+        }
+        if (!response.ok || resData?.success === false || resData?.error) {
+            return {
+                success: false,
+                message: resData?.error || `Erro HTTP ${response.status} ao cancelar NFC-e.`,
+            };
+        }
+        if (typeof window !== 'undefined') window.dispatchEvent(new Event('guarafood:update-orders'));
+        return {
+            success: true,
+            message: resData?.data?.mensagem_sefaz || 'NFC-e cancelada na SEFAZ com sucesso.',
+        };
+    } catch (err: any) {
+        return {
+            success: false,
+            message: err?.message || 'Erro ao cancelar NFC-e na Focus NFe.',
+        };
+    }
+};
+

@@ -105,16 +105,12 @@ export interface Restaurant {
   cnpj?: string;
   ie?: string;
   im?: string;
-  blingApiKey?: string;
   focusNfeTokenProducao?: string;
   focusNfeTokenHomologacao?: string;
-  fiscalProvider?: string;
   fiscalCsc?: string;
   fiscalCscId?: string;
   fiscalEnv?: 'homologacao' | 'producao';
   fiscalTaxRate?: number; // Alíquota de imposto predefinida (%) sobre notas emitidas
-  nuvemClientId?: string;
-  nuvemClientSecret?: string;
   staff?: StaffMember[]; // NEW: List of staff members
   loyaltyProgram?: LoyaltyProgram; // NEW: Fidelity Program
   printers?: PrinterConfig[]; // NEW: Configuração de Múltiplas Impressoras e Roteamento de Categorias
@@ -362,6 +358,8 @@ export interface Order {
   fiscalStatus?: 'autorizado' | 'processando' | 'erro_autorizacao' | 'rejeitado' | 'cancelado';
   fiscalDanfeUrl?: string;
   fiscalXmlUrl?: string;
+  fiscalQrCodeUrl?: string;
+  fiscalConsultUrl?: string;
   fiscalKey?: string;
   fiscalNumber?: string;
   fiscalProtocol?: string;

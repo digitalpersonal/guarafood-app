@@ -96,64 +96,223 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-  // API endpoint para testar credenciais OAuth2 da Nuvem Fiscal antes de salvar
-  app.post("/api/fiscal/test-nuvem-auth", async (req, res) => {
+  // Helpers fiscais para Focus NFe (NFC-e v2)
+  const round2 = (val: number) => Math.round((Number(val) || 0) * 100) / 100;
+
+  const formatBrazilIsoDate = () => {
     try {
-      const { clientId, clientSecret } = req.body;
-      if (!clientId || !clientSecret) {
-        return res.status(400).json({ error: "Client ID e Client Secret são obrigatórios." });
-      }
-
-      const tokenUrl = "https://auth.nuvemfiscal.com.br/oauth/token";
-      const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-
-      const response = await fetch(tokenUrl, {
-        method: "POST",
-        headers: {
-          "Authorization": `Basic ${credentials}`,
-          "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: "grant_type=client_credentials&scope=nfe",
-        signal: AbortSignal.timeout(10000)
-      });
-
-      const rawText = await response.text();
-      let errData: any = {};
-      try {
-        errData = rawText ? JSON.parse(rawText) : {};
-      } catch {
-        errData = { message: rawText };
-      }
-
-      if (!response.ok) {
-        return res.status(401).json({
-          success: false,
-          error: "Falha na autenticação com a Nuvem Fiscal. Verifique se o Client ID e Client Secret estão corretos.",
-          details: errData
-        });
-      }
-
-      let tokenData: any = {};
-      try {
-        tokenData = rawText ? JSON.parse(rawText) : {};
-      } catch {
-        tokenData = {};
-      }
-      return res.json({
-        success: true,
-        message: "Autenticação realizada com sucesso na Nuvem Fiscal!",
-        expiresIn: tokenData.expires_in
-      });
-    } catch (err: any) {
-      console.error("Error in /api/fiscal/test-nuvem-auth:", err);
-      return res.status(500).json({ success: false, error: err.message || "Erro ao conectar com servidor da Nuvem Fiscal." });
+      const parts = new Intl.DateTimeFormat('sv-SE', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      }).formatToParts(new Date());
+      const get = (type: string) => parts.find(p => p.type === type)?.value || '00';
+      return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:${get('second')}-03:00`;
+    } catch {
+      const brDate = new Date(Date.now() - 3 * 60 * 60 * 1000);
+      return `${brDate.toISOString().slice(0, 19)}-03:00`;
     }
-  });
+  };
+
+  const isValidCpfDigits = (digits: string): boolean => {
+    if (digits.length !== 11 || /^(\d)\1{10}$/.test(digits)) return false;
+    let sum = 0;
+    for (let i = 0; i < 9; i++) sum += parseInt(digits[i], 10) * (10 - i);
+    let rev = 11 - (sum % 11);
+    if (rev >= 10) rev = 0;
+    if (rev !== parseInt(digits[9], 10)) return false;
+    sum = 0;
+    for (let i = 0; i < 10; i++) sum += parseInt(digits[i], 10) * (11 - i);
+    rev = 11 - (sum % 11);
+    if (rev >= 10) rev = 0;
+    return rev === parseInt(digits[10], 10);
+  };
+
+  const isValidCnpjDigits = (digits: string): boolean => {
+    if (digits.length !== 14 || /^(\d)\1{13}$/.test(digits)) return false;
+    const calc = (len: number) => {
+      let sum = 0;
+      let pos = len - 7;
+      for (let i = len; i >= 1; i--) {
+        sum += parseInt(digits[len - i], 10) * pos--;
+        if (pos < 2) pos = 9;
+      }
+      const res = sum % 11;
+      return res < 2 ? 0 : 11 - res;
+    };
+    return calc(12) === parseInt(digits[12], 10) && calc(13) === parseInt(digits[13], 10);
+  };
+
+  const mapPaymentMethodToSefaz = (method?: string): string => {
+    const m = String(method || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (m.includes('dinheiro') || m.includes('cash') || m.includes('especie')) return '01';
+    if (m.includes('cheque')) return '02';
+    if (m.includes('credito') || m.includes('credit')) return '03';
+    if (m.includes('debito') || m.includes('debit')) return '04';
+    if (m.includes('vale') || m.includes('alimenta') || m.includes('refeica')) return '10';
+    if (m.includes('pix')) return '17';
+    if (m.includes('transfer')) return '18';
+    if (m.includes('cartao') || m.includes('card')) return '03';
+    return '99';
+  };
+
+  const normalizeFocusUrl = (host: string, rawUrl?: string): string => {
+    if (!rawUrl || typeof rawUrl !== 'string') return '';
+    if (/^https?:\/\//i.test(rawUrl)) return rawUrl;
+    return `${host}${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
+  };
+
+  const extractFocusErrorMessage = (data: any, fallback: string): string => {
+    const parts: string[] = [];
+    if (data?.mensagem_sefaz) parts.push(String(data.mensagem_sefaz));
+    if (data?.status_sefaz) parts.push(`SEFAZ ${data.status_sefaz}`);
+    if (data?.mensagem && data.mensagem !== data?.mensagem_sefaz) parts.push(String(data.mensagem));
+    if (Array.isArray(data?.erros) && data.erros.length > 0) {
+      const errMsgs = data.erros
+        .map((e: any) => (e?.campo ? `${e.campo}: ${e.mensagem || ''}` : e?.mensagem || ''))
+        .filter(Boolean)
+        .join(' | ');
+      if (errMsgs) parts.push(errMsgs);
+    }
+    if (data?.message && parts.length === 0) parts.push(String(data.message));
+    return parts.join(' — ') || fallback;
+  };
+
+  const resolveFocusRestaurantCredentials = async (rawRestaurant: any, explicitRestaurantId?: number) => {
+    const restId = Number(explicitRestaurantId || rawRestaurant?.id || 0);
+    let dbRest: any = null;
+    if (restId > 0) {
+      const { data } = await supabase
+        .from('restaurants')
+        .select('id, name, cnpj, ie, im, address, phone, enable_fiscal, fiscal_env, fiscal_csc, fiscal_csc_id, focus_nfe_token_producao, focus_nfe_token_homologacao, bling_api_key')
+        .eq('id', restId)
+        .maybeSingle();
+      dbRest = data || null;
+    }
+
+    const ambiente: 'producao' | 'homologacao' =
+      (dbRest?.fiscal_env || rawRestaurant?.fiscalEnv) === 'producao' ? 'producao' : 'homologacao';
+
+    const prodToken = String(
+      dbRest?.focus_nfe_token_producao || rawRestaurant?.focusNfeTokenProducao || ''
+    ).trim();
+    const homolToken = String(
+      dbRest?.focus_nfe_token_homologacao ||
+      rawRestaurant?.focusNfeTokenHomologacao ||
+      dbRest?.bling_api_key ||
+      ''
+    ).trim();
+    const envFallback = String(process.env.FOCUS_NFE_API_KEY || '').trim();
+
+    const apiKey = ambiente === 'producao'
+      ? (prodToken || envFallback)
+      : (homolToken || envFallback);
+
+    const cnpj = String(dbRest?.cnpj || rawRestaurant?.cnpj || '').replace(/\D/g, '');
+    const ie = String(dbRest?.ie || rawRestaurant?.ie || '').trim();
+    const host = ambiente === 'producao'
+      ? "https://api.focusnfe.com.br"
+      : "https://homologacao.focusnfe.com.br";
+
+    return {
+      restaurantId: restId,
+      ambiente,
+      host,
+      apiKey,
+      cnpj,
+      ie,
+      name: String(dbRest?.name || rawRestaurant?.name || ''),
+    };
+  };
+
+  const syncOrderFiscalToSupabase = async (
+    orderId: string,
+    host: string,
+    focusData: any,
+    fallbackMessage?: string
+  ) => {
+    if (!orderId) return;
+    const rawStatus = String(focusData?.status || '').toLowerCase();
+    let mappedStatus: 'autorizado' | 'processando' | 'erro_autorizacao' | 'rejeitado' | 'cancelado' = 'processando';
+    if (rawStatus === 'autorizado') mappedStatus = 'autorizado';
+    else if (rawStatus === 'cancelado') mappedStatus = 'cancelado';
+    else if (rawStatus === 'erro_autorizacao' || rawStatus === 'rejeitado' || rawStatus === 'denegado') {
+      mappedStatus = rawStatus === 'rejeitado' ? 'rejeitado' : 'erro_autorizacao';
+    } else if (rawStatus === 'processando_autorizacao' || rawStatus === 'processando') {
+      mappedStatus = 'processando';
+    }
+
+    const danfeUrl = normalizeFocusUrl(host, focusData?.caminho_danfe) || null;
+    const xmlUrl = normalizeFocusUrl(host, focusData?.caminho_xml_nota_fiscal || focusData?.caminho_xml) || null;
+    const qrCodeUrl = normalizeFocusUrl(host, focusData?.qrcode_url) || null;
+    const consultUrl = normalizeFocusUrl(host, focusData?.url_consulta_nf) || null;
+    const message =
+      focusData?.mensagem_sefaz ||
+      focusData?.mensagem ||
+      fallbackMessage ||
+      (mappedStatus === 'autorizado' ? 'NFC-e autorizada pela SEFAZ via Focus NFe.' : 'Processando retorno SEFAZ.');
+
+    const { data: existingOrder } = await supabase
+      .from('orders')
+      .select('payment_details')
+      .eq('id', orderId)
+      .maybeSingle();
+
+    const prevDetails =
+      existingOrder?.payment_details && typeof existingOrder.payment_details === 'object'
+        ? existingOrder.payment_details
+        : {};
+
+    const mergedDetails = {
+      ...prevDetails,
+      fiscal: {
+        ...(prevDetails.fiscal || {}),
+        status: mappedStatus,
+        chave: focusData?.chave_nfe || prevDetails.fiscal?.chave || null,
+        numero: focusData?.numero ? String(focusData.numero) : prevDetails.fiscal?.numero || null,
+        serie: focusData?.serie ? String(focusData.serie) : prevDetails.fiscal?.serie || null,
+        protocolo: focusData?.protocolo ? String(focusData.protocolo) : prevDetails.fiscal?.protocolo || null,
+        danfe_url: danfeUrl || prevDetails.fiscal?.danfe_url || null,
+        xml_url: xmlUrl || prevDetails.fiscal?.xml_url || null,
+        qrcode_url: qrCodeUrl || prevDetails.fiscal?.qrcode_url || null,
+        url_consulta_nf: consultUrl || prevDetails.fiscal?.url_consulta_nf || null,
+        mensagem: message,
+        simulated: false,
+        updated_at: new Date().toISOString(),
+      },
+    };
+
+    const updatePayload: Record<string, any> = {
+      payment_details: mergedDetails,
+      fiscal_status: mappedStatus,
+      fiscal_message: message,
+    };
+    if (focusData?.chave_nfe) updatePayload.fiscal_key = focusData.chave_nfe;
+    if (focusData?.numero) updatePayload.fiscal_number = String(focusData.numero);
+    if (focusData?.protocolo) updatePayload.fiscal_protocol = String(focusData.protocolo);
+    if (danfeUrl) updatePayload.fiscal_danfe_url = danfeUrl;
+    if (xmlUrl) updatePayload.fiscal_xml_url = xmlUrl;
+    if (mappedStatus === 'autorizado' || mappedStatus === 'processando') {
+      updatePayload.fiscalExport = true;
+    } else if (mappedStatus === 'erro_autorizacao' || mappedStatus === 'rejeitado') {
+      updatePayload.fiscal_error = message;
+    }
+
+    const { error } = await supabase.from('orders').update(updatePayload).eq('id', orderId);
+    if (error) {
+      await supabase.from('orders').update({ payment_details: mergedDetails }).eq('id', orderId);
+    }
+  };
 
   // API endpoint para testar token da Focus NFe (Produção ou Homologação) antes de salvar
   app.post("/api/fiscal/test-focus-token", async (req, res) => {
     try {
-      const { apiKey, ambiente } = req.body || {};
+      const { apiKey, ambiente, cnpj } = req.body || {};
       const cleanKey = String(apiKey || '').trim();
       if (!cleanKey) {
         return res.status(400).json({ success: false, error: "Informe o Token da Focus NFe antes de testar." });
@@ -179,12 +338,34 @@ async function startServer() {
         data = { mensagem: rawText };
       }
 
-      // 404 nao_encontrado = autenticacao aceita na Focus NFe (a nota teste apenas nao existe)
+      // 404 nao_encontrado = autenticação aceita na Focus NFe (a nota teste apenas não existe)
       if (checkRes.status === 404 || checkRes.ok) {
+        const cleanCnpj = String(cnpj || '').replace(/\D/g, '');
+        let companyInfo: string | null = null;
+        if (cleanCnpj.length === 14) {
+          try {
+            const empRes = await fetch(`${host}/v2/empresas/${cleanCnpj}`, {
+              method: "GET",
+              headers: { "Authorization": authHeader },
+              signal: AbortSignal.timeout(8000)
+            });
+            if (empRes.ok) {
+              const empData = await empRes.json().catch(() => null);
+              if (empData) {
+                const habilitaNfce = empData.habilita_nfce ? 'NFC-e habilitada' : 'NFC-e NÃO habilitada no painel Focus';
+                const hasCert = empData.certificado_valido_ate ? `Certificado A1 válido até ${empData.certificado_valido_ate}` : 'Verifique Certificado A1 no painel Focus';
+                companyInfo = `Empresa encontrada (${empData.nome || cleanCnpj}): ${habilitaNfce} • ${hasCert}.`;
+              }
+            }
+          } catch {
+            // Token de empresa específica pode não ter permissão em /v2/empresas; autenticação /v2/nfce já foi validada.
+          }
+        }
+
         return res.json({
           success: true,
           ambiente: envMode,
-          message: `Token da Focus NFe válido e autenticado no ambiente de ${envMode === 'producao' ? 'PRODUÇÃO' : 'HOMOLOGAÇÃO'}!`
+          message: `Token da Focus NFe válido e autenticado em ${envMode === 'producao' ? 'PRODUÇÃO' : 'HOMOLOGAÇÃO'}!${companyInfo ? ` ${companyInfo}` : ''}`
         });
       }
 
@@ -209,376 +390,518 @@ async function startServer() {
     }
   });
 
-  // Helpers fiscais para Focus NFe (NFC-e v2)
-  const round2 = (val: number) => Math.round((Number(val) || 0) * 100) / 100;
-
-  const formatBrazilIsoDate = () => {
-    const brDate = new Date(Date.now() - 3 * 60 * 60 * 1000);
-    return brDate.toISOString().replace('Z', '-03:00');
-  };
-
-  const mapPaymentMethodToSefaz = (method?: string): string => {
-    const m = String(method || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    if (m.includes('dinheiro') || m.includes('cash') || m.includes('especie')) return '01';
-    if (m.includes('cheque')) return '02';
-    if (m.includes('credito') || m.includes('credit')) return '03';
-    if (m.includes('debito') || m.includes('debit')) return '04';
-    if (m.includes('vale') || m.includes('alimenta') || m.includes('refeica')) return '10';
-    if (m.includes('pix')) return '17';
-    if (m.includes('transfer')) return '18';
-    if (m.includes('cartao') || m.includes('card')) return '03';
-    return '99';
-  };
-
-  const normalizeFocusUrl = (host: string, rawUrl?: string): string => {
-    if (!rawUrl || typeof rawUrl !== 'string') return '';
-    if (/^https?:\/\//i.test(rawUrl)) return rawUrl;
-    return `${host}${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
-  };
-
-  const buildResilientFiscalResponse = (restaurant: any, order: any, message: string) => {
-    const dateObj = new Date();
-    const yy = String(dateObj.getFullYear()).slice(-2);
-    const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const cleanCnpj = String(restaurant?.cnpj || '00000000000100').replace(/\D/g, '').padEnd(14, '0').slice(0, 14);
-    const orderNum = order?.order_number || parseInt(String(order?.id || '').replace(/\D/g, '').slice(-6) || '1042', 10) || 1042;
-    const numNfFormatted = String(orderNum).padStart(9, '0');
-    const chaveSimulada = `31${yy}${mm}${cleanCnpj}65001${numNfFormatted}198273641`;
-    const protoSimulado = `1312${yy}${Math.floor(Math.random() * 89999999 + 10000000)}`;
-
-    return {
-      success: true,
-      simulated: true,
-      message,
-      data: {
-        status: "autorizado",
-        chave_nfe: chaveSimulada,
-        numero: String(orderNum),
-        protocolo: protoSimulado,
-        caminho_danfe: "",
-        caminho_xml_nota_fiscal: ""
-      }
-    };
-  };
-
-  // API endpoint para transmissão real de NFC-e via Focus NFe ou Provedor Fiscal
+  // API endpoint para transmissão real de NFC-e via Focus NFe (Emissor Único)
   app.post("/api/fiscal/emit-nfe", async (req, res) => {
     try {
       const { restaurant, order } = req.body;
       if (!restaurant || !order) {
-        return res.status(400).json({ error: "Dados do restaurante e do pedido são obrigatórios." });
+        return res.status(400).json({ success: false, error: "Dados do restaurante e do pedido são obrigatórios." });
       }
 
-      const rawProvider = String(restaurant.fiscalProvider || '').trim().toLowerCase();
-      const provider = (!rawProvider || rawProvider === 'none') ? 'focus' : rawProvider;
-      const ambiente = restaurant.fiscalEnv === 'producao' ? 'producao' : 'homologacao';
-
-      const legacyToken = String(restaurant.blingApiKey || '').trim();
-      const prodToken = String(restaurant.focusNfeTokenProducao || '').trim();
-      const homolToken = String(restaurant.focusNfeTokenHomologacao || '').trim();
-      const envFallback = String(process.env.FOCUS_NFE_API_KEY || '').trim();
-
-      let apiKey = legacyToken || envFallback;
-      if (provider === 'focus') {
-        if (ambiente === 'producao') {
-          apiKey = prodToken || legacyToken || homolToken || envFallback;
-        } else {
-          apiKey = homolToken || legacyToken || prodToken || envFallback;
-        }
-      }
+      const creds = await resolveFocusRestaurantCredentials(restaurant, restaurant.id);
+      const { ambiente, host, apiKey, cnpj: cleanCnpj } = creds;
 
       if (!apiKey) {
-        return res.json(
-          buildResilientFiscalResponse(
-            restaurant,
-            order,
-            provider === 'focus' && ambiente === 'producao'
-              ? "Token de Produção da Focus NFe não configurado nas Configurações. Nota emitida em modo contingência local."
-              : "Token da Focus NFe não configurado. Nota emitida em modo contingência local."
-          )
-        );
-      }
-
-      if (provider === 'focus') {
-        const cleanCnpj = String(restaurant.cnpj || '').replace(/\D/g, '');
-        if (cleanCnpj.length !== 14) {
-          return res.json(
-            buildResilientFiscalResponse(
-              restaurant,
-              order,
-              "CNPJ do estabelecimento inválido ou não informado nas Configurações Fiscais. Nota emitida em modo resiliente."
-            )
-          );
-        }
-
-        const host = ambiente === 'producao'
-          ? "https://api.focusnfe.com.br"
-          : "https://homologacao.focusnfe.com.br";
-        const baseUrl = `${host}/v2/nfce`;
-        const ref = String(order.id || `ord-${Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, '_');
-
-        const rawItems = Array.isArray(order.items) && order.items.length > 0
-          ? order.items
-          : [{ id: '1', name: 'Refeição', quantity: 1, price: Number(order.totalPrice) || 0 }];
-
-        const focusItems: any[] = rawItems.map((item: any, index: number) => {
-          const qty = Number(item.quantity) > 0 ? Number(item.quantity) : 1;
-          const rawUnit = Number(item.price ?? item.basePrice ?? 0);
-          const unitPrice = round2(rawUnit > 0 ? rawUnit : 0.01);
-          const valorBruto = round2(unitPrice * qty);
-          const unitAccurate = Number((valorBruto / qty).toFixed(4));
-          const ncm = String(item.ncm || '21069090').replace(/\D/g, '').padEnd(8, '0').slice(0, 8);
-          const cfop = String(item.cfop || '5102').replace(/\D/g, '').slice(0, 4) || '5102';
-          const desc = String(item.name || `Item ${index + 1}`).trim().slice(0, 120) || `Item ${index + 1}`;
-
-          return {
-            numero_item: index + 1,
-            codigo_produto: String(item.id || index + 1).slice(0, 60),
-            descricao: desc,
-            codigo_ncm: ncm,
-            cfop,
-            unidade_comercial: "UN",
-            quantidade_comercial: qty,
-            valor_unitario_comercial: unitAccurate,
-            valor_bruto: valorBruto,
-            unidade_tributavel: "UN",
-            quantidade_tributavel: qty,
-            valor_unitario_tributavel: unitAccurate,
-            icms_origem: "0",
-            icms_situacao_tributaria: "102",
-            pis_situacao_tributaria: "07",
-            cofins_situacao_tributaria: "07"
-          };
-        });
-
-        const itemsTotal = round2(focusItems.reduce((acc, it) => acc + it.valor_bruto, 0));
-        const targetTotal = round2(Number(order.totalPrice) > 0 ? Number(order.totalPrice) : itemsTotal);
-        const diff = round2(targetTotal - itemsTotal);
-
-        if (diff > 0.01) {
-          focusItems.push({
-            numero_item: focusItems.length + 1,
-            codigo_produto: "TAXA-ENTREGA",
-            descricao: "Taxa de Entrega / Serviço",
-            codigo_ncm: "21069090",
-            cfop: "5102",
-            unidade_comercial: "UN",
-            quantidade_comercial: 1,
-            valor_unitario_comercial: diff,
-            valor_bruto: diff,
-            unidade_tributavel: "UN",
-            quantidade_tributavel: 1,
-            valor_unitario_tributavel: diff,
-            icms_origem: "0",
-            icms_situacao_tributaria: "102",
-            pis_situacao_tributaria: "07",
-            cofins_situacao_tributaria: "07"
-          });
-        } else if (diff < -0.01) {
-          let remainingDiscount = round2(Math.abs(diff));
-          for (const it of focusItems) {
-            if (remainingDiscount <= 0) break;
-            const maxDisc = round2(Math.max(0, it.valor_bruto - 0.01));
-            const apply = Math.min(remainingDiscount, maxDisc);
-            if (apply > 0) {
-              it.valor_desconto = round2(apply);
-              remainingDiscount = round2(remainingDiscount - apply);
-            }
-          }
-        }
-
-        const finalPayTotal = round2(
-          focusItems.reduce((acc, it) => acc + it.valor_bruto - (it.valor_desconto || 0), 0)
-        );
-
-        let formasPagamento: any[] = [];
-        if (Array.isArray(order.paymentHistory) && order.paymentHistory.length > 0) {
-          const mappedHistory = order.paymentHistory
-            .filter((p: any) => Number(p.amount) > 0)
-            .map((p: any) => {
-              const code = mapPaymentMethodToSefaz(p.method);
-              return {
-                forma_pagamento: code,
-                valor_pagamento: round2(Number(p.amount)),
-                ...(code === '99' ? { descricao_pagamento: String(p.method || 'Outros').slice(0, 60) } : {})
-              };
-            });
-          const histSum = round2(mappedHistory.reduce((s: number, p: any) => s + p.valor_pagamento, 0));
-          if (mappedHistory.length > 0 && Math.abs(histSum - finalPayTotal) <= 0.05) {
-            const delta = round2(finalPayTotal - histSum);
-            mappedHistory[mappedHistory.length - 1].valor_pagamento = round2(
-              mappedHistory[mappedHistory.length - 1].valor_pagamento + delta
-            );
-            formasPagamento = mappedHistory;
-          }
-        }
-
-        if (formasPagamento.length === 0) {
-          const payCode = mapPaymentMethodToSefaz(order.paymentMethod);
-          formasPagamento = [
-            {
-              forma_pagamento: payCode,
-              valor_pagamento: finalPayTotal,
-              ...(payCode === '99' ? { descricao_pagamento: String(order.paymentMethod || 'Outros').slice(0, 60) } : {})
-            }
-          ];
-        }
-
-        const payload: Record<string, any> = {
-          natureza_operacao: "VENDA AO CONSUMIDOR",
-          data_emissao: formatBrazilIsoDate(),
-          tipo_documento: "1",
-          presenca_comprador: order.customerAddress?.street ? "4" : "1",
-          consumidor_final: "1",
-          modalidade_frete: "9",
-          cnpj_emitente: cleanCnpj,
-          items: focusItems,
-          formas_pagamento: formasPagamento
-        };
-
-        const cleanCustomerDoc = String(order.customerDocument || '').replace(/\D/g, '');
-        if (cleanCustomerDoc.length === 11) {
-          payload.cpf_destinatario = cleanCustomerDoc;
-          if (order.customerName) payload.nome_destinatario = String(order.customerName).trim().slice(0, 60);
-        } else if (cleanCustomerDoc.length === 14) {
-          payload.cnpj_destinatario = cleanCustomerDoc;
-          if (order.customerName) payload.nome_destinatario = String(order.customerName).trim().slice(0, 60);
-        }
-
-        const authHeader = `Basic ${Buffer.from(`${apiKey}:`).toString('base64')}`;
-        const response = await fetch(`${baseUrl}?ref=${encodeURIComponent(ref)}`, {
-          method: "POST",
-          headers: {
-            "Authorization": authHeader,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(15000)
-        });
-
-        let data: any = await response.json().catch(() => ({}));
-
-        // Se a NFC-e com esta ref já foi autorizada antes na Focus NFe, consulta e devolve os dados oficiais
-        if (
-          response.status === 422 &&
-          (data?.codigo === 'ja_autorizada' || String(data?.mensagem || '').toLowerCase().includes('autorizada'))
-        ) {
-          const consultRes = await fetch(`${baseUrl}/${encodeURIComponent(ref)}`, {
-            method: "GET",
-            headers: { "Authorization": authHeader },
-            signal: AbortSignal.timeout(10000)
-          });
-          if (consultRes.ok) {
-            const consultData = await consultRes.json().catch(() => ({}));
-            if (consultData?.status === 'autorizado') {
-              data = consultData;
-            }
-          }
-        }
-
-        if (!response.ok && data?.status !== 'autorizado') {
-          const focusErrMsg = data?.mensagem || data?.erros?.[0]?.mensagem || data?.message || 'Erro de transmissão';
-          console.warn(`[Focus NFe] HTTP ${response.status} (${ref}):`, focusErrMsg);
-          return res.json(
-            buildResilientFiscalResponse(
-              restaurant,
-              order,
-              `Aviso Focus NFe (HTTP ${response.status}): ${focusErrMsg}. Nota emitida em modo resiliente com sucesso.`
-            )
-          );
-        }
-
-        const rawFocusStatus = String(data?.status || '').toLowerCase();
-        if (rawFocusStatus === 'erro_autorizacao' || rawFocusStatus === 'rejeitado' || rawFocusStatus === 'denegado') {
-          const sefazMsg = data?.mensagem_sefaz || data?.mensagem || 'Rejeição na SEFAZ';
-          console.warn(`[Focus NFe] Rejeição (${ref}):`, sefazMsg);
-          return res.json(
-            buildResilientFiscalResponse(
-              restaurant,
-              order,
-              `Rejeição SEFAZ/Focus (${rawFocusStatus}): ${sefazMsg}. Cupom mantido em modo resiliente.`
-            )
-          );
-        }
-
-        const normalizedData = {
-          ...data,
-          caminho_danfe: normalizeFocusUrl(host, data?.caminho_danfe),
-          caminho_xml_nota_fiscal: normalizeFocusUrl(host, data?.caminho_xml_nota_fiscal || data?.caminho_xml),
-          qrcode_url: normalizeFocusUrl(host, data?.qrcode_url),
-          url_consulta_nf: normalizeFocusUrl(host, data?.url_consulta_nf)
-        };
-
-        return res.json({
-          success: true,
-          simulated: false,
-          data: normalizedData
-        });
-      } else {
-        return res.json({
-          success: true,
-          simulated: false,
-          message: "Nota fiscal transmitida com sucesso via Provedor Fiscal.",
-          protocolo: `PROT-${Date.now()}`
+        return res.status(400).json({
+          success: false,
+          error: ambiente === 'producao'
+            ? "Token de Produção da Focus NFe não configurado na Administração GuaraFood (Configuração Fiscal)."
+            : "Token de Homologação da Focus NFe não configurado na Administração GuaraFood (Configuração Fiscal)."
         });
       }
+
+      if (cleanCnpj.length !== 14 || !isValidCnpjDigits(cleanCnpj)) {
+        return res.status(400).json({
+          success: false,
+          error: "CNPJ do estabelecimento inválido ou não informado na Configuração Fiscal do GuaraFood."
+        });
+      }
+
+      const cleanCustomerDoc = String(order.customerDocument || '').replace(/\D/g, '');
+      if (cleanCustomerDoc.length > 0) {
+        if (cleanCustomerDoc.length === 11 && !isValidCpfDigits(cleanCustomerDoc)) {
+          return res.status(400).json({
+            success: false,
+            error: "CPF do consumidor inválido. Corrija os dígitos ou envie sem CPF."
+          });
+        }
+        if (cleanCustomerDoc.length === 14 && !isValidCnpjDigits(cleanCustomerDoc)) {
+          return res.status(400).json({
+            success: false,
+            error: "CNPJ do consumidor inválido. Corrija os dígitos ou envie sem documento."
+          });
+        }
+        if (cleanCustomerDoc.length !== 11 && cleanCustomerDoc.length !== 14) {
+          return res.status(400).json({
+            success: false,
+            error: "Documento do consumidor deve ter 11 dígitos (CPF) ou 14 dígitos (CNPJ)."
+          });
+        }
+      }
+
+      const baseUrl = `${host}/v2/nfce`;
+      const ref = String(order.id || `ord-${Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+
+      const rawItems = Array.isArray(order.items) && order.items.length > 0
+        ? order.items
+        : [{ id: '1', name: 'Refeição', quantity: 1, price: Number(order.totalPrice) || 0.01 }];
+
+      const focusItems: any[] = rawItems.map((item: any, index: number) => {
+        const qty = Number(item.quantity) > 0 ? Number(item.quantity) : 1;
+        const rawUnit = Number(item.price ?? item.basePrice ?? 0);
+        const unitPrice = round2(rawUnit > 0 ? rawUnit : 0.01);
+        const valorBruto = round2(unitPrice * qty);
+        const unitAccurate = Number((valorBruto / qty).toFixed(6));
+        const rawNcm = String(item.ncm || '21069090').replace(/\D/g, '');
+        const ncm = rawNcm.length === 8 ? rawNcm : '21069090';
+        const rawCfop = String(item.cfop || '5102').replace(/\D/g, '');
+        const cfop = rawCfop.length === 4 ? rawCfop : '5102';
+        const desc = String(item.name || `Item ${index + 1}`).trim().slice(0, 120) || `Item ${index + 1}`;
+        const unitCode = item.isKiloItem && item.weight ? 'KG' : 'UN';
+
+        return {
+          numero_item: index + 1,
+          codigo_produto: String(item.id || index + 1).slice(0, 60),
+          descricao: desc,
+          codigo_ncm: ncm,
+          cfop,
+          unidade_comercial: unitCode,
+          quantidade_comercial: qty,
+          valor_unitario_comercial: unitAccurate,
+          valor_bruto: valorBruto,
+          unidade_tributavel: unitCode,
+          quantidade_tributavel: qty,
+          valor_unitario_tributavel: unitAccurate,
+          icms_origem: "0",
+          icms_situacao_tributaria: "102",
+          pis_situacao_tributaria: "07",
+          cofins_situacao_tributaria: "07"
+        };
+      });
+
+      const itemsTotal = round2(focusItems.reduce((acc, it) => acc + it.valor_bruto, 0));
+      const targetTotal = round2(Number(order.totalPrice) > 0 ? Number(order.totalPrice) : itemsTotal);
+      const diff = round2(targetTotal - itemsTotal);
+
+      if (diff > 0.01) {
+        focusItems.push({
+          numero_item: focusItems.length + 1,
+          codigo_produto: "TAXA-ENTREGA",
+          descricao: "Taxa de Entrega / Serviço",
+          codigo_ncm: "21069090",
+          cfop: "5102",
+          unidade_comercial: "UN",
+          quantidade_comercial: 1,
+          valor_unitario_comercial: diff,
+          valor_bruto: diff,
+          unidade_tributavel: "UN",
+          quantidade_tributavel: 1,
+          valor_unitario_tributavel: diff,
+          icms_origem: "0",
+          icms_situacao_tributaria: "102",
+          pis_situacao_tributaria: "07",
+          cofins_situacao_tributaria: "07"
+        });
+      } else if (diff < -0.01) {
+        let remainingDiscount = round2(Math.abs(diff));
+        for (const it of focusItems) {
+          if (remainingDiscount <= 0) break;
+          const maxDisc = round2(Math.max(0, it.valor_bruto - 0.01));
+          const apply = Math.min(remainingDiscount, maxDisc);
+          if (apply > 0) {
+            it.valor_desconto = round2(apply);
+            remainingDiscount = round2(remainingDiscount - apply);
+          }
+        }
+      }
+
+      const finalPayTotal = round2(
+        focusItems.reduce((acc, it) => acc + it.valor_bruto - (it.valor_desconto || 0), 0)
+      );
+
+      const buildPaymentEntry = (code: string, amount: number, rawLabel?: string) => {
+        const entry: Record<string, any> = {
+          forma_pagamento: code,
+          valor_pagamento: round2(amount),
+        };
+        if (['03', '04', '10', '11', '17', '20'].includes(code)) {
+          entry.tipo_integracao = "2";
+        }
+        if (code === '99') {
+          entry.descricao_pagamento = String(rawLabel || 'Outros').slice(0, 60);
+        }
+        return entry;
+      };
+
+      let formasPagamento: any[] = [];
+      if (Array.isArray(order.paymentHistory) && order.paymentHistory.length > 0) {
+        const mappedHistory = order.paymentHistory
+          .filter((p: any) => Number(p.amount) > 0)
+          .map((p: any) => buildPaymentEntry(mapPaymentMethodToSefaz(p.method), Number(p.amount), p.method));
+        const histSum = round2(mappedHistory.reduce((s: number, p: any) => s + p.valor_pagamento, 0));
+        if (mappedHistory.length > 0 && Math.abs(histSum - finalPayTotal) <= 0.05) {
+          const delta = round2(finalPayTotal - histSum);
+          mappedHistory[mappedHistory.length - 1].valor_pagamento = round2(
+            mappedHistory[mappedHistory.length - 1].valor_pagamento + delta
+          );
+          formasPagamento = mappedHistory;
+        }
+      }
+
+      if (formasPagamento.length === 0) {
+        const payCode = mapPaymentMethodToSefaz(order.paymentMethod);
+        formasPagamento = [buildPaymentEntry(payCode, finalPayTotal, order.paymentMethod)];
+      }
+
+      const payload: Record<string, any> = {
+        natureza_operacao: "VENDA AO CONSUMIDOR",
+        data_emissao: formatBrazilIsoDate(),
+        tipo_documento: "1",
+        finalidade_emissao: "1",
+        local_destino: "1",
+        presenca_comprador: order.customerAddress?.street ? "4" : "1",
+        consumidor_final: "1",
+        modalidade_frete: "9",
+        cnpj_emitente: cleanCnpj,
+        items: focusItems,
+        formas_pagamento: formasPagamento
+      };
+
+      if (cleanCustomerDoc.length === 11) {
+        payload.cpf_destinatario = cleanCustomerDoc;
+        if (order.customerName) payload.nome_destinatario = String(order.customerName).trim().slice(0, 60);
+      } else if (cleanCustomerDoc.length === 14) {
+        payload.cnpj_destinatario = cleanCustomerDoc;
+        if (order.customerName) payload.nome_destinatario = String(order.customerName).trim().slice(0, 60);
+      }
+
+      const authHeader = `Basic ${Buffer.from(`${apiKey}:`).toString('base64')}`;
+      const response = await fetch(`${baseUrl}?ref=${encodeURIComponent(ref)}`, {
+        method: "POST",
+        headers: {
+          "Authorization": authHeader,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(20000)
+      });
+
+      const rawText = await response.text();
+      let data: any = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        data = { mensagem: rawText };
+      }
+
+      // Se a NFC-e com esta ref já foi autorizada ou está em processamento na Focus NFe, consulta
+      if (
+        response.status === 422 &&
+        (
+          data?.codigo === 'ja_autorizada' ||
+          data?.codigo === 'em_processamento' ||
+          String(data?.mensagem || '').toLowerCase().includes('autorizada') ||
+          String(data?.mensagem || '').toLowerCase().includes('processamento')
+        )
+      ) {
+        const consultRes = await fetch(`${baseUrl}/${encodeURIComponent(ref)}`, {
+          method: "GET",
+          headers: { "Authorization": authHeader },
+          signal: AbortSignal.timeout(10000)
+        });
+        if (consultRes.ok) {
+          const consultData = await consultRes.json().catch(() => null);
+          if (consultData) data = consultData;
+        }
+      }
+
+      // Se Focus ainda estiver processando na SEFAZ, aguarda brevemente e consulta novamente (NFC-e costuma autorizar em 1-3s)
+      let pollAttempt = 0;
+      while (String(data?.status || '').toLowerCase() === 'processando_autorizacao' && pollAttempt < 3) {
+        pollAttempt++;
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        const pollRes = await fetch(`${baseUrl}/${encodeURIComponent(ref)}`, {
+          method: "GET",
+          headers: { "Authorization": authHeader },
+          signal: AbortSignal.timeout(10000)
+        });
+        if (pollRes.ok) {
+          const pollData = await pollRes.json().catch(() => null);
+          if (pollData) data = pollData;
+        } else {
+          break;
+        }
+      }
+
+      const rawFocusStatus = String(data?.status || '').toLowerCase();
+
+      if (!response.ok && rawFocusStatus !== 'autorizado' && rawFocusStatus !== 'processando_autorizacao') {
+        const focusErrMsg = extractFocusErrorMessage(data, `Erro HTTP ${response.status} na Focus NFe`);
+        console.warn(`[Focus NFe] HTTP ${response.status} (${ref}):`, focusErrMsg);
+        if (order.id) {
+          await syncOrderFiscalToSupabase(order.id, host, { ...data, status: 'erro_autorizacao' }, focusErrMsg);
+        }
+        return res.status(response.status >= 400 && response.status < 500 ? response.status : 502).json({
+          success: false,
+          error: focusErrMsg,
+          data
+        });
+      }
+
+      if (rawFocusStatus === 'erro_autorizacao' || rawFocusStatus === 'rejeitado' || rawFocusStatus === 'denegado') {
+        const sefazMsg = extractFocusErrorMessage(data, 'Rejeição na SEFAZ');
+        console.warn(`[Focus NFe] Rejeição (${ref}):`, sefazMsg);
+        if (order.id) {
+          await syncOrderFiscalToSupabase(order.id, host, data, sefazMsg);
+        }
+        return res.status(422).json({
+          success: false,
+          error: sefazMsg,
+          data
+        });
+      }
+
+      const normalizedData = {
+        ...data,
+        caminho_danfe: normalizeFocusUrl(host, data?.caminho_danfe),
+        caminho_xml_nota_fiscal: normalizeFocusUrl(host, data?.caminho_xml_nota_fiscal || data?.caminho_xml),
+        qrcode_url: normalizeFocusUrl(host, data?.qrcode_url),
+        url_consulta_nf: normalizeFocusUrl(host, data?.url_consulta_nf)
+      };
+
+      if (order.id) {
+        await syncOrderFiscalToSupabase(order.id, host, normalizedData);
+      }
+
+      return res.json({
+        success: true,
+        simulated: false,
+        data: normalizedData
+      });
     } catch (err: any) {
       console.error("Error in /api/fiscal/emit-nfe:", err);
-      return res.json(
-        buildResilientFiscalResponse(
-          req.body?.restaurant,
-          req.body?.order,
-          `Falha de conexão com Focus NFe/SEFAZ: ${err.message}. Nota emitida em modo resiliente com sucesso.`
-        )
-      );
+      return res.status(500).json({
+        success: false,
+        error: `Falha de comunicação com Focus NFe/SEFAZ: ${err.message || 'Erro desconhecido'}`
+      });
     }
   });
 
-  // Webhook para retorno da API de emissão fiscal (Focus NFe / Nuvem Fiscal)
+  // API endpoint para consultar status real de uma NFC-e na Focus NFe e sincronizar com o banco
+  app.post("/api/fiscal/consult-nfe", async (req, res) => {
+    try {
+      const { orderId, restaurantId } = req.body || {};
+      if (!orderId || !restaurantId) {
+        return res.status(400).json({ success: false, error: "orderId e restaurantId são obrigatórios." });
+      }
+
+      const creds = await resolveFocusRestaurantCredentials({ id: restaurantId }, Number(restaurantId));
+      if (!creds.apiKey) {
+        return res.status(400).json({ success: false, error: "Token da Focus NFe não configurado para este restaurante." });
+      }
+
+      const ref = String(orderId).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const authHeader = `Basic ${Buffer.from(`${creds.apiKey}:`).toString('base64')}`;
+      const consultRes = await fetch(`${creds.host}/v2/nfce/${encodeURIComponent(ref)}`, {
+        method: "GET",
+        headers: { "Authorization": authHeader },
+        signal: AbortSignal.timeout(10000)
+      });
+
+      const rawText = await consultRes.text();
+      let data: any = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        data = { mensagem: rawText };
+      }
+
+      if (!consultRes.ok) {
+        return res.status(consultRes.status).json({
+          success: false,
+          error: extractFocusErrorMessage(data, `NFC-e não encontrada na Focus NFe (${consultRes.status}).`),
+          data
+        });
+      }
+
+      const normalizedData = {
+        ...data,
+        caminho_danfe: normalizeFocusUrl(creds.host, data?.caminho_danfe),
+        caminho_xml_nota_fiscal: normalizeFocusUrl(creds.host, data?.caminho_xml_nota_fiscal || data?.caminho_xml),
+        qrcode_url: normalizeFocusUrl(creds.host, data?.qrcode_url),
+        url_consulta_nf: normalizeFocusUrl(creds.host, data?.url_consulta_nf)
+      };
+
+      await syncOrderFiscalToSupabase(String(orderId), creds.host, normalizedData);
+
+      return res.json({
+        success: true,
+        data: normalizedData
+      });
+    } catch (err: any) {
+      console.error("Error in /api/fiscal/consult-nfe:", err);
+      return res.status(500).json({ success: false, error: err.message || "Erro ao consultar NFC-e na Focus NFe." });
+    }
+  });
+
+  // API endpoint para cancelar uma NFC-e autorizada na Focus NFe
+  app.post("/api/fiscal/cancel-nfe", async (req, res) => {
+    try {
+      const { orderId, restaurantId, justificativa } = req.body || {};
+      const cleanReason = String(justificativa || '').trim();
+      if (!orderId || !restaurantId) {
+        return res.status(400).json({ success: false, error: "orderId e restaurantId são obrigatórios." });
+      }
+      if (cleanReason.length < 15) {
+        return res.status(400).json({ success: false, error: "A justificativa de cancelamento na SEFAZ deve ter no mínimo 15 caracteres." });
+      }
+
+      const creds = await resolveFocusRestaurantCredentials({ id: restaurantId }, Number(restaurantId));
+      if (!creds.apiKey) {
+        return res.status(400).json({ success: false, error: "Token da Focus NFe não configurado para este restaurante." });
+      }
+
+      const ref = String(orderId).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const authHeader = `Basic ${Buffer.from(`${creds.apiKey}:`).toString('base64')}`;
+      const cancelRes = await fetch(`${creds.host}/v2/nfce/${encodeURIComponent(ref)}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": authHeader,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ justificativa: cleanReason }),
+        signal: AbortSignal.timeout(15000)
+      });
+
+      const rawText = await cancelRes.text();
+      let data: any = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        data = { mensagem: rawText };
+      }
+
+      if (!cancelRes.ok) {
+        return res.status(cancelRes.status).json({
+          success: false,
+          error: extractFocusErrorMessage(data, `Falha ao cancelar NFC-e na Focus NFe (${cancelRes.status}).`),
+          data
+        });
+      }
+
+      await syncOrderFiscalToSupabase(String(orderId), creds.host, {
+        ...data,
+        status: data?.status || 'cancelado',
+        mensagem_sefaz: data?.mensagem_sefaz || 'NFC-e cancelada na SEFAZ.'
+      });
+
+      return res.json({ success: true, data });
+    } catch (err: any) {
+      console.error("Error in /api/fiscal/cancel-nfe:", err);
+      return res.status(500).json({ success: false, error: err.message || "Erro ao cancelar NFC-e na Focus NFe." });
+    }
+  });
+
+  // Download seguro do XML oficial armazenado pela Focus NFe
+  app.get("/api/fiscal/download-xml", async (req, res) => {
+    try {
+      const orderId = String(req.query.orderId || '').trim();
+      if (!orderId) {
+        return res.status(400).json({ error: "orderId é obrigatório." });
+      }
+
+      const { data: orderRow, error } = await supabase
+        .from('orders')
+        .select('id, fiscal_xml_url, fiscal_key, payment_details')
+        .eq('id', orderId)
+        .maybeSingle();
+
+      if (error || !orderRow) {
+        return res.status(404).json({ error: "Pedido não encontrado." });
+      }
+
+      const xmlUrl = String(orderRow.fiscal_xml_url || orderRow.payment_details?.fiscal?.xml_url || '').trim();
+      if (!xmlUrl) {
+        return res.status(404).json({ error: "URL do XML oficial da Focus NFe ainda não disponível para este pedido." });
+      }
+
+      let parsed: URL;
+      try {
+        parsed = new URL(xmlUrl);
+      } catch {
+        return res.status(400).json({ error: "URL de XML inválida." });
+      }
+
+      const isAllowedHost =
+        parsed.protocol === 'https:' &&
+        (
+          parsed.hostname.endsWith('.focusnfe.com.br') ||
+          parsed.hostname === 'focusnfe.com.br' ||
+          parsed.hostname.endsWith('.amazonaws.com')
+        );
+
+      if (!isAllowedHost) {
+        return res.status(403).json({ error: "Domínio de XML não autorizado." });
+      }
+
+      const xmlResp = await fetch(parsed.toString(), { signal: AbortSignal.timeout(10000) });
+      if (!xmlResp.ok) {
+        return res.status(502).json({ error: `Erro ao baixar XML da Focus NFe (HTTP ${xmlResp.status}).` });
+      }
+
+      const xmlBody = await xmlResp.text();
+      const fileName = `NFe${orderRow.fiscal_key || orderId}.xml`;
+      res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      return res.send(xmlBody);
+    } catch (err: any) {
+      console.error("Error in /api/fiscal/download-xml:", err);
+      return res.status(500).json({ error: "Erro ao obter XML oficial da Focus NFe." });
+    }
+  });
+
+  // Webhook para retorno assíncrono da Focus NFe
   app.post("/api/fiscal/webhook", async (req, res) => {
     try {
+      const configuredSecret = process.env.FISCAL_WEBHOOK_SECRET;
+      if (configuredSecret) {
+        const provided = req.query.token || req.headers['x-webhook-token'];
+        if (provided !== configuredSecret) {
+          return res.status(401).json({ error: "Unauthorized" });
+        }
+      }
+
       const {
         status,
         referencia,
         ref,
-        caminho_danfe,
-        caminho_xml_nota_fiscal,
-        caminho_xml,
-        chave_nfe,
-        numero,
-        protocolo,
-        mensagem_sefaz,
-        mensagem
-      } = req.body;
+      } = req.body || {};
 
-      const orderRef = referencia || ref;
-      console.log(`[Fiscal Webhook] Recebido status ${status} para pedido ${orderRef}`);
+      const orderRef = String(referencia || ref || '').trim();
+      console.log(`[Focus NFe Webhook] Recebido status ${status} para pedido ${orderRef}`);
 
       if (!orderRef) {
         return res.status(400).json({ error: "Referência (order_id) ausente no webhook." });
       }
 
-      const xmlUrl = caminho_xml_nota_fiscal || caminho_xml || null;
-
-      if (status === "autorizado") {
-        await supabase.from("orders").update({
-          fiscal_status: "autorizado",
-          fiscal_danfe_url: caminho_danfe || null,
-          fiscal_xml_url: xmlUrl,
-          fiscal_key: chave_nfe || null,
-          ...(numero ? { fiscal_number: String(numero) } : {}),
-          ...(protocolo ? { fiscal_protocol: String(protocolo) } : {}),
-          fiscal_message: mensagem_sefaz || "NFC-e autorizada pela SEFAZ.",
-          fiscalExport: true
-        }).eq("id", orderRef);
-      } else {
-        await supabase.from("orders").update({
-          fiscal_status: status === "cancelado" ? "cancelado" : "rejeitado",
-          fiscal_error: mensagem_sefaz || mensagem || "Erro desconhecido na SEFAZ",
-          fiscal_message: mensagem_sefaz || mensagem || "Erro desconhecido na SEFAZ"
-        }).eq("id", orderRef);
+      let webhookHost = "https://api.focusnfe.com.br";
+      const { data: ordRow } = await supabase
+        .from('orders')
+        .select('restaurant_id')
+        .eq('id', orderRef)
+        .maybeSingle();
+      if (ordRow?.restaurant_id) {
+        const { data: restRow } = await supabase
+          .from('restaurants')
+          .select('fiscal_env')
+          .eq('id', ordRow.restaurant_id)
+          .maybeSingle();
+        if (restRow?.fiscal_env !== 'producao') {
+          webhookHost = "https://homologacao.focusnfe.com.br";
+        }
       }
 
+      await syncOrderFiscalToSupabase(orderRef, webhookHost, req.body);
       return res.sendStatus(200);
     } catch (err: any) {
       console.error("Error in /api/fiscal/webhook:", err);
@@ -596,7 +919,7 @@ async function startServer() {
       }
 
       const { data, error } = await supabase.from('orders')
-        .select('fiscal_xml_url, fiscal_danfe_url, order_number')
+        .select('id, fiscal_xml_url, fiscal_danfe_url, order_number, fiscal_key')
         .eq('restaurant_id', Number(restaurantId))
         .eq('fiscal_status', 'autorizado')
         .gte('timestamp', startDate as string)
