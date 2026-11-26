@@ -117,8 +117,15 @@ async function startServer() {
         signal: AbortSignal.timeout(10000)
       });
 
+      const rawText = await response.text();
+      let errData: any = {};
+      try {
+        errData = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        errData = { message: rawText };
+      }
+
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
         return res.status(401).json({
           success: false,
           error: "Falha na autenticação com a Nuvem Fiscal. Verifique se o Client ID e Client Secret estão corretos.",
@@ -126,7 +133,12 @@ async function startServer() {
         });
       }
 
-      const tokenData = await response.json();
+      let tokenData: any = {};
+      try {
+        tokenData = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        tokenData = {};
+      }
       return res.json({
         success: true,
         message: "Autenticação realizada com sucesso na Nuvem Fiscal!",
@@ -269,9 +281,9 @@ async function startServer() {
       let apiKey = legacyToken || envFallback;
       if (provider === 'focus') {
         if (ambiente === 'producao') {
-          apiKey = prodToken || (legacyToken && legacyToken !== homolToken ? legacyToken : '') || envFallback;
+          apiKey = prodToken || legacyToken || homolToken || envFallback;
         } else {
-          apiKey = homolToken || legacyToken || envFallback;
+          apiKey = homolToken || legacyToken || prodToken || envFallback;
         }
       }
 
