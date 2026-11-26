@@ -570,6 +570,7 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
         'closingHours', 'deliveryFee', 'operatingHours', 'manualPixKey', 
         'hasPixConfigured', 'printerWidth', 'printerName', 'selectedPaymentGateway', 'bannerImageUrl', 'marmitaStartTime', 'marmitaEndTime',
         'hasMensalistas', 'hasKiloService', 'pricePerKilo', 'loyaltyProgram', 'disableDelivery',
+        'blingApiKey', 'focusNfeTokenProducao', 'focusNfeTokenHomologacao', 'fiscalProvider', 'fiscalCsc', 'fiscalCscId', 'fiscalEnv', 'fiscalTaxRate', 'nuvemClientId', 'nuvemClientSecret', 'autoPrintOrders', 'enableFiscal',
         'hasPreorderMode', 'preorderDeliveryDay', 'preorderDeliveryTime', 'preorderCutoffInfo'
     ];
     keysToRemove.forEach(key => delete dbUpdates[key]);
