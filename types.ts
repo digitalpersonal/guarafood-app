@@ -106,6 +106,8 @@ export interface Restaurant {
   ie?: string;
   im?: string;
   blingApiKey?: string;
+  focusNfeTokenProducao?: string;
+  focusNfeTokenHomologacao?: string;
   fiscalProvider?: string;
   fiscalCsc?: string;
   fiscalCscId?: string;

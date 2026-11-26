@@ -213,6 +213,8 @@ const normalizeRestaurant = (data: any): Restaurant => {
         ie: data.ie || undefined,
         im: data.im || undefined,
         blingApiKey: data.bling_api_key || undefined,
+        focusNfeTokenProducao: data.focus_nfe_token_producao || undefined,
+        focusNfeTokenHomologacao: data.focus_nfe_token_homologacao || undefined,
         fiscalProvider: data.fiscal_provider || undefined,
         fiscalCsc: data.fiscal_csc || undefined,
         fiscalCscId: data.fiscal_csc_id || undefined,
@@ -282,6 +284,8 @@ const normalizeRestaurantSecure = (data: any): Restaurant => {
         ie: data.ie || undefined,
         im: data.im || undefined,
         blingApiKey: data.bling_api_key || undefined,
+        focusNfeTokenProducao: data.focus_nfe_token_producao || undefined,
+        focusNfeTokenHomologacao: data.focus_nfe_token_homologacao || undefined,
         fiscalProvider: data.fiscal_provider || undefined,
         fiscalCsc: data.fiscal_csc || undefined,
         fiscalCscId: data.fiscal_csc_id || undefined,
@@ -520,6 +524,8 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
     if (updates.loyaltyProgram !== undefined) dbUpdates.loyalty_program = updates.loyaltyProgram;
     if (updates.disableDelivery !== undefined) dbUpdates.disable_delivery = updates.disableDelivery;
     if (updates.blingApiKey !== undefined) dbUpdates.bling_api_key = updates.blingApiKey;
+    if (updates.focusNfeTokenProducao !== undefined) dbUpdates.focus_nfe_token_producao = updates.focusNfeTokenProducao;
+    if (updates.focusNfeTokenHomologacao !== undefined) dbUpdates.focus_nfe_token_homologacao = updates.focusNfeTokenHomologacao;
     if (updates.fiscalProvider !== undefined) dbUpdates.fiscal_provider = updates.fiscalProvider;
     if (updates.fiscalCsc !== undefined) dbUpdates.fiscal_csc = updates.fiscalCsc;
     if (updates.fiscalCscId !== undefined) dbUpdates.fiscal_csc_id = updates.fiscalCscId;
@@ -564,7 +570,7 @@ export const updateRestaurant = async (id: number, updates: Partial<Restaurant>)
         'closingHours', 'deliveryFee', 'operatingHours', 'manualPixKey', 
         'hasPixConfigured', 'printerWidth', 'printerName', 'selectedPaymentGateway', 'bannerImageUrl', 'marmitaStartTime', 'marmitaEndTime',
         'hasMensalistas', 'hasKiloService', 'pricePerKilo', 'loyaltyProgram', 'disableDelivery',
-        'blingApiKey', 'fiscalProvider', 'fiscalCsc', 'fiscalCscId', 'fiscalEnv', 'fiscalTaxRate', 'nuvemClientId', 'nuvemClientSecret', 'autoPrintOrders',
+        'blingApiKey', 'focusNfeTokenProducao', 'focusNfeTokenHomologacao', 'fiscalProvider', 'fiscalCsc', 'fiscalCscId', 'fiscalEnv', 'fiscalTaxRate', 'nuvemClientId', 'nuvemClientSecret', 'autoPrintOrders',
         'hasPreorderMode', 'preorderDeliveryDay', 'preorderDeliveryTime', 'preorderCutoffInfo'
     ];
     keysToRemove.forEach(key => delete dbUpdates[key]);
