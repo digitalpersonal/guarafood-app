@@ -207,7 +207,11 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
             try {
                 data = textResp ? JSON.parse(textResp) : {};
             } catch {
-                data = { error: textResp };
+                data = {
+                    error: textResp.trim().startsWith('<')
+                        ? `Servidor fiscal indisponível neste endereço (HTTP ${response.status}).`
+                        : textResp,
+                };
             }
 
             if (response.ok && data.success) {
@@ -218,12 +222,17 @@ export const FiscalConfigModule: React.FC<FiscalConfigModuleProps> = ({ onOpenGu
                 });
                 addToast({ message: 'Conexão Focus NFe & SEFAZ validada com sucesso!', type: 'success' });
             } else {
+                const fallbackErr =
+                    response.status === 404 || response.status === 405
+                        ? `Endpoint fiscal (/api/fiscal/test-focus-token) não respondeu no servidor (HTTP ${response.status}).`
+                        : 'Token da Focus NFe inválido para o ambiente selecionado.';
+                const errMsg = data.error || data.mensagem || fallbackErr;
                 setTestResult({
                     success: false,
-                    message: data.error || data.mensagem || 'Token da Focus NFe inválido para o ambiente selecionado.',
+                    message: errMsg,
                     details: data.details,
                 });
-                addToast({ message: data.error || 'Token Focus NFe inválido neste ambiente.', type: 'error' });
+                addToast({ message: errMsg, type: 'error' });
             }
         } catch (err: any) {
             console.error('Error testing Focus NFe connection:', err);

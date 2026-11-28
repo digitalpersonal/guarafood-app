@@ -57,12 +57,25 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
 
     const participatingItems: MenuItem[] = useMemo(() => {
         if (!promo) return [];
+        const promoTitleClean = (promo.title || '').toLowerCase().trim();
         const numericItemIds = (promo.itemIds || []).map(Number);
-        let items = allItems.filter(item => numericItemIds.includes(Number(item.id)));
+        let items = allItems.filter(item => {
+            const itemNameClean = (item.name || '').toLowerCase().trim();
+            if (numericItemIds.includes(Number(item.id))) {
+                if (itemNameClean === promoTitleClean) return false;
+                return true;
+            }
+            return false;
+        });
 
         // If the restaurant explicitly chose specific items for this promo, respect them strictly
         if (items.length > 0) {
             return items;
+        }
+
+        // If promo has fixedPrice and no constituent sub-items, it's a standalone package
+        if (promo.fixedPrice !== undefined && promo.fixedPrice !== null) {
+            return [];
         }
 
         // Otherwise fallback to category or name matching for legacy/unconfigured promos
@@ -74,6 +87,7 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
 
         const matched = allItems.filter(item => {
             const name = (item.name || '').toLowerCase();
+            if (name.trim() === promoTitleClean) return false;
             if (isEsfihaPromo) {
                 return name.includes('esfiha') || name.includes('esfirra');
             }
@@ -85,7 +99,7 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
 
         if (matched.length > 0) {
             items = matched;
-        } else if (allItems.length > 0) {
+        } else if (allItems.length > 0 && !promo.fixedPrice) {
             items = allItems.slice(0, 15);
         }
         return items;
@@ -198,7 +212,7 @@ export const FeaturedPromoModal: React.FC<FeaturedPromoModalProps> = ({ isOpen, 
             }
             return g;
         });
-        if (groups.length === 0 && selectedItem) {
+        if (groups.length === 0 && selectedItem && promo.fixedPrice === undefined) {
             const raw = (selectedItem as any).optionGroups || (selectedItem as any).option_groups;
             if (raw) {
                 try {
