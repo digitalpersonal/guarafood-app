@@ -953,7 +953,11 @@ export const emitOrderFiscalToSefaz = async (
         try {
             resData = rawText ? JSON.parse(rawText) : {};
         } catch {
-            resData = { error: rawText || `Resposta inválida (${response.status}) do servidor fiscal.` };
+            resData = {
+                error: rawText.trim().startsWith('<')
+                    ? `Endpoint fiscal (/api/fiscal/emit-nfe) retornou HTML inesperado (HTTP ${response.status}).`
+                    : (rawText || `Resposta inválida (${response.status}) do servidor fiscal.`),
+            };
         }
 
         if (!response.ok || resData?.success === false || resData?.error) {
@@ -961,7 +965,9 @@ export const emitOrderFiscalToSefaz = async (
                 resData?.error ||
                 resData?.mensagem_sefaz ||
                 resData?.mensagem ||
-                `Erro HTTP ${response.status} ao enviar NFC-e para Focus NFe / SEFAZ.`;
+                (response.status === 405 || response.status === 404
+                    ? `Servidor fiscal (/api/fiscal/emit-nfe) indisponível neste deploy (HTTP ${response.status}).`
+                    : `Erro HTTP ${response.status} ao enviar NFC-e para Focus NFe / SEFAZ.`);
             await persistOrderFiscalMetadata(order.id, order.payment_details, {
                 status: 'erro_autorizacao',
                 mensagem: errMsg,
@@ -1054,7 +1060,11 @@ export const consultOrderFiscalSefaz = async (
         try {
             resData = rawText ? JSON.parse(rawText) : {};
         } catch {
-            resData = { error: rawText };
+            resData = {
+                error: rawText.trim().startsWith('<')
+                    ? `Endpoint fiscal (/api/fiscal/consult-nfe) retornou HTML inesperado (HTTP ${response.status}).`
+                    : rawText,
+            };
         }
 
         if (!response.ok || resData?.success === false || resData?.error) {
@@ -1062,7 +1072,11 @@ export const consultOrderFiscalSefaz = async (
                 orderId,
                 success: false,
                 fiscalStatus: 'erro_autorizacao',
-                fiscalMessage: resData?.error || `Erro HTTP ${response.status} ao consultar NFC-e na Focus NFe.`,
+                fiscalMessage:
+                    resData?.error ||
+                    (response.status === 405 || response.status === 404
+                        ? `Servidor fiscal (/api/fiscal/consult-nfe) indisponível neste deploy (HTTP ${response.status}).`
+                        : `Erro HTTP ${response.status} ao consultar NFC-e na Focus NFe.`),
             };
         }
 
@@ -1116,12 +1130,20 @@ export const cancelOrderFiscalSefaz = async (
         try {
             resData = rawText ? JSON.parse(rawText) : {};
         } catch {
-            resData = { error: rawText };
+            resData = {
+                error: rawText.trim().startsWith('<')
+                    ? `Endpoint fiscal (/api/fiscal/cancel-nfe) retornou HTML inesperado (HTTP ${response.status}).`
+                    : rawText,
+            };
         }
         if (!response.ok || resData?.success === false || resData?.error) {
             return {
                 success: false,
-                message: resData?.error || `Erro HTTP ${response.status} ao cancelar NFC-e.`,
+                message:
+                    resData?.error ||
+                    (response.status === 405 || response.status === 404
+                        ? `Servidor fiscal (/api/fiscal/cancel-nfe) indisponível neste deploy (HTTP ${response.status}).`
+                        : `Erro HTTP ${response.status} ao cancelar NFC-e.`),
             };
         }
         if (typeof window !== 'undefined') window.dispatchEvent(new Event('guarafood:update-orders'));
